@@ -54,10 +54,7 @@
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-primary:disabled { background: #d7d9de; color: #fff; cursor: not-allowed; }
   .blockmsg { color: var(--muted); font-size: 12px; margin-top: 8px; min-height: 14px; font-weight: 500; text-align: center; }
-  .aistatus { font-size: 12px; margin-top: 8px; min-height: 16px; font-weight: 500; line-height: 1.4; color: var(--muted); }
-  .aistatus.busy { color: #b8860b; }
-  .aistatus.ok { color: #2e7d52; }
-  .aistatus.err { color: var(--danger); }
+  .note { font-size: 12px; color: var(--muted); font-weight: 400; line-height: 1.5; margin-bottom: 10px; }
 </style>
 </head>
 <body>
@@ -70,17 +67,18 @@
     <h1>인스타 카드 생성기 <small>① 텍스트 · ② 사진(크롭) · ③ 배경지(원본)</small></h1>
 
     <div class="card">
-      <h2>1 · 사진 · AI 자동인식 (Opus)</h2>
+      <h2>1 · 사진</h2>
       <label class="upload">사진 선택 · 끌어다 놓기 · 붙여넣기<small>클립보드 이미지는 Ctrl/⌘+V</small><input type="file" id="file" accept="image/*"></label>
-      <div class="field" style="margin-top:12px">
-        <label>Anthropic API 키 <span style="font-weight:300">(이 브라우저에만 저장 · 파일엔 안 들어감)</span></label>
-        <input type="password" id="apikey" placeholder="sk-ant-...">
-      </div>
-      <div class="aistatus" id="aiStatus">API 키를 넣으면 사진 업로드 시 캐릭터를 자동 인식합니다.</div>
     </div>
 
     <div class="card">
-      <h2>2 · 텍스트</h2>
+      <h2>2 · 원문 입력 (선택)</h2>
+      <p class="note">일본어/원문 홍보 문구를 붙여넣고 Claude에게 주면, 저장 규칙대로 4줄을 만들어 줍니다. 받은 4줄을 아래 3번 칸에 붙여넣어 수정하세요. (별도 비용 없음)</p>
+      <div class="field"><textarea id="t_source" rows="5" placeholder="예) G.E.M. 시리즈 / NARUTO 질풍전 / 우치하 이타치＆사스케【재판】 ..."></textarea></div>
+    </div>
+
+    <div class="card">
+      <h2>3 · 텍스트</h2>
       <div class="field">
         <label>상단 헤드라인</label>
         <input type="text" id="t_headline" value="원형 최초공개">
@@ -102,7 +100,7 @@
     </div>
 
     <div class="card">
-      <h2>3 · 사진 크롭 / 배경지</h2>
+      <h2>4 · 사진 크롭 / 배경지</h2>
       <div class="slider"><label>사진 확대</label><input type="range" id="s_zoom" min="100" max="300" value="100"><span class="val" id="v_zoom">1.0×</span></div>
       <div class="slider"><label>배경 불투명</label><input type="range" id="s_op" min="20" max="100" value="50"><span class="val" id="v_op">50%</span></div>
       <div class="slider"><label>배경 흐림</label><input type="range" id="s_blur" min="0" max="70" value="45"><span class="val" id="v_blur">45</span></div>
@@ -217,68 +215,10 @@ function render(){
 /* ── 이미지 입력: 파일 / 드롭 / 붙여넣기 ── */
 function loadImage(src){ return new Promise(res=>{ const im=new Image(); im.onload=()=>{ state.img=im; state.fg={zoom:1,panX:0,panY:0}; render(); runValidation(); res(im); }; im.src=src; }); }
 window.__loadImage = loadImage;
-const fileToDataURL = (f) => new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
-async function handleFile(f){ const dataUrl = await fileToDataURL(f); await loadImage(dataUrl); recognize(dataUrl); }
-document.getElementById('file').addEventListener('change', async e=>{ const f=e.target.files[0]; if(f) await handleFile(f); });
+document.getElementById('file').addEventListener('change', async e=>{ const f=e.target.files[0]; if(f) await loadImage(URL.createObjectURL(f)); });
 ['dragover','drop'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault()));
-document.addEventListener('drop', async e=>{ const f=[...(e.dataTransfer?.files||[])].find(x=>x.type.startsWith('image/')); if(f) await handleFile(f); });
-document.addEventListener('paste', async e=>{ const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/')); if(it){ const f=it.getAsFile(); if(f) await handleFile(f); } });
-
-// ── AI 자동인식 (Opus 4.8, 브라우저 직접 호출) ──
-const APIKEY_LS = 'pw_insta_apikey';
-const apikeyEl = document.getElementById('apikey');
-apikeyEl.value = localStorage.getItem(APIKEY_LS) || '';
-apikeyEl.addEventListener('change', ()=>localStorage.setItem(APIKEY_LS, apikeyEl.value.trim()));
-function aiStatus(msg, cls=''){ const el=document.getElementById('aiStatus'); el.className='aistatus '+cls; el.textContent=msg; }
-
-const AI_RULES = `당신은 PresenceWorld 인스타 카드용 텍스트 추출기다. 메가하우스 제품 사진(피규어/굿즈)을 보고 IP·캐릭터·제품 라인을 판별해 4줄 정보를 만든다.
-
-반드시 JSON만 출력한다(설명 금지). 형식:
-{"headline":"...","title":"...","product":"...","notes":"..."}
-
-[headline] 공개/판매 상태. 미채색 원형 시제품이면 "원형 최초공개", 채색 완성품이면 "채색원형 최초공개", 재판/재입고 맥락이면 "재판매 결정". 확신 없으면 채색 여부로 두고 notes에 "헤드라인 확인 필요".
-
-[title] "{작품 한글 정식명} {시리즈명}". 시리즈 접미 규칙: G.E.M.→"G.E.M. 시리즈", 메가캣→"메가캣 프로젝트", 그 외(룩업/스케일 피규어/컬렉션 피규어/컬렉션 굿즈/GGG/루크리아/멜티 프린세스)는 접미 없이 라인명 그대로.
-
-[라인 인식 단서]
-- 룩업: 앉아서 위를 올려다보는 둥근 데포르메
-- 스케일: 테노히라=손바닥 위 작은 앉은형 / 일반 스케일=정밀 비율 전신. G.E.M.이면 title은 "G.E.M. 시리즈"로, 테노히라·프레셔스는 product 접두어로.
-- 메가캣 프로젝트: 캐릭터가 고양이 몸/귀로 변형
-- 컬렉션 피규어(쵸코링 등) / 컬렉션 굿즈(아크릴 등 평면)
-
-[product] 캐릭터 한글 정식 표기. 여러 명이면 각 줄에 한 명씩(\\n 줄바꿈). 버전/상태는 괄호로: (미채색),(유년 Ver.),(표정 파츠 동봉) 등.
-
-[원칙] 모르면 단정하지 말고 notes에 "확인 필요"와 후보를 적는다. 한국 정식 발매명 우선, 없으면 통용 음역.`;
-
-async function recognize(dataUrl){
-  const key = (localStorage.getItem(APIKEY_LS) || '').trim();
-  if(!key){ aiStatus('API 키를 넣으면 사진 업로드 시 캐릭터를 자동 인식합니다.'); return; }
-  const m = /^data:(image\/[\w.+-]+);base64,(.+)$/s.exec(dataUrl);
-  if(!m){ aiStatus('이 이미지 형식은 자동인식이 안 됩니다 — 텍스트는 직접 입력하세요.','err'); return; }
-  aiStatus('AI 인식 중… (Opus)','busy');
-  try{
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{ 'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true' },
-      body: JSON.stringify({
-        model:'claude-opus-4-8', max_tokens:1024, system: AI_RULES,
-        messages:[{ role:'user', content:[
-          { type:'image', source:{ type:'base64', media_type:m[1], data:m[2] } },
-          { type:'text', text:'이 제품 사진을 규칙대로 분석해서 JSON 4줄만 출력해줘.' }
-        ]}]
-      })
-    });
-    if(!res.ok){ const t=await res.text(); aiStatus('인식 실패('+res.status+'): '+t.slice(0,140),'err'); return; }
-    const data = await res.json();
-    const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
-    const jm = text.match(/\{[\s\S]*\}/); if(!jm) throw new Error('JSON 파싱 실패');
-    const j = JSON.parse(jm[0]);
-    if(j.headline) setField('headline', j.headline);
-    if(j.title) setField('title', j.title);
-    if(j.product) setField('product', j.product);
-    aiStatus('✓ 인식 완료 — 필드에서 확인·수정하세요.' + (j.notes ? ' ⚠ '+j.notes : ''), j.notes?'busy':'ok');
-  }catch(err){ aiStatus('인식 오류: '+err.message+' — 직접 입력하세요.','err'); }
-}
+document.addEventListener('drop', async e=>{ const f=[...(e.dataTransfer?.files||[])].find(x=>x.type.startsWith('image/')); if(f) await loadImage(URL.createObjectURL(f)); });
+document.addEventListener('paste', async e=>{ const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/')); if(it){ const f=it.getAsFile(); if(f) await loadImage(URL.createObjectURL(f)); } });
 
 /* ── 텍스트/컨트롤 ── */
 for(const k of ['headline','title','product','footer'])
