@@ -10,13 +10,11 @@
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', sans-serif; }
   body { background: var(--bg); color: var(--text); display: flex; min-height: 100vh; gap: 28px; padding: 28px; }
 
-  /* 미리보기 */
   .stage-wrap { flex: 0 0 auto; position: sticky; top: 28px; align-self: flex-start; }
   #stage { width: 432px; height: 540px; border-radius: 14px; box-shadow: 0 10px 36px rgba(0,0,0,.16); cursor: grab; touch-action: none; background: #e9eaee; }
   #stage.drag { cursor: grabbing; }
-  .hint { color: var(--muted); font-size: 13px; margin-top: 10px; text-align: center; font-weight: 300; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 10px; text-align: center; font-weight: 300; line-height: 1.5; }
 
-  /* 패널 */
   .panel { flex: 1; max-width: 430px; display: flex; flex-direction: column; gap: 16px; }
   h1 { font-size: 20px; font-weight: 700; }
   h1 small { font-weight: 300; color: var(--muted); font-size: 13px; display: block; margin-top: 4px; }
@@ -24,16 +22,20 @@
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
   .card h2 { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .5px; margin-bottom: 12px; }
 
-  .upload { display: block; border: 1.5px dashed var(--line2); border-radius: 10px; padding: 22px; text-align: center; cursor: pointer; transition: .15s; font-weight: 500; color: var(--muted); }
+  .upload { display: block; border: 1.5px dashed var(--line2); border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; transition: .15s; font-weight: 500; color: var(--muted); line-height: 1.5; }
   .upload:hover { border-color: var(--accent); color: var(--accent); }
   .upload input { display: none; }
+  .upload small { display:block; font-size:12px; font-weight:300; margin-top:4px; }
 
   .field { margin-bottom: 12px; }
   .field:last-child { margin-bottom: 0; }
   .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 500; }
-  .field input[type=text] { width: 100%; background: #fff; border: 1px solid var(--line2); border-radius: 8px; color: var(--text); padding: 9px 11px; font-size: 14px; font-weight: 500; }
-  .field input:focus { outline: none; border-color: var(--accent); }
-  .field input.invalid { border-color: var(--danger); background: #fff5f6; }
+  .field input[type=text], .field textarea { width: 100%; background: #fff; border: 1px solid var(--line2); border-radius: 8px; color: var(--text); padding: 9px 11px; font-size: 14px; font-weight: 500; font-family:'Pretendard',sans-serif; resize: vertical; }
+  .field textarea { line-height: 1.4; }
+  .field input:focus, .field textarea:focus { outline: none; border-color: var(--accent); }
+  .field input.invalid, .field textarea.invalid { border-color: var(--danger); background: #fff5f6; }
+  .check { display:flex; align-items:center; gap:7px; margin-top:8px; font-size:13px; color:var(--text); cursor:pointer; }
+  .check input { width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }
   .warn { display: none; color: var(--danger); font-size: 12px; margin-top: 5px; font-weight: 500; line-height: 1.4; }
   .warn.show { display: block; }
   .warn b { cursor: pointer; text-decoration: underline; }
@@ -51,25 +53,25 @@
   .btn { width: 100%; border: none; border-radius: 10px; padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer; }
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-primary:disabled { background: #d7d9de; color: #fff; cursor: not-allowed; }
-  .blockmsg { color: var(--danger); font-size: 12px; margin-top: 8px; min-height: 14px; font-weight: 500; text-align: center; }
+  .blockmsg { color: var(--muted); font-size: 12px; margin-top: 8px; min-height: 14px; font-weight: 500; text-align: center; }
 </style>
 </head>
 <body>
   <div class="stage-wrap">
     <canvas id="stage" width="1080" height="1350"></canvas>
-    <div class="hint">사진 위를 <b>드래그</b>해서 위치 조정 · 휠/슬라이더로 <b>확대</b></div>
+    <div class="hint">사진 위를 <b>드래그</b>해서 위치 조정 · 휠/슬라이더로 <b>확대</b><br>업로드 · 끌어놓기 · <b>붙여넣기(Ctrl/⌘+V)</b> 모두 가능</div>
   </div>
 
   <div class="panel">
     <h1>인스타 카드 생성기 <small>① 텍스트 · ② 사진(크롭) · ③ 배경지(원본)</small></h1>
 
     <div class="card">
-      <h2>1 · 사진 업로드</h2>
-      <label class="upload">사진 1장을 선택하거나 끌어다 놓으세요<input type="file" id="file" accept="image/*"></label>
+      <h2>1 · 사진</h2>
+      <label class="upload">사진 선택 · 끌어다 놓기 · 붙여넣기<small>클립보드 이미지는 Ctrl/⌘+V</small><input type="file" id="file" accept="image/*"></label>
     </div>
 
     <div class="card">
-      <h2>2 · 텍스트 (붙여넣고 수정 · 띄어쓰기 자동 검사)</h2>
+      <h2>2 · 텍스트</h2>
       <div class="field">
         <label>상단 헤드라인</label>
         <input type="text" id="t_headline" value="원형 최초공개">
@@ -77,10 +79,14 @@
       </div>
       <div class="field">
         <label>타이틀 (작품 + 시리즈)</label>
-        <input type="text" id="t_title" value="주술회전 룩업">
+        <input type="text" id="t_title" placeholder="예: 주술회전 룩업">
         <div class="warn" id="w_title"></div>
       </div>
-      <div class="field"><label>제품명</label><input type="text" id="t_product" value="고죠 사토루 & 후시구로 메구미"></div>
+      <div class="field">
+        <label>제품명 (두 줄은 Enter로 줄바꿈)</label>
+        <textarea id="t_product" rows="2" placeholder="예: 고죠 사토루&#10;후시구로 메구미"></textarea>
+        <label class="check"><input type="checkbox" id="c_bullet"> 제품명 앞에 불렛(•) 표시</label>
+      </div>
       <div class="field"><label>푸터</label><input type="text" id="t_footer" value="메가하우스 공식 스토어"></div>
     </div>
 
@@ -88,7 +94,7 @@
       <h2>3 · 사진 크롭 / 배경지 / 글자 크기</h2>
       <div class="slider"><label>사진 확대</label><input type="range" id="s_zoom" min="100" max="300" value="100"><span class="val" id="v_zoom">1.0×</span></div>
       <div class="slider"><label>배경 불투명</label><input type="range" id="s_op" min="20" max="100" value="50"><span class="val" id="v_op">50%</span></div>
-      <div class="slider"><label>배경 흐림</label><input type="range" id="s_blur" min="0" max="70" value="14"><span class="val" id="v_blur">14</span></div>
+      <div class="slider"><label>배경 흐림</label><input type="range" id="s_blur" min="0" max="70" value="45"><span class="val" id="v_blur">45</span></div>
       <div class="stepper"><label>타이틀 크기</label><div class="ctrl"><button data-k="title" data-d="-4">−</button><span class="num" id="v_titleSize">80</span><button data-k="title" data-d="4">+</button></div></div>
       <div class="stepper"><label>제품명 크기</label><div class="ctrl"><button data-k="product" data-d="-4">−</button><span class="num" id="v_productSize">60</span><button data-k="product" data-d="4">+</button></div></div>
     </div>
@@ -102,145 +108,125 @@
 <script>
 const cv = document.getElementById('stage'), ctx = cv.getContext('2d');
 const W = 1080, H = 1350;
-const FRAME = { x: 110, y: 250, w: 860, h: 760, r: 36 };
-const MAXW = 920; // 텍스트가 액자 폭 안에 들어가도록 하는 최대 폭
+const FRAME = { x: 110, y: 215, w: 860, h: 760, r: 36 }; // 이미지 박스를 35px 위로 (크기 유지)
+const MAXW = 920;
 
 const state = {
   img: null,
   fg: { zoom: 1, panX: 0, panY: 0 },
-  bg: { opacity: 0.50, blur: 14 },
+  bg: { opacity: 0.50, blur: 45 },
   size: { title: 80, product: 60 },
-  text: { headline:'원형 최초공개', title:'주술회전 룩업', product:'고죠 사토루 & 후시구로 메구미', footer:'메가하우스 공식 스토어' },
+  bullet: false,
+  text: { headline:'원형 최초공개', title:'', product:'', footer:'메가하우스 공식 스토어' },
 };
 
-/* ───────── 띄어쓰기 검증 규칙 ───────── */
-// 헤드라인: 아래 정식 표기와 정확히 일치해야 함 (띄어쓰기 포함)
+/* ── 띄어쓰기 검증 (UI 문구는 숨기되 기능은 유지) ── */
 const HEADLINES = ['원형 최초공개','채색원형 최초공개','재판매 결정','한정 재판매 결정','예약 시작','발매 결정','한정 예약 시작'];
-// 타이틀 시리즈명(접미 포함 정식 표기). 긴 것부터 매칭.
 const SERIES = ['G.E.M. 시리즈','메가캣 프로젝트','룩업 미니어처','룩업 의상','룩업 판초','룩업 소품','룩업','스케일 피규어','컬렉션 피규어','컬렉션 굿즈','쵸코링 컬렉션','빅 메가캣','메가캣 잘자','메가캣 찰싹','메가캣 뱃지','메가캣','루크리아','멜티 프린세스','GGG','카라코로','버디코레','이루스타','꺄르르르'];
-// 작품명 정식 띄어쓰기 사전 (확장 가능). despaced→정식
-const WORKS = ['주술회전','귀멸의 칼날','강철의 연금술사','나루토 질풍전','진격의 거인','은혼','원피스','하이큐','체인소맨','드래곤볼','블리치','나의 히어로 아카데미아','도쿄 리벤저스','스파이 패밀리','블루 록','반짝이는 프리☆채널','명탐정 코난'];
+const WORKS = ['주술회전','귀멸의 칼날','강철의 연금술사','나루토 질풍전','진격의 거인','은혼','원피스','하이큐','체인소맨','드래곤볼','블리치','나의 히어로 아카데미아','도쿄 리벤저스','스파이 패밀리','블루 록','명탐정 코난'];
 const despace = s => s.replace(/\s+/g,'');
 const WORKMAP = Object.fromEntries(WORKS.map(w => [despace(w), w]));
-const SERIESMAP = Object.fromEntries(SERIES.map(s => [despace(s), s]));
 
-function validateHeadline(v) {
-  v = v.trim();
-  if (!v) return { ok:false, msg:'헤드라인을 입력하세요.' };
-  if (HEADLINES.includes(v)) return { ok:true };
-  const hit = HEADLINES.find(h => despace(h) === despace(v));
-  if (hit) return { ok:false, msg:`띄어쓰기 오류 → 올바른 형태: `, fix:hit };
-  return { ok:false, msg:`정식 표기가 아님. 예: ${HEADLINES.slice(0,3).join(' / ')}` };
+function validateHeadline(v){ v=v.trim();
+  if(!v) return {ok:false, empty:true};
+  if(HEADLINES.includes(v)) return {ok:true};
+  const hit = HEADLINES.find(h=>despace(h)===despace(v));
+  if(hit) return {ok:false, msg:'띄어쓰기 오류 → 올바른 형태: ', fix:hit};
+  return {ok:false, msg:`정식 표기가 아님. 예: ${HEADLINES.slice(0,3).join(' / ')}`};
 }
-
-function validateTitle(v) {
-  v = v.trim();
-  if (!v) return { ok:false, msg:'타이틀을 입력하세요.' };
-  // 시리즈 접미 찾기 (공백 포함 정확히)
-  const ser = SERIES.find(s => v === s || v.endsWith(' ' + s));
-  if (!ser) {
-    const sd = SERIES.find(s => despace(v).endsWith(despace(s)));
-    if (sd) return { ok:false, msg:`시리즈명 띄어쓰기 오류 → '${sd}' 형태로` };
-    return { ok:false, msg:`끝에 올바른 시리즈명이 없음. 예: 룩업 / 스케일 피규어 / G.E.M. 시리즈` };
-  }
-  const work = v === ser ? '' : v.slice(0, v.length - ser.length - 1).trim();
-  if (!work) return { ok:false, msg:'작품명이 비어 있음. 예: 주술회전 룩업' };
-  // 작품명 띄어쓰기 검사 (사전에 있는 경우만)
+function validateTitle(v){ v=v.trim();
+  if(!v) return {ok:false, empty:true};
+  const ser = SERIES.find(s=> v===s || v.endsWith(' '+s));
+  if(!ser){ const sd=SERIES.find(s=>despace(v).endsWith(despace(s)));
+    if(sd) return {ok:false, msg:`시리즈명 띄어쓰기 오류 → '${sd}' 형태로`};
+    return {ok:false, msg:'끝에 올바른 시리즈명이 없음. 예: 룩업 / 스케일 피규어 / G.E.M. 시리즈'}; }
+  const work = v===ser ? '' : v.slice(0, v.length-ser.length-1).trim();
+  if(!work) return {ok:false, msg:'작품명이 비어 있음. 예: 주술회전 룩업'};
   const correct = WORKMAP[despace(work)];
-  if (correct && correct !== work) return { ok:false, msg:`작품명 띄어쓰기 오류 → 올바른 형태: `, fix:`${correct} ${ser}` };
-  return { ok:true };
+  if(correct && correct!==work) return {ok:false, msg:'작품명 띄어쓰기 오류 → 올바른 형태: ', fix:`${correct} ${ser}`};
+  return {ok:true};
 }
-
-function runValidation() {
-  const checks = [['headline', validateHeadline(state.text.headline)], ['title', validateTitle(state.text.title)]];
-  let allOk = true;
-  for (const [k, r] of checks) {
-    const inp = document.getElementById('t_'+k), warn = document.getElementById('w_'+k);
-    if (r.ok) { inp.classList.remove('invalid'); warn.classList.remove('show'); warn.innerHTML=''; }
-    else {
-      allOk = false; inp.classList.add('invalid'); warn.classList.add('show');
-      warn.innerHTML = '⚠ ' + r.msg + (r.fix ? `<b data-fix="${k}" data-val="${r.fix}">${r.fix}</b> (클릭 시 적용)` : '');
-    }
+function runValidation(){
+  const checks=[['headline',validateHeadline(state.text.headline)],['title',validateTitle(state.text.title)]];
+  let allOk=true, anyEmpty=false;
+  for(const [k,r] of checks){
+    const inp=document.getElementById('t_'+k), warn=document.getElementById('w_'+k);
+    if(r.ok){ inp.classList.remove('invalid'); warn.classList.remove('show'); warn.innerHTML=''; }
+    else if(r.empty){ allOk=false; anyEmpty=true; inp.classList.remove('invalid'); warn.classList.remove('show'); warn.innerHTML=''; }
+    else { allOk=false; inp.classList.add('invalid'); warn.classList.add('show');
+      warn.innerHTML='⚠ '+r.msg+(r.fix?`<b data-fix="${k}" data-val="${r.fix}">${r.fix}</b> (클릭 시 적용)`:''); }
   }
-  const dl = document.getElementById('download'), bm = document.getElementById('blockmsg');
-  if (!state.img) { dl.disabled = true; bm.textContent = '사진을 먼저 업로드하세요.'; }
-  else if (!allOk) { dl.disabled = true; bm.textContent = '띄어쓰기 오류를 고쳐야 저장할 수 있어요.'; }
-  else { dl.disabled = false; bm.textContent = ''; }
+  const dl=document.getElementById('download'), bm=document.getElementById('blockmsg');
+  if(!state.img){ dl.disabled=true; bm.style.color='var(--muted)'; bm.textContent='사진을 먼저 올려주세요.'; }
+  else if(anyEmpty){ dl.disabled=true; bm.style.color='var(--muted)'; bm.textContent='타이틀·제품명을 채워주세요.'; }
+  else if(!allOk){ dl.disabled=true; bm.style.color='var(--danger)'; bm.textContent='표기를 확인해 주세요.'; }
+  else { dl.disabled=false; bm.textContent=''; }
   return allOk;
 }
-// 제안값 클릭 시 자동 적용
-document.querySelectorAll('.warn').forEach(w => w.addEventListener('click', e => {
-  const b = e.target.closest('b[data-fix]'); if (!b) return;
-  setField(b.dataset.fix, b.dataset.val);
-}));
-function setField(k, v) { state.text[k] = v; document.getElementById('t_'+k).value = v; render(); runValidation(); }
+document.querySelectorAll('.warn').forEach(w=>w.addEventListener('click',e=>{ const b=e.target.closest('b[data-fix]'); if(b) setField(b.dataset.fix,b.dataset.val); }));
+function setField(k,v){ state.text[k]=v; document.getElementById('t_'+k).value=v; render(); runValidation(); }
 
-/* ───────── 렌더 ───────── */
+/* ── 렌더 ── */
 function roundRect(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
-function coverRect(iw,ih,fw,fh,zoom,panX,panY){ const base=Math.max(fw/iw,fh/ih), scale=base*zoom, dw=iw*scale, dh=ih*scale, mx=Math.max(0,(dw-fw)/2), my=Math.max(0,(dh-fh)/2); return { dw,dh,px:Math.max(-mx,Math.min(mx,panX)),py:Math.max(-my,Math.min(my,panY)) }; }
-function setFont(w,s){ ctx.font = `${w} ${s}px Pretendard, sans-serif`; }
-// 원하는 크기로 그리되, maxW를 넘으면 줄여서 액자 안에 맞춤
+function coverRect(iw,ih,fw,fh,zoom,panX,panY){ const base=Math.max(fw/iw,fh/ih),scale=base*zoom,dw=iw*scale,dh=ih*scale,mx=Math.max(0,(dw-fw)/2),my=Math.max(0,(dh-fh)/2); return {dw,dh,px:Math.max(-mx,Math.min(mx,panX)),py:Math.max(-my,Math.min(my,panY))}; }
+function setFont(w,s){ ctx.font=`${w} ${s}px Pretendard, sans-serif`; }
 function fitText(text,weight,size,maxW){ let s=size; setFont(weight,s); while(ctx.measureText(text).width>maxW && s>14){ s-=1; setFont(weight,s); } return s; }
 
-function render() {
+function render(){
   ctx.clearRect(0,0,W,H);
-  ctx.fillStyle = '#16130f'; ctx.fillRect(0,0,W,H);
-  if (state.img) {
-    ctx.save(); ctx.globalAlpha = state.bg.opacity; ctx.filter = state.bg.blur ? `blur(${state.bg.blur}px)` : 'none';
-    const b = coverRect(state.img.width, state.img.height, W+120, H+120, 1, 0, 0);
-    ctx.drawImage(state.img, (W-b.dw)/2, (H-b.dh)/2, b.dw, b.dh); ctx.restore();
-  }
-  let g = ctx.createLinearGradient(0,0,0,360); g.addColorStop(0,'rgba(12,10,8,.75)'); g.addColorStop(1,'rgba(12,10,8,0)'); ctx.fillStyle=g; ctx.fillRect(0,0,W,360);
-  g = ctx.createLinearGradient(0,1000,0,H); g.addColorStop(0,'rgba(12,10,8,0)'); g.addColorStop(1,'rgba(12,10,8,.88)'); ctx.fillStyle=g; ctx.fillRect(0,1000,W,H-1000);
+  ctx.fillStyle='#16130f'; ctx.fillRect(0,0,W,H);
+  if(state.img){ ctx.save(); ctx.globalAlpha=state.bg.opacity; ctx.filter=state.bg.blur?`blur(${state.bg.blur}px)`:'none';
+    const b=coverRect(state.img.width,state.img.height,W+160,H+160,1,0,0);
+    ctx.drawImage(state.img,(W-b.dw)/2,(H-b.dh)/2,b.dw,b.dh); ctx.restore(); }
+  let g=ctx.createLinearGradient(0,0,0,330); g.addColorStop(0,'rgba(12,10,8,.75)'); g.addColorStop(1,'rgba(12,10,8,0)'); ctx.fillStyle=g; ctx.fillRect(0,0,W,330);
+  g=ctx.createLinearGradient(0,995,0,H); g.addColorStop(0,'rgba(12,10,8,0)'); g.addColorStop(1,'rgba(12,10,8,.9)'); ctx.fillStyle=g; ctx.fillRect(0,995,W,H-995);
 
-  if (state.img) {
+  if(state.img){
     ctx.save(); ctx.shadowColor='rgba(0,0,0,.45)'; ctx.shadowBlur=40; ctx.shadowOffsetY=18; ctx.fillStyle='#fff';
-    roundRect(ctx, FRAME.x-6, FRAME.y-6, FRAME.w+12, FRAME.h+12, FRAME.r+4); ctx.fill(); ctx.restore();
-    ctx.save(); roundRect(ctx, FRAME.x, FRAME.y, FRAME.w, FRAME.h, FRAME.r); ctx.clip();
-    const f = coverRect(state.img.width, state.img.height, FRAME.w, FRAME.h, state.fg.zoom, state.fg.panX, state.fg.panY);
-    ctx.drawImage(state.img, FRAME.x+(FRAME.w-f.dw)/2+f.px, FRAME.y+(FRAME.h-f.dh)/2+f.py, f.dw, f.dh); ctx.restore();
+    roundRect(ctx,FRAME.x-6,FRAME.y-6,FRAME.w+12,FRAME.h+12,FRAME.r+4); ctx.fill(); ctx.restore();
+    ctx.save(); roundRect(ctx,FRAME.x,FRAME.y,FRAME.w,FRAME.h,FRAME.r); ctx.clip();
+    const f=coverRect(state.img.width,state.img.height,FRAME.w,FRAME.h,state.fg.zoom,state.fg.panX,state.fg.panY);
+    ctx.drawImage(state.img,FRAME.x+(FRAME.w-f.dw)/2+f.px,FRAME.y+(FRAME.h-f.dh)/2+f.py,f.dw,f.dh); ctx.restore();
   }
 
   ctx.textAlign='center'; ctx.fillStyle='#fff'; ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=12; ctx.shadowOffsetY=2;
-  fitText(state.text.headline, 800, 76, MAXW); ctx.fillText(state.text.headline, W/2, 150);
+  fitText(state.text.headline,800,76,MAXW); ctx.fillText(state.text.headline,W/2,148);
   ctx.shadowBlur=8;
-  fitText(state.text.title, 700, state.size.title, MAXW); ctx.fillText(state.text.title, W/2, 1092);
-  ctx.fillStyle='#efe8e2'; fitText(state.text.product, 300, state.size.product, MAXW); ctx.fillText(state.text.product, W/2, 1166);
+  fitText(state.text.title,700,state.size.title,MAXW); ctx.fillText(state.text.title,W/2,1052);
+
+  // 제품명: 여러 줄 + 선택적 불렛
+  ctx.fillStyle='#efe8e2';
+  const plines = state.text.product.split('\n').map(s=>s.trim()).filter(Boolean);
+  const lh = state.size.product*1.12, base = 1120;
+  plines.forEach((ln,i)=>{ const t=(state.bullet?'• ':'')+ln; fitText(t,300,state.size.product,MAXW); ctx.fillText(t,W/2,base+i*lh); });
 
   ctx.shadowBlur=0; ctx.strokeStyle='rgba(255,255,255,.28)'; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(180,1240); ctx.lineTo(900,1240); ctx.stroke();
-  ctx.fillStyle='#e8e1db'; setFont(500,34); ctx.fillText(state.text.footer, W/2, 1300);
+  ctx.beginPath(); ctx.moveTo(180,1244); ctx.lineTo(900,1244); ctx.stroke();
+  ctx.fillStyle='#e8e1db'; setFont(500,34); ctx.fillText(state.text.footer,W/2,1302);
 }
 
-/* ───────── 입력/이미지 ───────── */
+/* ── 이미지 입력: 파일 / 드롭 / 붙여넣기 ── */
 function loadImage(src){ return new Promise(res=>{ const im=new Image(); im.onload=()=>{ state.img=im; state.fg={zoom:1,panX:0,panY:0}; render(); runValidation(); res(im); }; im.src=src; }); }
 window.__loadImage = loadImage;
+document.getElementById('file').addEventListener('change', async e=>{ const f=e.target.files[0]; if(f) await loadImage(URL.createObjectURL(f)); });
+['dragover','drop'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault()));
+document.addEventListener('drop', async e=>{ const f=[...(e.dataTransfer?.files||[])].find(x=>x.type.startsWith('image/')); if(f) await loadImage(URL.createObjectURL(f)); });
+document.addEventListener('paste', async e=>{ const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/')); if(it){ const f=it.getAsFile(); if(f) await loadImage(URL.createObjectURL(f)); } });
 
-document.getElementById('file').addEventListener('change', async e => { const f=e.target.files[0]; if(f) await loadImage(URL.createObjectURL(f)); });
-['dragover','drop'].forEach(ev => document.addEventListener(ev, e => e.preventDefault()));
-document.addEventListener('drop', async e => { const f=[...(e.dataTransfer?.files||[])].find(x=>x.type.startsWith('image/')); if(f) await loadImage(URL.createObjectURL(f)); });
+/* ── 텍스트/컨트롤 ── */
+for(const k of ['headline','title','product','footer'])
+  document.getElementById('t_'+k).addEventListener('input', e=>{ state.text[k]=e.target.value; render(); runValidation(); });
+document.getElementById('c_bullet').addEventListener('change', e=>{ state.bullet=e.target.checked; render(); });
 
-for (const k of ['headline','title','product','footer'])
-  document.getElementById('t_'+k).addEventListener('input', e => { state.text[k]=e.target.value; render(); runValidation(); });
+const z=document.getElementById('s_zoom'),op=document.getElementById('s_op'),bl=document.getElementById('s_blur');
+z.addEventListener('input',()=>{ state.fg.zoom=z.value/100; v_zoom.textContent=(z.value/100).toFixed(1)+'×'; render(); });
+op.addEventListener('input',()=>{ state.bg.opacity=op.value/100; v_op.textContent=op.value+'%'; render(); });
+bl.addEventListener('input',()=>{ state.bg.blur=+bl.value; v_blur.textContent=bl.value; render(); });
+document.querySelectorAll('.stepper button').forEach(b=>b.addEventListener('click',()=>{ const k=b.dataset.k,d=+b.dataset.d; state.size[k]=Math.max(28,Math.min(160,state.size[k]+d)); document.getElementById('v_'+k+'Size').textContent=state.size[k]; render(); }));
 
-const z=document.getElementById('s_zoom'), op=document.getElementById('s_op'), bl=document.getElementById('s_blur');
-z.addEventListener('input', ()=>{ state.fg.zoom=z.value/100; v_zoom.textContent=(z.value/100).toFixed(1)+'×'; render(); });
-op.addEventListener('input', ()=>{ state.bg.opacity=op.value/100; v_op.textContent=op.value+'%'; render(); });
-bl.addEventListener('input', ()=>{ state.bg.blur=+bl.value; v_blur.textContent=bl.value; render(); });
+document.getElementById('download').addEventListener('click',()=>{ if(!runValidation()) return; cv.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='insta-card.png'; a.click(); },'image/png'); });
 
-document.querySelectorAll('.stepper button').forEach(b => b.addEventListener('click', ()=>{
-  const k=b.dataset.k, d=+b.dataset.d;
-  state.size[k] = Math.max(28, Math.min(160, state.size[k]+d));
-  document.getElementById('v_'+k+'Size').textContent = state.size[k];
-  render();
-}));
-
-document.getElementById('download').addEventListener('click', ()=>{
-  if (!runValidation()) return;
-  cv.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='insta-card.png'; a.click(); }, 'image/png');
-});
-
-(async ()=>{ try { await document.fonts.load('800 76px Pretendard'); await document.fonts.load('300 60px Pretendard'); } catch{} render(); runValidation(); })();
+(async ()=>{ try{ await document.fonts.load('800 76px Pretendard'); await document.fonts.load('300 60px Pretendard'); }catch{} render(); runValidation(); })();
 </script>
 </body>
 </html>
