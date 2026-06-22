@@ -1,0 +1,22 @@
+{
+  "_comment": "작품 마스터 — 작품별 고정값(로고 파일, 저작권 문구, 카드 배경 테마)을 1회만 등록한다. post.json 의 work 값이 여기 key 와 매칭된다. logo 는 assets/logos/ 기준 파일명이며, 없으면 작품명 텍스트로 대체 렌더된다.",
+
+  "naruto": {
+    "logo": "naruto.png",
+    "name_kr": "나루토 질풍전",
+    "copyright": "©岸本斉史 スコット／集英社・テレビ東京・ぴえろ",
+    "card_theme": "pink"
+  },
+  "aot": {
+    "logo": "aot.png",
+    "name_kr": "진격의 거인",
+    "copyright": "©諫山創・講談社／「進撃の巨人」The Final Season製作委員会",
+    "card_theme": "brown"
+  },
+  "gintama": {
+    "logo": "gintama.png",
+    "name_kr": "은혼",
+    "copyright": "©空知英秋／集英社・テレビ東京・電通・BNP・アニプレックス",
+    "card_theme": "pink"
+  }
+}
