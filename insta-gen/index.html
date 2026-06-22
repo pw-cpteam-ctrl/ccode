@@ -89,8 +89,8 @@
 
     <div class="card">
       <h2>2 · 원문 입력 (필수)</h2>
-      <p class="note">① 일본어 원문을 Claude에게 주면 ② <b>헤드라인/작품/라인/제품명/일본어/예약판매일</b> 블록을 받습니다 → ③ 그 블록을 아래에 붙여넣고 <b>[적용]</b>을 누르면 3번이 자동으로 채워집니다. (별도 비용 없음)</p>
-      <div class="field"><textarea id="t_source" rows="7" placeholder="Claude가 준 블록을 붙여넣기:&#10;헤드라인: 채색원형 최초공개&#10;작품: 진격의 거인&#10;라인: 룩업&#10;제품명: 아르민 아를레르트 / 에렌 예거 (뾰로통 Ver.)&#10;일본어: 進撃の巨人&#10;예약판매일: 3월 5일"></textarea></div>
+      <p class="note"><b>일본어 원문을 그대로 붙여넣고 [적용]</b>을 누르면 헤드라인·작품·라인·캐릭터·예약일을 자동 인식해 3번을 채웁니다. (전부 웹에서 처리 · 비용 0)<br>사전에 없는 새 작품/캐릭터만 3번에서 직접 입력하세요.</p>
+      <div class="field"><textarea id="t_source" rows="8" placeholder="일본어 원문 그대로 붙여넣기. 예)&#10;◤彩色原型初公開！◢&#10;見上げる見守るフィギュア るかっぷ&#10;進撃の巨人&#10;アルミン・アルレルト&#10;エレン・イェーガー むむっとver.&#10;⏰予約開始は3月5日(木)"></textarea></div>
       <button class="btn2" id="applySrc" style="width:100%">적용 → 3번 자동 채우기</button>
       <div class="note" id="srcStatus" style="margin-top:8px;margin-bottom:0"></div>
     </div>
@@ -241,28 +241,88 @@ function runValidation(){
   return !state.img ? false : (!!src && filled);
 }
 
-// ── 변환값 블록 → 3번 필드 자동 적용 ──
-function setSelect(id,val){ const el=document.getElementById(id); if([...el.options].some(o=>o.value===val)){ el.value=val; return true; } return false; }
+// ── 일본어 원문 사전 (JP→KR). 모르는 건 그대로 두고 3번에서 수정 ──
+const DICT = {
+  works: {
+    '銀魂':'은혼', '進撃の巨人':'진격의 거인', 'カグラバチ':'카구라바치', '呪術廻戦':'주술회전',
+    'ナルト':'나루토 질풍전', 'NARUTO':'나루토 질풍전', '疾風伝':'나루토 질풍전',
+  },
+  chars: {
+    '神樂':'카구라','神楽':'카구라','神威':'카무이','カムイ':'카무이',
+    'エレン・イェーガー':'에렌 예거','エレン':'에렌 예거','リヴァイ':'리바이 병장',
+    'アルミン・アルレルト':'아르민 아를레르트','アルミン':'아르민 아를레르트',
+    '五条悟':'고죠 사토루','伏黒恵':'후시구로 메구미',
+    '六平千鉱':'로쿠히라 치히로','漣伯理':'사자나미 하쿠리',
+    'うちはイタチ':'우치하 이타치','うちはサスケ':'우치하 사스케','波風ミナト':'나미카제 미나토',
+  },
+  versions: { 'むむっと':'(뾰로통 Ver.)','未彩色':'(미채색)','幼少':'(유년 Ver.)' },
+};
+const HEADS = [
+  { kw:['彩色原型初公開','彩色初公開','彩色原型','채색원형'], kr:'채색원형 최초공개' },
+  { kw:['原型初公開','原型公開','원형'], kr:'원형 최초공개' },
+  { kw:['限定復刻','限定再販','한정 재판','한정재판'], kr:'한정 재판매 결정' },
+  { kw:['再販','재판'], kr:'재판매 결정' },
+  { kw:['発売決定','발매'], kr:'발매 결정' },
+  { kw:['予約開始','予約受付','예약'], kr:'예약 시작' },
+];
+const LINES = [
+  { kw:['るかっぷ','ルカップ','見上げる','見守る','LookUp','룩업','루카푸'], kr:'룩업' },
+  { kw:['MEGA CAT','メガキャット','메가캣'], kr:'메가캣 프로젝트' },
+  { kw:['ルクリア','Lucrea','루크리아'], kr:'루크리아' },
+  { kw:['めるてぃ','Melty','멜티'], kr:'멜티 프린세스' },
+  { kw:['ちょこりん','쵸코링'], kr:'쵸코링 컬렉션' },
+  { kw:['G.E.M.','GEM','지이엠'], kr:'G.E.M. 시리즈' },
+];
+const z2h = s => s.replace(/[０-９]/g, d => '０１２３４５６７８９'.indexOf(d) + '');
+
+function pickChars(txt){
+  const keys = Object.keys(DICT.chars).sort((a,b)=>b.length-a.length);
+  const used = new Array(txt.length).fill(false); const found=[];
+  for(const k of keys){ let i=txt.indexOf(k);
+    while(i!==-1){ let free=true; for(let j=i;j<i+k.length;j++) if(used[j]){free=false;break;}
+      if(free){ for(let j=i;j<i+k.length;j++) used[j]=true;
+        // 버전은 같은 줄(다음 줄바꿈 전)에서만 탐색 → 옆 캐릭터 버전 오염 방지
+        const le=txt.indexOf('\n', i+k.length); const after=txt.slice(i+k.length, le===-1?txt.length:le);
+        let ver=''; for(const vk of Object.keys(DICT.versions)) if(after.includes(vk)){ ver=' '+DICT.versions[vk]; break; }
+        found.push({i, base:DICT.chars[k], kr: DICT.chars[k]+ver}); }
+      i=txt.indexOf(k, i+1); } }
+  found.sort((a,b)=>a.i-b.i);
+  const seen=new Set(), out=[]; for(const f of found){ if(!seen.has(f.base)){ seen.add(f.base); out.push(f.kr); } }
+  return out;
+}
+function parseJP(txt){
+  const r={};
+  for(const h of HEADS) if(h.kw.some(k=>txt.includes(k))){ r.headline=h.kr; break; }
+  for(const l of LINES) if(l.kw.some(k=>txt.includes(k))){ r.line=l.kr; break; }
+  const dm = txt.match(/予約開始[^0-9０-９]*([0-9０-９]{1,2})\s*月\s*([0-9０-９]{1,2})\s*日/)
+          || txt.match(/예약[^0-9]*([0-9]{1,2})\s*월\s*([0-9]{1,2})\s*일/);
+  if(dm) r.date = z2h(dm[1])+'월 '+z2h(dm[2])+'일';
+  let bw=null; for(const jp of Object.keys(DICT.works)) if(txt.includes(jp)&&(!bw||jp.length>bw.length)) bw=jp;
+  if(bw){ r.work=DICT.works[bw]; r.jp=bw; }
+  const c=pickChars(txt); if(c.length) r.product=c.join('\n');
+  return r;
+}
+
+function setSelect(id,val){ const el=document.getElementById(id); if(val&&[...el.options].some(o=>o.value===val)){ el.value=val; return true; } return false; }
 function applySource(){
   const txt = document.getElementById('t_source').value;
   const grab = re => { const m = txt.match(re); return m ? m[1].trim() : null; };
-  const head = grab(/^\s*헤드라인\s*[:：]\s*(.+)$/m);
-  const work = grab(/^\s*작품(?:명)?\s*[:：]\s*(.+)$/m);
-  const line = grab(/^\s*(?:라인|시리즈)\s*[:：]\s*(.+)$/m);
-  const prod = grab(/^\s*제품명\s*[:：]\s*(.+)$/m);
-  const jp   = grab(/^\s*일본어\s*[:：]\s*(.+)$/m);
-  const date = grab(/^\s*(?:예약판매일|예약일)\s*[:：]\s*(.+)$/m);
-  let n=0; const warn=[];
-  if(head){ if(setSelect('t_headline',head)){ state.text.headline=head; n++; } else warn.push('헤드라인 “'+head+'”'); }
-  if(work){ document.getElementById('t_work').value=work; state.work=work; n++; }
-  if(line){ if(setSelect('t_line',line)){ state.line=line; n++; } else warn.push('라인 “'+line+'”'); }
-  if(prod){ const v=prod.split(/\s*[\/\n]\s*/).filter(Boolean).join('\n'); document.getElementById('t_product').value=v; state.text.product=v; n++; }
-  if(jp){ document.getElementById('t_jp').value=jp; state.jp=jp; n++; }
-  if(date){ document.getElementById('t_saledate').value=date; state.saleDate=date; n++; }
+  let head=grab(/^\s*헤드라인\s*[:：]\s*(.+)$/m), work=grab(/^\s*작품(?:명)?\s*[:：]\s*(.+)$/m),
+      line=grab(/^\s*(?:라인|시리즈)\s*[:：]\s*(.+)$/m), prod=grab(/^\s*제품명\s*[:：]\s*(.+)$/m),
+      jp=grab(/^\s*일본어\s*[:：]\s*(.+)$/m), date=grab(/^\s*(?:예약판매일|예약일)\s*[:：]\s*(.+)$/m);
+  if(!(head||work||line||prod)){ const r=parseJP(txt); head=r.headline; work=r.work; line=r.line; prod=r.product; jp=r.jp; date=r.date; }
+  const warn=[];
+  if(head){ if(!setSelect('t_headline',head)) warn.push('헤드라인'); else state.text.headline=head; } else warn.push('헤드라인');
+  if(work){ document.getElementById('t_work').value=work; state.work=work; } else warn.push('작품');
+  if(line){ if(!setSelect('t_line',line)) warn.push('라인('+line+')'); else state.line=line; } else warn.push('라인');
+  if(prod){ const v=prod.split(/\s*[\/\n]\s*/).filter(Boolean).join('\n'); document.getElementById('t_product').value=v; state.text.product=v; } else warn.push('제품명(캐릭터)');
+  if(jp){ document.getElementById('t_jp').value=jp; state.jp=jp; }
+  if(date){ document.getElementById('t_saledate').value=date; state.saleDate=date; }
   composeTitle(); updatePreview(); render(); runValidation();
   const el=document.getElementById('srcStatus');
-  if(!n){ el.textContent='⚠ 인식할 형식이 없어요. [헤드라인: / 작품: / 라인: / 제품명: …] 블록을 붙여넣으세요.'; el.style.color='var(--danger)'; }
-  else { el.textContent='✓ '+n+'개 적용됨'+(warn.length?(' · 드롭다운에 없는 값: '+warn.join(', ')):''); el.style.color=warn.length?'#b8860b':'#2e7d52'; }
+  if(!head&&!work&&!line&&!prod){ el.textContent='⚠ 인식 실패 — 일본어 원문을 그대로 붙여넣어 보세요. 그래도 안 되면 3번 칸에 직접 입력하세요.'; el.style.color='var(--danger)'; }
+  else if(warn.length){ el.textContent='✓ 일부 자동완성 · 사전에 없어 못 채운 항목: '+warn.join(', ')+' → 3번에서 직접 입력'; el.style.color='#b8860b'; }
+  else { el.textContent='✓ 전부 자동완성 완료 — 3번에서 확인만 하세요.'; el.style.color='#2e7d52'; }
 }
 
 /* ── 원고(캡션) 자동 생성 ── */
