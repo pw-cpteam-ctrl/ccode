@@ -602,10 +602,10 @@ new ResizeObserver(fitScale).observe($('#poster'));
 (function tryLoadAssetLogos() {
   const mega = new Image();
   mega.onload = () => { const el = $('#megaLogoImg'); el.src = mega.src; el.style.display = 'block'; $('#megaLogoFallback').style.display = 'none'; };
-  mega.src = 'assets/megahouse-logo.png';
+  mega.src = 'asset/megahouse-logo.png';
   const pw = new Image();
   pw.onload = () => { const el = $('#pwLogoImg'); el.src = pw.src; el.style.display = 'block'; $('#pwLogoFallback').style.display = 'none'; };
-  pw.src = 'assets/pw-logo.png';
+  pw.src = 'asset/pw-logo.png';
 })();
 
 /* 초기 */
