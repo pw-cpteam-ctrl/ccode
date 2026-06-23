@@ -186,10 +186,17 @@
   }
   .cell .name {
     position: absolute; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,.62);
+    /* 하단 그라데이션 오버레이 — 참고 이미지와 동일하게 */
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(0,0,0,.30) 35%,
+      rgba(0,0,0,.72) 65%,
+      rgba(0,0,0,.88) 100%
+    );
     color: #fff; font-weight: 800;
-    padding: 14px 18px;
-    line-height: 1.15; letter-spacing: -.5px;
+    padding: 52px 18px 16px;
+    line-height: 1.2; letter-spacing: -.4px;
     white-space: pre-line;
     word-break: keep-all;
   }
@@ -216,7 +223,7 @@
 <!-- ============ 컨트롤 패널 ============ -->
 <div class="panel">
   <h1>메가하우스 신제품 예고 메이커</h1>
-  <p class="desc">사진을 올리고 제품명을 입력하면 그리드가 자동 조립됩니다. 배치는 개수에 맞춰 자동 계산(최소 2칸·최대 3칸).</p>
+  <p class="desc">사진을 올리고 제품명을 입력하면 그리드가 자동 조립됩니다. 배치는 개수에 맞춰 자동 계산 (최대 가로 3칸 × 세로 4줄 = 12장).</p>
 
   <div class="row2">
     <div class="field">
@@ -234,7 +241,7 @@
   </div>
 
   <div class="field">
-    <label>사진 업로드 (여러 장 가능 · 2~15장)</label>
+    <label>사진 업로드 (여러 장 가능 · 최대 12장)</label>
     <div class="dropzone" id="drop">
       <b>클릭</b>하거나 사진을 <b>드래그</b>하세요
     </div>
@@ -305,20 +312,19 @@ const $ = (s) => document.querySelector(s);
 
 /* =========================================================
    배치 알고리즘
-   규칙: 최소 2칸 · 최대 3칸, 각 줄 최대한 균등, 적은 줄이 앞
-   - rows = ceil(n/3)  → 최대 3칸 유지 & 줄 수 최소화
-   - n을 rows줄로 균등 분배, 큰 줄(+1)을 뒤로
-   예) 2→[2] 5→[2,3] 9→[3,3,3] 11→[2,3,3,3] 13→[2,2,3,3,3]
+   규칙: 가로 최대 3칸 · 세로 최대 4줄 (상한 12장)
+   각 줄 최대한 균등, 적은 줄이 앞
+   예) 2→[2] 5→[2,3] 9→[3,3,3] 11→[2,3,3,3] 12→[3,3,3,3]
 ========================================================= */
 function computeRows(n) {
+  n = Math.min(n, 12); // 가로3 × 세로4 상한
   if (n <= 0) return [];
   if (n <= 3) return [n];
-  const rows = Math.ceil(n / 3);
+  const rows = Math.min(4, Math.ceil(n / 3));
   const base = Math.floor(n / rows);
-  const rem = n - base * rows;          // rem개 줄은 base+1
+  const rem = n - base * rows;
   const out = [];
   for (let i = 0; i < rows; i++) {
-    // 적은(=base) 줄을 앞에, 많은(=base+1) 줄을 뒤에
     out.push(i < rows - rem ? base : base + 1);
   }
   return out;
@@ -462,7 +468,10 @@ function syncHeader() {
    업로드 처리
 ========================================================= */
 function addFiles(files) {
-  const imgs = [...files].filter(f => f.type.startsWith('image/'));
+  let imgs = [...files].filter(f => f.type.startsWith('image/'));
+  const slots = 12 - state.items.length;
+  if (slots <= 0) { toast('최대 12장까지 업로드할 수 있습니다'); return; }
+  if (imgs.length > slots) { toast(`${imgs.length}장 중 ${slots}장만 추가됩니다 (최대 12장)`); imgs = imgs.slice(0, slots); }
   let pending = imgs.length;
   if (!pending) return;
   imgs.forEach((f) => {
