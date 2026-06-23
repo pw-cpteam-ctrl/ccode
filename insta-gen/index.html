@@ -324,6 +324,8 @@ function parseJP(txt){
   const CTX=['初公開','公開','決定','受付','開始','新作','登場','シリーズ','プロジェクト',
              '최초공개','공개','결정','시작','신작','등장','시리즈','프로젝트'];
   const STRIPKW=[]; if(r.workRaw) STRIPKW.push(r.workRaw);
+  if(r.headline) STRIPKW.push(r.headline);   // 감지된 헤드라인 전체 문구 ("재판매 결정"이 "매"로 남는 것 방지)
+  if(r.line) STRIPKW.push(r.line);
   for(const l of LINES) for(const k of l.kw) STRIPKW.push(k);
   for(const h of HEADS) for(const k of h.kw) STRIPKW.push(k);
   for(const k of CTX) STRIPKW.push(k);
