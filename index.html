@@ -100,7 +100,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .p-hd .brand{display:flex;align-items:center;gap:13px;flex-shrink:0;}
 .p-logo{height:64px;width:auto;display:block;}
 /* 스토어명: 로고~오픈일 사이 가운데 */
-.p-store{font-size:22px;font-weight:800;letter-spacing:5px;opacity:.95;flex:1;text-align:center;white-space:pre;}
+.p-store{font-size:22px;font-weight:800;letter-spacing:5px;opacity:.95;flex:1;text-align:center;}
 .p-open{font-weight:700;font-size:38px;color:#FFE500;line-height:1;white-space:nowrap;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.15);flex-shrink:0;}
 .p-title{font-family:'Paperlogy','Pretendard',sans-serif;font-weight:900;font-size:92px;line-height:1;letter-spacing:-2px;text-shadow:0 3px 0 rgba(0,0,0,.1);text-align:center;}
 /* 재판 스티커 — 이름 옆 인라인 */
@@ -165,11 +165,27 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
     <div class="field"><label>월</label><input type="text" id="inMonth" value="6월"/></div>
     <div class="field"><label>오픈일 (노란색)</label><input type="text" id="inOpen" value="6/4"/></div>
   </div>
-  <!-- 스토어명: 텍스트 + 폰트크기 -->
+  <!-- 스토어명: 텍스트 + 폰트크기 + 위치 -->
   <div class="field"><label>스토어명 텍스트</label><input type="text" id="inStore" value="메가하우스 공식 스토어"/></div>
   <div class="row2">
     <div class="field"><label>스토어명 크기</label><input type="range" id="storeFontSize" min="14" max="40" value="22" oninput="syncHeader()"/></div>
     <div class="field"><label>타이틀 크기</label><input type="range" id="titleFontSize" min="40" max="120" value="92" oninput="syncHeader()"/></div>
+  </div>
+  <div class="field">
+    <label>스토어명 좌우 위치 <span id="storeOffsetVal">0</span>px
+      <span style="margin-left:6px">
+        <button type="button" onclick="nudgeStore(-10)" style="padding:1px 7px;font-size:11px;border-radius:4px;border:1px solid var(--ui-border);background:var(--ui-bg);cursor:pointer;">◀</button>
+        <button type="button" onclick="nudgeStore(0)" style="padding:1px 7px;font-size:11px;border-radius:4px;border:1px solid var(--ui-border);background:var(--ui-bg);cursor:pointer;">●</button>
+        <button type="button" onclick="nudgeStore(10)" style="padding:1px 7px;font-size:11px;border-radius:4px;border:1px solid var(--ui-border);background:var(--ui-bg);cursor:pointer;">▶</button>
+      </span>
+    </label>
+    <input type="range" id="storeOffset" min="-400" max="400" value="0" oninput="syncHeader()"/>
+  </div>
+  <!-- 재판 배지 색상 -->
+  <div class="sec">재판 배지 색상</div>
+  <div class="row2">
+    <div class="field"><label>배경색</label><input type="text" id="badgeBg" value="#0d1580" placeholder="#0d1580" oninput="syncBadgeStyle()"/></div>
+    <div class="field"><label>글자색</label><input type="text" id="badgeFg" value="#ffffff" placeholder="#ffffff" oninput="syncBadgeStyle()"/></div>
   </div>
   <!-- 푸터 텍스트 -->
   <div class="field"><label>푸터 텍스트</label><input type="text" id="inFooter" value="국내외 사정에 따라 출시 시점 등 일부 사항이 변동될 수 있습니다."/></div>
@@ -545,12 +561,16 @@ function syncHeader() {
   const sSize = $('#storeFontSize').value + 'px';
   const tSize = $('#titleFontSize').value + 'px';
   const fSize = $('#footerFontSize').value + 'px';
+  const offset = $('#storeOffset') ? $('#storeOffset').value + 'px' : '0px';
+  const offsetNum = $('#storeOffset') ? +$('#storeOffset').value : 0;
+  if ($('#storeOffsetVal')) $('#storeOffsetVal').textContent = offsetNum;
   [1,2].forEach(p => {
     $(`#title${p}`).textContent = m ? `${m} 신제품 예고` : '신제품 예고';
     $(`#title${p}`).style.fontSize = tSize;
     $(`#open${p}`).textContent = o ? `${o} 오픈` : '';
     $(`#store${p}`).textContent = s;
     $(`#store${p}`).style.fontSize = sSize;
+    $(`#store${p}`).style.transform = `translateX(${offset})`;
     const fn = $(`#ftNote${p}`);
     if (fn) { fn.textContent = ft; fn.style.fontSize = fSize; }
   });
@@ -558,6 +578,20 @@ function syncHeader() {
 function syncLogoSize() {
   const sz = $('#logoSize').value + 'px';
   ['#logo1','#logo2'].forEach(id => { const el=$(id); if(el) el.style.height=sz; });
+}
+function nudgeStore(delta) {
+  const sl = $('#storeOffset');
+  if (!sl) return;
+  if (delta === 0) { sl.value = 0; }
+  else { sl.value = Math.max(-400, Math.min(400, +sl.value + delta)); }
+  syncHeader();
+}
+function syncBadgeStyle() {
+  const bg = $('#badgeBg') ? $('#badgeBg').value.trim() : '#0d1580';
+  const fg = $('#badgeFg') ? $('#badgeFg').value.trim() : '#ffffff';
+  let style = document.getElementById('badgeDynStyle');
+  if (!style) { style = document.createElement('style'); style.id='badgeDynStyle'; document.head.appendChild(style); }
+  style.textContent = `.reprint-badge{background:${bg}!important;color:${fg}!important;}`;
 }
 
 /* ═══════════════════════════════════════
