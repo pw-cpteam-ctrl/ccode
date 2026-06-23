@@ -124,9 +124,20 @@
           </optgroup>
           <optgroup label="룩업">
             <option>룩업</option>
+            <option>룩업 판초</option>
             <option>룩업 의상</option>
             <option>룩업 미니어처</option>
             <option>룩업 소품</option>
+          </optgroup>
+          <optgroup label="기타 라인">
+            <option>누잇뽀</option>
+            <option>FigUnity</option>
+            <option>바리어블 액션 히어로즈</option>
+            <option>Portrait.Of.Pirates</option>
+            <option>버디코레</option>
+            <option>츠미첸</option>
+            <option>유라콜레</option>
+            <option>토코토코 아크릴 스탠드</option>
           </optgroup>
           <optgroup label="메가캣">
             <option>메가캣 프로젝트</option>
@@ -280,20 +291,29 @@ const DICT = {
   versions: { 'むむっと':'(뾰로통 Ver.)','未彩色':'(미채색)','幼少':'(유년 Ver.)' },
 };
 const HEADS = [
-  { kw:['彩色原型初公開','彩色初公開','彩色原型','채색원형'], kr:'채색원형 최초공개' },
-  { kw:['原型初公開','原型公開','원형'], kr:'원형 최초공개' },
-  { kw:['限定復刻','限定再販','한정 재판','한정재판'], kr:'한정 재판매 결정' },
-  { kw:['再販','재판'], kr:'재판매 결정' },
+  { kw:['彩色原型初公開','彩色初公開','彩色原型','채색원형','컬러 프로토타입','컬러프로토타입','채색'], kr:'채색원형 최초공개' },
+  { kw:['原型初公開','原型公開','원형 최초','원형최초','원형','프로토타입'], kr:'원형 최초공개' },
+  { kw:['限定復刻','限定再販','한정 재판','한정재판','한정 복각','한정복각'], kr:'한정 재판매 결정' },
+  { kw:['再販','재판','재발매'], kr:'재판매 결정' },
   { kw:['発売決定','발매'], kr:'발매 결정' },
-  { kw:['予約開始','予約受付','예약'], kr:'예약 시작' },
+  { kw:['予約開始','予約受付','예약 시작','예약시작','예약'], kr:'예약 시작' },
 ];
 const LINES = [
-  { kw:['るかっぷ','ルカップ','見上げる','見守る','LookUp','룩업','루카푸'], kr:'룩업' },
-  { kw:['MEGA CAT','メガキャット','메가캣'], kr:'메가캣 프로젝트' },
+  { kw:['판초','ポンチョ','ぽんちょ'], kr:'룩업 판초' },
+  { kw:['누잇뽀','ぬいっぽ','ぬいぐるみ'], kr:'누잇뽀' },
+  { kw:['MEGACAT','MEGA CAT','メガキャット','메가캣','냥코','ニャンコ','냐루토','냥~큼'], kr:'메가캣 프로젝트' },
+  { kw:['초코린','쵸코링','초코링','ちょこりん'], kr:'쵸코링 컬렉션' },
+  { kw:['버디콜','바디콜','버디 콜','버디코레','バディコレ'], kr:'버디코레' },
+  { kw:['츠미첸','츠미체','つみちぇん'], kr:'츠미첸' },
+  { kw:['유라콜','ゆらコレ','ゆらこれ'], kr:'유라콜레' },
+  { kw:['토코토코','とことこ'], kr:'토코토코 아크릴 스탠드' },
+  { kw:['FigUnity','피그유니티'], kr:'FigUnity' },
+  { kw:['Portrait.Of.Pirates','P.O.P'], kr:'Portrait.Of.Pirates' },
+  { kw:['바리어블 액션','베리어블 액션','배리에블','ヴァリアブルアクション','Variable Action'], kr:'바리어블 액션 히어로즈' },
   { kw:['ルクリア','Lucrea','루크리아'], kr:'루크리아' },
   { kw:['めるてぃ','Melty','멜티'], kr:'멜티 프린세스' },
-  { kw:['ちょこりん','쵸코링'], kr:'쵸코링 컬렉션' },
   { kw:['G.E.M.','GEM','지이엠'], kr:'G.E.M. 시리즈' },
+  { kw:['るかっぷ','ルカップ','見上げる','見守る','LookUp','룩업','루카푸'], kr:'룩업' },
 ];
 const z2h = s => s.replace(/[０-９]/g, d => '０１２３４５６７８９'.indexOf(d) + '');
 
@@ -320,6 +340,8 @@ function kanaToHangul(s){
 
 // 한 줄 → 캐릭터(한글) + 버전. 사전 → 가나음역 → (한자는 kuromoji 폴백 대상)
 function convChar(line){
+  // 한국어 이름은 번역 불필요 → 그대로 사용 (【재판】/[재판]만 제거)
+  if(/[가-힣]/.test(line)){ const ko=line.split(/\s*[【\[]/)[0].trim(); return ko ? {ok:true, base:ko, kr:ko} : {ok:false, raw:line.trim(), kanji:false}; }
   let ver=''; for(const vk of Object.keys(DICT.versions)) if(line.includes(vk)){ ver=' '+DICT.versions[vk]; break; }
   const namePart = line.split(/\s*(?:むむっと|未彩色|幼少|ver\.?|Ver\.?|【|（|\()/)[0].trim();
   if(!namePart) return {ok:false, raw:line.trim(), ver, kanji:false};
@@ -333,19 +355,20 @@ function parseJP(txt){
   const r={};
   for(const h of HEADS) if(h.kw.some(k=>txt.includes(k))){ r.headline=h.kr; break; }
   for(const l of LINES) if(l.kw.some(k=>txt.includes(k))){ r.line=l.kr; break; }
-  let dm = txt.match(/予約開始[^0-9０-９]*([0-9０-９]{1,2})\s*月\s*([0-9０-９]{1,2})\s*日\s*[（(]\s*([月火水木金土日])\s*[）)]/);
-  let dow='목';
-  if(dm){ r.date=z2h(dm[1])+'월 '+z2h(dm[2])+'일'; dow=({月:'월',火:'화',水:'수',木:'목',金:'금',土:'토',日:'일'})[dm[3]]||'목'; }
-  else { dm = txt.match(/予約開始[^0-9０-９]*([0-9０-９]{1,2})\s*月\s*([0-9０-９]{1,2})\s*日/) || txt.match(/예약[^0-9]*([0-9]{1,2})\s*월\s*([0-9]{1,2})\s*일/); if(dm) r.date=z2h(dm[1])+'월 '+z2h(dm[2])+'일'; }
+  const dm = txt.match(/予約開始[^0-9０-９]*([0-9０-９]{1,2})\s*月\s*([0-9０-９]{1,2})\s*日/) || txt.match(/예약[^0-9]*([0-9]{1,2})\s*월\s*([0-9]{1,2})\s*일/);
+  if(dm) r.date=z2h(dm[1])+'월 '+z2h(dm[2])+'일';
+  let dow='목'; const wk=txt.match(/[日일]\s*[（(]\s*([月火水木金土日월화수목금토일])\s*[）)]/);
+  if(wk) dow=({月:'월',火:'화',水:'수',木:'목',金:'금',土:'토',日:'일'})[wk[1]]||wk[1];
   r.dow=dow;
-  // 작품: 해시태그(【#…】 / #…) 우선 → 사전 → 음역
+  // 작품: 해시태그(【…】 / #…) 우선. 한국어면 그대로 사용, 일본어면 사전/음역.
   let workJP=null; const hm = txt.match(/【\s*#?\s*([^】#][^】]*?)\s*】/) || txt.match(/(?:^|\n)\s*#\s*([^\s#\n】]+)/);
   if(hm) workJP=hm[1].trim();
   let bw=null; for(const jp of Object.keys(DICT.works)) if(txt.includes(jp)&&(!bw||jp.length>bw.length)) bw=jp;
-  r.jp = workJP || bw || null;
-  if(bw) r.work=DICT.works[bw];
-  else if(workJP && DICT.works[workJP]) r.work=DICT.works[workJP];
-  else if(workJP){ const tw=kanaToHangul(workJP); if(tw.ok){ r.work=tw.text; r.workApprox=true; } }
+  r.workRaw = workJP || bw || null;   // 캐릭터 줄 제외용 (원문 표기 그대로)
+  if(workJP && /[가-힣]/.test(workJP)){ r.work=workJP; r.jp=''; }
+  else if(bw){ r.work=DICT.works[bw]; r.jp=bw; }
+  else if(workJP && DICT.works[workJP]){ r.work=DICT.works[workJP]; r.jp=workJP; }
+  else if(workJP){ const tw=kanaToHangul(workJP); if(tw.ok){ r.work=tw.text; r.workApprox=true; } r.jp=workJP; }
 
   // 캐릭터 줄 구조적 추출
   const STRIP='\\s\\u3000|｜◇◤◢━╋◥◣＊*◆■□●○◯\\-–—=～~';
@@ -354,11 +377,11 @@ function parseJP(txt){
     .map(s=>s.replace(new RegExp('^['+STRIP+']+|['+STRIP+']+$','g'),'').trim()).filter(Boolean);
   const isDeco=s=>!s.replace(DECO,'').length || !/[ぁ-んァ-ヶ㐀-鿿가-힣A-Za-z0-9]/.test(s);
   const isTag=s=>/^[【#]/.test(s)||(/^G\.?E\.?M\./.test(s)&&!DICT.works[s]);
-  const isBody=s=>/[、。「」（）]/.test(s)||/(より|登場|です|ます|サウンド|シリーズに|♪|✨|メガ|発売中|お知らせ|仕様|楽しめる|즐길|패턴|기대)/.test(s)||s.length>=20;
-  const isDate=s=>/予約|⏰|発売日|예약/.test(s)||/[0-9０-９]{1,2}\s*月\s*[0-9０-９]{1,2}\s*日/.test(s);
+  const isBody=s=>/[、。「」（）]/.test(s)||/(より|登場|です|ます|サウンド|シリーズに|♪|✨|メガ|発売中|お知らせ|仕様|楽しめる|등장|메가|피규어|가공|푹신|즐길|패턴|기대|받아보|입니다|습니다|합니다|됩니다|예정|소식|등장✨)/.test(s)||s.length>=20;
+  const isDate=s=>/予約|⏰|発売日|예약/.test(s)||/[0-9０-９]{1,2}\s*[月월]\s*[0-9０-９]{1,2}\s*[日일]/.test(s);
   const isHead=s=>HEADS.some(h=>h.kw.some(k=>s.includes(k)));
   const isLineInd=s=>LINES.some(l=>l.kw.some(k=>s.includes(k)));
-  const isWork=s=> r.jp && (s===r.jp || s.includes(r.jp));
+  const isWork=s=> r.workRaw && (s===r.workRaw || s.includes(r.workRaw));
   const charLines=[], seen=new Set();
   for(const s of lines){
     if(isDeco(s)||isTag(s)||isBody(s)||isDate(s)||isHead(s)||isLineInd(s)||isWork(s)) continue;
@@ -443,7 +466,8 @@ function buildCopy(){
   if(h==='한정 재판매 결정') prodLines=prodLines.map(l=>l+' 【한정 재판매판】');
   const prod=prodLines.join('\n');
   const tag = s => '#'+s.replace(/[^\w가-힣ぁ-んァ-ヶ㐀-鿿]/g,''); // ☆×・공백 등 태그 깨는 기호 제거
-  const tags=[ state.jp.trim()?tag(state.jp):null, state.work.trim()?tag(state.work):null, '#메가하우스공식스토어' ].filter(Boolean).join(' ');
+  const raw=[ state.jp.trim()?tag(state.jp):null, state.work.trim()?tag(state.work):null, '#메가하우스공식스토어' ].filter(Boolean);
+  const tags=[...new Set(raw)].join(' ');
   // 개발중(원형/채색원형 최초공개) → 팔로우 멘트 / 그 외(판매정보) → ※ 멘트 (줄바꿈 고정)
   const isDev = (h==='원형 최초공개' || h==='채색원형 최초공개');
   const bottom = isDev
