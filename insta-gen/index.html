@@ -67,6 +67,9 @@
   .slot .s-del { color:var(--muted); font-weight:700; padding:0 2px 0 4px; font-size:13px; }
   .slot .s-del:hover { color:var(--danger); }
   .slot-empty { color:var(--muted); font-size:12px; line-height:1.5; }
+  .ccount { font-size:12px; color:var(--muted); margin-top:7px; font-variant-numeric:tabular-nums; }
+  .ccount b { font-weight:700; }
+  .ccount.over { color:var(--danger); font-weight:600; }
 </style>
 </head>
 <body>
@@ -84,6 +87,7 @@
         <button class="btn2" id="doCopy">복사</button>
       </div>
       <textarea id="t_copy" placeholder="‘원고 생성’을 누르면 위 텍스트값으로 캡션이 만들어집니다. 만든 뒤 자유롭게 수정하세요."></textarea>
+      <div class="ccount" id="copyCount">0 / 280자</div>
     </div>
   </div>
 
@@ -206,16 +210,16 @@ const FRAME = { x: 110, y: 190, w: 860, h: 760, r: 36 }; // 프레임을 위로 
 const MAXW = 920;
 
 const state = {
-  img: null,
+  img: null, imgData: '',
   fg: { zoom: 1, panX: 0, panY: 0 },
   bg: { opacity: 0.50, blur: 45 },
   size: { title: 80, product: 60 },
   bullet: true,
-  work: '[작품명]', line: 'G.E.M. 시리즈', jp: '', saleDate: '', saleDow: '목',
+  work: '[작품명]', line: 'G.E.M. 시리즈', linePrefix: '', jp: '', saleDate: '', saleDow: '목',
   text: { headline:'원형 최초공개', title:'[작품명] G.E.M. 시리즈', product:'', footer:'메가하우스 공식 스토어' },
 };
 
-function composeTitle(){ state.text.title = (state.work.trim() + ' ' + state.line.trim()).trim().replace(/\s+/g,' '); }
+function composeTitle(){ state.text.title = (state.work.trim()+' '+state.line.trim()+' '+(state.linePrefix||'').trim()).trim().replace(/\s+/g,' '); }
 function updatePreview(){ document.getElementById('titlePreview').textContent = '타이틀: ' + (state.text.title || '—'); }
 
 /* ── 렌더 ── */
@@ -384,7 +388,7 @@ function parseJP(txt){
   r.entries=entries;
   const allParts=entries.flat();
   r.charLines=allParts;
-  r.product = buildProductFromEntries(entries, charPrefix);
+  r.product = buildProductFromEntries(entries, '');   // 접두어(테노히라)는 제품명에 넣지 않고 r.charPrefix로 따로 전달
   const approx = allParts.filter(c=>c.approx).map(c=>c.raw+'→'+c.base);
   if(r.workApprox && workJP) approx.unshift(workJP+'→'+r.work);
   r.approx=approx;
@@ -420,7 +424,7 @@ async function resolvePending(r){
     if(rr.ok){ c.kr=rr.text+(c.hon||'')+(c.ver||''); c.base=rr.text+(c.hon||''); c.approx=true; got.push(c.raw+'→'+rr.text); }
     else stuck.push(c.raw);
   } }
-  const prod=buildProductFromEntries(r.entries, r.charPrefix);
+  const prod=buildProductFromEntries(r.entries, '');
   document.getElementById('t_product').value=prod; state.text.product=prod; render(); runValidation();
   let msg = got.length ? ('✓ 한자 자동읽기(추정): '+got.join(', ')+' — 확인 필요') : '한자 자동읽기 결과 없음';
   if(stuck.length) msg += ' · 못 읽음: '+stuck.join(', ')+' → 직접 입력';
@@ -433,8 +437,14 @@ function setSelect(id,val){ const el=document.getElementById(id); if(val&&[...el
 const SLOT_KEY='instaSlots_v1', SLOT_MAX=5;
 let appliedSource='';   // 현재 3번 필드가 만들어진 원문 (적용 시 갱신)
 function loadSlots(){ try{ return JSON.parse(localStorage.getItem(SLOT_KEY)||'[]'); }catch{ return []; } }
-function saveSlots(a){ try{ localStorage.setItem(SLOT_KEY, JSON.stringify(a.slice(0,SLOT_MAX))); }catch{} }
-function snapshotWith(src){ return { ts:Date.now(), source:src, headline:state.text.headline, work:state.work, line:state.line, product:state.text.product, jp:state.jp, saleDate:state.saleDate, saleDow:state.saleDow, bullet:state.bullet }; }
+function saveSlots(a){
+  a=a.slice(0,SLOT_MAX);
+  try{ localStorage.setItem(SLOT_KEY, JSON.stringify(a)); return; }catch(e){}
+  // 용량 초과 → 오래된 슬롯부터 사진을 비우며 재시도, 그래도 안 되면 사진 전부 제거
+  const b=a.map(s=>({...s}));
+  for(let i=b.length-1;i>=0;i--){ b[i].imgData=''; try{ localStorage.setItem(SLOT_KEY, JSON.stringify(b)); return; }catch(e){} }
+}
+function snapshotWith(src){ return { ts:Date.now(), source:src, headline:state.text.headline, work:state.work, line:state.line, linePrefix:state.linePrefix, product:state.text.product, jp:state.jp, saleDate:state.saleDate, saleDow:state.saleDow, bullet:state.bullet, imgData:state.imgData, fg:{...state.fg}, bg:{...state.bg}, size:{...state.size} }; }
 function slotLabel(s){ const w=(s.work||'').trim(); if(w && w!=='[작품명]') return w + (s.line?(' · '+s.line):''); const f=(s.source||'').split('\n').map(x=>x.trim()).filter(Boolean)[0]; return f || '(빈 입력)'; }
 function pushSlot(snap, skipRender){
   if((!snap.work || snap.work==='[작품명]') && !(snap.product||'').trim() && !(snap.source||'').trim()) return;
@@ -448,13 +458,17 @@ function applySlot(s){
   if(s.headline){ setSelect('t_headline',s.headline); state.text.headline=s.headline; }
   const wv = s.work || '[작품명]'; document.getElementById('t_work').value=wv; state.work=wv;
   if(s.line){ setSelect('t_line',s.line); state.line=s.line; }
+  state.linePrefix = s.linePrefix||'';
   document.getElementById('t_product').value=s.product||''; state.text.product=s.product||'';
   document.getElementById('t_jp').value=s.jp||''; state.jp=s.jp||'';
   document.getElementById('t_saledate').value=s.saleDate||''; state.saleDate=s.saleDate||''; state.saleDow=s.saleDow||'목';
   state.bullet=!!s.bullet; document.getElementById('c_bullet').checked=state.bullet;
+  if(s.fg) state.fg={...state.fg,...s.fg}; if(s.bg) state.bg={...state.bg,...s.bg}; if(s.size) state.size={...state.size,...s.size};
   appliedSource = s.source||'';
-  composeTitle(); updatePreview(); render(); runValidation(); renderSlots();
-  const el=document.getElementById('srcStatus'); el.textContent='↺ 이전 입력을 불러왔습니다.'; el.style.color='#2e7d52';
+  composeTitle(); updatePreview(); syncControlsUI();
+  if(s.imgData){ loadImage(s.imgData, true); } else { render(); runValidation(); }   // 사진 복원(크롭 유지)
+  renderSlots();
+  const el=document.getElementById('srcStatus'); el.textContent='↺ 이전 입력을 불러왔습니다.'+(s.imgData?' (사진 포함)':''); el.style.color='#2e7d52';
 }
 function deleteSlot(i){ let a=loadSlots(); a.splice(i,1); saveSlots(a); renderSlots(); }
 function renderSlots(){
@@ -489,6 +503,7 @@ function applySource(){
   { const v=(prod||'').split(/[\n／/]/).map(s=>s.trim()).filter(Boolean).join('\n'); document.getElementById('t_product').value=v; state.text.product=v; if(!v && !pendingKanji.length) miss.push('제품명(캐릭터)'); }
   document.getElementById('t_jp').value = jp||''; state.jp = jp||'';
   document.getElementById('t_saledate').value = date||''; state.saleDate = date||''; state.saleDow = dow;
+  state.linePrefix = (R && R.charPrefix) || '';   // 테노히라 등 접두어 (원고 시리즈 줄에 사용)
   appliedSource = txt;
   composeTitle(); updatePreview(); render(); runValidation(); renderSlots();
   const el=document.getElementById('srcStatus');
@@ -501,31 +516,58 @@ function applySource(){
   if(pendingKanji.length && R) resolvePending(R); // 미등록 한자만 kuromoji로 비동기 보강
 }
 
-/* ── 원고(캡션) 자동 생성 ── */
+/* ── 원고(캡션) 자동 생성 ──
+   · 긴 작품(약칭 등록됨): [헤드라인] 풀작품명  /  시리즈 접두어 약칭  /  •캐릭터…
+   · 짧은 작품:            [헤드라인] 작품 시리즈 /  시리즈 접두어    /  •캐릭터…
+   · 캐릭터 줄엔 시리즈·접두어를 붙이지 않음 */
 function buildCopy(){
   const h=state.text.headline;
-  const title=state.text.title || state.work.trim();
+  const work=(state.work||'').trim();
+  const series=(state.line||'').trim();
+  const prefix=(state.linePrefix||'').trim();
+  const alias=(typeof WORK_SHORT!=='undefined' && WORK_SHORT[work]) ? WORK_SHORT[work] : '';
+  const isLong = !!alias;   // 약칭이 등록된 작품 = '긴 작품'
+  // 1줄: 헤드라인 + (긴 작품이면 풀네임만 / 짧으면 작품+시리즈)
+  const headTitle = (isLong ? work : (work+' '+series)).trim().replace(/\s+/g,' ');
+  // 2줄(시리즈 줄): 시리즈 + 접두어 + (긴 작품이면 약칭)
+  const titleB = [series, prefix, (isLong?alias:'')].filter(Boolean).join(' ').trim();
+  // 캐릭터 줄 (시리즈/접두어 없이)
   let prodLines=state.text.product.split('\n').map(s=>s.trim()).filter(Boolean);
   if(h==='한정 재판매 결정') prodLines=prodLines.map(l=>l+' 【한정 재판매판】');
   if(state.bullet) prodLines=prodLines.map(l=>'• '+l);
-  const prod=prodLines.join('\n');
+  const block=[titleB, prodLines.join('\n')].filter(Boolean).join('\n');   // 시리즈 줄 + 캐릭터들 = 한 단락
   const tag = s => '#'+s.replace(/[^\w가-힣ぁ-んァ-ヶ㐀-鿿]/g,''); // ☆×・공백 등 태그 깨는 기호 제거
-  const raw=[ state.jp.trim()?tag(state.jp):null, state.work.trim()?tag(state.work):null, '#메가하우스공식스토어' ].filter(Boolean);
+  const raw=[ state.jp.trim()?tag(state.jp):null, work?tag(work):null, '#메가하우스공식스토어' ].filter(Boolean);
   const tags=[...new Set(raw)].join(' ');
   // 개발중(원형/채색원형 최초공개) → 팔로우 멘트 / 그 외(판매정보) → ※ 멘트 (줄바꿈 고정)
   const isDev = (h==='원형 최초공개' || h==='채색원형 최초공개');
   const bottom = isDev
     ? '메가하우스 공식 스토어를 팔로우하고\n기다리는 굿즈의 후속 정보를 가장 빠르게 받아보세요!'
     : '※ 예약 오픈 시 별도 공지\n※ 일본 현지 기준 소식으로, 국내외 사정에 따라 일부 사항이 변동될 수 있습니다.';
-  const parts = [`📢[${h}] ${title}`, prod];
+  const parts = [`📢[${h}] ${headTitle}`.trim(), block];
   if(state.saleDate.trim()) parts.push(`⏰${state.saleDate.trim()}(${state.saleDow||'목'}) 예약판매 시작!`);
   parts.push(bottom, tags);
   return parts.join('\n\n');
 }
 
 /* ── 이미지 입력 ── */
-function loadImage(src){ return new Promise(res=>{ const im=new Image(); im.onload=()=>{ state.img=im; state.fg={zoom:1,panX:0,panY:0}; render(); runValidation(); res(im); }; im.src=src; }); }
+// 슬롯 저장용으로 사진을 축소 JPEG dataURL로 압축 (localStorage 용량 절약)
+function compressImage(img, max=1000, q=0.8){
+  try{ const sc=Math.min(1, max/Math.max(img.width,img.height)); const w=Math.round(img.width*sc), h=Math.round(img.height*sc);
+    const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(img,0,0,w,h); return c.toDataURL('image/jpeg',q); }
+  catch{ return ''; }
+}
+function loadImage(src, keepView){ return new Promise(res=>{ const im=new Image(); im.onload=()=>{ state.img=im; if(!keepView) state.fg={zoom:1,panX:0,panY:0}; state.imgData=compressImage(im); render(); runValidation(); res(im); }; im.src=src; }); }
 window.__loadImage = loadImage;
+// 슬라이더/스텝퍼 UI를 state 값에 맞춰 갱신
+function syncControlsUI(){
+  const z=document.getElementById('s_zoom'),op=document.getElementById('s_op'),bl=document.getElementById('s_blur');
+  z.value=Math.round(state.fg.zoom*100); document.getElementById('v_zoom').textContent=state.fg.zoom.toFixed(1)+'×';
+  op.value=Math.round(state.bg.opacity*100); document.getElementById('v_op').textContent=Math.round(state.bg.opacity*100)+'%';
+  bl.value=state.bg.blur; document.getElementById('v_blur').textContent=state.bg.blur;
+  document.getElementById('v_titleSize').textContent=state.size.title;
+  document.getElementById('v_productSize').textContent=state.size.product;
+}
 document.getElementById('file').addEventListener('change', async e=>{ const f=e.target.files[0]; if(f) await loadImage(URL.createObjectURL(f)); });
 ['dragover','drop'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault()));
 document.addEventListener('drop', async e=>{ const f=[...(e.dataTransfer?.files||[])].find(x=>x.type.startsWith('image/')); if(f) await loadImage(URL.createObjectURL(f)); });
@@ -550,7 +592,14 @@ op.addEventListener('input',()=>{ state.bg.opacity=op.value/100; v_op.textConten
 bl.addEventListener('input',()=>{ state.bg.blur=+bl.value; v_blur.textContent=bl.value; render(); });
 document.querySelectorAll('.stepper button').forEach(b=>b.addEventListener('click',()=>{ const k=b.dataset.k,d=+b.dataset.d; state.size[k]=Math.max(28,Math.min(160,state.size[k]+d)); document.getElementById('v_'+k+'Size').textContent=state.size[k]; render(); }));
 
-document.getElementById('genCopy').addEventListener('click', ()=>{ document.getElementById('t_copy').value=buildCopy(); });
+function updateCopyCount(){
+  const n=[...document.getElementById('t_copy').value].length;   // 코드포인트 기준 (이모지 1자)
+  const el=document.getElementById('copyCount');
+  el.innerHTML = '<b>'+n+'</b> / 280자' + (n>280 ? ' · 글자수 조정이 필요합니다.' : '');
+  el.classList.toggle('over', n>280);
+}
+document.getElementById('t_copy').addEventListener('input', updateCopyCount);
+document.getElementById('genCopy').addEventListener('click', ()=>{ document.getElementById('t_copy').value=buildCopy(); updateCopyCount(); });
 document.getElementById('doCopy').addEventListener('click', async ()=>{ const t=document.getElementById('t_copy'); try{ await navigator.clipboard.writeText(t.value); }catch{ t.select(); document.execCommand('copy'); } const b=document.getElementById('doCopy'); const o=b.textContent; b.textContent='복사됨!'; setTimeout(()=>b.textContent=o,1200); });
 
 document.getElementById('download').addEventListener('click',()=>{ if(!runValidation()) return; cv.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='insta-card.png'; a.click(); },'image/png'); });
