@@ -137,6 +137,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
   padding:50px 14px 12px;
   line-height:1.2;letter-spacing:-.3px;word-break:keep-all;
   display:flex;align-items:flex-end;flex-wrap:wrap;gap:0;
+  text-shadow:1px 2px 6px rgba(0,0,0,.55),0 1px 3px rgba(0,0,0,.4);
   background:linear-gradient(to bottom,transparent 0%,rgba(0,0,0,0) 20%,rgba(0,0,0,.65) 50%,rgba(0,0,0,.88) 100%);
 }
 .cell .name .name-text{white-space:pre-line;}
@@ -240,18 +241,22 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
   <div id="rowControls"><div style="font-size:11px;color:var(--ui-sub)">사진을 올리면 표시됩니다.</div></div>
 
   <div class="sec">그라데이션</div>
-  <div style="display:flex;gap:7px;">
-    <div class="field" style="flex:1;text-align:center">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
+    <div class="field" style="text-align:center">
       <label>시작점<br/><span id="gradValS" style="font-size:10px">20%</span></label>
       <input type="range" id="gradStart" min="0" max="90" value="20" step="1" oninput="syncGrad()"/>
     </div>
-    <div class="field" style="flex:1;text-align:center">
+    <div class="field" style="text-align:center">
       <label>퍼짐<br/><span id="gradValW" style="font-size:10px">30%</span></label>
       <input type="range" id="gradWidth" min="5" max="100" value="30" step="1" oninput="syncGrad()"/>
     </div>
-    <div class="field" style="flex:1;text-align:center">
+    <div class="field" style="text-align:center">
       <label>농도<br/><span id="gradValO" style="font-size:10px">88%</span></label>
       <input type="range" id="gradOpacity" min="0" max="100" value="88" step="1" oninput="syncGrad()"/>
+    </div>
+    <div class="field" style="text-align:center">
+      <label>압축<br/><span id="gradValC" style="font-size:10px">0%</span></label>
+      <input type="range" id="gradCompress" min="0" max="60" value="0" step="1" oninput="syncGrad()"/>
     </div>
   </div>
 
@@ -658,12 +663,16 @@ function syncGrad() {
   const s = +($('#gradStart') ? $('#gradStart').value : 20);
   const w = +($('#gradWidth') ? $('#gradWidth').value : 30);
   const o = +($('#gradOpacity') ? $('#gradOpacity').value : 88) / 100;
+  const c = +($('#gradCompress') ? $('#gradCompress').value : 0);
   if ($('#gradValS')) $('#gradValS').textContent = s + '%';
   if ($('#gradValW')) $('#gradValW').textContent = w + '%';
   if ($('#gradValO')) $('#gradValO').textContent = Math.round(o*100) + '%';
-  const mid = Math.min(100, s + Math.round(w * 0.5));
-  const end = Math.min(100, s + w);
-  const grad = `linear-gradient(to bottom,transparent 0%,rgba(0,0,0,0) ${s}%,rgba(0,0,0,${(o*0.6).toFixed(2)}) ${mid}%,rgba(0,0,0,${o.toFixed(2)}) ${end}%,rgba(0,0,0,${o.toFixed(2)}) 100%)`;
+  if ($('#gradValC')) $('#gradValC').textContent = c + '%';
+  // compress: gradient ends at (100-c)%, creating a tighter band at bottom
+  const bottom = 100 - c;
+  const end = Math.min(bottom, s + w);
+  const mid = Math.min(end, s + Math.round(w * 0.4));
+  const grad = `linear-gradient(to bottom,transparent 0%,rgba(0,0,0,0) ${s}%,rgba(0,0,0,${(o*0.55).toFixed(2)}) ${mid}%,rgba(0,0,0,${o.toFixed(2)}) ${end}%,rgba(0,0,0,${o.toFixed(2)}) ${bottom}%,rgba(0,0,0,0) 100%)`;
   document.querySelectorAll('.cell .name').forEach(nm => nm.style.background = grad);
 }
 function syncBadgeStyle() {
@@ -856,6 +865,7 @@ function saveState() {
       gradStart: $('#gradStart') ? $('#gradStart').value : '20',
       gradWidth: $('#gradWidth') ? $('#gradWidth').value : '30',
       gradOpacity: $('#gradOpacity') ? $('#gradOpacity').value : '88',
+      gradCompress: $('#gradCompress') ? $('#gradCompress').value : '0',
       footerOffset: $('#footerOffset') ? $('#footerOffset').value : '0',
       badgeBg: $('#badgeBg') ? $('#badgeBg').value : '#0d1580',
       badgeFg: $('#badgeFg') ? $('#badgeFg').value : '#ffffff',
@@ -889,6 +899,7 @@ function loadState() {
     if (st.gradStart && $('#gradStart')) $('#gradStart').value = st.gradStart;
     if (st.gradWidth && $('#gradWidth')) $('#gradWidth').value = st.gradWidth;
     if (st.gradOpacity && $('#gradOpacity')) $('#gradOpacity').value = st.gradOpacity;
+    if (st.gradCompress && $('#gradCompress')) $('#gradCompress').value = st.gradCompress;
     if (st.footerOffset && $('#footerOffset')) $('#footerOffset').value = st.footerOffset;
     if (st.badgeBg && $('#badgeBg')) $('#badgeBg').value = st.badgeBg;
     if (st.badgeFg && $('#badgeFg')) $('#badgeFg').value = st.badgeFg;
