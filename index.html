@@ -52,7 +52,7 @@ input[type=file][hidden]{display:none;}
 .item .thumb{width:44px;height:44px;flex:0 0 44px;border-radius:4px;object-fit:cover;background:#e8e3d8;}
 .item .grow{flex:1;min-width:0;}
 .item .grow input{width:100%;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:5px 7px;font-size:12px;font-family:inherit;}
-.item .grow .hint{font-size:10px;color:var(--ui-sub);margin-top:2px;}
+.item .num{width:28px;min-width:28px;height:44px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--ui-sub);background:var(--ui-bg);border-radius:5px;flex-shrink:0;}
 .item .ctrl{display:flex;flex-direction:column;gap:3px;}
 .item .ctrl button{width:22px;height:19px;border-radius:4px;border:1px solid var(--ui-border);background:var(--ui-bg);color:var(--ui-text);cursor:pointer;font-size:10px;}
 .item .ctrl button:hover{border-color:var(--ui-accent);}
@@ -180,6 +180,20 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
       </span>
     </label>
     <input type="range" id="storeOffset" min="-400" max="400" value="0" oninput="syncHeader()"/>
+  </div>
+  <div class="row2" style="margin-top:4px">
+    <div class="field"><label>스토어명 굵기</label>
+      <select id="storeFontWeight" onchange="syncHeader()" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;">
+        <option value="100">1 — Thin</option>
+        <option value="200">2 — ExtraLight</option>
+        <option value="300">3 — Light</option>
+        <option value="400">4 — Regular</option>
+        <option value="500" selected>5 — Medium</option>
+        <option value="600">6 — SemiBold</option>
+        <option value="700">7 — Bold</option>
+        <option value="800" >8 — ExtraBold</option>
+      </select>
+    </div>
   </div>
   <!-- 재판 배지 색상 -->
   <div class="sec">재판 배지 색상</div>
@@ -328,7 +342,7 @@ function renderGrid(pg) {
     }
     gridEl.appendChild(row);
   });
-  requestAnimationFrame(() => applyRowFontSizes(pg));
+  requestAnimationFrame(() => { applyRowFontSizes(pg); applyRowHeights(pg); });
   renderRowControls();
 }
 
@@ -453,6 +467,15 @@ function applyRowFontSizes(pg) {
   });
 }
 
+function applyRowHeights(pg) {
+  const gridEl = $(`#grid${pg}`);
+  const rows = gridEl.querySelectorAll('.p-row');
+  if (rows.length <= 1) { rows.forEach(r => r.style.flex = '1'); return; }
+  const fr = firstRowFlex[pg-1] != null ? firstRowFlex[pg-1] : 100;
+  // First row gets fr, remaining rows share the rest equally (each gets 100)
+  rows.forEach((r, ri) => { r.style.flex = ri === 0 ? fr : 100; });
+}
+
 function renderRowControls() {
   const pg = curPage;
   const wrap = $('#rowControls');
@@ -461,6 +484,18 @@ function renderRowControls() {
   if (!counts.length) {
     wrap.innerHTML = '<div style="font-size:11px;color:var(--ui-sub)">사진을 올리면 표시됩니다.</div>';
     return;
+  }
+  // 맨위 줄 높이 슬라이더 (rows > 1 일때만)
+  if (counts.length > 1) {
+    const curFlex = firstRowFlex[pg-1] != null ? firstRowFlex[pg-1] : 100;
+    const hd = document.createElement('div'); hd.style.cssText='margin-bottom:6px;';
+    hd.innerHTML = `<div class="rci" style="margin-bottom:0"><span class="lbl" style="min-width:60px">1줄 높이</span><input type="range" min="20" max="200" value="${curFlex}" id="firstRowSlider_${pg}"/><span class="val" id="firstRowVal_${pg}">${curFlex}%</span></div>`;
+    hd.querySelector('input').addEventListener('input', e => {
+      firstRowFlex[pg-1] = +e.target.value;
+      hd.querySelector(`#firstRowVal_${pg}`).textContent = e.target.value + '%';
+      applyRowHeights(pg);
+    });
+    wrap.appendChild(hd);
   }
   counts.forEach((_, ri) => {
     const cur = (rowFontSizes[pg-1]||[])[ri] || 36;
@@ -485,21 +520,24 @@ function renderItemList() {
   list.innerHTML = '';
   items.forEach((it, i) => {
     const wrap = document.createElement('div'); wrap.className = 'item';
+    // 썸네일
     const thumb = document.createElement('img'); thumb.className = 'thumb';
     if (it.src) thumb.src = it.src;
     wrap.appendChild(thumb);
-
+    // 번호 박스 (썸네일과 같은 크기감)
+    const numEl = document.createElement('div'); numEl.className = 'num';
+    numEl.textContent = `#${i+1}`;
+    wrap.appendChild(numEl);
+    // 입력칸 + 재판 체크박스
     const grow = document.createElement('div'); grow.className = 'grow';
-    // 입력칸 + 재판 체크박스 한 줄에
     const inpRow = document.createElement('div');
-    inpRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
+    inpRow.style.cssText = 'display:flex;align-items:center;gap:6px;height:44px;';
     const inp = document.createElement('input'); inp.type = 'text';
     inp.placeholder = '제품명'; inp.value = it.name ? it.name.replace(/\n/g,'\\n') : '';
-    inp.style.cssText = 'flex:1;min-width:0;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:5px 7px;font-size:12px;font-family:inherit;';
+    inp.style.cssText = 'flex:1;min-width:0;height:100%;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:5px 7px;font-size:12px;font-family:inherit;';
     inp.addEventListener('input', () => { it.name = inp.value.replace(/\\n/g,'\n'); renderGrid(curPage); });
-    // 재판 체크박스 인라인
     const rpWrap = document.createElement('label');
-    rpWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;cursor:pointer;';
+    rpWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;cursor:pointer;height:100%;justify-content:center;';
     const chk = document.createElement('input'); chk.type='checkbox'; chk.checked=!!it.reprint;
     chk.style.cssText = 'width:14px;height:14px;accent-color:var(--ui-accent);cursor:pointer;';
     chk.addEventListener('change', ()=>{ it.reprint=chk.checked; renderGrid(curPage); });
@@ -509,8 +547,6 @@ function renderItemList() {
     rpWrap.append(chk, rpLbl);
     inpRow.append(inp, rpWrap);
     grow.appendChild(inpRow);
-    const hint = document.createElement('div'); hint.className = 'hint'; hint.textContent = `#${i+1}`;
-    grow.appendChild(hint);
     wrap.appendChild(grow);
 
     const ctrl = document.createElement('div'); ctrl.className = 'ctrl';
@@ -570,6 +606,7 @@ function syncHeader() {
     $(`#open${p}`).textContent = o ? `${o} 오픈` : '';
     $(`#store${p}`).textContent = s;
     $(`#store${p}`).style.fontSize = sSize;
+    $(`#store${p}`).style.fontWeight = $('#storeFontWeight') ? $('#storeFontWeight').value : '800';
     $(`#store${p}`).style.transform = `translateX(${offset})`;
     const fn = $(`#ftNote${p}`);
     if (fn) { fn.textContent = ft; fn.style.fontSize = fSize; }
@@ -736,7 +773,7 @@ $('#btnApplyBulk').addEventListener('click', applyBulk);
 $('#btnDownload').addEventListener('click', downloadPNG);
 $('#btnReset').addEventListener('click', () => {
   if (!confirm('모두 초기화할까요?')) return;
-  pages[0]=[]; pages[1]=[]; rowFontSizes=[[36,36,36,36],[36,36,36,36]];
+  pages[0]=[]; pages[1]=[]; rowFontSizes=[[36,36,36,36],[36,36,36,36]]; firstRowFlex=[null,null];
   refresh();
 });
 
