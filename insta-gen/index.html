@@ -87,7 +87,7 @@
         <button class="btn2" id="doCopy">복사</button>
       </div>
       <textarea id="t_copy" placeholder="‘원고 생성’을 누르면 위 텍스트값으로 캡션이 만들어집니다. 만든 뒤 자유롭게 수정하세요."></textarea>
-      <div class="ccount" id="copyCount">0 / 280자</div>
+      <div class="ccount" id="copyCount">0 / 280 (한글 0/140)</div>
     </div>
   </div>
 
@@ -592,11 +592,19 @@ op.addEventListener('input',()=>{ state.bg.opacity=op.value/100; v_op.textConten
 bl.addEventListener('input',()=>{ state.bg.blur=+bl.value; v_blur.textContent=bl.value; render(); });
 document.querySelectorAll('.stepper button').forEach(b=>b.addEventListener('click',()=>{ const k=b.dataset.k,d=+b.dataset.d; state.size[k]=Math.max(28,Math.min(160,state.size[k]+d)); document.getElementById('v_'+k+'Size').textContent=state.size[k]; render(); }));
 
+// 트위터 가중 글자수: 한글·일본어·한자 등 CJK = 2, 그 외(영문/숫자/기호) = 1. 한도 280 (= 한글 140자)
+function tweetWeight(str){
+  let w=0; for(const ch of str){ const c=ch.codePointAt(0);
+    const cjk = (c>=0x1100&&c<=0x11FF)||(c>=0x3040&&c<=0x30FF)||(c>=0x3130&&c<=0x318F)||(c>=0x3400&&c<=0x4DBF)||(c>=0x4E00&&c<=0x9FFF)||(c>=0xAC00&&c<=0xD7A3)||(c>=0xF900&&c<=0xFAFF)||(c>=0xFF00&&c<=0xFFEF)||c>=0x1F000;
+    w += cjk ? 2 : 1; }
+  return w;
+}
 function updateCopyCount(){
-  const n=[...document.getElementById('t_copy').value].length;   // 코드포인트 기준 (이모지 1자)
+  const t=document.getElementById('t_copy').value;
+  const w=tweetWeight(t), chars=[...t].length;
   const el=document.getElementById('copyCount');
-  el.innerHTML = '<b>'+n+'</b> / 280자' + (n>280 ? ' · 글자수 조정이 필요합니다.' : '');
-  el.classList.toggle('over', n>280);
+  el.innerHTML = '<b>'+w+'</b> / 280 (한글 '+Math.ceil(w/2)+'/140 · 실제 '+chars+'자)' + (w>280 ? ' · 글자수 조정이 필요합니다.' : '');
+  el.classList.toggle('over', w>280);
 }
 document.getElementById('t_copy').addEventListener('input', updateCopyCount);
 document.getElementById('genCopy').addEventListener('click', ()=>{ document.getElementById('t_copy').value=buildCopy(); updateCopyCount(); });
