@@ -92,6 +92,8 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 }
 
 /* 헤더 — 레퍼런스 재현 */
+.poster.no-header .p-hd{display:none!important;}
+.poster.no-header .p-grid{padding-top:8px;}
 .p-hd{
   background:linear-gradient(165deg,#2676ec 0%,#1452c0 100%);
   padding:16px 36px 20px; color:#fff; flex:0 0 auto;
@@ -163,6 +165,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
   <p class="desc">셀 위 드래그=위치 조정 · 스크롤=확대. 12장 초과 시 자동으로 2페이지.</p>
 
   <div class="sec">헤더 설정</div>
+  <label style="display:flex;align-items:center;gap:7px;margin-bottom:8px;font-size:12px;cursor:pointer;"><input type="checkbox" id="chkHeader" checked onchange="toggleHeader()"/> 헤더 표시</label>
   <div class="row2">
     <div class="field"><label>월</label><input type="text" id="inMonth" value="6월"/></div>
     <div class="field"><label>오픈일 (노란색)</label><input type="text" id="inOpen" value="6/4"/></div>
@@ -388,6 +391,26 @@ function makeCell(it, ri, pg) {
     applyImgTransform(img, it);
     ci.appendChild(img);
     bindCellInteraction(cell, img, it);
+    // Auto fit-to-width for fresh items (scale not yet adjusted by user)
+    if (!it._fitted) {
+      img.onload = () => {
+        it._fitted = true;
+        const cellW = cell.offsetWidth || 1;
+        const cellH = cell.offsetHeight || 1;
+        const iW = img.naturalWidth || 1;
+        const iH = img.naturalHeight || 1;
+        const cellAR = cellW / cellH;
+        const imgAR = iW / iH;
+        // With object-fit:contain, rendered width = iW * min(cellW/iW, cellH/iH)
+        if (imgAR < cellAR) {
+          // portrait in landscape cell: rendered width < cellW → scale up to fill width
+          const renderedW = iW * (cellH / iH);
+          it.scale = Math.max(1, cellW / renderedW);
+          applyImgTransform(img, it);
+        }
+        // landscape image: already fills width, no change needed
+      };
+    }
   } else {
     const e = document.createElement('div');
     e.className = 'empty'; e.textContent = '이미지 없음';
@@ -638,6 +661,14 @@ function syncHeader() {
     if (fn) { fn.textContent = ft; fn.style.fontSize = fSize; fn.style.transform = `translateX(${fo}px)`; }
   });
 }
+function toggleHeader() {
+  const on = $('#chkHeader').checked;
+  ['#poster1','#poster2'].forEach(id => {
+    const el = document.querySelector(id);
+    if (el) el.classList.toggle('no-header', !on);
+  });
+  requestAnimationFrame(fitScale);
+}
 function syncLogoSize() {
   const topSz = $('#logoSize').value + 'px';
   ['#logo1','#logo2'].forEach(id => { const el=$(id); if(el) el.style.height=topSz; });
@@ -884,6 +915,7 @@ function saveState() {
       footerOffset: $('#footerOffset') ? $('#footerOffset').value : '0',
       badgeBg: $('#badgeBg') ? $('#badgeBg').value : '#0d1580',
       badgeFg: $('#badgeFg') ? $('#badgeFg').value : '#ffffff',
+      headerOn: $('#chkHeader') ? $('#chkHeader').checked : true,
     };
     localStorage.setItem('mh_maker_state', JSON.stringify(state));
   } catch(e) {}
@@ -919,6 +951,7 @@ function loadState() {
     if (st.footerOffset && $('#footerOffset')) $('#footerOffset').value = st.footerOffset;
     if (st.badgeBg && $('#badgeBg')) $('#badgeBg').value = st.badgeBg;
     if (st.badgeFg && $('#badgeFg')) $('#badgeFg').value = st.badgeFg;
+    if (st.headerOn === false && $('#chkHeader')) { $('#chkHeader').checked = false; toggleHeader(); }
     // update display labels for sliders
     if (st.storeOffset && $('#storeOffsetVal')) $('#storeOffsetVal').textContent = st.storeOffset;
     if (st.footerOffset && $('#footerOffsetVal')) $('#footerOffsetVal').textContent = st.footerOffset;
