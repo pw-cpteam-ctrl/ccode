@@ -93,7 +93,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 
 /* 헤더 — 레퍼런스 재현 */
 .poster.no-header .p-hd{display:none!important;}
-.poster.no-header .p-grid{padding-top:8px;}
+.poster.no-header .p-grid{padding-top:var(--hpad,30px);}
 .p-hd{
   background:linear-gradient(165deg,#2676ec 0%,#1452c0 100%);
   padding:16px 36px 20px; color:#fff; flex:0 0 auto;
@@ -165,28 +165,18 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
   <p class="desc">셀 위 드래그=위치 조정 · 스크롤=확대. 12장 초과 시 자동으로 2페이지.</p>
 
   <div class="sec">헤더 설정</div>
-  <label style="display:flex;align-items:center;gap:7px;margin-bottom:8px;font-size:12px;cursor:pointer;"><input type="checkbox" id="chkHeader" checked onchange="toggleHeader()"/> 헤더 표시</label>
-  <div class="row2">
+  <!-- 헤더 on/off + 여백 -->
+  <div class="row2" style="align-items:center">
+    <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;"><input type="checkbox" id="chkHeader" checked onchange="toggleHeader()"/> 헤더 표시</label>
+    <div class="field" style="margin:0"><label>헤더 꺼짐 여백</label><input type="range" id="headerPad" min="5" max="120" value="30" oninput="toggleHeader()"/></div>
+  </div>
+  <div class="row2" style="margin-top:6px">
     <div class="field"><label>월</label><input type="text" id="inMonth" value="6월"/></div>
     <div class="field"><label>오픈일 (노란색)</label><input type="text" id="inOpen" value="6/4"/></div>
   </div>
-  <!-- 스토어명: 텍스트 + 폰트크기 + 위치 -->
-  <div class="field"><label>스토어명 텍스트</label><input type="text" id="inStore" value="메가하우스 공식 스토어"/></div>
+  <!-- 스토어명 텍스트 | 굵기 -->
   <div class="row2">
-    <div class="field"><label>스토어명 크기</label><input type="range" id="storeFontSize" min="14" max="40" value="22" oninput="syncHeader()"/></div>
-    <div class="field"><label>타이틀 크기</label><input type="range" id="titleFontSize" min="40" max="120" value="92" oninput="syncHeader()"/></div>
-  </div>
-  <div class="field">
-    <label>스토어명 좌우 위치 <span id="storeOffsetVal">0</span>px
-      <span style="margin-left:6px">
-        <button type="button" onclick="nudgeStore(-10)" style="padding:1px 7px;font-size:11px;border-radius:4px;border:1px solid var(--ui-border);background:var(--ui-bg);cursor:pointer;">◀</button>
-        <button type="button" onclick="nudgeStore(0)" style="padding:1px 7px;font-size:11px;border-radius:4px;border:1px solid var(--ui-border);background:var(--ui-bg);cursor:pointer;">●</button>
-        <button type="button" onclick="nudgeStore(10)" style="padding:1px 7px;font-size:11px;border-radius:4px;border:1px solid var(--ui-border);background:var(--ui-bg);cursor:pointer;">▶</button>
-      </span>
-    </label>
-    <input type="range" id="storeOffset" min="-400" max="400" value="0" oninput="syncHeader()"/>
-  </div>
-  <div class="row2" style="margin-top:4px">
+    <div class="field"><label>스토어명 텍스트</label><input type="text" id="inStore" value="메가하우스 공식 스토어"/></div>
     <div class="field"><label>스토어명 굵기</label>
       <select id="storeFontWeight" onchange="syncHeader()" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;">
         <option value="100">1 — Thin</option>
@@ -196,9 +186,15 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
         <option value="500" selected>5 — Medium</option>
         <option value="600">6 — SemiBold</option>
         <option value="700">7 — Bold</option>
-        <option value="800" >8 — ExtraBold</option>
+        <option value="800">8 — ExtraBold</option>
       </select>
     </div>
+  </div>
+  <!-- 스토어명 크기 | 타이틀 크기 | 스토어 위치 -->
+  <div class="row2">
+    <div class="field"><label>스토어명 크기</label><input type="range" id="storeFontSize" min="14" max="40" value="22" oninput="syncHeader()"/></div>
+    <div class="field"><label>타이틀 크기</label><input type="range" id="titleFontSize" min="40" max="120" value="92" oninput="syncHeader()"/></div>
+    <div class="field"><label>스토어명 위치</label><input type="range" id="storeOffset" min="-400" max="400" value="0" oninput="syncHeader()"/></div>
   </div>
   <!-- 재판 배지 색상 -->
   <div class="sec">재판 배지 색상</div>
@@ -206,17 +202,10 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
     <div class="field"><label>배경색</label><input type="text" id="badgeBg" value="#0d1580" placeholder="#0d1580" oninput="syncBadgeStyle()"/></div>
     <div class="field"><label>글자색</label><input type="text" id="badgeFg" value="#ffffff" placeholder="#ffffff" oninput="syncBadgeStyle()"/></div>
   </div>
-  <!-- 푸터 텍스트 -->
-  <div class="field"><label>푸터 텍스트</label><input type="text" id="inFooter" value="국내외 사정에 따라 출시 시점 등 일부 사항이 변동될 수 있습니다."/></div>
-  <div class="field">
-    <label>푸터 좌우 위치 <span id="footerOffsetVal">0</span>px
-      <span style="margin-left:6px">
-        <button type="button" onclick="nudgeFooter(-10)" style="padding:1px 7px;font-size:11px;border-radius:4px;border:1px solid var(--ui-border);background:var(--ui-bg);cursor:pointer;">◀</button>
-        <button type="button" onclick="nudgeFooter(0)" style="padding:1px 7px;font-size:11px;border-radius:4px;border:1px solid var(--ui-border);background:var(--ui-bg);cursor:pointer;">●</button>
-        <button type="button" onclick="nudgeFooter(10)" style="padding:1px 7px;font-size:11px;border-radius:4px;border:1px solid var(--ui-border);background:var(--ui-bg);cursor:pointer;">▶</button>
-      </span>
-    </label>
-    <input type="range" id="footerOffset" min="-400" max="400" value="0" oninput="syncHeader()"/>
+  <!-- 푸터 텍스트 | 좌우위치 -->
+  <div class="row2">
+    <div class="field"><label>푸터 텍스트</label><input type="text" id="inFooter" value="국내외 사정에 따라 출시 시점 등 일부 사항이 변동될 수 있습니다."/></div>
+    <div class="field"><label>푸터 위치</label><input type="range" id="footerOffset" min="-400" max="400" value="0" oninput="syncHeader()"/></div>
   </div>
   <div class="row2">
     <div class="field"><label>푸터 크기</label><input type="range" id="footerFontSize" min="10" max="28" value="18" oninput="syncHeader()"/></div>
@@ -645,8 +634,7 @@ function syncHeader() {
   const tSize = $('#titleFontSize').value + 'px';
   const fSize = $('#footerFontSize').value + 'px';
   const offset = $('#storeOffset') ? $('#storeOffset').value + 'px' : '0px';
-  const offsetNum = $('#storeOffset') ? +$('#storeOffset').value : 0;
-  if ($('#storeOffsetVal')) $('#storeOffsetVal').textContent = offsetNum;
+
   [1,2].forEach(p => {
     $(`#title${p}`).textContent = m ? `${m} 신제품 예고` : '신제품 예고';
     $(`#title${p}`).style.fontSize = tSize;
@@ -657,15 +645,17 @@ function syncHeader() {
     $(`#store${p}`).style.transform = `translateX(${offset})`;
     const fn = $(`#ftNote${p}`);
     const fo = $('#footerOffset') ? +$('#footerOffset').value : 0;
-    if ($('#footerOffsetVal')) $('#footerOffsetVal').textContent = fo;
     if (fn) { fn.textContent = ft; fn.style.fontSize = fSize; fn.style.transform = `translateX(${fo}px)`; }
   });
 }
 function toggleHeader() {
   const on = $('#chkHeader').checked;
+  const pad = $('#headerPad') ? $('#headerPad').value + 'px' : '30px';
   ['#poster1','#poster2'].forEach(id => {
     const el = document.querySelector(id);
-    if (el) el.classList.toggle('no-header', !on);
+    if (!el) return;
+    el.classList.toggle('no-header', !on);
+    el.style.setProperty('--hpad', pad);
   });
   requestAnimationFrame(fitScale);
 }
@@ -916,6 +906,7 @@ function saveState() {
       badgeBg: $('#badgeBg') ? $('#badgeBg').value : '#0d1580',
       badgeFg: $('#badgeFg') ? $('#badgeFg').value : '#ffffff',
       headerOn: $('#chkHeader') ? $('#chkHeader').checked : true,
+      headerPad: $('#headerPad') ? $('#headerPad').value : '30',
     };
     localStorage.setItem('mh_maker_state', JSON.stringify(state));
   } catch(e) {}
@@ -951,7 +942,9 @@ function loadState() {
     if (st.footerOffset && $('#footerOffset')) $('#footerOffset').value = st.footerOffset;
     if (st.badgeBg && $('#badgeBg')) $('#badgeBg').value = st.badgeBg;
     if (st.badgeFg && $('#badgeFg')) $('#badgeFg').value = st.badgeFg;
-    if (st.headerOn === false && $('#chkHeader')) { $('#chkHeader').checked = false; toggleHeader(); }
+    if (st.headerPad && $('#headerPad')) $('#headerPad').value = st.headerPad;
+    if (st.headerOn === false && $('#chkHeader')) { $('#chkHeader').checked = false; }
+    toggleHeader();
     // update display labels for sliders
     if (st.storeOffset && $('#storeOffsetVal')) $('#storeOffsetVal').textContent = st.storeOffset;
     if (st.footerOffset && $('#footerOffsetVal')) $('#footerOffsetVal').textContent = st.footerOffset;
