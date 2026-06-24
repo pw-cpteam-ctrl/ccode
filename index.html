@@ -57,6 +57,16 @@ input[type=file][hidden]{display:none;}
 .item .ctrl button{width:22px;height:19px;border-radius:4px;border:1px solid var(--ui-border);background:var(--ui-bg);color:var(--ui-text);cursor:pointer;font-size:10px;}
 .item .ctrl button:hover{border-color:var(--ui-accent);}
 .item .del{color:#c0392b!important;}
+.item .drag-handle{cursor:grab;color:var(--ui-sub);font-size:14px;padding:0 3px;user-select:none;flex-shrink:0;}
+.item .drag-handle:active{cursor:grabbing;}
+.item.drag-over{outline:2px solid var(--ui-accent);outline-offset:-2px;}
+.item.dragging{opacity:.4;}
+.pg-swap{font-size:10px;padding:2px 5px;border-radius:4px;border:1px solid var(--ui-border);background:var(--ui-bg);cursor:pointer;color:var(--ui-accent);font-weight:700;white-space:nowrap;}
+.pg-swap:hover{background:var(--ui-accent);color:#fff;}
+.pg-label{font-size:10px;font-weight:700;color:var(--ui-sub);letter-spacing:.3px;padding:6px 0 4px;border-top:1px solid var(--ui-border);margin-top:4px;}
+.pg-label:first-child{border-top:none;margin-top:0;}
+/* inline cell name edit */
+.name-text[contenteditable]{outline:2px solid #4c8dff;outline-offset:2px;border-radius:3px;cursor:text;}
 
 /* 줄별 폰트 */
 .rci{display:flex;align-items:center;gap:6px;font-size:11px;margin-bottom:4px;}
@@ -213,6 +223,11 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
     <div class="field"><label>하단 PW 로고 크기</label><input type="range" id="pwLogoSize" min="16" max="100" value="32" oninput="syncLogoSize()"/></div>
   </div>
 
+  <details style="margin-bottom:4px">
+    <summary style="font-size:11px;font-weight:700;color:var(--ui-sub);cursor:pointer;padding:6px 0;border-bottom:1px solid var(--ui-border);letter-spacing:.4px;text-transform:uppercase;">줄별 제품명 크기</summary>
+    <div id="rowControls" style="margin-top:8px"><div style="font-size:11px;color:var(--ui-sub)">사진을 올리면 표시됩니다.</div></div>
+  </details>
+
   <div class="sec">사진 업로드</div>
   <div class="ptabs">
     <button class="ptab on" id="tab1" onclick="switchTab(1)">1페이지 <span id="tab1cnt">(0)</span></button>
@@ -229,11 +244,9 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
   </div>
   <button class="ghost" style="width:100%;margin-bottom:4px" id="btnApplyBulk">적용</button>
 
-  <div class="sec">줄별 제품명 크기</div>
-  <div id="rowControls"><div style="font-size:11px;color:var(--ui-sub)">사진을 올리면 표시됩니다.</div></div>
-
-  <div class="sec">그라데이션</div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
+  <details>
+  <summary style="font-size:11px;font-weight:700;color:var(--ui-sub);cursor:pointer;padding:6px 0;border-bottom:1px solid var(--ui-border);letter-spacing:.4px;text-transform:uppercase;margin-bottom:6px;">그라데이션</summary>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:6px;">
     <div class="field" style="text-align:center">
       <label>시작점<br/><span id="gradValS" style="font-size:10px">20%</span></label>
       <input type="range" id="gradStart" min="0" max="90" value="20" step="1" oninput="syncGrad()"/>
@@ -251,6 +264,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
       <input type="range" id="gradCompress" min="0" max="60" value="0" step="1" oninput="syncGrad()"/>
     </div>
   </div>
+  </details>
 
   <details class="logos">
     <summary>로고 직접 교체</summary>
@@ -414,7 +428,29 @@ function makeCell(it, ri, pg) {
 
     const txtSpan = document.createElement('span');
     txtSpan.className = 'name-text';
+    txtSpan.dataset.id = it.id;
     txtSpan.textContent = it.name || '';
+    txtSpan.addEventListener('click', e => {
+      e.stopPropagation();
+      txtSpan.contentEditable = 'true';
+      txtSpan.focus();
+      // select all
+      const sel = window.getSelection(); const range = document.createRange();
+      range.selectNodeContents(txtSpan); sel.removeAllRanges(); sel.addRange(range);
+    });
+    txtSpan.addEventListener('blur', () => {
+      txtSpan.contentEditable = 'false';
+      const newName = txtSpan.textContent;
+      it.name = newName;
+      // sync panel input
+      const panelInp = document.querySelector(`input[data-item-id="${it.id}"]`);
+      if (panelInp) panelInp.value = newName.replace(/\n/g,'\\n');
+      renderGrid(+txtSpan.closest('.cell').dataset.pg);
+    });
+    txtSpan.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); txtSpan.blur(); }
+      if (e.key === 'Escape') { txtSpan.textContent = it.name || ''; txtSpan.blur(); }
+    });
     nm.appendChild(txtSpan);
     if (it.reprint) {
       const badge = document.createElement('span');
@@ -550,48 +586,104 @@ function renderRowControls() {
 /* ═══════════════════════════════════════
    패널 아이템 목록
 ═══════════════════════════════════════ */
+function makeItemRow(it, i, pg) {
+  const wrap = document.createElement('div');
+  wrap.className = 'item';
+  wrap.draggable = true;
+  wrap.dataset.pg = pg; wrap.dataset.idx = i;
+
+  // drag handle
+  const dh = document.createElement('span'); dh.className = 'drag-handle'; dh.textContent = '⠿';
+  wrap.appendChild(dh);
+
+  // 썸네일
+  const thumb = document.createElement('img'); thumb.className = 'thumb';
+  if (it.src) thumb.src = it.src;
+  wrap.appendChild(thumb);
+
+  // 번호
+  const numEl = document.createElement('div'); numEl.className = 'num';
+  numEl.textContent = `#${i+1}`;
+  wrap.appendChild(numEl);
+
+  // 입력칸 + 재판
+  const grow = document.createElement('div'); grow.className = 'grow';
+  const inpRow = document.createElement('div');
+  inpRow.style.cssText = 'display:flex;align-items:center;gap:6px;height:44px;';
+  const inp = document.createElement('input'); inp.type = 'text';
+  inp.dataset.itemId = it.id;
+  inp.placeholder = '제품명'; inp.value = it.name ? it.name.replace(/\n/g,'\\n') : '';
+  inp.style.cssText = 'flex:1;min-width:0;height:100%;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:5px 7px;font-size:12px;font-family:inherit;';
+  inp.addEventListener('input', () => {
+    it.name = inp.value.replace(/\\n/g,'\n');
+    renderGrid(pg);
+    // sync any open cell editor
+    const span = document.querySelector(`.name-text[data-id="${it.id}"]`);
+    if (span && document.activeElement !== span) span.textContent = it.name || '';
+  });
+  const rpWrap = document.createElement('label');
+  rpWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;cursor:pointer;height:100%;justify-content:center;';
+  const chk = document.createElement('input'); chk.type='checkbox'; chk.checked=!!it.reprint;
+  chk.style.cssText = 'width:14px;height:14px;accent-color:var(--ui-accent);cursor:pointer;';
+  chk.addEventListener('change', ()=>{ it.reprint=chk.checked; renderGrid(pg); });
+  const rpLbl = document.createElement('span');
+  rpLbl.style.cssText = 'font-size:9px;color:var(--ui-sub);line-height:1;';
+  rpLbl.textContent = '재판';
+  rpWrap.append(chk, rpLbl);
+  inpRow.append(inp, rpWrap);
+  grow.appendChild(inpRow);
+  wrap.appendChild(grow);
+
+  // ctrl: swap page + delete (▲▼ removed; drag handles reorder)
+  const ctrl = document.createElement('div'); ctrl.className = 'ctrl';
+  const swapBtn = document.createElement('button');
+  swapBtn.className = 'pg-swap';
+  swapBtn.textContent = pg === 1 ? '→2' : '←1';
+  swapBtn.title = pg === 1 ? '2페이지로 이동' : '1페이지로 이동';
+  swapBtn.addEventListener('click', () => {
+    const src = pages[pg-1]; const dst = pages[2-pg];
+    if (dst.length >= 12) { toast('대상 페이지가 꽉 찼습니다'); return; }
+    const [moved] = src.splice(i, 1);
+    dst.push(moved);
+    refresh();
+  });
+  ctrl.appendChild(swapBtn);
+  const del = mkbtn('✕', () => { pages[pg-1].splice(i,1); refresh(); }); del.classList.add('del');
+  ctrl.appendChild(del);
+  wrap.appendChild(ctrl);
+
+  // ── drag & drop for reorder ──
+  wrap.addEventListener('dragstart', e => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify({pg, idx: i}));
+    setTimeout(() => wrap.classList.add('dragging'), 0);
+  });
+  wrap.addEventListener('dragend', () => wrap.classList.remove('dragging'));
+  wrap.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect='move'; wrap.classList.add('drag-over'); });
+  wrap.addEventListener('dragleave', () => wrap.classList.remove('drag-over'));
+  wrap.addEventListener('drop', e => {
+    e.preventDefault(); wrap.classList.remove('drag-over');
+    const {pg: spg, idx: si} = JSON.parse(e.dataTransfer.getData('text/plain'));
+    const di = i, dpg = pg;
+    if (spg === dpg && si === di) return;
+    const [moved] = pages[spg-1].splice(si, 1);
+    if (spg !== dpg && pages[dpg-1].length >= 12) { pages[spg-1].splice(si,0,moved); toast('대상 페이지가 꽉 찼습니다'); return; }
+    const insertIdx = (spg === dpg && si < di) ? di : di;
+    pages[dpg-1].splice(insertIdx, 0, moved);
+    // switch to destination page if cross-page
+    if (spg !== dpg) { curPage = dpg; $('#tab1').className='ptab'+(dpg===1?' on':''); $('#tab2').className='ptab'+(dpg===2?' on':''); }
+    refresh();
+  });
+
+  return wrap;
+}
+
 function renderItemList() {
-  const items = pages[curPage - 1];
   const list = $('#itemList');
   list.innerHTML = '';
-  items.forEach((it, i) => {
-    const wrap = document.createElement('div'); wrap.className = 'item';
-    // 썸네일
-    const thumb = document.createElement('img'); thumb.className = 'thumb';
-    if (it.src) thumb.src = it.src;
-    wrap.appendChild(thumb);
-    // 번호 박스 (썸네일과 같은 크기감)
-    const numEl = document.createElement('div'); numEl.className = 'num';
-    numEl.textContent = `#${i+1}`;
-    wrap.appendChild(numEl);
-    // 입력칸 + 재판 체크박스
-    const grow = document.createElement('div'); grow.className = 'grow';
-    const inpRow = document.createElement('div');
-    inpRow.style.cssText = 'display:flex;align-items:center;gap:6px;height:44px;';
-    const inp = document.createElement('input'); inp.type = 'text';
-    inp.placeholder = '제품명'; inp.value = it.name ? it.name.replace(/\n/g,'\\n') : '';
-    inp.style.cssText = 'flex:1;min-width:0;height:100%;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:5px 7px;font-size:12px;font-family:inherit;';
-    inp.addEventListener('input', () => { it.name = inp.value.replace(/\\n/g,'\n'); renderGrid(curPage); });
-    const rpWrap = document.createElement('label');
-    rpWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;cursor:pointer;height:100%;justify-content:center;';
-    const chk = document.createElement('input'); chk.type='checkbox'; chk.checked=!!it.reprint;
-    chk.style.cssText = 'width:14px;height:14px;accent-color:var(--ui-accent);cursor:pointer;';
-    chk.addEventListener('change', ()=>{ it.reprint=chk.checked; renderGrid(curPage); });
-    const rpLbl = document.createElement('span');
-    rpLbl.style.cssText = 'font-size:9px;color:var(--ui-sub);line-height:1;';
-    rpLbl.textContent = '재판';
-    rpWrap.append(chk, rpLbl);
-    inpRow.append(inp, rpWrap);
-    grow.appendChild(inpRow);
-    wrap.appendChild(grow);
-
-    const ctrl = document.createElement('div'); ctrl.className = 'ctrl';
-    ctrl.appendChild(mkbtn('▲', () => moveItem(i,-1)));
-    ctrl.appendChild(mkbtn('▼', () => moveItem(i,+1)));
-    const d = mkbtn('✕', () => { items.splice(i,1); refresh(); }); d.classList.add('del');
-    ctrl.appendChild(d);
-    wrap.appendChild(ctrl);
-    list.appendChild(wrap);
+  [1, 2].forEach(pg => {
+    if (pg !== curPage) return; // only show current page's items
+    pages[pg-1].forEach((it, i) => list.appendChild(makeItemRow(it, i, pg)));
   });
   // 탭 카운트 업데이트
   $('#tab1cnt').textContent = `(${pages[0].length})`;
