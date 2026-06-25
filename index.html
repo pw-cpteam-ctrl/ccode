@@ -904,13 +904,21 @@ async function downloadPNG() {
     backups.forEach(({el, html, ws}) => { el.innerHTML = html; el.style.whiteSpace = ws; });
   }
 
+  // 폰트 임베드 (html-to-image 폰트 미로드 버그 방지)
+  let fontEmbedCSS = '';
+  try { fontEmbedCSS = await htmlToImage.getFontEmbedCSS($('#poster1')); } catch(e) {}
+
+  const opts = {pixelRatio:1, width:1080, height:1350, cacheBust:false, backgroundColor:'#fff', fontEmbedCSS};
+
   for (const {el, name} of toDownload) {
     const backups = fixNewlinesForExport(el);
     try {
-      const dataUrl = await htmlToImage.toPng(el, {pixelRatio:1, width:1080, height:1350, cacheBust:true, backgroundColor:'#fff'});
+      // html-to-image 첫 번째 호출은 폰트 캐싱용 (결과 버림), 두 번째가 실제 렌더
+      await htmlToImage.toPng(el, opts).catch(()=>{});
+      const dataUrl = await htmlToImage.toPng(el, opts);
       restoreNewlines(backups);
       const a = document.createElement('a'); a.download = name + '.png'; a.href = dataUrl; a.click();
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 500));
     } catch(err) { restoreNewlines(backups); toast('생성 실패: '+err.message); return; }
   }
   toast('다운로드 완료!');
