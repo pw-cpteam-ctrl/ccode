@@ -268,6 +268,11 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 
 <!-- ═══ 스테이지 ═══ -->
 <div class="stage" id="stage">
+  <div style="position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.25);backdrop-filter:blur(4px);border-radius:20px;padding:6px 16px;margin-bottom:-10px;align-self:center;">
+    <span style="color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">미리보기</span>
+    <input type="range" id="previewZoom" min="20" max="100" value="50" step="1" style="width:120px;accent-color:#fff;cursor:pointer;" oninput="applyPreviewZoom(this.value)"/>
+    <span id="previewZoomVal" style="color:#fff;font-size:11px;min-width:32px;">50%</span>
+  </div>
   <div class="poster-wrap" id="wrap1">
     <div class="page-badge">1페이지</div>
     <div class="scaler" id="sc1">
@@ -882,12 +887,31 @@ async function downloadPNG() {
   if (pages[1].length) toDownload.push({el:$('#poster2'), name:`megahouse_${m}_p2`});
   if (!toDownload.length) { toast('사진을 먼저 올려주세요'); return; }
   toast('이미지 생성 중…');
+
+  // 줄바꿈 보정: white-space:pre-line + textContent \n → html-to-image에서 깨지는 문제 수정
+  // 캡처 전에 \n → <br> 변환, 후 복원
+  function fixNewlinesForExport(poster) {
+    const spans = poster.querySelectorAll('.name-text');
+    const backups = [];
+    spans.forEach(sp => {
+      backups.push({el:sp, html:sp.innerHTML, ws:sp.style.whiteSpace});
+      sp.innerHTML = sp.textContent.replace(/\n/g, '<br>');
+      sp.style.whiteSpace = 'normal';
+    });
+    return backups;
+  }
+  function restoreNewlines(backups) {
+    backups.forEach(({el, html, ws}) => { el.innerHTML = html; el.style.whiteSpace = ws; });
+  }
+
   for (const {el, name} of toDownload) {
+    const backups = fixNewlinesForExport(el);
     try {
       const dataUrl = await htmlToImage.toPng(el, {pixelRatio:1, width:1080, height:1350, cacheBust:true, backgroundColor:'#fff'});
+      restoreNewlines(backups);
       const a = document.createElement('a'); a.download = name + '.png'; a.href = dataUrl; a.click();
       await new Promise(r => setTimeout(r, 400));
-    } catch(err) { toast('생성 실패: '+err.message); return; }
+    } catch(err) { restoreNewlines(backups); toast('생성 실패: '+err.message); return; }
   }
   toast('다운로드 완료!');
 }
@@ -895,15 +919,25 @@ async function downloadPNG() {
 /* ═══════════════════════════════════════
    스케일 (화면 맞춤)
 ═══════════════════════════════════════ */
+let _previewZoomPct = 50;
+
 function fitScale() {
+  applyPreviewZoom(_previewZoomPct);
+}
+
+function applyPreviewZoom(pct) {
+  _previewZoomPct = +pct;
+  const el = $('#previewZoom'); if (el) el.value = pct;
+  const vEl = $('#previewZoomVal'); if (vEl) vEl.textContent = pct + '%';
   const avail = $('#stage').clientWidth - 56;
-  const scale = Math.min(1, avail / 1080);
+  const autoScale = Math.min(1, avail / 1080);
+  // pct 50 = autoScale, pct 100 = 1.0, pct 20 = autoScale*(20/50)
+  const scale = autoScale * (pct / 50);
   ['sc1','sc2'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.style.transform = `scale(${scale})`;
     el.style.width = '1080px';
-    // top center origin: 시각적 너비 = 1080*scale, 부모 align-items:center가 중앙 배치
     el.style.height = (1350 * scale) + 'px';
   });
 }
