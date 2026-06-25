@@ -9,8 +9,8 @@
 @font-face{font-family:'Paperlogy';font-weight:900;font-display:swap;
   src:url('https://cdn.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-9Black.woff2') format('woff2');}
 :root{
-  --poster-w:1920px; --poster-h:3240px;
-  --gap:0px;
+  --poster-w:1080px; --poster-h:1350px;
+  --gap:14px;
   --ui-bg:#f0ede7; --ui-panel:#faf8f4; --ui-border:#ddd8ce;
   --ui-text:#252018; --ui-sub:#7d7568; --ui-accent:#1452c0; --ui-card:#fff;
 }
@@ -94,7 +94,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .page-badge{background:rgba(0,0,0,.3);color:#fff;font-size:11px;font-weight:700;
   padding:4px 12px;border-radius:20px;align-self:flex-start;}
 
-/* ═══ 포스터 (캔버스 사이즈 가변) ═══ */
+/* ═══ 포스터 (1080×1350 고정) ═══ */
 .poster{
   width:var(--poster-w); height:var(--poster-h);
   background:#fff; font-family:'Pretendard',sans-serif;
@@ -130,7 +130,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 /* 셀 */
 .cell{
   position:relative;flex:1;min-width:0;
-  border-radius:0;overflow:hidden;background:#ccc;
+  border-radius:13px;overflow:hidden;background:#ccc;
   cursor:grab;user-select:none;
 }
 .cell:active{cursor:grabbing;}
@@ -185,24 +185,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 <!-- ═══ 컨트롤 패널 ═══ -->
 <div class="panel">
   <h1>메가하우스 신제품 예고 메이커</h1>
-  <p class="desc">셀 위 드래그=위치 조정 · 스크롤=확대.</p>
-
-  <!-- 캔버스 사이즈 선택 -->
-  <div class="sec">캔버스 사이즈</div>
-  <div id="canvasSizeBtns" style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px;">
-    <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;border:1px solid var(--ui-border);background:var(--ui-card);cursor:pointer;font-size:12px;font-weight:600;" id="lbl-canvas-0">
-      <input type="radio" name="canvasSize" value="0" checked onchange="setCanvasSize(0)" style="accent-color:var(--ui-accent);"/>
-      <span>1920 × 3240 &nbsp;<span style="color:var(--ui-sub);font-weight:400;">(사진 6개)</span></span>
-    </label>
-    <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;border:1px solid var(--ui-border);background:var(--ui-card);cursor:pointer;font-size:12px;font-weight:600;" id="lbl-canvas-1">
-      <input type="radio" name="canvasSize" value="1" onchange="setCanvasSize(1)" style="accent-color:var(--ui-accent);"/>
-      <span>1920 × 1080 &nbsp;<span style="color:var(--ui-sub);font-weight:400;">(사진 2개)</span></span>
-    </label>
-    <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;border:1px solid var(--ui-border);background:var(--ui-card);cursor:pointer;font-size:12px;font-weight:600;" id="lbl-canvas-2">
-      <input type="radio" name="canvasSize" value="2" onchange="setCanvasSize(2)" style="accent-color:var(--ui-accent);"/>
-      <span>1446 × 1646 &nbsp;<span style="color:var(--ui-sub);font-weight:400;">(사진 4개)</span></span>
-    </label>
-  </div>
+  <p class="desc">셀 위 드래그=위치 조정 · 스크롤=확대. 12장 초과 시 자동으로 2페이지.</p>
 
   <!-- ══ 섹션 1: 레이아웃 수정 ══ -->
   <button class="psec-toggle" onclick="toggleSection('sec-layout',this)">레이아웃 수정 <span class="arrow">▾</span></button>
@@ -264,7 +247,11 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
   <button class="psec-toggle" onclick="toggleSection('sec-photo',this)" style="margin-top:8px">사진 수정 <span class="arrow">▾</span></button>
   <div class="psec-body" id="sec-photo" style="padding-top:10px">
     <div class="sec">사진 업로드</div>
-    <div class="dropzone" id="drop"><b>클릭</b>하거나 사진을 <b>드래그</b></div>
+    <div class="ptabs">
+      <button class="ptab on" id="tab1" onclick="switchTab(1)">1페이지 <span id="tab1cnt">(0)</span></button>
+      <button class="ptab" id="tab2" onclick="switchTab(2)">2페이지 <span id="tab2cnt">(0)</span></button>
+    </div>
+    <div class="dropzone" id="drop"><b>클릭</b>하거나 사진을 <b>드래그</b> (페이지당 최대 12장)</div>
     <input type="file" id="fileInput" accept="image/*" multiple hidden/>
     <div class="items" id="itemList"></div>
     <div class="sec">제품명 일괄입력</div>
@@ -361,43 +348,18 @@ let dragSrc = null;
 const $ = s => document.querySelector(s);
 
 /* ═══════════════════════════════════════
-   캔버스 사이즈 설정
-   0: 1920×3240 (6셀, 2×3)
-   1: 1920×1080 (2셀, 2×1)
-   2: 1446×1646 (4셀, 2×2)
-═══════════════════════════════════════ */
-const CANVAS_PRESETS = [
-  { w: 1920, h: 3240, rows: [2, 2, 2] },
-  { w: 1920, h: 1080, rows: [2] },
-  { w: 1446, h: 1646, rows: [2, 2] },
-];
-let curCanvasIdx = 0;
-
-function getCellCount() {
-  return CANVAS_PRESETS[curCanvasIdx].rows.reduce((a,b) => a+b, 0);
-}
-
-function setCanvasSize(idx) {
-  curCanvasIdx = idx;
-  const preset = CANVAS_PRESETS[idx];
-  document.documentElement.style.setProperty('--poster-w', preset.w + 'px');
-  document.documentElement.style.setProperty('--poster-h', preset.h + 'px');
-  // 슬롯을 새 셀 수에 맞게 초기화 (기존 사진 유지, 빈 슬롯 추가/잘라내기)
-  const n = getCellCount();
-  const cur = pages[0];
-  while (cur.length < n) cur.push({ id: idSeq++, src: null, name: '', scale: 1, ox: 0, oy: 0 });
-  pages[0] = cur.slice(0, n);
-  pages[1] = [];
-  refresh();
-  fitScale();
-}
-
-/* ═══════════════════════════════════════
-   배치 알고리즘 (캔버스 사이즈 기반 고정 레이아웃)
+   배치 알고리즘 (가로 2~3 · 세로 최대 4)
 ═══════════════════════════════════════ */
 function computeRows(n) {
-  if (n === 0) return [];
-  return CANVAS_PRESETS[curCanvasIdx].rows;
+  n = Math.min(n, 12);
+  if (n <= 0) return [];
+  if (n <= 3) return [n];
+  const rows = Math.min(4, Math.ceil(n / 3));
+  const base = Math.floor(n / rows);
+  const rem = n - base * rows;
+  const out = [];
+  for (let i = 0; i < rows; i++) out.push(i < rows - rem ? base : base + 1);
+  return out;
 }
 
 /* ═══════════════════════════════════════
@@ -772,7 +734,7 @@ function makeItemRow(it, i, pg) {
     refresh();
   });
   ctrl.appendChild(swapBtn);
-  const del = mkbtn('✕', () => { pages[pg-1][i] = {id: pages[pg-1][i].id, src: null, name: '', scale: 1, ox: 0, oy: 0}; refresh(); }); del.classList.add('del');
+  const del = mkbtn('✕', () => { pages[pg-1].splice(i,1); refresh(); }); del.classList.add('del');
   ctrl.appendChild(del);
   wrap.appendChild(ctrl);
 
@@ -795,7 +757,7 @@ function makeItemRow(it, i, pg) {
     const insertIdx = (spg === dpg && si < di) ? di : di;
     pages[dpg-1].splice(insertIdx, 0, moved);
     // switch to destination page if cross-page
-    if (spg !== dpg) { curPage = dpg; const _t1=$('#tab1'); if(_t1) _t1.className='ptab'+(dpg===1?' on':''); const _t2=$('#tab2'); if(_t2) _t2.className='ptab'+(dpg===2?' on':''); }
+    if (spg !== dpg) { curPage = dpg; $('#tab1').className='ptab'+(dpg===1?' on':''); $('#tab2').className='ptab'+(dpg===2?' on':''); }
     refresh();
   });
 
@@ -810,8 +772,8 @@ function renderItemList() {
     pages[pg-1].forEach((it, i) => list.appendChild(makeItemRow(it, i, pg)));
   });
   // 탭 카운트 업데이트
-  const t1 = $('#tab1cnt'); if (t1) t1.textContent = `(${pages[0].filter(it=>it.src).length}/${pages[0].length})`;
-  const t2 = $('#tab2cnt'); if (t2) t2.textContent = `(${pages[1].length})`;
+  $('#tab1cnt').textContent = `(${pages[0].length})`;
+  $('#tab2cnt').textContent = `(${pages[1].length})`;
 }
 
 function mkbtn(t, fn) {
@@ -945,23 +907,36 @@ function syncBadgeStyle() {
 ═══════════════════════════════════════ */
 function addFiles(files) {
   let imgs = [...files].filter(f => f.type.startsWith('image/'));
-  const n = getCellCount();
-  // 빈 슬롯을 찾아서 순서대로 채움
-  const emptySlots = pages[0].reduce((acc, it, i) => { if (!it.src) acc.push(i); return acc; }, []);
-  const toFill = imgs.slice(0, emptySlots.length);
-  const overflow = imgs.slice(emptySlots.length);
-  if (overflow.length) toast(`${overflow.length}장은 빈 슬롯이 없어 추가되지 않았습니다`);
-  if (!toFill.length) return;
-  let pending = toFill.length;
-  toFill.forEach((f, fi) => {
-    const slotIdx = emptySlots[fi];
+  // 12장 초과분은 다음 페이지로
+  const pg1items = pages[0], pg2items = pages[1];
+  const sl1 = 12 - pg1items.length;
+  const sl2 = 12 - pg2items.length;
+
+  let toP1 = imgs.slice(0, sl1);
+  let toP2 = imgs.slice(sl1, sl1 + sl2);
+  const overflow = imgs.slice(sl1 + sl2);
+
+  if (overflow.length) toast(`${overflow.length}장은 두 페이지 모두 꽉 차 추가되지 않았습니다`);
+  if (toP2.length && !pg2items.length && !pg1items.length) {
+    // 처음부터 p2에 넣는 경우는 없음, 정상 플로우
+  }
+  if (toP2.length) {
+    toast('12장 초과 — 나머지는 2페이지에 자동 추가됩니다');
+  }
+
+  let pending = toP1.length + toP2.length;
+  if (!pending) return;
+
+  const process = (f, targetArr) => {
     const r = new FileReader();
-    r.onload = e => resizeDataURL(e.target.result, 1200, src => {
-      pages[0][slotIdx] = { id: pages[0][slotIdx].id, src, name: pages[0][slotIdx].name, scale: 1, ox: 0, oy: 0 };
+    r.onload = e => resizeDataURL(e.target.result, 900, src => {
+      targetArr.push({id:idSeq++, src, name:'', scale:1, ox:0, oy:0});
       if (--pending === 0) refresh();
     });
     r.readAsDataURL(f);
-  });
+  };
+  toP1.forEach(f => process(f, pg1items));
+  toP2.forEach(f => process(f, pg2items));
 }
 
 function resizeDataURL(dataURL, maxSide, cb) {
@@ -997,8 +972,7 @@ async function downloadPNG() {
 
   for (const {el, name} of toDownload) {
     try {
-      const preset = CANVAS_PRESETS[curCanvasIdx];
-      const dataUrl = await htmlToImage.toPng(el, {pixelRatio:1, width:preset.w, height:preset.h, cacheBust:true, backgroundColor:'#fff'});
+      const dataUrl = await htmlToImage.toPng(el, {pixelRatio:1, width:1080, height:1350, cacheBust:true, backgroundColor:'#fff'});
       const a = document.createElement('a'); a.download = name + '.png'; a.href = dataUrl; a.click();
       await new Promise(r => setTimeout(r, 400));
     } catch(err) { toast('생성 실패: '+err.message); return; }
@@ -1019,16 +993,16 @@ function applyPreviewZoom(pct) {
   _previewZoomPct = +pct;
   const el = $('#previewZoom'); if (el) el.value = pct;
   const vEl = $('#previewZoomVal'); if (vEl) vEl.textContent = pct + '%';
-  const preset = CANVAS_PRESETS[curCanvasIdx];
   const avail = $('#stage').clientWidth - 56;
-  const autoScale = Math.min(1, avail / preset.w);
+  const autoScale = Math.min(1, avail / 1080);
+  // pct 50 = autoScale, pct 100 = 1.0, pct 20 = autoScale*(20/50)
   const scale = autoScale * (pct / 50);
   ['sc1','sc2'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.style.transform = `scale(${scale})`;
-    el.style.width = preset.w + 'px';
-    el.style.height = (preset.h * scale) + 'px';
+    el.style.width = '1080px';
+    el.style.height = (1350 * scale) + 'px';
   });
 }
 
@@ -1037,8 +1011,8 @@ function applyPreviewZoom(pct) {
 ═══════════════════════════════════════ */
 function switchTab(pg) {
   curPage = pg;
-  const t1el = $('#tab1'); if (t1el) t1el.className = 'ptab' + (pg===1?' on':'');
-  const t2el = $('#tab2'); if (t2el) t2el.className = 'ptab' + (pg===2?' on':'');
+  $('#tab1').className = 'ptab' + (pg===1?' on':'');
+  $('#tab2').className = 'ptab' + (pg===2?' on':'');
   renderItemList();
   renderRowControls();
 }
@@ -1079,9 +1053,7 @@ $('#btnApplyBulk').addEventListener('click', applyBulk);
 $('#btnDownload').addEventListener('click', downloadPNG);
 $('#btnReset').addEventListener('click', () => {
   if (!confirm('모두 초기화할까요?')) return;
-  const n = getCellCount();
-  pages[0] = Array.from({length: n}, () => ({id: idSeq++, src: null, name: '', scale: 1, ox: 0, oy: 0}));
-  pages[1]=[]; rowFontSizes=[[36,36,36,36],[36,36,36,36]]; firstRowFlex=[null,null]; localStorage.removeItem('mh_maker_state');
+  pages[0]=[]; pages[1]=[]; rowFontSizes=[[36,36,36,36],[36,36,36,36]]; firstRowFlex=[null,null]; localStorage.removeItem('mh_maker_state');
   refresh();
 });
 
@@ -1130,7 +1102,6 @@ function saveState() {
       headerOn: $('#chkHeader') ? $('#chkHeader').checked : true,
       headerPad: $('#headerPad') ? $('#headerPad').value : '30',
       blurPx, blurBright,
-      canvasIdx: curCanvasIdx,
     };
     localStorage.setItem('mh_maker_state', JSON.stringify(state));
   } catch(e) {}
@@ -1141,11 +1112,6 @@ function loadState() {
     const raw = localStorage.getItem('mh_maker_state');
     if (!raw) return;
     const st = JSON.parse(raw);
-    if (st.canvasIdx != null) {
-      curCanvasIdx = st.canvasIdx;
-      const radios = document.querySelectorAll('input[name="canvasSize"]');
-      if (radios[curCanvasIdx]) radios[curCanvasIdx].checked = true;
-    }
     if (st.pages) {
       pages[0] = (st.pages[0] || []).map(it => ({...it, id: idSeq++}));
       pages[1] = (st.pages[1] || []).map(it => ({...it, id: idSeq++}));
@@ -1183,17 +1149,6 @@ function loadState() {
 }
 
 loadState();
-// 초기 슬롯이 없으면 캔버스 사이즈에 맞게 빈 슬롯 생성
-if (pages[0].length === 0) {
-  const n = getCellCount();
-  pages[0] = Array.from({length: n}, () => ({id: idSeq++, src: null, name: '', scale: 1, ox: 0, oy: 0}));
-}
-// 초기 캔버스 크기 CSS 적용
-(function() {
-  const preset = CANVAS_PRESETS[curCanvasIdx];
-  document.documentElement.style.setProperty('--poster-w', preset.w + 'px');
-  document.documentElement.style.setProperty('--poster-h', preset.h + 'px');
-})();
 syncHeader();
 syncLogoSize();
 syncBadgeStyle();
