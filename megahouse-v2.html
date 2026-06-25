@@ -185,7 +185,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .p-ft-logo-wrap{flex-shrink:0;display:flex;align-items:center;justify-content:flex-end;overflow:visible;}
 .p-ft-logo{height:32px;width:auto;display:block;transform-origin:right center;}
 
-.cell-drag-handle{position:absolute;top:2%;right:2%;z-index:5;width:6%;aspect-ratio:1;
+.cell-drag-handle{position:absolute;top:2%;right:2%;z-index:5;width:12%;aspect-ratio:1;
   display:flex;align-items:center;justify-content:center;border-radius:8px;
   background:rgba(0,0,0,.45);color:#fff;font-size:36px;cursor:grab;
   opacity:0;transition:opacity .15s;user-select:none;}
@@ -425,9 +425,20 @@ function makeBoardEl(board, boardNum) {
   pft.className = 'p-ft';
   pft.innerHTML = `
     <div class="p-ft-note" id="ftNote-${board.id}">국내외 사정에 따라 출시 시점 등 일부 사항이 변동될 수 있습니다.</div>
-    <div class="p-ft-logo-wrap"><img class="p-ft-logo" id="pwlogo-${board.id}" alt="PW"/></div>
   `;
   poster.appendChild(pft);
+
+  // PW logo — draggable overlay on poster
+  const pwOverlay = document.createElement('div');
+  pwOverlay.id = 'pw-overlay-' + board.id;
+  pwOverlay.style.cssText = 'position:absolute;cursor:grab;user-select:none;z-index:10;';
+  const pwImg = document.createElement('img');
+  pwImg.id = 'pwlogo-' + board.id;
+  pwImg.className = 'p-ft-logo';
+  pwImg.draggable = false;
+  pwOverlay.appendChild(pwImg);
+  poster.appendChild(pwOverlay);
+  bindPwLogoDrag(pwOverlay, board.id);
 
   sc.appendChild(poster);
   scWrap.appendChild(sc);
@@ -840,19 +851,6 @@ function makeItemRow(it, i, boardId) {
   const grow = document.createElement('div'); grow.className = 'grow';
   const inpRow = document.createElement('div');
   inpRow.style.cssText = 'display:flex;align-items:center;gap:6px;height:44px;';
-  const inp = document.createElement('input'); inp.type = 'text';
-  inp.dataset.itemId = it.id;
-  inp.placeholder = '제품명'; inp.value = it.name ? it.name.replace(/\n/g,'\\n') : '';
-  inp.style.cssText = 'flex:1;min-width:0;height:100%;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:5px 7px;font-size:12px;font-family:inherit;';
-  inp.addEventListener('input', () => {
-    it.name = inp.value.replace(/\\n/g,'\n');
-    renderGrid(boardId);
-    const span = document.querySelector(`.name-text[data-id="${it.id}"]`);
-    if (span && document.activeElement !== span) {
-      span.innerHTML = (it.name||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
-    }
-  });
-
   const rpWrap = document.createElement('label');
   rpWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;cursor:pointer;height:100%;justify-content:center;';
   const chk = document.createElement('input'); chk.type='checkbox'; chk.checked=!!it.reprint;
@@ -883,7 +881,7 @@ function makeItemRow(it, i, boardId) {
   wbLbl.textContent = '흰배경';
   wbWrap.append(wbChk, wbLbl);
 
-  inpRow.append(inp, rpWrap, blurWrap, wbWrap);
+  inpRow.append(rpWrap, blurWrap, wbWrap);
   grow.appendChild(inpRow);
   wrap.appendChild(grow);
 
@@ -998,12 +996,44 @@ function toggleHeader() {
 
 function syncLogoSize() {
   const topSz = $('#logoSize').value + 'px';
-  const pwScale = (+$('#pwLogoSize').value) / 32;
+  const pwH = +$('#pwLogoSize').value;
   boards.forEach(b => {
     const logo = document.getElementById('logo-' + b.id);
     if (logo) logo.style.height = topSz;
     const pwlogo = document.getElementById('pwlogo-' + b.id);
-    if (pwlogo) pwlogo.style.transform = `scale(${pwScale})`;
+    if (pwlogo) { pwlogo.style.height = pwH + 'px'; pwlogo.style.width = 'auto'; }
+    // init position if not set
+    const preset = CANVAS_PRESETS[b.canvasIdx];
+    if (b.pwX === undefined) { b.pwX = preset.w - 200; b.pwY = preset.h - 80; }
+    const overlay = document.getElementById('pw-overlay-' + b.id);
+    if (overlay) { overlay.style.left = b.pwX + 'px'; overlay.style.top = b.pwY + 'px'; }
+  });
+}
+
+function bindPwLogoDrag(overlay, boardId) {
+  let dragging = false, sx = 0, sy = 0, sox = 0, soy = 0;
+  overlay.addEventListener('mousedown', e => {
+    e.stopPropagation(); e.preventDefault();
+    dragging = true;
+    sx = e.clientX; sy = e.clientY;
+    const b = boards.find(x => x.id === boardId);
+    sox = b.pwX || 0; soy = b.pwY || 0;
+    overlay.style.cursor = 'grabbing';
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const scEl = document.getElementById('sc-' + boardId);
+    const m = scEl ? scEl.style.transform.match(/scale\(([^)]+)\)/) : null;
+    const scale = m ? +m[1] : 1;
+    const b = boards.find(x => x.id === boardId);
+    b.pwX = sox + (e.clientX - sx) / scale;
+    b.pwY = soy + (e.clientY - sy) / scale;
+    overlay.style.left = b.pwX + 'px';
+    overlay.style.top = b.pwY + 'px';
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false; overlay.style.cursor = 'grab'; saveState();
   });
 }
 
@@ -1218,7 +1248,9 @@ function saveState() {
       boards: boards.map(b => ({
         id: b.id,
         canvasIdx: b.canvasIdx,
-        items: b.items.map(it => ({...it}))
+        items: b.items.map(it => ({...it})),
+        pwX: b.pwX,
+        pwY: b.pwY,
       })),
       boardSeq, curBoardId,
       rowFontSizes, firstRowFlex,
@@ -1258,7 +1290,9 @@ function loadState() {
       boards = st.boards.map(b => ({
         id: b.id,
         canvasIdx: b.canvasIdx || 0,
-        items: (b.items || []).map(it => ({...it, id: idSeq++}))
+        items: (b.items || []).map(it => ({...it, id: idSeq++})),
+        pwX: b.pwX,
+        pwY: b.pwY,
       }));
       curBoardId = st.curBoardId || boards[0].id;
       if (!boards.find(b => b.id === curBoardId)) curBoardId = boards[0].id;
