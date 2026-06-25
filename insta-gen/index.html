@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>인스타 카드 생성기</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  :root { --bg:#f3f4f6; --panel:#ffffff; --line:#e3e5ea; --line2:#d2d6dd; --accent:#e0668f; --text:#1f2329; --muted:#6b7280; --danger:#d83a52; }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', sans-serif; }
+  body { background: var(--bg); color: var(--text); display: flex; min-height: 100vh; gap: 28px; padding: 28px; align-items: flex-start; }
+
+  .left { flex: 0 0 auto; width: 432px; display: flex; flex-direction: column; gap: 16px; }
+  #stage { width: 432px; height: 540px; border-radius: 14px; box-shadow: 0 10px 36px rgba(0,0,0,.16); cursor: grab; touch-action: none; background: #e9eaee; }
+  #stage.drag { cursor: grabbing; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 10px; text-align: center; font-weight: 300; line-height: 1.5; }
+
+  .panel { flex: 1; max-width: 430px; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 20px; font-weight: 700; }
+  h1 small { font-weight: 300; color: var(--muted); font-size: 13px; display: block; margin-top: 4px; }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+  .card h2 { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .5px; margin-bottom: 12px; }
+  .card.box-y { background:#fffbe9; border-color:#ecdf9e; }
+  .card.box-b { background:#edf5fd; border-color:#b9daf1; }
+
+  .upload { display: block; border: 1.5px dashed var(--line2); border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; transition: .15s; font-weight: 500; color: var(--muted); line-height: 1.5; }
+  .upload:hover { border-color: var(--accent); color: var(--accent); }
+  .upload input { display: none; }
+  .upload small { display:block; font-size:12px; font-weight:300; margin-top:4px; }
+
+  .field { margin-bottom: 12px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 500; }
+  .field input[type=text], .field textarea, .field select { width: 100%; background: #fff; border: 1px solid var(--line2); border-radius: 8px; color: var(--text); padding: 9px 11px; font-size: 14px; font-weight: 500; font-family:'Pretendard',sans-serif; resize: vertical; }
+  .field textarea { line-height: 1.4; }
+  .field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--accent); }
+  .check { display:flex; align-items:center; gap:7px; margin-top:8px; font-size:13px; color:var(--text); cursor:pointer; }
+  .check input { width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }
+  .note { font-size: 12px; color: var(--muted); font-weight: 400; line-height: 1.5; margin-bottom: 10px; }
+  .preview-line { font-size: 12px; color: var(--text); font-weight: 600; margin-top: 6px; background:#f6f2f4; border:1px solid var(--line); border-radius:7px; padding:6px 9px; }
+
+  .slider, .stepper { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; }
+  .slider:last-child, .stepper:last-child { margin-bottom: 0; }
+  .slider label, .stepper label { flex: 0 0 80px; font-size: 12px; color: var(--muted); }
+  .slider input[type=range] { flex: 1; accent-color: var(--accent); }
+  .slider .val { flex: 0 0 42px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .stepper { margin-top: 8px; }
+  .stepper .ctrl { display: flex; align-items: center; gap: 8px; }
+  .stepper button { width: 30px; height: 30px; border: 1px solid var(--line2); background: #fff; border-radius: 8px; font-size: 18px; font-weight: 700; cursor: pointer; color: var(--text); line-height: 1; }
+  .stepper button:hover { border-color: var(--accent); color: var(--accent); }
+  .stepper .num { min-width: 46px; text-align: center; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .btn { width: 100%; border: none; border-radius: 10px; padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:disabled { background: #d7d9de; color: #fff; cursor: not-allowed; }
+  .blockmsg { color: var(--muted); font-size: 12px; margin-top: 8px; min-height: 14px; font-weight: 500; text-align: center; }
+  .copybtns { display:flex; gap:8px; margin-bottom:8px; }
+  .btn2 { flex:1; border:1px solid var(--line2); background:#fff; border-radius:8px; padding:9px; font-size:13px; font-weight:600; cursor:pointer; color:var(--text); }
+  .btn2:hover { border-color:var(--accent); color:var(--accent); }
+  #t_copy { width:100%; min-height:220px; background:#fff; border:1px solid var(--line2); border-radius:8px; color:var(--text); padding:11px; font-size:13px; line-height:1.6; font-family:'Pretendard',sans-serif; resize:vertical; }
+  .slots { display:flex; flex-direction:column; gap:6px; }
+  .slot { display:flex; align-items:center; gap:8px; border:1px solid var(--line2); background:#fff; border-radius:8px; padding:8px 10px; cursor:pointer; transition:.12s; }
+  .slot:hover { border-color:var(--accent); background:#fffafc; }
+  .slot .s-title { font-weight:600; font-size:13px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .slot .s-meta { color:var(--muted); font-size:11px; font-variant-numeric:tabular-nums; }
+  .slot .s-del { color:var(--muted); font-weight:700; padding:0 2px 0 4px; font-size:13px; }
+  .slot .s-del:hover { color:var(--danger); }
+  .slot-empty { color:var(--muted); font-size:12px; line-height:1.5; }
+  .ccount { font-size:12px; color:var(--muted); margin-top:7px; font-variant-numeric:tabular-nums; }
+  .ccount b { font-weight:700; }
+  .ccount.over { color:var(--danger); font-weight:600; }
+  .slotbox { background:#ececef; border:1px solid #dcdde2; border-radius:10px; padding:11px; margin-top:12px; }
+  .slotbox-h { font-size:12px; font-weight:700; color:#4b5563; letter-spacing:.3px; margin-bottom:4px; }
+  .slotbox-note { font-size:11px; color:var(--muted); line-height:1.45; margin-bottom:8px; }
+  .slotbox .slot { background:#fff; }
+  .spacewarn { font-size:12px; color:var(--danger); font-weight:600; line-height:1.5; margin-top:6px; min-height:0; }
+</style>
+</head>
+<body>
+  <div class="left">
+    <div>
+      <canvas id="stage" width="1080" height="1350"></canvas>
+      <div class="hint">사진 위를 <b>드래그</b>해서 위치 조정 · 휠/슬라이더로 <b>확대</b><br>업로드 · 끌어놓기 · <b>붙여넣기(Ctrl/⌘+V)</b> 모두 가능</div>
+    </div>
+    <div class="card box-b">
+      <h2>원고 (캡션) — 복붙용</h2>
+      <div class="field"><label>일본어 작품명 (해시태그용 · 선택)</label><input type="text" id="t_jp" placeholder="예: 銀魂"></div>
+      <div class="field"><label>예약판매일 (예: 3월 5일 · 비우면 생략)</label><input type="text" id="t_saledate" placeholder="예: 3월 5일"></div>
+      <div class="copybtns">
+        <button class="btn2" id="genCopy">원고 생성 / 새로고침</button>
+        <button class="btn2" id="doCopy">복사</button>
+      </div>
+      <textarea id="t_copy" placeholder="‘원고 생성’을 누르면 위 텍스트값으로 캡션이 만들어집니다. 만든 뒤 자유롭게 수정하세요."></textarea>
+      <div class="ccount" id="copyCount">0 / 280 (한글 0/140)</div>
+      <div class="slotbox">
+        <div class="slotbox-h">↺ 이전 입력 (최근 5개 · 자동 저장 · 사진 포함)</div>
+        <div class="slotbox-note">새 원문을 [적용]할 때마다 직전 작업이 슬롯에 남습니다. 누르면 그 내용으로 되돌립니다.</div>
+        <div id="slots" class="slots"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h1>인스타 카드 생성기 <small>원문 → 정형 입력 → 카드 + 원고</small></h1>
+
+    <div class="card">
+      <h2>1 · 사진</h2>
+      <label class="upload">사진 선택 · 끌어다 놓기 · 붙여넣기<small>클립보드 이미지는 Ctrl/⌘+V</small><input type="file" id="file" accept="image/*"></label>
+    </div>
+
+    <div class="card">
+      <h2>2 · 원문 입력 (필수)</h2>
+      <p class="note"><b>일본어 원문을 그대로 붙여넣고 [적용]</b>을 누르면 헤드라인·작품·라인·캐릭터·예약일을 자동 인식해 3번을 채웁니다. (전부 웹에서 처리 · 비용 0)<br>사전에 없는 새 작품/캐릭터만 3번에서 직접 입력하세요.</p>
+      <div class="field"><textarea id="t_source" rows="8" placeholder="일본어 원문 그대로 붙여넣기. 예)&#10;◤彩色原型初公開！◢&#10;見上げる見守るフィギュア るかっぷ&#10;進撃の巨人&#10;アルミン・アルレルト&#10;エレン・イェーガー むむっとver.&#10;⏰予約開始は3月5日(木)"></textarea></div>
+      <button class="btn2" id="applySrc" style="width:100%">적용 → 3번 자동 채우기</button>
+      <div class="note" id="srcStatus" style="margin-top:8px;margin-bottom:0"></div>
+    </div>
+
+    <div class="card box-y">
+      <h2>3 · 텍스트 (양식 고정 — 순서·표기 자동)</h2>
+      <div class="field">
+        <label>① 헤드라인 (선택)</label>
+        <select id="t_headline">
+          <option>원형 최초공개</option>
+          <option>채색원형 최초공개</option>
+          <option>재판매 결정</option>
+          <option>한정 재판매 결정</option>
+          <option>예약 시작</option>
+          <option>발매 결정</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>② 작품명 (IP)</label>
+        <input type="text" id="t_work" value="[작품명]" placeholder="예: 은혼 / 나루토 질풍전 / 주술회전">
+        <div class="spacewarn" id="spaceWarn"></div>
+      </div>
+      <div class="field">
+        <label>③ 시리즈/라인 (작품 뒤에 자동으로 붙음)</label>
+        <select id="t_line">
+          <optgroup label="스케일 피규어">
+            <option>G.E.M. 시리즈</option>
+            <option>스케일 피규어</option>
+            <option>GGG</option>
+            <option>루크리아</option>
+            <option>멜티 프린세스</option>
+          </optgroup>
+          <optgroup label="룩업">
+            <option>룩업</option>
+            <option>룩업 판초</option>
+            <option>룩업 의상</option>
+            <option>룩업 미니어처</option>
+            <option>룩업 소품</option>
+          </optgroup>
+          <optgroup label="기타 라인">
+            <option>누잇뽀</option>
+            <option>FigUnity</option>
+            <option>바리어블 액션 히어로즈</option>
+            <option>Portrait.Of.Pirates</option>
+            <option>버디코레</option>
+            <option>츠미첸</option>
+            <option>유라콜레</option>
+            <option>토코토코 아크릴 스탠드</option>
+          </optgroup>
+          <optgroup label="메가캣">
+            <option>메가캣 프로젝트</option>
+            <option>메가캣</option>
+            <option>빅 메가캣</option>
+            <option>메가캣 잘자</option>
+            <option>메가캣 찰싹</option>
+            <option>메가캣 뱃지</option>
+          </optgroup>
+          <optgroup label="컬렉션 피규어">
+            <option>컬렉션 피규어</option>
+            <option>쵸코링 컬렉션</option>
+          </optgroup>
+          <optgroup label="컬렉션 굿즈">
+            <option>컬렉션 굿즈</option>
+            <option>카라코로</option>
+            <option>버디코레</option>
+            <option>이루스타</option>
+            <option>꺄르르르</option>
+          </optgroup>
+        </select>
+        <div class="preview-line" id="titlePreview">타이틀: —</div>
+        <div class="stepper"><label>↑ 타이틀 크기</label><div class="ctrl"><button data-k="title" data-d="-4">−</button><span class="num" id="v_titleSize">80</span><button data-k="title" data-d="4">+</button></div></div>
+      </div>
+      <div class="field">
+        <label>④ 제품명 (두 줄은 Enter로 줄바꿈)</label>
+        <textarea id="t_product" rows="2" placeholder="예: 카무이 ver.弐 이 (발차기)&#10;카구라 (표정 파츠 동봉)"></textarea>
+        <label class="check"><input type="checkbox" id="c_bullet" checked> 제품명 앞에 불렛(•) 표시</label>
+        <div class="stepper"><label>↑ 제품명 크기</label><div class="ctrl"><button data-k="product" data-d="-4">−</button><span class="num" id="v_productSize">60</span><button data-k="product" data-d="4">+</button></div></div>
+      </div>
+      <div class="field"><label>⑤ 푸터</label><input type="text" id="t_footer" value="메가하우스 공식 스토어"></div>
+    </div>
+
+    <div class="card">
+      <h2>4 · 사진 크롭 / 배경지</h2>
+      <div class="slider"><label>사진 확대</label><input type="range" id="s_zoom" min="100" max="300" value="100"><span class="val" id="v_zoom">1.0×</span></div>
+      <div class="slider"><label>배경 불투명</label><input type="range" id="s_op" min="20" max="100" value="50"><span class="val" id="v_op">50%</span></div>
+      <div class="slider"><label>배경 흐림</label><input type="range" id="s_blur" min="0" max="70" value="45"><span class="val" id="v_blur">45</span></div>
+    </div>
+
+    <div>
+      <button class="btn btn-primary" id="download" disabled>PNG 다운로드 (1080×1350)</button>
+      <div class="blockmsg" id="blockmsg"></div>
+    </div>
+  </div>
+
+<script src="dict.js"></script>
+<script>
+const cv = document.getElementById('stage'), ctx = cv.getContext('2d');
+const W = 1080, H = 1350;
+const FRAME = { x: 110, y: 190, w: 860, h: 760, r: 36 }; // 프레임을 위로 올려 텍스트와 여백 확보
+const MAXW = 920;
+
+const state = {
+  img: null, imgData: '',
+  fg: { zoom: 1, panX: 0, panY: 0 },
+  bg: { opacity: 0.50, blur: 45 },
+  size: { title: 80, product: 60 },
+  bullet: true,
+  work: '[작품명]', line: 'G.E.M. 시리즈', linePrefix: '', jp: '', saleDate: '', saleDow: '목',
+  text: { headline:'원형 최초공개', title:'[작품명] G.E.M. 시리즈', product:'', footer:'메가하우스 공식 스토어' },
+};
+
+function composeTitle(){ state.text.title = (state.work.trim()+' '+state.line.trim()+' '+(state.linePrefix||'').trim()).trim().replace(/\s+/g,' '); }
+function updatePreview(){ document.getElementById('titlePreview').textContent = '타이틀: ' + (state.text.title || '—'); }
+
+/* ── 렌더 ── */
+function roundRect(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+function coverRect(iw,ih,fw,fh,zoom,panX,panY){ const base=Math.max(fw/iw,fh/ih),scale=base*zoom,dw=iw*scale,dh=ih*scale,mx=Math.max(0,(dw-fw)/2),my=Math.max(0,(dh-fh)/2); return {dw,dh,px:Math.max(-mx,Math.min(mx,panX)),py:Math.max(-my,Math.min(my,panY))}; }
+function setFont(w,s){ ctx.font=`${w} ${s}px Pretendard, sans-serif`; }
+function fitText(text,weight,size,maxW){ let s=size; setFont(weight,s); while(ctx.measureText(text).width>maxW && s>14){ s-=1; setFont(weight,s); } return s; }
+
+function render(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#16130f'; ctx.fillRect(0,0,W,H);
+  if(state.img){ ctx.save(); ctx.globalAlpha=state.bg.opacity; ctx.filter=state.bg.blur?`blur(${state.bg.blur}px)`:'none';
+    const b=coverRect(state.img.width,state.img.height,W+160,H+160,1,0,0);
+    ctx.drawImage(state.img,(W-b.dw)/2,(H-b.dh)/2,b.dw,b.dh); ctx.restore(); }
+  let g=ctx.createLinearGradient(0,0,0,320); g.addColorStop(0,'rgba(12,10,8,.75)'); g.addColorStop(1,'rgba(12,10,8,0)'); ctx.fillStyle=g; ctx.fillRect(0,0,W,320);
+  g=ctx.createLinearGradient(0,995,0,H); g.addColorStop(0,'rgba(12,10,8,0)'); g.addColorStop(1,'rgba(12,10,8,.9)'); ctx.fillStyle=g; ctx.fillRect(0,995,W,H-995);
+
+  if(state.img){
+    ctx.save(); ctx.shadowColor='rgba(0,0,0,.45)'; ctx.shadowBlur=40; ctx.shadowOffsetY=18; ctx.fillStyle='#fff';
+    roundRect(ctx,FRAME.x-6,FRAME.y-6,FRAME.w+12,FRAME.h+12,FRAME.r+4); ctx.fill(); ctx.restore();
+    ctx.save(); roundRect(ctx,FRAME.x,FRAME.y,FRAME.w,FRAME.h,FRAME.r); ctx.clip();
+    const f=coverRect(state.img.width,state.img.height,FRAME.w,FRAME.h,state.fg.zoom,state.fg.panX,state.fg.panY);
+    ctx.drawImage(state.img,FRAME.x+(FRAME.w-f.dw)/2+f.px,FRAME.y+(FRAME.h-f.dh)/2+f.py,f.dw,f.dh); ctx.restore();
+  }
+
+  ctx.textAlign='center'; ctx.fillStyle='#fff'; ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=12; ctx.shadowOffsetY=2;
+  fitText(state.text.headline,800,76,MAXW); ctx.fillText(state.text.headline,W/2,118);
+  ctx.shadowBlur=8;
+  fitText(state.text.title,700,state.size.title,MAXW); ctx.fillText(state.text.title,W/2,1052);
+
+  ctx.fillStyle='#efe8e2';
+  const plines = state.text.product.split('\n').map(s=>s.trim()).filter(Boolean);
+  const lh = state.size.product*1.12, base = 1120;
+  plines.forEach((ln,i)=>{ const t=(state.bullet?'• ':'')+ln; fitText(t,300,state.size.product,MAXW); ctx.fillText(t,W/2,base+i*lh); });
+
+  ctx.shadowBlur=0; ctx.strokeStyle='rgba(255,255,255,.28)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(180,1244); ctx.lineTo(900,1244); ctx.stroke();
+  ctx.fillStyle='#e8e1db'; setFont(500,34); ctx.fillText(state.text.footer,W/2,1302);
+}
+
+function runValidation(){
+  const dl=document.getElementById('download'), bm=document.getElementById('blockmsg');
+  const src = document.getElementById('t_source').value.trim();
+  const filled = !!state.work.trim() && !!state.text.product.trim();
+  if(!state.img){ dl.disabled=true; bm.textContent='사진을 먼저 올려주세요.'; }
+  else if(!src){ dl.disabled=true; bm.textContent='2번 원문 입력은 필수입니다.'; }
+  else if(!filled){ dl.disabled=true; bm.textContent='작품명과 제품명을 채워주세요.'; }
+  else { dl.disabled=false; bm.textContent=''; }
+  return !state.img ? false : (!!src && filled);
+}
+
+// ── 사전 데이터는 dict.js 에서 로드 (DICT / HEADS / LINES) ──
+if (typeof DICT === 'undefined') {
+  alert('dict.js 를 불러오지 못했습니다.\nindex.html 과 dict.js 를 같은 폴더에 두고 다시 열어주세요.');
+}
+const z2h = s => s.replace(/[０-９]/g, d => '０１２３４５６７８９'.indexOf(d) + '');
+
+/* ── 띄어쓰기 검사: 정식 작품명(띄어쓰기 포함)을 붙여 쓰면 잡아낸다 ── */
+const CANON_WORKS = (()=>{ const set=new Set();
+  try{ (KR_WORKS||[]).forEach(w=>set.add(w)); }catch{}
+  try{ Object.values(DICT.works).forEach(w=>set.add(w)); }catch{}
+  try{ Object.keys(WORK_SHORT).forEach(w=>set.add(w)); }catch{}
+  return [...set].filter(w=>/\s/.test(w)); })();   // 띄어쓰기가 있는 정식명만
+function spacingIssues(text){
+  if(!text) return [];
+  const out=[], seen=new Set();
+  for(const w of CANON_WORKS){ const ds=w.replace(/\s+/g,'');
+    if(text.includes(ds) && !text.includes(w) && !seen.has(ds)){ seen.add(ds); out.push({wrong:ds, right:w}); } }
+  return out;
+}
+function checkWorkSpacing(){
+  const el=document.getElementById('spaceWarn'); if(!el) return;
+  const iss=spacingIssues(state.work||'');
+  el.textContent = iss.length ? ('⚠ 띄어쓰기 오류가 있습니다: '+iss.map(i=>i.wrong+' → '+i.right).join(', ')) : '';
+}
+
+/* ── 가타카나/히라가나 → 한글 음역 (사전에 없는 이름의 폴백) ── */
+const Ts=['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+function addBatchim(syll, jamo){ const c=syll.charCodeAt(0)-0xAC00; if(c<0||c>11171) return syll; const ini=Math.floor(c/588),med=Math.floor((c%588)/28),fin=c%28; if(fin!==0) return syll; const ti=Ts.indexOf(jamo); if(ti<1) return syll; return String.fromCharCode(0xAC00+(ini*21+med)*28+ti); }
+const KMAP={ア:'아',イ:'이',ウ:'우',エ:'에',オ:'오',カ:'카',キ:'키',ク:'쿠',ケ:'케',コ:'코',ガ:'가',ギ:'기',グ:'구',ゲ:'게',ゴ:'고',サ:'사',シ:'시',ス:'스',セ:'세',ソ:'소',ザ:'자',ジ:'지',ズ:'즈',ゼ:'제',ゾ:'조',タ:'타',チ:'치',ツ:'츠',テ:'테',ト:'토',ダ:'다',ヂ:'지',ヅ:'즈',デ:'데',ド:'도',ナ:'나',ニ:'니',ヌ:'누',ネ:'네',ノ:'노',ハ:'하',ヒ:'히',フ:'후',ヘ:'헤',ホ:'호',バ:'바',ビ:'비',ブ:'부',ベ:'베',ボ:'보',パ:'파',ピ:'피',プ:'푸',ペ:'페',ポ:'포',マ:'마',ミ:'미',ム:'무',メ:'메',モ:'모',ヤ:'야',ユ:'유',ヨ:'요',ラ:'라',リ:'리',ル:'루',レ:'레',ロ:'로',ワ:'와',ヲ:'오',ヴ:'부'};
+const COMBO={'キャ':'캬','キュ':'큐','キョ':'쿄','ギャ':'갸','ギュ':'규','ギョ':'교','シャ':'샤','シュ':'슈','ショ':'쇼','シェ':'셰','ジャ':'자','ジュ':'주','ジョ':'조','ジェ':'제','チャ':'차','チュ':'추','チョ':'초','チェ':'체','ニャ':'냐','ニュ':'뉴','ニョ':'뇨','ヒャ':'햐','ヒュ':'휴','ヒョ':'효','ビャ':'뱌','ビュ':'뷰','ビョ':'뵤','ピャ':'퍄','ピュ':'퓨','ピョ':'표','ミャ':'먀','ミュ':'뮤','ミョ':'묘','リャ':'랴','リュ':'류','リョ':'료','ティ':'티','ディ':'디','トゥ':'투','ドゥ':'두','ファ':'파','フィ':'피','フェ':'페','フォ':'포','ウィ':'위','ウェ':'웨','ウォ':'워','ヴァ':'바','ヴィ':'비','ヴェ':'베','ヴォ':'보','イェ':'예'};
+function kanaToHangul(s){
+  s=s.replace(/[ぁ-ゖ]/g,c=>String.fromCharCode(c.charCodeAt(0)+0x60)); // 히라가나→가타카나
+  let out='', i=0, ok=true;
+  while(i<s.length){ const c=s[i], c2=s.slice(i,i+2);
+    if(c==='ー'){ i++; continue; }
+    if('・＝=／/、,&＆･'.includes(c)){ out+=' '; i++; continue; }
+    if(/\s/.test(c)){ out+=' '; i++; continue; }
+    if(c==='ッ'){ if(out) out=out.slice(0,-1)+addBatchim(out.slice(-1),'ㅅ'); i++; continue; }
+    if(c==='ン'){ if(out) out=out.slice(0,-1)+addBatchim(out.slice(-1),'ㄴ'); else out+='ㄴ'; i++; continue; }
+    if(COMBO[c2]){ out+=COMBO[c2]; i+=2; continue; }
+    if(KMAP[c]){ out+=KMAP[c]; i++; continue; }
+    ok=false; i++; // 한자 등 변환 불가
+  }
+  return { ok: ok && out.trim().length>0, text: out.replace(/\s+/g,' ').trim() };
+}
+
+// 호칭 접미 (くん→군, さん→상 …) — 캐릭터명 끝에서 떼어 한글 호칭으로 변환
+const HON=[['ちゃん','짱'],['くん','군'],['君','군'],['さん','상'],['さま','님'],['様','님']];
+function stripHon(name){ for(const [jp,ko] of HON){ if(name.length>jp.length && name.endsWith(jp)) return {base:name.slice(0,-jp.length).trim(), hon:ko}; } return {base:name, hon:''}; }
+// 한 조각 → 캐릭터(한글) + 버전 + 호칭. 사전 → 가나음역 → (한자는 kuromoji 폴백 대상)
+function convChar(line){
+  // 한국어 이름은 번역 불필요 → 그대로 사용 (【재판】/[재판]만 제거)
+  if(/[가-힣]/.test(line)){ const ko=line.split(/\s*[【\[]/)[0].trim(); return ko ? {ok:true, base:ko, kr:ko} : {ok:false, raw:line.trim(), kanji:false}; }
+  let ver=''; for(const vk of Object.keys(DICT.versions)) if(line.includes(vk)){ ver=' '+DICT.versions[vk]; break; }
+  let namePart = line.split(/\s*(?:むむっと|未彩色|幼少|ver\.?|Ver\.?|【|（|\()/)[0].trim();
+  if(!namePart) return {ok:false, raw:line.trim(), ver, kanji:false};
+  const {base:nameBase, hon} = stripHon(namePart); namePart=nameBase;
+  if(!namePart) return {ok:false, raw:line.trim(), ver, hon, kanji:false};
+  for(const k of Object.keys(DICT.chars).sort((a,b)=>b.length-a.length)) if(namePart.includes(k)) return {ok:true, base:DICT.chars[k]+hon, kr:DICT.chars[k]+hon+ver, ver, hon, raw:namePart};
+  const tr=kanaToHangul(namePart);
+  if(tr.ok) return {ok:true, base:tr.text+hon, kr:tr.text+hon+ver, approx:true, ver, hon, raw:namePart};
+  return {ok:false, raw:namePart, ver, hon, kanji:/[㐀-鿿]/.test(namePart)};
+}
+// 제품명 줄 조립: 한 제품(=한 줄) 안의 &로 묶인 캐릭터들을 ' & '로 잇고, 접두어(테노히라 등) 부착
+function buildProductFromEntries(entries, prefix){
+  return entries.map(e=>{ const krs=e.filter(c=>c.kr).map(c=>c.kr); return krs.length ? (prefix||'')+krs.join(' & ') : ''; }).filter(Boolean).join('\n');
+}
+
+function parseJP(txt){
+  const r={};
+  const inc=(h,n)=>h.toLowerCase().includes(n.toLowerCase());   // 대소문자 무시 (gem→GEM)
+  for(const h of HEADS) if(h.kw.some(k=>inc(txt,k))){ r.headline=h.kr; break; }
+  for(const l of LINES) if(l.kw.some(k=>inc(txt,k))){ r.line=l.kr; break; }
+  const dm = txt.match(/予約開始[^0-9０-９]*([0-9０-９]{1,2})\s*月\s*([0-9０-９]{1,2})\s*日/) || txt.match(/예약[^0-9]*([0-9]{1,2})\s*월\s*([0-9]{1,2})\s*일/);
+  if(dm) r.date=z2h(dm[1])+'월 '+z2h(dm[2])+'일';
+  let dow='목'; const wk=txt.match(/[日일]\s*[（(]\s*([月火水木金土日월화수목금토일])\s*[）)]/);
+  if(wk) dow=({月:'월',火:'화',水:'수',木:'목',金:'금',土:'토',日:'일'})[wk[1]]||wk[1];
+  r.dow=dow;
+  // 작품: 해시태그(【…】 / #…) 우선 → 일본어 사전 → 한국어 작품목록 → 음역
+  let workJP=null; const hm = txt.match(/【\s*#?\s*([^】#][^】]*?)\s*】/) || txt.match(/(?:^|\n)\s*#\s*([^\s#\n】]+)/);
+  if(hm) workJP=hm[1].trim();
+  let bw=null; for(const jp of Object.keys(DICT.works)) if(inc(txt,jp)&&(!bw||jp.length>bw.length)) bw=jp;
+  let kw2=null; for(const w of KR_WORKS) if(txt.includes(w)&&(!kw2||w.length>kw2.length)) kw2=w;
+  let kwAlias=null, kwAliasRaw=null;   // 약칭(히트맨 리본 등) → 정식명
+  if(typeof KR_ALIAS!=='undefined') for(const a of Object.keys(KR_ALIAS)) if(txt.includes(a)&&(!kwAliasRaw||a.length>kwAliasRaw.length)){ kwAliasRaw=a; kwAlias=KR_ALIAS[a]; }
+  if(workJP && /[가-힣]/.test(workJP)){ r.work=workJP; r.jp=''; r.workRaw=workJP; }
+  else if(bw){ r.work=DICT.works[bw]; r.jp=bw; r.workRaw=bw; }
+  else if(kw2){ r.work=kw2; r.jp=''; r.workRaw=kw2; }     // 한국어 자유입력 작품(정식명)
+  else if(kwAlias){ r.work=kwAlias; r.jp=''; r.workRaw=kwAliasRaw; }   // 약칭 → 정식명 (줄에선 약칭을 지움)
+  else if(workJP && DICT.works[workJP]){ r.work=DICT.works[workJP]; r.jp=workJP; r.workRaw=workJP; }
+  else if(workJP){ const tw=kanaToHangul(workJP); if(tw.ok){ r.work=tw.text; r.workApprox=true; } r.jp=workJP; r.workRaw=workJP; }
+
+  // 테노히라 등 = 라인은 G.E.M. 시리즈, 제품명 앞엔 '테노히라 ' 접두어(고유명사) 부착
+  let charPrefix=''; if(/てのひら|테노히라|手のひら/.test(txt)) charPrefix='테노히라 ';
+  r.charPrefix=charPrefix;
+
+  // 캐릭터 줄 구조적 추출: 작품/라인/헤드라인/문맥 키워드를 줄에서 지우고 → 구분자로 분리
+  //  ／ / 、 = 서로 다른 제품(줄 분리),  ＆ & = 한 제품 안의 여러 캐릭터(한 줄에 ' & '로 연결)
+  const STRIP='\\s\\u3000|｜◇◤◢━╋◥◣＊*◆■□●○◯\\-–—=～~';
+  const DECO=new RegExp('['+STRIP+']','g');
+  const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const CTX=['初公開','公開','決定','受付','開始','新作','登場','シリーズ','プロジェクト',
+             '최초공개','공개','결정','시작','신작','등장','시리즈','프로젝트'];
+  const STRIPKW=[]; if(r.workRaw) STRIPKW.push(r.workRaw);
+  if(r.headline) STRIPKW.push(r.headline);   // 감지된 헤드라인 전체 문구 ("재판매 결정"이 "매"로 남는 것 방지)
+  if(r.line) STRIPKW.push(r.line);
+  for(const l of LINES) for(const k of l.kw) STRIPKW.push(k);
+  for(const h of HEADS) for(const k of h.kw) STRIPKW.push(k);
+  for(const k of CTX) STRIPKW.push(k);
+  STRIPKW.sort((a,b)=>b.length-a.length);
+  const stripKW=s=>{ let o=s; for(const k of STRIPKW){ if(inc(o,k)) o=o.replace(new RegExp(esc(k),'gi'),' '); } return o.replace(/\s+/g,' ').trim(); };
+  const nameLike=s=>/[ぁ-んァ-ヶ㐀-鿿가-힣A-Za-z]/.test(s);
+  const lines = txt.split('\n').map(s=>s.replace(/[　\s]+/g,' ').trim())
+    .map(s=>s.replace(new RegExp('^['+STRIP+']+|['+STRIP+']+$','g'),'').trim()).filter(Boolean);
+  const isDeco=s=>!s.replace(DECO,'').length || !nameLike(s);
+  const isTag=s=>/^[【#]/.test(s)||(/^G\.?E\.?M\./.test(s)&&!DICT.works[s]);
+  const isBody=s=>/[、。「」（）]/.test(s)||/(より|登場|です|ます|サウンド|シリーズに|♪|✨|メガ|発売中|お知らせ|仕様|楽しめる|등장|메가|피규어|가공|푹신|즐길|패턴|기대|받아보|입니다|습니다|합니다|됩니다|예정|소식|등장✨)/.test(s)||s.length>=20;
+  const isDate=s=>/予約|⏰|発売日|예약/.test(s)||/[0-9０-９]{1,2}\s*[月월]\s*[0-9０-９]{1,2}\s*[日일]/.test(s);
+  const entries=[], seen=new Set();
+  for(const s of lines){
+    if(isDeco(s)||isTag(s)||isBody(s)||isDate(s)) continue;
+    const stripped=stripKW(s);
+    if(!stripped||!nameLike(stripped)) continue;            // 작품/라인/헤드라인만 있던 줄 → 건너뜀
+    for(const entry of stripped.split(/[／/、]/).map(x=>x.trim()).filter(Boolean)){   // 다른 제품
+      if(!nameLike(entry)) continue;
+      const parts=[];
+      for(const piece of entry.split(/[＆&]/).map(x=>x.trim()).filter(Boolean)){       // 한 제품 안 여러 캐릭터
+        if(!nameLike(piece)) continue;
+        const cc=convChar(piece); const key=cc.base||cc.raw; if(!key||seen.has(key)) continue; seen.add(key); parts.push(cc);
+      }
+      if(parts.length) entries.push(parts);
+    }
+  }
+  r.entries=entries;
+  const allParts=entries.flat();
+  r.charLines=allParts;
+  r.product = buildProductFromEntries(entries, '');   // 접두어(테노히라)는 제품명에 넣지 않고 r.charPrefix로 따로 전달
+  const approx = allParts.filter(c=>c.approx).map(c=>c.raw+'→'+c.base);
+  if(r.workApprox && workJP) approx.unshift(workJP+'→'+r.work);
+  r.approx=approx;
+  r.warnRaw = allParts.filter(c=>!c.kr && !c.kanji).map(c=>c.raw);
+  r.pendingKanji = allParts.filter(c=>!c.kr && c.kanji).map(c=>c.raw);
+  return r;
+}
+
+// ── kuromoji.js 지연 로딩 (미등록 한자 이름 폴백, 최초 1회만) ──
+let _kuroPromise=null, _tokenizer=null;
+function loadScript(src){ return new Promise((res,rej)=>{ const el=document.createElement('script'); el.src=src; el.onload=()=>res(); el.onerror=()=>rej(new Error('script load fail')); document.head.appendChild(el); }); }
+function ensureKuromoji(){
+  if(_tokenizer) return Promise.resolve(_tokenizer);
+  if(_kuroPromise) return _kuroPromise;
+  _kuroPromise = (async()=>{
+    if(typeof kuromoji==='undefined') await loadScript('https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js');
+    _tokenizer = await new Promise((res,rej)=>{ kuromoji.builder({dicPath:'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/'}).build((e,t)=>e?rej(e):res(t)); });
+    return _tokenizer;
+  })();
+  return _kuroPromise;
+}
+function jpReading(tok, s){ let out=''; for(const t of tok.tokenize(s)) out += (t.reading && t.reading!=='*') ? t.reading : (t.surface_form||''); return out; }
+
+async function resolvePending(r){
+  const el=document.getElementById('srcStatus');
+  el.textContent='⏳ 한자 이름 읽기 사전 불러오는 중… (최초 1회 3~5초)'; el.style.color='#b8860b';
+  let tok;
+  try{ tok=await ensureKuromoji(); }
+  catch(e){ el.textContent='⚠ 한자 읽기 사전을 못 불러왔어요(오프라인/차단). 해당 이름은 3번에서 직접 입력하세요.'; el.style.color='var(--danger)'; return; }
+  const got=[]; const stuck=[];
+  for(const c of r.charLines){ if(!c.kr && c.kanji){
+    const rr=kanaToHangul(jpReading(tok, c.raw));
+    if(rr.ok){ c.kr=rr.text+(c.hon||'')+(c.ver||''); c.base=rr.text+(c.hon||''); c.approx=true; got.push(c.raw+'→'+rr.text); }
+    else stuck.push(c.raw);
+  } }
+  const prod=buildProductFromEntries(r.entries, '');
+  document.getElementById('t_product').value=prod; state.text.product=prod; render(); runValidation();
+  let msg = got.length ? ('✓ 한자 자동읽기(추정): '+got.join(', ')+' — 확인 필요') : '한자 자동읽기 결과 없음';
+  if(stuck.length) msg += ' · 못 읽음: '+stuck.join(', ')+' → 직접 입력';
+  el.textContent=msg; el.style.color='#b8860b';
+}
+
+function setSelect(id,val){ const el=document.getElementById(id); if(val&&[...el.options].some(o=>o.value===val)){ el.value=val; return true; } return false; }
+
+/* ── 이전 입력 캐시 (최근 5칸 · localStorage) ── */
+const SLOT_KEY='instaSlots_v1', SLOT_MAX=5;
+let appliedSource='';   // 현재 3번 필드가 만들어진 원문 (적용 시 갱신)
+function loadSlots(){ try{ return JSON.parse(localStorage.getItem(SLOT_KEY)||'[]'); }catch{ return []; } }
+function saveSlots(a){
+  a=a.slice(0,SLOT_MAX);
+  try{ localStorage.setItem(SLOT_KEY, JSON.stringify(a)); return; }catch(e){}
+  // 용량 초과 → 오래된 슬롯부터 사진을 비우며 재시도, 그래도 안 되면 사진 전부 제거
+  const b=a.map(s=>({...s}));
+  for(let i=b.length-1;i>=0;i--){ b[i].imgData=''; try{ localStorage.setItem(SLOT_KEY, JSON.stringify(b)); return; }catch(e){} }
+}
+function snapshotWith(src){ return { ts:Date.now(), source:src, headline:state.text.headline, work:state.work, line:state.line, linePrefix:state.linePrefix, product:state.text.product, jp:state.jp, saleDate:state.saleDate, saleDow:state.saleDow, bullet:state.bullet, imgData:state.imgData, fg:{...state.fg}, bg:{...state.bg}, size:{...state.size} }; }
+function slotLabel(s){ const w=(s.work||'').trim(); if(w && w!=='[작품명]') return w + (s.line?(' · '+s.line):''); const f=(s.source||'').split('\n').map(x=>x.trim()).filter(Boolean)[0]; return f || '(빈 입력)'; }
+function pushSlot(snap, skipRender){
+  if((!snap.work || snap.work==='[작품명]') && !(snap.product||'').trim() && !(snap.source||'').trim()) return;
+  let a=loadSlots();
+  if(a.length && a[0].source===snap.source && a[0].product===snap.product && a[0].work===snap.work) return; // 직전과 동일하면 스킵
+  a.unshift(snap); a=a.slice(0,SLOT_MAX); saveSlots(a); if(!skipRender) renderSlots();
+}
+function applySlot(s){
+  if(appliedSource.trim()) pushSlot(snapshotWith(appliedSource));   // 현재 작업 먼저 보존
+  document.getElementById('t_source').value = s.source||'';
+  if(s.headline){ setSelect('t_headline',s.headline); state.text.headline=s.headline; }
+  const wv = s.work || '[작품명]'; document.getElementById('t_work').value=wv; state.work=wv;
+  if(s.line){ setSelect('t_line',s.line); state.line=s.line; }
+  state.linePrefix = s.linePrefix||'';
+  document.getElementById('t_product').value=s.product||''; state.text.product=s.product||'';
+  document.getElementById('t_jp').value=s.jp||''; state.jp=s.jp||'';
+  document.getElementById('t_saledate').value=s.saleDate||''; state.saleDate=s.saleDate||''; state.saleDow=s.saleDow||'목';
+  state.bullet=!!s.bullet; document.getElementById('c_bullet').checked=state.bullet;
+  if(s.fg) state.fg={...state.fg,...s.fg}; if(s.bg) state.bg={...state.bg,...s.bg}; if(s.size) state.size={...state.size,...s.size};
+  appliedSource = s.source||'';
+  composeTitle(); updatePreview(); syncControlsUI(); checkWorkSpacing();
+  if(s.imgData){ loadImage(s.imgData, true); } else { render(); runValidation(); }   // 사진 복원(크롭 유지)
+  renderSlots();
+  const el=document.getElementById('srcStatus'); el.textContent='↺ 이전 입력을 불러왔습니다.'+(s.imgData?' (사진 포함)':''); el.style.color='#2e7d52';
+}
+function deleteSlot(i){ let a=loadSlots(); a.splice(i,1); saveSlots(a); renderSlots(); }
+function renderSlots(){
+  const box=document.getElementById('slots'); if(!box) return;
+  const a=loadSlots();
+  if(!a.length){ box.innerHTML='<div class="slot-empty">아직 저장된 입력이 없습니다. 원문을 [적용]하면 직전 작업이 여기에 쌓입니다.</div>'; return; }
+  box.innerHTML='';
+  a.forEach((s,i)=>{
+    const d=document.createElement('div'); d.className='slot';
+    const t=document.createElement('span'); t.className='s-title'; t.textContent=slotLabel(s);
+    const m=document.createElement('span'); m.className='s-meta'; try{ m.textContent=new Date(s.ts).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch{}
+    const x=document.createElement('span'); x.className='s-del'; x.textContent='✕'; x.title='삭제';
+    d.appendChild(t); d.appendChild(m); d.appendChild(x);
+    d.addEventListener('click',e=>{ if(e.target===x){ deleteSlot(i); } else { applySlot(s); } });
+    box.appendChild(d);
+  });
+}
+
+function applySource(){
+  const txt = document.getElementById('t_source').value;
+  if(appliedSource.trim()) pushSlot(snapshotWith(appliedSource));  // 직전 작업을 슬롯에 보존
+  const grab = re => { const m = txt.match(re); return m ? m[1].trim() : null; };
+  let head=grab(/^\s*헤드라인\s*[:：]\s*(.+)$/m), work=grab(/^\s*작품(?:명)?\s*[:：]\s*(.+)$/m),
+      line=grab(/^\s*(?:라인|시리즈)\s*[:：]\s*(.+)$/m), prod=grab(/^\s*제품명\s*[:：]\s*(.+)$/m),
+      jp=grab(/^\s*일본어\s*[:：]\s*(.+)$/m), date=grab(/^\s*(?:예약판매일|예약일)\s*[:：]\s*(.+)$/m);
+  let approx=[], warnRaw=[], pendingKanji=[], dow='목', R=null;
+  if(!(head||work||line||prod)){ R=parseJP(txt); head=R.headline; work=R.work; line=R.line; prod=R.product; jp=R.jp; date=R.date; approx=R.approx||[]; warnRaw=R.warnRaw||[]; pendingKanji=R.pendingKanji||[]; dow=R.dow||'목'; }
+  const miss=[];
+  if(head){ if(!setSelect('t_headline',head)) miss.push('헤드라인'); else state.text.headline=head; } else miss.push('헤드라인');
+  { const wv = work || '[작품명]'; document.getElementById('t_work').value = wv; state.work = wv; if(!work) miss.push('작품'); }
+  if(line){ if(!setSelect('t_line',line)) miss.push('라인('+line+')'); else state.line=line; } else miss.push('라인');
+  { const v=(prod||'').split(/[\n／/]/).map(s=>s.trim()).filter(Boolean).join('\n'); document.getElementById('t_product').value=v; state.text.product=v; if(!v && !pendingKanji.length) miss.push('제품명(캐릭터)'); }
+  document.getElementById('t_jp').value = jp||''; state.jp = jp||'';
+  document.getElementById('t_saledate').value = date||''; state.saleDate = date||''; state.saleDow = dow;
+  state.linePrefix = (R && R.charPrefix) || '';   // 테노히라 등 접두어 (원고 시리즈 줄에 사용)
+  appliedSource = txt;
+  composeTitle(); updatePreview(); render(); runValidation(); renderSlots(); checkWorkSpacing();
+  const el=document.getElementById('srcStatus');
+  const spc=spacingIssues(txt);   // 원문 자체의 띄어쓰기 오류
+  const spcMsg = spc.length ? ('⚠ 띄어쓰기 오류가 있습니다: '+spc.map(i=>i.wrong+' → '+i.right).join(', ')) : '';
+  if(!head&&!work&&!line&&!prod){ el.textContent = spcMsg || '⚠ 인식 실패 — 일본어 원문을 그대로 붙여넣어 보세요. 그래도 안 되면 3번 칸에 직접 입력하세요.'; el.style.color='var(--danger)'; return; }
+  let msg='✓ 자동완성 완료 — 3번에서 확인하세요.', col='#2e7d52';
+  if(spcMsg){ msg=spcMsg+' · 나머지는 자동완성됨'; col='var(--danger)'; }
+  if(warnRaw.length){ msg='✓ 일부 자동완성 · 사전에 없어 못 채운 이름: '+warnRaw.join(', ')+' → 3번에서 직접 입력'; col='#b8860b'; }
+  else if(miss.length){ msg='✓ 일부 자동완성 · 못 채운 항목: '+miss.join(', ')+' → 3번에서 직접 입력'; col='#b8860b'; }
+  if(approx.length){ msg+=' · ⚠음역(추정): '+approx.join(', ')+' (확인 필요)'; col='#b8860b'; }
+  el.textContent=msg; el.style.color=col;
+  if(pendingKanji.length && R) resolvePending(R); // 미등록 한자만 kuromoji로 비동기 보강
+}
+
+/* ── 원고(캡션) 자동 생성 ──
+   · 긴 작품(약칭 등록됨): [헤드라인] 풀작품명  /  시리즈 접두어 약칭  /  •캐릭터…
+   · 짧은 작품:            [헤드라인] 작품 시리즈 /  시리즈 접두어    /  •캐릭터…
+   · 캐릭터 줄엔 시리즈·접두어를 붙이지 않음 */
+function buildCopy(){
+  const h=state.text.headline;
+  const work=(state.work||'').trim();
+  const series=(state.line||'').trim();
+  const prefix=(state.linePrefix||'').trim();
+  const alias=(typeof WORK_SHORT!=='undefined' && WORK_SHORT[work]) ? WORK_SHORT[work] : '';
+  const isLong = !!alias;   // 약칭이 등록된 작품 = '긴 작품'
+  // 1줄: 헤드라인 + (긴 작품이면 풀네임만 / 짧으면 작품+시리즈)
+  const headTitle = (isLong ? work : (work+' '+series)).trim().replace(/\s+/g,' ');
+  // 2줄(시리즈 줄): 시리즈 + 접두어 + (긴 작품이면 약칭)
+  const titleB = [series, prefix, (isLong?alias:'')].filter(Boolean).join(' ').trim();
+  // 캐릭터 줄 (시리즈/접두어 없이)
+  let prodLines=state.text.product.split('\n').map(s=>s.trim()).filter(Boolean);
+  if(h==='한정 재판매 결정') prodLines=prodLines.map(l=>l+' 【한정 재판매판】');
+  if(state.bullet) prodLines=prodLines.map(l=>'• '+l);
+  const block=[titleB, prodLines.join('\n')].filter(Boolean).join('\n');   // 시리즈 줄 + 캐릭터들 = 한 단락
+  const tag = s => '#'+s.replace(/[^\w가-힣ぁ-んァ-ヶ㐀-鿿]/g,''); // ☆×・공백 등 태그 깨는 기호 제거
+  const raw=[ state.jp.trim()?tag(state.jp):null, work?tag(work):null, '#메가하우스공식스토어' ].filter(Boolean);
+  const tags=[...new Set(raw)].join(' ');
+  // 개발중(원형/채색원형 최초공개) → 팔로우 멘트 / 그 외(판매정보) → ※ 멘트 (줄바꿈 고정)
+  const isDev = (h==='원형 최초공개' || h==='채색원형 최초공개');
+  const bottom = isDev
+    ? '메가하우스 공식 스토어를 팔로우하고\n기다리는 굿즈의 후속 정보를 가장 빠르게 받아보세요!'
+    : '※ 예약 오픈 시 별도 공지\n※ 일본 현지 기준 소식으로, 국내외 사정에 따라 일부 사항이 변동될 수 있습니다.';
+  const parts = [`📢[${h}] ${headTitle}`.trim(), block];
+  if(state.saleDate.trim()) parts.push(`⏰${state.saleDate.trim()}(${state.saleDow||'목'}) 예약판매 시작!`);
+  parts.push(bottom, tags);
+  return parts.join('\n\n');
+}
+
+/* ── 이미지 입력 ── */
+// 슬롯 저장용으로 사진을 축소 JPEG dataURL로 압축 (localStorage 용량 절약)
+function compressImage(img, max=1000, q=0.8){
+  try{ const sc=Math.min(1, max/Math.max(img.width,img.height)); const w=Math.round(img.width*sc), h=Math.round(img.height*sc);
+    const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(img,0,0,w,h); return c.toDataURL('image/jpeg',q); }
+  catch{ return ''; }
+}
+function loadImage(src, keepView){ return new Promise(res=>{ const im=new Image(); im.onload=()=>{ state.img=im; if(!keepView) state.fg={zoom:1,panX:0,panY:0}; state.imgData=compressImage(im); render(); runValidation(); res(im); }; im.src=src; }); }
+window.__loadImage = loadImage;
+// 슬라이더/스텝퍼 UI를 state 값에 맞춰 갱신
+function syncControlsUI(){
+  const z=document.getElementById('s_zoom'),op=document.getElementById('s_op'),bl=document.getElementById('s_blur');
+  z.value=Math.round(state.fg.zoom*100); document.getElementById('v_zoom').textContent=state.fg.zoom.toFixed(1)+'×';
+  op.value=Math.round(state.bg.opacity*100); document.getElementById('v_op').textContent=Math.round(state.bg.opacity*100)+'%';
+  bl.value=state.bg.blur; document.getElementById('v_blur').textContent=state.bg.blur;
+  document.getElementById('v_titleSize').textContent=state.size.title;
+  document.getElementById('v_productSize').textContent=state.size.product;
+}
+document.getElementById('file').addEventListener('change', async e=>{ const f=e.target.files[0]; if(f) await loadImage(URL.createObjectURL(f)); });
+['dragover','drop'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault()));
+document.addEventListener('drop', async e=>{ const f=[...(e.dataTransfer?.files||[])].find(x=>x.type.startsWith('image/')); if(f) await loadImage(URL.createObjectURL(f)); });
+document.addEventListener('paste', async e=>{ const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/')); if(it){ const f=it.getAsFile(); if(f) await loadImage(URL.createObjectURL(f)); } });
+
+/* ── 사진 위치 드래그 / 휠 확대 ── */
+let _drag=false, _lx=0, _ly=0;
+cv.addEventListener('pointerdown', e=>{ if(!state.img) return; _drag=true; _lx=e.clientX; _ly=e.clientY; cv.classList.add('drag'); try{ cv.setPointerCapture(e.pointerId); }catch{} });
+cv.addEventListener('pointermove', e=>{ if(!_drag||!state.img) return; const sc=cv.width/cv.getBoundingClientRect().width; state.fg.panX+=(e.clientX-_lx)*sc; state.fg.panY+=(e.clientY-_ly)*sc; _lx=e.clientX; _ly=e.clientY; render(); });
+function _endDrag(){ _drag=false; cv.classList.remove('drag'); }
+cv.addEventListener('pointerup', _endDrag); cv.addEventListener('pointercancel', _endDrag); cv.addEventListener('pointerleave', ()=>{ if(_drag) _endDrag(); });
+cv.addEventListener('wheel', e=>{ if(!state.img) return; e.preventDefault(); const nz=Math.max(1,Math.min(3, state.fg.zoom*(e.deltaY<0?1.06:0.94))); state.fg.zoom=nz; const zr=document.getElementById('s_zoom'); zr.value=Math.round(nz*100); document.getElementById('v_zoom').textContent=nz.toFixed(1)+'×'; render(); }, {passive:false});
+
+/* ── 입력 연결 ── */
+document.getElementById('t_headline').addEventListener('change', e=>{ state.text.headline=e.target.value; render(); });
+document.getElementById('t_work').addEventListener('input', e=>{ state.work=e.target.value; composeTitle(); updatePreview(); render(); runValidation(); checkWorkSpacing(); });
+document.getElementById('t_work').addEventListener('focus', e=>{ if(e.target.value==='[작품명]') e.target.select(); });  // 더미는 클릭 시 전체선택
+document.getElementById('t_line').addEventListener('change', e=>{ state.line=e.target.value; composeTitle(); updatePreview(); render(); });
+document.getElementById('t_product').addEventListener('input', e=>{ state.text.product=e.target.value; render(); runValidation(); });
+document.getElementById('t_footer').addEventListener('input', e=>{ state.text.footer=e.target.value; render(); });
+document.getElementById('t_jp').addEventListener('input', e=>{ state.jp=e.target.value; });
+document.getElementById('t_saledate').addEventListener('input', e=>{ state.saleDate=e.target.value; });
+document.getElementById('t_source').addEventListener('input', ()=>runValidation());
+document.getElementById('applySrc').addEventListener('click', applySource);
+document.getElementById('c_bullet').addEventListener('change', e=>{ state.bullet=e.target.checked; render(); });
+
+const z=document.getElementById('s_zoom'),op=document.getElementById('s_op'),bl=document.getElementById('s_blur');
+z.addEventListener('input',()=>{ state.fg.zoom=z.value/100; v_zoom.textContent=(z.value/100).toFixed(1)+'×'; render(); });
+op.addEventListener('input',()=>{ state.bg.opacity=op.value/100; v_op.textContent=op.value+'%'; render(); });
+bl.addEventListener('input',()=>{ state.bg.blur=+bl.value; v_blur.textContent=bl.value; render(); });
+document.querySelectorAll('.stepper button').forEach(b=>b.addEventListener('click',()=>{ const k=b.dataset.k,d=+b.dataset.d; state.size[k]=Math.max(28,Math.min(160,state.size[k]+d)); document.getElementById('v_'+k+'Size').textContent=state.size[k]; render(); }));
+
+// 트위터 가중 글자수: 한글·일본어·한자 등 CJK = 2, 그 외(영문/숫자/기호) = 1. 한도 280 (= 한글 140자)
+function tweetWeight(str){
+  let w=0; for(const ch of str){ const c=ch.codePointAt(0);
+    const cjk = (c>=0x1100&&c<=0x11FF)||(c>=0x3040&&c<=0x30FF)||(c>=0x3130&&c<=0x318F)||(c>=0x3400&&c<=0x4DBF)||(c>=0x4E00&&c<=0x9FFF)||(c>=0xAC00&&c<=0xD7A3)||(c>=0xF900&&c<=0xFAFF)||(c>=0xFF00&&c<=0xFFEF)||c>=0x1F000;
+    w += cjk ? 2 : 1; }
+  return w;
+}
+function updateCopyCount(){
+  const t=document.getElementById('t_copy').value;
+  const w=tweetWeight(t), chars=[...t].length;
+  const el=document.getElementById('copyCount');
+  el.innerHTML = '<b>'+w+'</b> / 280 (한글 '+Math.ceil(w/2)+'/140 · 실제 '+chars+'자)' + (w>280 ? ' · 글자수 조정이 필요합니다.' : '');
+  el.classList.toggle('over', w>280);
+}
+document.getElementById('t_copy').addEventListener('input', updateCopyCount);
+document.getElementById('genCopy').addEventListener('click', ()=>{ document.getElementById('t_copy').value=buildCopy(); updateCopyCount(); });
+document.getElementById('doCopy').addEventListener('click', async ()=>{ const t=document.getElementById('t_copy'); try{ await navigator.clipboard.writeText(t.value); }catch{ t.select(); document.execCommand('copy'); } const b=document.getElementById('doCopy'); const o=b.textContent; b.textContent='복사됨!'; setTimeout(()=>b.textContent=o,1200); });
+
+document.getElementById('download').addEventListener('click',()=>{ if(!runValidation()) return; cv.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='insta-card.png'; a.click(); },'image/png'); });
+
+window.addEventListener('beforeunload', ()=>{ if(appliedSource.trim()) pushSlot(snapshotWith(appliedSource), true); });  // 닫기 전 현재 작업도 보존
+(async ()=>{ try{ await document.fonts.load('800 76px Pretendard'); await document.fonts.load('300 60px Pretendard'); }catch{} composeTitle(); updatePreview(); render(); runValidation(); renderSlots(); checkWorkSpacing(); updateCopyCount(); })();
+</script>
+</body>
+</html>
