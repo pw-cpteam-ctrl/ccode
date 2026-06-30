@@ -89,7 +89,8 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .stage{flex:1;height:100vh;overflow:auto;display:flex;flex-direction:column;align-items:center;
   background:#dedad2;background-image:radial-gradient(#c8c4bc 1px,transparent 1px);
   background-size:20px 20px;padding:28px 28px 60px;gap:24px;}
-.poster-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;}
+.stage-toolbar{width:100%;display:flex;justify-content:center;flex-shrink:0;}
+.poster-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:6px;overflow:hidden;}
 .scaler{transform-origin:top center;display:inline-block;}
 .page-badge{background:rgba(0,0,0,.3);color:#fff;font-size:11px;font-weight:700;
   padding:4px 12px;border-radius:20px;align-self:flex-start;}
@@ -277,11 +278,13 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 
 <!-- ═══ 스테이지 ═══ -->
 <div class="stage" id="stage">
-  <div style="position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.25);backdrop-filter:blur(4px);border-radius:20px;padding:6px 16px;margin-bottom:-10px;align-self:center;">
+  <div class="stage-toolbar" style="position:sticky;top:0;z-index:10;">
+  <div style="display:inline-flex;align-items:center;gap:10px;background:rgba(0,0,0,.25);backdrop-filter:blur(4px);border-radius:20px;padding:6px 16px;">
     <span style="color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">미리보기</span>
     <input type="range" id="previewZoom" min="20" max="100" value="50" step="1" style="width:120px;accent-color:#fff;cursor:pointer;" oninput="applyPreviewZoom(this.value)"/>
     <span id="previewZoomVal" style="color:#fff;font-size:11px;min-width:32px;">50%</span>
-  </div>
+  </div></div>
+  <div id="postersRow" style="display:flex;flex-direction:row;gap:24px;align-items:flex-start;">
   <div class="poster-wrap" id="wrap1">
     <div class="page-badge">1페이지</div>
     <div class="scaler" id="sc1">
@@ -303,7 +306,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
     </div>
   </div>
 
-  <div class="poster-wrap" id="wrap2" style="display:none">
+  <div class="poster-wrap" id="wrap2" style="display:none;">
     <div class="page-badge">2페이지</div>
     <div class="scaler" id="sc2">
       <div class="poster" id="poster2">
@@ -323,6 +326,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
       </div>
     </div>
   </div>
+  </div><!-- /postersRow -->
 </div>
 
 <div class="toast" id="toast"></div>
@@ -993,16 +997,21 @@ function applyPreviewZoom(pct) {
   _previewZoomPct = +pct;
   const el = $('#previewZoom'); if (el) el.value = pct;
   const vEl = $('#previewZoomVal'); if (vEl) vEl.textContent = pct + '%';
-  const avail = $('#stage').clientWidth - 56;
-  const autoScale = Math.min(1, avail / 1080);
-  // pct 50 = autoScale, pct 100 = 1.0, pct 20 = autoScale*(20/50)
+  const twoPages = pages[1].length > 0;
+  const stageW = $('#stage').clientWidth - 56;
+  const slotW = twoPages ? (stageW - 24) / 2 : stageW;
+  const autoScale = Math.min(1, slotW / 1080);
   const scale = autoScale * (pct / 50);
   ['sc1','sc2'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.style.transform = `scale(${scale})`;
-    el.style.width = '1080px';
-    el.style.height = (1350 * scale) + 'px';
+    const sc = document.getElementById(id);
+    if (!sc) return;
+    sc.style.transformOrigin = 'top left';
+    sc.style.transform = `scale(${scale})`;
+    sc.style.width = '1080px';
+    sc.style.height = (1350 * scale) + 'px';
+    // shrink the poster-wrap to visual width so siblings sit side-by-side
+    const wrap = sc.parentElement;
+    if (wrap) wrap.style.width = Math.round(1080 * scale) + 'px';
   });
 }
 

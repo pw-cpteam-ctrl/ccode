@@ -3,43 +3,38 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>메가하우스 툴 모음</title>
+<title>Presence World 툴킷</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0;}
-body{background:#f0ede7;font-family:-apple-system,'Malgun Gothic',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 16px;}
-h1{font-size:15px;font-weight:700;color:#7d7568;letter-spacing:.5px;margin-bottom:24px;}
-.cards{display:flex;flex-direction:column;gap:12px;width:100%;max-width:380px;}
-.card{background:#fff;border-radius:12px;padding:22px 24px;box-shadow:0 2px 12px rgba(0,0,0,.07);display:flex;align-items:center;justify-content:space-between;gap:16px;text-decoration:none;color:inherit;transition:box-shadow .15s,transform .1s;}
-.card:hover{box-shadow:0 4px 20px rgba(0,0,0,.12);transform:translateY(-1px);}
-.card-info{}
-.card-info .name{font-size:14px;font-weight:700;color:#252018;margin-bottom:3px;}
-.card-info .desc{font-size:11.5px;color:#7d7568;line-height:1.5;}
-.arrow{font-size:18px;color:#1452c0;flex-shrink:0;}
+*{box-sizing:border-box;}
+body{margin:0;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f0ede7;color:#252018;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:60px 20px;}
+h1{font-size:22px;font-weight:800;margin:0 0 6px;letter-spacing:-0.5px;}
+p{font-size:13px;color:#7d7568;margin:0 0 40px;}
+.grid{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;max-width:600px;}
+.card{background:#fff;border:1px solid #ddd8ce;border-radius:14px;padding:24px 28px;width:260px;text-decoration:none;color:inherit;transition:box-shadow .15s,transform .15s;}
+.card:hover{box-shadow:0 6px 24px rgba(0,0,0,.1);transform:translateY(-2px);}
+.card .icon{font-size:32px;margin-bottom:12px;}
+.card .name{font-size:15px;font-weight:700;margin-bottom:4px;}
+.card .desc{font-size:12px;color:#7d7568;line-height:1.5;}
 </style>
 </head>
 <body>
-<h1>MEGAHOUSE TOOLS</h1>
-<div class="cards">
-  <a class="card" href="insta-gen/index.html">
-    <div class="card-info">
-      <div class="name">인스타 카드 생성기</div>
-      <div class="desc">사진 1장 → 인스타용 1080×1350 카드</div>
-    </div>
-    <span class="arrow">→</span>
-  </a>
+<h1>Presence World 툴킷</h1>
+<p>내부 제작 도구 모음</p>
+<div class="grid">
   <a class="card" href="megahouse.html">
-    <div class="card-info">
-      <div class="name">신제품 예고 메이커</div>
-      <div class="desc">헤더·푸터 포함 포스터 · 최대 12장</div>
-    </div>
-    <span class="arrow">→</span>
+    <div class="icon">🏠</div>
+    <div class="name">메가하우스 신제품 예고 메이커</div>
+    <div class="desc">월별 신제품 예고 포스터 이미지를 만드는 도구 (1080×1350px)</div>
   </a>
   <a class="card" href="megahouse-v2.html">
-    <div class="card-info">
-      <div class="name">포토 콜라주 메이커</div>
-      <div class="desc">사각형 그리드 · 캔버스 3종 (2·4·6장)</div>
-    </div>
-    <span class="arrow">→</span>
+    <div class="icon">🖼️</div>
+    <div class="name">포토 콜라주 메이커</div>
+    <div class="desc">사각형 그리드 · 캔버스 3종 선택 (2·4·6장)</div>
+  </a>
+  <a class="card" href="insta-gen/index.html">
+    <div class="icon">📸</div>
+    <div class="name">인스타 카드 생성기</div>
+    <div class="desc">사진 1장 → 인스타용 카드 이미지 제작</div>
   </a>
 </div>
 </body>
