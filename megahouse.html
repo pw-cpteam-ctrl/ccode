@@ -158,8 +158,8 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 /* 푸터 */
 .p-ft{background:#fff;padding:0 var(--gap);display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;height:54px;}
 .p-ft-note{color:#555;font-size:18px;font-weight:500;flex:1;text-align:center;}
-.p-ft-logo-wrap{flex-shrink:0;display:flex;align-items:center;justify-content:flex-end;overflow:visible;}
-.p-ft-logo{height:32px;width:auto;display:block;transform-origin:right center;}
+.p-ft-logo-wrap{flex-shrink:0;display:flex;align-items:center;justify-content:flex-end;}
+.p-ft-logo{height:32px;width:auto;display:block;}
 
 /* 2-section panel toggles */
 .psec-toggle{width:100%;text-align:left;padding:10px 12px;border-radius:8px;border:none;
@@ -897,8 +897,8 @@ function toggleHeader() {
 function syncLogoSize() {
   const topSz = $('#logoSize').value + 'px';
   document.querySelectorAll('.p-logo').forEach(el => el.style.height = topSz);
-  const pwScale = (+$('#pwLogoSize').value) / 32;
-  document.querySelectorAll('.p-ft-logo').forEach(el => el.style.transform = `scale(${pwScale})`);
+  const pwSz = $('#pwLogoSize').value + 'px';
+  document.querySelectorAll('.p-ft-logo').forEach(el => el.style.height = pwSz);
 }
 function initWrapLogos(pg) {
   const logoEl = document.getElementById('logo'+pg);
