@@ -319,6 +319,34 @@ let blurBright = 80;
 let dragSrc = null;
 const $ = s => document.querySelector(s);
 
+/* ─── Undo stack ─── */
+const undoStack = [];
+const UNDO_MAX = 30;
+function pushUndo() {
+  undoStack.push({
+    pages: JSON.parse(JSON.stringify(pages)),
+    idSeq,
+    rowFontSizes: JSON.parse(JSON.stringify(rowFontSizes)),
+    firstRowFlex: JSON.parse(JSON.stringify(firstRowFlex)),
+    curPage,
+  });
+  if (undoStack.length > UNDO_MAX) undoStack.shift();
+}
+function undo() {
+  if (!undoStack.length) { toast('더 이상 되돌릴 수 없습니다'); return; }
+  const s = undoStack.pop();
+  pages.length = 0; s.pages.forEach(p => pages.push(p));
+  idSeq = s.idSeq;
+  rowFontSizes.length = 0; s.rowFontSizes.forEach(r => rowFontSizes.push(r));
+  firstRowFlex.length = 0; s.firstRowFlex.forEach(f => firstRowFlex.push(f));
+  curPage = Math.min(s.curPage, pages.length);
+  // rebuild poster wraps
+  document.getElementById('postersRow').innerHTML = '';
+  pages.forEach((_, i) => ensurePosterWrap(i+1));
+  refresh(true);
+  toast('실행 취소');
+}
+
 /* ═══════════════════════════════════════
    페이지 동적 생성
 ═══════════════════════════════════════ */
@@ -1081,12 +1109,16 @@ function switchTab(pg) {
 /* ═══════════════════════════════════════
    전체 갱신
 ═══════════════════════════════════════ */
-function refresh() {
+let _refreshing = false;
+function refresh(noUndo) {
+  if (!noUndo && !_refreshing) pushUndo();
+  _refreshing = true;
   renderTabs();
   renderItemList();
   pages.forEach((_, i) => { ensurePosterWrap(i+1); renderGrid(i+1); });
   renderRowControls();
   requestAnimationFrame(fitScale);
+  _refreshing = false;
 }
 
 /* ═══════════════════════════════════════
@@ -1224,11 +1256,21 @@ syncHeader();
 syncLogoSize();
 syncBadgeStyle();
 syncGrad();
-refresh();
+refresh(true);
 
 // auto-save on any data change — hook into refresh
 const _origRefresh = refresh;
-window.refresh = function() { _origRefresh(); saveState(); };
+window.refresh = function(noUndo) { _origRefresh(noUndo); saveState(); };
+
+// Ctrl+Z undo
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement.isContentEditable) return;
+    e.preventDefault();
+    undo();
+  }
+});
 </script>
 </body>
 </html>
