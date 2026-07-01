@@ -980,7 +980,7 @@ function addFiles(files) {
         rowFontSizes.push([36,36,36,36]);
         firstRowFlex.push(null);
       }
-      pages[pg - 1].push({id:idSeq++, src, name:'', scale:1, ox:0, oy:0});
+      pages[pg - 1].push({id:idSeq++, src, name:'', scale:1, ox:0, oy:0, blur:true});
       if (--pending === 0) {
         pages.forEach((_, i) => ensurePosterWrap(i+1));
         refresh();
