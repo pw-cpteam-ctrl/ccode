@@ -798,8 +798,10 @@ function makeItemRow(it, i, pg) {
   wrap.draggable = true;
   wrap.dataset.pg = pg; wrap.dataset.idx = i;
 
-  // drag handle
-  const dh = document.createElement('span'); dh.className = 'drag-handle'; dh.textContent = '⠿';
+  // drag handle + 번호 통합
+  const dh = document.createElement('span'); dh.className = 'drag-handle';
+  dh.innerHTML = `⠿<span style="font-size:10px;font-weight:700;line-height:1;margin-top:2px;">${i+1}</span>`;
+  dh.style.cssText += 'display:flex;flex-direction:column;align-items:center;gap:1px;';
   wrap.appendChild(dh);
 
   // 썸네일 + 교체 버튼
@@ -820,11 +822,6 @@ function makeItemRow(it, i, pg) {
   });
   thumbWrap.append(thumb, thumbRepl);
   wrap.appendChild(thumbWrap);
-
-  // 번호
-  const numEl = document.createElement('div'); numEl.className = 'num';
-  numEl.textContent = `#${i+1}`;
-  wrap.appendChild(numEl);
 
   // 입력칸 + 재판
   const grow = document.createElement('div'); grow.className = 'grow';
@@ -883,7 +880,17 @@ function makeItemRow(it, i, pg) {
   memoLbl.textContent = '메모';
   memoWrap.append(memoChk, memoLbl);
 
-  inpRow.append(inp, rpWrap, blurWrap, wbWrap, memoWrap);
+  const spWrap = document.createElement('label');
+  spWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;cursor:pointer;height:100%;justify-content:center;';
+  const spChk = document.createElement('input'); spChk.type='checkbox'; spChk.checked=!!it.special;
+  spChk.style.cssText = 'width:14px;height:14px;accent-color:var(--ui-accent);cursor:pointer;';
+  spChk.addEventListener('change', ()=>{ it.special=spChk.checked; saveState(); });
+  const spLbl = document.createElement('span');
+  spLbl.style.cssText = 'font-size:9px;color:var(--ui-sub);line-height:1;';
+  spLbl.textContent = '특전';
+  spWrap.append(spChk, spLbl);
+
+  inpRow.append(inp, rpWrap, blurWrap, wbWrap, memoWrap, spWrap);
   grow.appendChild(inpRow);
 
   // 메모 컨트롤 행 (체크 시 표시)
