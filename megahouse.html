@@ -116,13 +116,14 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .p-store{font-size:22px;font-weight:800;letter-spacing:5px;opacity:.95;flex:1;text-align:center;}
 .p-open{font-weight:700;font-size:38px;color:#FFE500;line-height:1;white-space:nowrap;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.15);flex-shrink:0;}
 .p-title{font-family:'Paperlogy','Pretendard',sans-serif;font-weight:900;font-size:92px;line-height:1;letter-spacing:-2px;text-shadow:0 3px 0 rgba(0,0,0,.1);text-align:center;}
-/* 재판 스티커 — 이름 옆 인라인 */
-.reprint-badge{
-  display:inline-block;
-  background:#0d1580;color:#fff;font-weight:900;font-size:.72em;
+/* 재판 / 특전 스티커 */
+.reprint-badge,.special-badge{
+  display:inline-block;font-weight:900;font-size:.72em;
   padding:2px 10px;border-radius:6px;letter-spacing:-.2px;
   vertical-align:middle;margin-left:8px;white-space:nowrap;
 }
+.reprint-badge{background:#0d1580;color:#fff;}
+.special-badge{background:#111;color:#fff;text-shadow:none!important;}
 
 /* 그리드 — flex 1 = 남은 공간 꽉 채움 */
 .p-grid{flex:1;padding:var(--gap);display:flex;flex-direction:column;gap:var(--gap);background:#fff;min-height:0;}
@@ -574,7 +575,7 @@ function makeCell(it, ri, pg) {
   cell.appendChild(ci);
 
   // Always render .name div if there's a name OR reprint badge OR memo
-  if ((it.name && it.name.trim()) || it.reprint || it.memoOn) {
+  if ((it.name && it.name.trim()) || it.reprint || it.special || it.memoOn) {
     const nm = document.createElement('div');
     nm.className = 'name';
 
@@ -624,6 +625,12 @@ function makeCell(it, ri, pg) {
       badge.className = 'reprint-badge';
       badge.textContent = '재판';
       nm.appendChild(badge);
+    }
+    if (it.special) {
+      const spBadge = document.createElement('span');
+      spBadge.className = 'special-badge';
+      spBadge.textContent = '특전';
+      nm.appendChild(spBadge);
     }
     // 메모 옆 배치
     if (it.memoOn && it.memo && (!it.memoPos || it.memoPos === 'side')) {
@@ -850,25 +857,29 @@ function makeItemRow(it, i, pg) {
   rpLbl.textContent = '재판';
   rpWrap.append(chk, rpLbl);
 
-  const blurWrap = document.createElement('label');
-  blurWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;cursor:pointer;height:100%;justify-content:center;';
-  const blurChk = document.createElement('input'); blurChk.type='checkbox'; blurChk.checked=!!it.blur;
-  blurChk.style.cssText = 'width:14px;height:14px;accent-color:var(--ui-accent);cursor:pointer;';
-  blurChk.addEventListener('change', ()=>{ it.blur=blurChk.checked; refresh(); });
-  const blurLbl = document.createElement('span');
-  blurLbl.style.cssText = 'font-size:9px;color:var(--ui-sub);line-height:1;';
-  blurLbl.textContent = '블러';
-  blurWrap.append(blurChk, blurLbl);
+  // 특전 체크박스
+  const spWrap = document.createElement('label');
+  spWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;cursor:pointer;height:100%;justify-content:center;';
+  const spChk = document.createElement('input'); spChk.type='checkbox'; spChk.checked=!!it.special;
+  spChk.style.cssText = 'width:14px;height:14px;accent-color:var(--ui-accent);cursor:pointer;';
+  spChk.addEventListener('change', ()=>{ it.special=spChk.checked; renderGrid(pg); saveState(); });
+  const spLbl = document.createElement('span');
+  spLbl.style.cssText = 'font-size:9px;color:var(--ui-sub);line-height:1;';
+  spLbl.textContent = '특전';
+  spWrap.append(spChk, spLbl);
 
-  const wbWrap = document.createElement('label');
-  wbWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;cursor:pointer;height:100%;justify-content:center;';
-  const wbChk = document.createElement('input'); wbChk.type='checkbox'; wbChk.checked=!!it.whiteBg;
-  wbChk.style.cssText = 'width:14px;height:14px;accent-color:var(--ui-accent);cursor:pointer;';
-  wbChk.addEventListener('change', ()=>{ it.whiteBg=wbChk.checked; refresh(); });
-  const wbLbl = document.createElement('span');
-  wbLbl.style.cssText = 'font-size:9px;color:var(--ui-sub);line-height:1;';
-  wbLbl.textContent = '흰배경';
-  wbWrap.append(wbChk, wbLbl);
+  // 블러/흰배경/없음 드롭다운
+  const bgMode = it.whiteBg ? '흰배경' : (it.blur !== false ? '블러' : '없음');
+  const bgSel = document.createElement('select');
+  bgSel.style.cssText = 'height:28px;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:0 4px;font-size:11px;font-family:inherit;cursor:pointer;flex-shrink:0;';
+  ['블러','흰배경','없음'].forEach(opt => {
+    const o = document.createElement('option'); o.value=opt; o.textContent=opt;
+    if (opt===bgMode) o.selected=true;
+    bgSel.appendChild(o);
+  });
+  bgSel.addEventListener('change', () => {
+    it.blur = bgSel.value==='블러'; it.whiteBg = bgSel.value==='흰배경'; refresh();
+  });
 
   // 메모 체크박스
   const memoWrap = document.createElement('label');
@@ -880,17 +891,7 @@ function makeItemRow(it, i, pg) {
   memoLbl.textContent = '메모';
   memoWrap.append(memoChk, memoLbl);
 
-  const spWrap = document.createElement('label');
-  spWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;cursor:pointer;height:100%;justify-content:center;';
-  const spChk = document.createElement('input'); spChk.type='checkbox'; spChk.checked=!!it.special;
-  spChk.style.cssText = 'width:14px;height:14px;accent-color:var(--ui-accent);cursor:pointer;';
-  spChk.addEventListener('change', ()=>{ it.special=spChk.checked; saveState(); });
-  const spLbl = document.createElement('span');
-  spLbl.style.cssText = 'font-size:9px;color:var(--ui-sub);line-height:1;';
-  spLbl.textContent = '특전';
-  spWrap.append(spChk, spLbl);
-
-  inpRow.append(inp, rpWrap, blurWrap, wbWrap, memoWrap, spWrap);
+  inpRow.append(inp, rpWrap, spWrap, bgSel, memoWrap);
   grow.appendChild(inpRow);
 
   // 메모 컨트롤 행 (체크 시 표시)
