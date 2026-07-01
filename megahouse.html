@@ -184,12 +184,11 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
   background:rgba(180,0,0,.65);color:#fff;font-size:26px;cursor:pointer;
   opacity:0;transition:opacity .15s;user-select:none;line-height:1;}
 .cell:hover .cell-del-btn{opacity:1;}
-.cell-replace-btn{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:5;
-  padding:8px 14px;height:auto;
-  display:flex;align-items:center;justify-content:center;border-radius:20px;
-  background:rgba(0,0,0,.55);color:#fff;font-size:13px;font-weight:700;cursor:pointer;
-  opacity:0;transition:opacity .15s;user-select:none;white-space:nowrap;gap:6px;}
-.cell:hover .cell-replace-btn{opacity:1;}
+.thumb-wrap{position:relative;flex-shrink:0;}
+.thumb-wrap .thumb-repl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.5);color:#fff;font-size:11px;font-weight:700;border-radius:6px;
+  opacity:0;transition:opacity .15s;cursor:pointer;pointer-events:none;}
+.thumb-wrap:hover .thumb-repl{opacity:1;pointer-events:auto;}
 .cell.drag-over-preview{outline:3px solid #4c8dff;outline-offset:-3px;}
 .p-grid.drag-over-grid{outline:3px dashed #4c8dff;outline-offset:-4px;background:rgba(76,141,255,.07);}</style>
 </head>
@@ -615,24 +614,6 @@ function makeCell(it, ri, pg) {
     cell.appendChild(nm);
   }
 
-  // 사진 교체 버튼
-  const replBtn = document.createElement('div');
-  replBtn.className = 'cell-replace-btn';
-  replBtn.title = '사진 교체';
-  replBtn.textContent = '🔄 사진 교체';
-  replBtn.addEventListener('click', e => {
-    e.stopPropagation();
-    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
-    inp.addEventListener('change', () => {
-      if (!inp.files[0]) return;
-      const r = new FileReader();
-      r.onload = ev => resizeDataURL(ev.target.result, 900, src => { it.src = src; it._fitted = false; renderGrid(pg); saveState(); });
-      r.readAsDataURL(inp.files[0]);
-    });
-    inp.click();
-  });
-  cell.appendChild(replBtn);
-
   return cell;
 }
 
@@ -780,10 +761,24 @@ function makeItemRow(it, i, pg) {
   const dh = document.createElement('span'); dh.className = 'drag-handle'; dh.textContent = '⠿';
   wrap.appendChild(dh);
 
-  // 썸네일
+  // 썸네일 + 교체 버튼
+  const thumbWrap = document.createElement('div'); thumbWrap.className = 'thumb-wrap';
   const thumb = document.createElement('img'); thumb.className = 'thumb';
   if (it.src) thumb.src = it.src;
-  wrap.appendChild(thumb);
+  const thumbRepl = document.createElement('div'); thumbRepl.className = 'thumb-repl';
+  thumbRepl.textContent = '교체';
+  thumbRepl.addEventListener('click', () => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+    inp.addEventListener('change', () => {
+      if (!inp.files[0]) return;
+      const r = new FileReader();
+      r.onload = ev => resizeDataURL(ev.target.result, 900, src => { it.src = src; it._fitted = false; renderGrid(pg); renderItemList(); saveState(); });
+      r.readAsDataURL(inp.files[0]);
+    });
+    inp.click();
+  });
+  thumbWrap.append(thumb, thumbRepl);
+  wrap.appendChild(thumbWrap);
 
   // 번호
   const numEl = document.createElement('div'); numEl.className = 'num';
