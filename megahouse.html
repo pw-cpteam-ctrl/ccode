@@ -927,37 +927,18 @@ function syncBadgeStyle() {
    업로드
 ═══════════════════════════════════════ */
 function addFiles(files) {
-  let imgs = [...files].filter(f => f.type.startsWith('image/'));
-  // 12장 초과분은 다음 페이지로
-  const pg1items = pages[0], pg2items = pages[1];
-  const sl1 = 12 - pg1items.length;
-  const sl2 = 12 - pg2items.length;
-
-  let toP1 = imgs.slice(0, sl1);
-  let toP2 = imgs.slice(sl1, sl1 + sl2);
-  const overflow = imgs.slice(sl1 + sl2);
-
-  if (overflow.length) toast(`${overflow.length}장은 두 페이지 모두 꽉 차 추가되지 않았습니다`);
-  if (toP2.length && !pg2items.length && !pg1items.length) {
-    // 처음부터 p2에 넣는 경우는 없음, 정상 플로우
-  }
-  if (toP2.length) {
-    toast('12장 초과 — 나머지는 2페이지에 자동 추가됩니다');
-  }
-
-  let pending = toP1.length + toP2.length;
-  if (!pending) return;
-
-  const process = (f, targetArr) => {
+  const imgs = [...files].filter(f => f.type.startsWith('image/'));
+  if (!imgs.length) return;
+  const targetArr = pages[curPage - 1];
+  let pending = imgs.length;
+  imgs.forEach(f => {
     const r = new FileReader();
     r.onload = e => resizeDataURL(e.target.result, 900, src => {
       targetArr.push({id:idSeq++, src, name:'', scale:1, ox:0, oy:0});
       if (--pending === 0) refresh();
     });
     r.readAsDataURL(f);
-  };
-  toP1.forEach(f => process(f, pg1items));
-  toP2.forEach(f => process(f, pg2items));
+  });
 }
 
 function resizeDataURL(dataURL, maxSide, cb) {
