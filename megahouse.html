@@ -156,7 +156,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .cell.editing{outline:2px solid #4c8dff;outline-offset:-2px;}
 
 /* 푸터 */
-.p-ft{background:#fff;padding:10px 36px 14px;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;}
+.p-ft{background:#fff;padding:0 var(--gap);display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;height:54px;}
 .p-ft-note{color:#555;font-size:18px;font-weight:500;flex:1;text-align:center;}
 .p-ft-logo-wrap{flex-shrink:0;display:flex;align-items:center;justify-content:flex-end;overflow:visible;}
 .p-ft-logo{height:32px;width:auto;display:block;transform-origin:right center;}
@@ -195,8 +195,8 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
   <p class="desc">셀 위 드래그=위치 조정 · 스크롤=확대. 12장 초과 시 자동으로 2페이지.</p>
 
   <!-- ══ 섹션 1: 레이아웃 수정 ══ -->
-  <button class="psec-toggle" onclick="toggleSection('sec-layout',this)">레이아웃 수정 <span class="arrow">▾</span></button>
-  <div class="psec-body" id="sec-layout" style="padding-top:10px">
+  <button class="psec-toggle collapsed" onclick="toggleSection('sec-layout',this)">레이아웃 수정 <span class="arrow">▾</span></button>
+  <div class="psec-body collapsed" id="sec-layout" style="padding-top:10px">
     <div class="sec">헤더</div>
     <div class="row2" style="align-items:center">
       <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;"><input type="checkbox" id="chkHeader" checked onchange="toggleHeader()"/> 헤더 표시</label>
@@ -232,7 +232,10 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
       <div class="field"><label>푸터 위치</label><input type="range" id="footerOffset" min="-400" max="400" value="0" oninput="syncHeader()"/></div>
     </div>
     <div class="row2">
-      <div class="field"><label>푸터 크기</label><input type="range" id="footerFontSize" min="10" max="28" value="18" oninput="syncHeader()"/></div>
+      <div class="field"><label>푸터 텍스트 크기</label><input type="range" id="footerFontSize" min="10" max="28" value="18" oninput="syncHeader()"/></div>
+      <div class="field"><label>푸터 높이</label><input type="range" id="footerHeight" min="40" max="160" value="54" oninput="syncHeader()"/></div>
+    </div>
+    <div class="row2">
       <div class="field"><label>상단 로고 크기</label><input type="range" id="logoSize" min="32" max="120" value="64" oninput="syncLogoSize()"/></div>
       <div class="field"><label>하단 PW 로고</label><input type="range" id="pwLogoSize" min="16" max="100" value="32" oninput="syncLogoSize()"/></div>
     </div>
@@ -872,6 +875,9 @@ function syncHeader() {
     const fn = $(`#ftNote${p}`);
     const fo = $('#footerOffset') ? +$('#footerOffset').value : 0;
     if (fn) { fn.textContent = ft; fn.style.fontSize = fSize; fn.style.transform = `translateX(${fo}px)`; }
+    const ftEl = fn ? fn.closest('.p-ft') : null;
+    const fh = $('#footerHeight') ? $('#footerHeight').value + 'px' : '54px';
+    if (ftEl) ftEl.style.height = fh;
   });
 }
 function toggleSection(id, btn) {
@@ -1139,6 +1145,7 @@ function saveState() {
       storeFontSize: $('#storeFontSize').value,
       titleFontSize: $('#titleFontSize').value,
       footerFontSize: $('#footerFontSize').value,
+      footerHeight: $('#footerHeight') ? $('#footerHeight').value : '54',
       logoSize: $('#logoSize').value,
       pwLogoSize: $('#pwLogoSize') ? $('#pwLogoSize').value : '32',
       storeFontWeight: $('#storeFontWeight') ? $('#storeFontWeight').value : '800',
@@ -1180,6 +1187,7 @@ function loadState() {
     if (st.storeFontSize) $('#storeFontSize').value = st.storeFontSize;
     if (st.titleFontSize) $('#titleFontSize').value = st.titleFontSize;
     if (st.footerFontSize) $('#footerFontSize').value = st.footerFontSize;
+    if (st.footerHeight && $('#footerHeight')) $('#footerHeight').value = st.footerHeight;
     if (st.logoSize) $('#logoSize').value = st.logoSize;
     if (st.pwLogoSize && $('#pwLogoSize')) $('#pwLogoSize').value = st.pwLogoSize;
     if (st.storeFontWeight && $('#storeFontWeight')) $('#storeFontWeight').value = st.storeFontWeight;
