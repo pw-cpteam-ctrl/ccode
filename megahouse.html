@@ -233,8 +233,8 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
     </div>
     <div class="sec">재판 배지</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:4px">
-      <div class="field"><label>배경색</label><input type="text" id="badgeBg" value="#0d1580" placeholder="#0d1580" oninput="syncBadgeStyle();saveState()"/></div>
-      <div class="field"><label>글자색</label><input type="text" id="badgeFg" value="#ffffff" placeholder="#ffffff" oninput="syncBadgeStyle();saveState()"/></div>
+      <div class="field"><label>배경색</label><input type="color" id="badgeBg" value="#0d1580" oninput="syncBadgeStyle();saveState()" style="width:100%;height:32px;border:none;background:none;cursor:pointer;padding:0;border-radius:6px;"/></div>
+      <div class="field"><label>글자색</label><input type="color" id="badgeFg" value="#ffffff" oninput="syncBadgeStyle();saveState()" style="width:100%;height:32px;border:none;background:none;cursor:pointer;padding:0;border-radius:6px;"/></div>
       <div class="field"><label>글자그림자</label><button id="badgeBlurBtn" class="ptab" style="width:100%;padding:5px 0;font-size:13px" onclick="toggleBadgeBlur()">OFF</button></div>
     </div>
     <div class="sec">푸터</div>
@@ -1113,8 +1113,8 @@ function syncGrad() {
 }
 let badgeBlur = false;
 function syncBadgeStyle() {
-  const bg = $('#badgeBg') ? $('#badgeBg').value.trim() : '#0d1580';
-  const fg = $('#badgeFg') ? $('#badgeFg').value.trim() : '#ffffff';
+  const bg = $('#badgeBg') ? $('#badgeBg').value : '#0d1580';
+  const fg = $('#badgeFg') ? $('#badgeFg').value : '#ffffff';
   let style = document.getElementById('badgeDynStyle');
   if (!style) { style = document.createElement('style'); style.id='badgeDynStyle'; document.head.appendChild(style); }
   const shadowRule = badgeBlur ? '' : 'text-shadow:none!important;';
