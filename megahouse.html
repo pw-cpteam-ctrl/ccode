@@ -277,6 +277,10 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
       <div class="field"><label>퍼짐 <span id="blurPxVal">10</span>px</label><input type="range" id="sliderBlurPx" min="0" max="30" value="10" oninput="blurPx=+this.value;document.getElementById('blurPxVal').textContent=this.value;refresh()"/></div>
       <div class="field"><label>밝기 <span id="blurBrightVal">80</span>%</label><input type="range" id="sliderBlurBright" min="50" max="120" value="80" oninput="blurBright=+this.value;document.getElementById('blurBrightVal').textContent=this.value;refresh()"/></div>
     </div>
+    <div class="row2" style="margin-top:4px">
+      <button class="ptab" style="flex:1;padding:7px" onclick="setAllBlur(true)">블러 전체 ON</button>
+      <button class="ptab" style="flex:1;padding:7px" onclick="setAllBlur(false)">블러 전체 OFF</button>
+    </div>
   </div>
 
   <div class="actions">
@@ -912,6 +916,10 @@ function nudgeStore(delta) {
   if (delta === 0) { sl.value = 0; }
   else { sl.value = Math.max(-400, Math.min(400, +sl.value + delta)); }
   syncHeader();
+}
+function setAllBlur(on) {
+  pages.forEach(pg => pg.forEach(it => it.blur = on));
+  refresh();
 }
 function nudgeFooter(delta) {
   const sl = $('#footerOffset');
