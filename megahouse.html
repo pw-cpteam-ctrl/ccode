@@ -191,7 +191,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 <!-- ═══ 컨트롤 패널 ═══ -->
 <div class="panel">
   <h1>메가하우스 신제품 예고 메이커</h1>
-  <p class="desc">셀 위 드래그=위치 조정 · 스크롤=확대. 선택한 탭에 사진이 추가됩니다.</p>
+  <p class="desc">셀 위 드래그=위치 조정 · 스크롤=확대. 12장 초과 시 자동으로 2페이지.</p>
 
   <!-- ══ 섹션 1: 레이아웃 수정 ══ -->
   <button class="psec-toggle" onclick="toggleSection('sec-layout',this)">레이아웃 수정 <span class="arrow">▾</span></button>
@@ -257,7 +257,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
       <button class="ptab on" id="tab1" onclick="switchTab(1)">1페이지 <span id="tab1cnt">(0)</span></button>
       <button class="ptab" id="tab2" onclick="switchTab(2)">2페이지 <span id="tab2cnt">(0)</span></button>
     </div>
-    <div class="dropzone" id="drop"><b>클릭</b>하거나 사진을 <b>드래그</b> — 현재 탭에 추가됩니다</div>
+    <div class="dropzone" id="drop"><b>클릭</b>하거나 사진을 <b>드래그</b> (페이지당 최대 12장)</div>
     <input type="file" id="fileInput" accept="image/*" multiple hidden/>
     <div class="items" id="itemList"></div>
     <div class="sec">제품명 일괄입력</div>
@@ -357,12 +357,13 @@ let dragSrc = null;
 const $ = s => document.querySelector(s);
 
 /* ═══════════════════════════════════════
-   배치 알고리즘
+   배치 알고리즘 (가로 2~3 · 세로 최대 4)
 ═══════════════════════════════════════ */
 function computeRows(n) {
+  n = Math.min(n, 12);
   if (n <= 0) return [];
   if (n <= 3) return [n];
-  const rows = Math.ceil(n / 3);
+  const rows = Math.min(4, Math.ceil(n / 3));
   const base = Math.floor(n / rows);
   const rem = n - base * rows;
   const out = [];
@@ -748,6 +749,7 @@ function makeItemRow(it, i, pg) {
   swapBtn.title = pg === 1 ? '2페이지로 이동' : '1페이지로 이동';
   swapBtn.addEventListener('click', () => {
     const src = pages[pg-1]; const dst = pages[2-pg];
+    if (dst.length >= 12) { toast('대상 페이지가 꽉 찼습니다'); return; }
     const [moved] = src.splice(i, 1);
     dst.push(moved);
     refresh();
@@ -772,6 +774,7 @@ function makeItemRow(it, i, pg) {
     const di = i, dpg = pg;
     if (spg === dpg && si === di) return;
     const [moved] = pages[spg-1].splice(si, 1);
+    if (spg !== dpg && pages[dpg-1].length >= 12) { pages[spg-1].splice(si,0,moved); toast('대상 페이지가 꽉 찼습니다'); return; }
     const insertIdx = (spg === dpg && si < di) ? di : di;
     pages[dpg-1].splice(insertIdx, 0, moved);
     // switch to destination page if cross-page
@@ -924,27 +927,18 @@ function syncBadgeStyle() {
    업로드
 ═══════════════════════════════════════ */
 function addFiles(files) {
-  let imgs = [...files].filter(f => f.type.startsWith('image/'));
-  // 현재 탭 페이지에 추가, 넘치면 다음 페이지로
-  const cur = curPage - 1;
-  const other = 1 - cur;
-  const curSlot = imgs.length; // 제한 없음 — 현재 페이지에 전부
-  let toP1 = cur === 0 ? imgs : [];
-  let toP2 = cur === 1 ? imgs : [];
-
-  let pending = toP1.length + toP2.length;
-  if (!pending) return;
-
-  const process = (f, targetArr) => {
+  const imgs = [...files].filter(f => f.type.startsWith('image/'));
+  if (!imgs.length) return;
+  const targetArr = pages[curPage - 1];
+  let pending = imgs.length;
+  imgs.forEach(f => {
     const r = new FileReader();
     r.onload = e => resizeDataURL(e.target.result, 900, src => {
       targetArr.push({id:idSeq++, src, name:'', scale:1, ox:0, oy:0});
       if (--pending === 0) refresh();
     });
     r.readAsDataURL(f);
-  };
-  toP1.forEach(f => process(f, pg1items));
-  toP2.forEach(f => process(f, pg2items));
+  });
 }
 
 function resizeDataURL(dataURL, maxSide, cb) {
