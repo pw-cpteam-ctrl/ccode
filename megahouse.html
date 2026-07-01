@@ -174,16 +174,21 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#252018;
   color:#fff;padding:9px 15px;border-radius:8px;font-size:12px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:99;}
 .toast.show{opacity:1;}
-.cell-drag-handle{position:absolute;top:6px;left:6px;z-index:5;width:44px;height:44px;
-  display:flex;align-items:center;justify-content:center;border-radius:8px;
-  background:rgba(0,0,0,.45);color:#fff;font-size:22px;cursor:grab;
+.cell-drag-handle{position:absolute;top:6px;left:6px;z-index:5;width:66px;height:66px;
+  display:flex;align-items:center;justify-content:center;border-radius:10px;
+  background:rgba(0,0,0,.45);color:#fff;font-size:30px;cursor:grab;
   opacity:0;transition:opacity .15s;user-select:none;}
 .cell:hover .cell-drag-handle{opacity:1;}
-.cell-del-btn{position:absolute;top:6px;right:6px;z-index:5;width:44px;height:44px;
-  display:flex;align-items:center;justify-content:center;border-radius:8px;
-  background:rgba(180,0,0,.65);color:#fff;font-size:26px;cursor:pointer;
+.cell-del-btn{position:absolute;top:6px;right:6px;z-index:5;width:66px;height:66px;
+  display:flex;align-items:center;justify-content:center;border-radius:10px;
+  background:rgba(180,0,0,.65);color:#fff;font-size:32px;cursor:pointer;
   opacity:0;transition:opacity .15s;user-select:none;line-height:1;}
 .cell:hover .cell-del-btn{opacity:1;}
+.cell-replace-btn{position:absolute;top:78px;right:6px;z-index:5;width:66px;height:66px;
+  display:flex;align-items:center;justify-content:center;border-radius:10px;
+  background:rgba(0,100,180,.65);color:#fff;font-size:26px;cursor:pointer;
+  opacity:0;transition:opacity .15s;user-select:none;}
+.cell:hover .cell-replace-btn{opacity:1;}
 .thumb-wrap{position:relative;flex-shrink:0;}
 .thumb-wrap .thumb-repl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   background:rgba(0,0,0,.5);color:#fff;font-size:11px;font-weight:700;border-radius:6px;
@@ -613,6 +618,24 @@ function makeCell(it, ri, pg) {
     }
     cell.appendChild(nm);
   }
+
+  // 사진 교체 버튼 (삭제 버튼 아래)
+  const replBtn = document.createElement('div');
+  replBtn.className = 'cell-replace-btn';
+  replBtn.title = '사진 교체';
+  replBtn.textContent = '🔄';
+  replBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+    inp.addEventListener('change', () => {
+      if (!inp.files[0]) return;
+      const r = new FileReader();
+      r.onload = ev => resizeDataURL(ev.target.result, 900, src => { it.src = src; it._fitted = false; renderGrid(pg); saveState(); });
+      r.readAsDataURL(inp.files[0]);
+    });
+    inp.click();
+  });
+  cell.appendChild(replBtn);
 
   return cell;
 }
