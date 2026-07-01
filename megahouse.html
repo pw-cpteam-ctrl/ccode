@@ -173,13 +173,8 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .psec-toggle.collapsed .arrow{transform:rotate(-90deg);}
 .psec-body{overflow:hidden;transition:max-height .25s ease;max-height:2000px;}
 .psec-body.collapsed{max-height:0;}
-/* 아이템 row 번쩍임 */
-@keyframes itemFlash {
-  0%,100%{background:transparent;}
-  25%{background:rgba(66,133,244,.35);}
-  75%{background:rgba(66,133,244,.2);}
-}
-.item.flash{animation:itemFlash .6s ease;}
+/* 아이템 row 선택 하이라이트 */
+.item.selected{background:rgba(66,133,244,.22);border-radius:7px;}
 /* 토스트 */
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#252018;
   color:#fff;padding:9px 15px;border-radius:8px;font-size:12px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:99;}
@@ -768,14 +763,12 @@ function bindCellInteraction(cell, img, it) {
     if (moved < 6) {
       const span = cell.querySelector('.name-text');
       if (span) { span.contentEditable='true'; span.focus(); }
-      // 패널 해당 row 번쩍임
+      // 패널 해당 row 선택 하이라이트 (이전 선택 해제 후 유지)
+      document.querySelectorAll('.item.selected').forEach(r => r.classList.remove('selected'));
       const row = document.querySelector(`.item[data-item-id="${it.id}"]`);
       if (row) {
-        row.classList.remove('flash');
-        void row.offsetWidth; // reflow to restart animation
-        row.classList.add('flash');
+        row.classList.add('selected');
         row.scrollIntoView({ behavior:'smooth', block:'nearest' });
-        row.addEventListener('animationend', () => row.classList.remove('flash'), { once: true });
       }
     }
   });
