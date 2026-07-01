@@ -323,7 +323,7 @@ const PW_SRC='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARoAAACQCAYAAADX76Sw
 const pages = [[]];
 let curPage = 1;
 let idSeq = 1;
-let rowFontSizes = [[36,36,36,36]];
+let rowFontSizes = [36,36,36,36];
 let firstRowFlex = [null];
 let blurPx = 10;
 let blurBright = 80;
@@ -350,7 +350,7 @@ function undo() {
   const s = undoStack.pop();
   pages.length = 0; s.pages.forEach(p => pages.push(p));
   idSeq = s.idSeq;
-  rowFontSizes.length = 0; s.rowFontSizes.forEach(r => rowFontSizes.push(r));
+  rowFontSizes.length = 0; s.rowFontSizes.forEach(v => rowFontSizes.push(v));
   firstRowFlex.length = 0; s.firstRowFlex.forEach(f => firstRowFlex.push(f));
   curPage = Math.min(s.curPage, pages.length);
   // rebuild poster wraps
@@ -408,7 +408,6 @@ function renderTabs() {
 }
 function addPage() {
   pages.push([]);
-  rowFontSizes.push([36,36,36,36]);
   firstRowFlex.push(null);
   const pg = pages.length;
   ensurePosterWrap(pg);
@@ -466,7 +465,7 @@ function renderGrid(pg) {
     curPage = pg;
     refresh();
   });
-  requestAnimationFrame(() => { applyRowFontSizes(pg); applyRowHeights(pg); syncGrad(); });
+  requestAnimationFrame(() => { applyRowFontSizes(); applyRowHeights(pg); syncGrad(); });
 }
 
 function makeCell(it, ri, pg) {
@@ -715,14 +714,16 @@ function bindCellInteraction(cell, img, it) {
 /* ═══════════════════════════════════════
    줄별 폰트 크기
 ═══════════════════════════════════════ */
-function applyRowFontSizes(pg) {
-  const gridEl = $(`#grid${pg}`);
-  gridEl.querySelectorAll('.p-row').forEach((row, ri) => {
-    const sz = (rowFontSizes[pg-1] || [])[ri] || 36;
-    row.querySelectorAll('.name').forEach(nm => {
-      nm.style.fontSize = sz + 'px';
-      // also set on inner span to be safe
-      nm.querySelectorAll('.name-text').forEach(s => s.style.fontSize = sz + 'px');
+function applyRowFontSizes() {
+  pages.forEach((_, i) => {
+    const gridEl = $(`#grid${i+1}`);
+    if (!gridEl) return;
+    gridEl.querySelectorAll('.p-row').forEach((row, ri) => {
+      const sz = rowFontSizes[ri] || 36;
+      row.querySelectorAll('.name').forEach(nm => {
+        nm.style.fontSize = sz + 'px';
+        nm.querySelectorAll('.name-text').forEach(s => s.style.fontSize = sz + 'px');
+      });
     });
   });
 }
@@ -758,14 +759,13 @@ function renderRowControls() {
     wrap.appendChild(hd);
   }
   counts.forEach((_, ri) => {
-    const cur = (rowFontSizes[pg-1]||[])[ri] || 36;
+    const cur = rowFontSizes[ri] || 36;
     const d = document.createElement('div'); d.className = 'rci';
     d.innerHTML = `<span class="lbl">${ri+1}줄</span><input type="range" min="16" max="60" value="${cur}" data-ri="${ri}"/><span class="val">${cur}px</span>`;
     d.querySelector('input').addEventListener('input', e => {
-      if (!rowFontSizes[pg-1]) rowFontSizes[pg-1] = [36,36,36,36];
-      rowFontSizes[pg-1][ri] = +e.target.value;
+      rowFontSizes[ri] = +e.target.value;
       d.querySelector('.val').textContent = e.target.value + 'px';
-      applyRowFontSizes(pg);
+      applyRowFontSizes();
     });
     wrap.appendChild(d);
   });
@@ -1071,7 +1071,6 @@ function addFiles(files) {
       // create new pages as needed
       while (pages.length < pg) {
         pages.push([]);
-        rowFontSizes.push([36,36,36,36]);
         firstRowFlex.push(null);
       }
       pages[pg - 1].push({id:idSeq++, src, name:'', scale:1, ox:0, oy:0, blur:true});
@@ -1208,7 +1207,7 @@ $('#btnDownload').addEventListener('click', downloadPNG);
 $('#btnReset').addEventListener('click', () => {
   if (!confirm('모두 초기화할까요?')) return;
   pages.splice(0, pages.length, []);
-  rowFontSizes = [[36,36,36,36]]; firstRowFlex = [null];
+  rowFontSizes = [36,36,36,36]; firstRowFlex = [null];
   // clear all poster wraps and recreate page 1
   const row = document.getElementById('postersRow');
   row.innerHTML = '';
@@ -1279,7 +1278,7 @@ function loadState() {
     if (st.pages && st.pages.length) {
       pages.splice(0, pages.length, ...st.pages.map(pg => (pg||[]).map(it => ({...it, id: idSeq++}))));
     }
-    rowFontSizes = st.rowFontSizes || pages.map(() => [36,36,36,36]);
+    rowFontSizes = (Array.isArray(st.rowFontSizes) && typeof st.rowFontSizes[0] === 'number') ? st.rowFontSizes : [36,36,36,36];
     firstRowFlex = st.firstRowFlex || pages.map(() => null);
     // ensure poster wraps for all loaded pages
     const postersRow = document.getElementById('postersRow');
