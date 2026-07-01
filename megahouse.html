@@ -1520,6 +1520,15 @@ window.refresh = function(noUndo) { _origRefresh(noUndo); saveState(); };
   });
 })();
 
+// 베이지 배경 휠 → 미리보기 확대/축소
+document.getElementById('stage').addEventListener('wheel', e => {
+  if (e.target.closest('.poster-wrap, .stage-toolbar')) return;
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -2 : 2;
+  const newVal = Math.min(100, Math.max(20, _previewZoomPct + delta));
+  applyPreviewZoom(newVal);
+}, { passive: false });
+
 // Ctrl+Z undo
 document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
