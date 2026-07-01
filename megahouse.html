@@ -785,7 +785,7 @@ function makeItemRow(it, i, pg) {
   rpWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;cursor:pointer;height:100%;justify-content:center;';
   const chk = document.createElement('input'); chk.type='checkbox'; chk.checked=!!it.reprint;
   chk.style.cssText = 'width:14px;height:14px;accent-color:var(--ui-accent);cursor:pointer;';
-  chk.addEventListener('change', ()=>{ it.reprint=chk.checked; renderGrid(pg); });
+  chk.addEventListener('change', ()=>{ it.reprint=chk.checked; renderGrid(pg); saveState(); });
   const rpLbl = document.createElement('span');
   rpLbl.style.cssText = 'font-size:9px;color:var(--ui-sub);line-height:1;';
   rpLbl.textContent = '재판';
