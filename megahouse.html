@@ -1441,7 +1441,7 @@ window.refresh = function(noUndo) { _origRefresh(noUndo); saveState(); };
   const stage = document.getElementById('stage');
   let isPanning = false, startX, startY, scrollLeft, scrollTop;
   stage.addEventListener('mousedown', e => {
-    if (e.target !== stage) return; // 배경 직접 클릭일 때만
+    if (e.target.closest('.poster-wrap, .stage-toolbar, input, button, select, textarea')) return;
     isPanning = true;
     startX = e.clientX; startY = e.clientY;
     scrollLeft = stage.scrollLeft; scrollTop = stage.scrollTop;
