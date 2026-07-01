@@ -207,6 +207,54 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
   <h1>메가하우스 신제품 예고 메이커</h1>
   <p class="desc">셀 위 드래그=위치 조정 · 스크롤=확대. 12장 초과 시 자동으로 2페이지.</p>
 
+  <!-- ══ 섹션 0: 도움말 ══ -->
+  <button class="psec-toggle collapsed" onclick="toggleSection('sec-help',this)" style="background:#555;margin-bottom:0">❓ 도움말 / 사용법 <span class="arrow">▾</span></button>
+  <div class="psec-body collapsed" id="sec-help" style="padding-top:10px;margin-bottom:8px">
+    <div style="font-size:12px;color:var(--ui-text);line-height:1.75;display:flex;flex-direction:column;gap:10px;">
+
+      <div style="background:var(--ui-bg);border-radius:8px;padding:10px 12px;border:1px solid var(--ui-border)">
+        <div style="font-weight:700;margin-bottom:4px;font-size:12px;">🖼 사진 올리기</div>
+        <div style="color:var(--ui-sub)">① <b>사진 수정</b> 섹션 열기 → <b>사진 업로드</b> 영역 클릭하거나 파일을 드래그<br>② 사진은 자동으로 현재 탭 페이지에 추가됩니다<br>③ 12장 초과 시 다음 페이지로 자동 분리</div>
+      </div>
+
+      <div style="background:var(--ui-bg);border-radius:8px;padding:10px 12px;border:1px solid var(--ui-border)">
+        <div style="font-weight:700;margin-bottom:4px;font-size:12px;">✏️ 제품명 입력</div>
+        <div style="color:var(--ui-sub)"><b>제품명 일괄입력</b> 박스에 한 줄에 하나씩 입력 후 <b>적용</b> 버튼<br>또는 미리보기 포스터의 제품명을 직접 클릭해서 수정 가능</div>
+      </div>
+
+      <div style="background:var(--ui-bg);border-radius:8px;padding:10px 12px;border:1px solid var(--ui-border)">
+        <div style="font-weight:700;margin-bottom:4px;font-size:12px;">🖱 사진 위치·크기 조정</div>
+        <div style="color:var(--ui-sub)">미리보기 포스터의 사진 위에서<br>· <b>드래그</b> → 위치 이동<br>· <b>스크롤(휠)</b> → 확대/축소</div>
+      </div>
+
+      <div style="background:var(--ui-bg);border-radius:8px;padding:10px 12px;border:1px solid var(--ui-border)">
+        <div style="font-weight:700;margin-bottom:4px;font-size:12px;">↕ 순서 변경 / 삭제</div>
+        <div style="color:var(--ui-sub)">사진 수정 패널 좌측 <b>::번호</b> 를 드래그해서 순서 변경<br>우측 <b>✕</b> 버튼으로 삭제, 썸네일 호버 시 <b>사진교체</b> 버튼 표시</div>
+      </div>
+
+      <div style="background:var(--ui-bg);border-radius:8px;padding:10px 12px;border:1px solid var(--ui-border)">
+        <div style="font-weight:700;margin-bottom:4px;font-size:12px;">🔖 재판 / 특전 뱃지</div>
+        <div style="color:var(--ui-sub)">각 제품 행의 <b>재판</b> 체크 → 재판 뱃지 표시<br><b>특전</b> 체크 → 초회특전 뱃지 표시<br>뱃지 색상은 <b>레이아웃 수정 → 재판 배지</b> 에서 변경</div>
+      </div>
+
+      <div style="background:var(--ui-bg);border-radius:8px;padding:10px 12px;border:1px solid var(--ui-border)">
+        <div style="font-weight:700;margin-bottom:4px;font-size:12px;">💬 메모 추가</div>
+        <div style="color:var(--ui-sub)">각 제품 행의 <b>메모</b> 체크 → 입력칸 표시<br>글자크기·색상·위치(위/옆) 설정 가능</div>
+      </div>
+
+      <div style="background:var(--ui-bg);border-radius:8px;padding:10px 12px;border:1px solid var(--ui-border)">
+        <div style="font-weight:700;margin-bottom:4px;font-size:12px;">💾 저장 / 다운로드</div>
+        <div style="color:var(--ui-sub)">작업 내용은 <b>자동 저장</b> (브라우저 새로고침해도 유지)<br>하단 <b>개별 다운로드</b> → 현재 페이지 PNG<br>하단 <b>전체 다운로드</b> → 모든 페이지 PNG 일괄 저장<br>· 출력 해상도: 1080×1350px</div>
+      </div>
+
+      <div style="background:var(--ui-bg);border-radius:8px;padding:10px 12px;border:1px solid var(--ui-border)">
+        <div style="font-weight:700;margin-bottom:4px;font-size:12px;">🔍 미리보기 확대 / 이동</div>
+        <div style="color:var(--ui-sub)">상단 슬라이더로 미리보기 배율 조절<br>배경(베이지 영역)을 드래그하면 화면 이동 가능</div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- ══ 섹션 1: 레이아웃 수정 ══ -->
   <button class="psec-toggle collapsed" onclick="toggleSection('sec-layout',this)">레이아웃 수정 <span class="arrow">▾</span></button>
   <div class="psec-body collapsed" id="sec-layout" style="padding-top:10px">
