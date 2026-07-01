@@ -125,7 +125,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
   vertical-align:middle;margin-left:8px;white-space:nowrap;
 }
 .reprint-badge{background:#0d1580;color:#fff;}
-.special-badge{background:#111;color:#fff;text-shadow:none!important;}
+.special-badge{background:#111;color:#fff;text-shadow:none!important;font-weight:300;}
 
 /* 그리드 — flex 1 = 남은 공간 꽉 채움 */
 .p-grid{flex:1;padding:var(--gap);display:flex;flex-direction:column;gap:var(--gap);background:#fff;min-height:0;}
@@ -628,27 +628,49 @@ function makeCell(it, ri, pg) {
   if ((it.name && it.name.trim()) || it.reprint || it.special || it.memoOn) {
     const nm = document.createElement('div');
     nm.className = 'name';
+    // 구조: [뱃지행(위)] → [상품명(아래)] — 항상 이 순서
+    nm.style.cssText = nm.style.cssText + 'display:flex;flex-direction:column;gap:3px;';
 
-    // 메모 위 배치
-    if (it.memoOn && it.memo && it.memoPos === 'above') {
-      const memoEl = document.createElement('div');
-      memoEl.className = 'cell-memo cell-memo-above';
-      memoEl.textContent = it.memo;
-      memoEl.style.cssText = `font-size:${it.memoSize||14}px;color:${it.memoColor||'#fff'};font-weight:700;margin-bottom:4px;text-shadow:1px 2px 5px rgba(0,0,0,.7);`;
-      nm.appendChild(memoEl);
+    // 뱃지+메모 행 (스티커·메모가 하나라도 있으면 생성)
+    const hasBadgeRow = it.reprint || it.special || (it.memoOn && it.memo);
+    let badgeRow = null;
+    if (hasBadgeRow) {
+      badgeRow = document.createElement('div');
+      badgeRow.style.cssText = 'display:flex;align-items:center;gap:5px;flex-wrap:wrap;';
+      if (it.reprint) {
+        const badge = document.createElement('span');
+        badge.className = 'reprint-badge';
+        badge.textContent = '재판';
+        badge.style.margin = '0';
+        badgeRow.appendChild(badge);
+      }
+      if (it.special) {
+        const spBadge = document.createElement('span');
+        spBadge.className = 'special-badge';
+        spBadge.textContent = '초회특전';
+        spBadge.style.cssText = 'margin:0;font-weight:300;';
+        badgeRow.appendChild(spBadge);
+      }
+      if (it.memoOn && it.memo) {
+        const memoEl = document.createElement('span');
+        memoEl.className = 'cell-memo';
+        memoEl.textContent = it.memo;
+        memoEl.style.cssText = `font-size:${it.memoSize||14}px;color:${it.memoColor||'#fff'};font-weight:700;text-shadow:1px 2px 5px rgba(0,0,0,.7);`;
+        badgeRow.appendChild(memoEl);
+      }
+      nm.appendChild(badgeRow);
     }
 
+    // 상품명 (항상 아래)
     const txtSpan = document.createElement('span');
     txtSpan.className = 'name-text';
     txtSpan.dataset.id = it.id;
-    // \n → <br> 로 렌더: white-space:pre-line 대신 명시적 <br> 사용 (export 호환)
     function setNameHtml(span, name) {
       span.innerHTML = (name||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
     }
     setNameHtml(txtSpan, it.name);
     txtSpan.addEventListener('click', e => {
       e.stopPropagation();
-      // contenteditable 전환 시 <br> → \n 로 표시
       txtSpan.textContent = it.name || '';
       txtSpan.contentEditable = 'true';
       txtSpan.focus();
@@ -669,34 +691,7 @@ function makeCell(it, ri, pg) {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); txtSpan.blur(); }
       if (e.key === 'Escape') { it.name = it.name||''; setNameHtml(txtSpan, it.name); txtSpan.contentEditable='false'; }
     });
-    // nm을 flex wrap-reverse로: 짧으면 [이름 뱃지] 한 줄, 길면 뱃지가 위 줄로 올라감
-    nm.style.display = 'flex';
-    nm.style.flexWrap = 'wrap-reverse';
-    nm.style.alignItems = 'flex-end';
-    nm.style.gap = '0 6px';
     nm.appendChild(txtSpan);
-    if (it.reprint) {
-      const badge = document.createElement('span');
-      badge.className = 'reprint-badge';
-      badge.textContent = '재판';
-      badge.style.margin = '0';
-      nm.appendChild(badge);
-    }
-    if (it.special) {
-      const spBadge = document.createElement('span');
-      spBadge.className = 'special-badge';
-      spBadge.textContent = '초회특전';
-      spBadge.style.margin = '0';
-      nm.appendChild(spBadge);
-    }
-    // 메모 옆 배치
-    if (it.memoOn && it.memo && (!it.memoPos || it.memoPos === 'side')) {
-      const memoEl = document.createElement('span');
-      memoEl.className = 'cell-memo cell-memo-side';
-      memoEl.textContent = it.memo;
-      memoEl.style.cssText = `font-size:${it.memoSize||14}px;color:${it.memoColor||'#fff'};font-weight:700;margin-left:8px;vertical-align:middle;text-shadow:1px 2px 5px rgba(0,0,0,.7);`;
-      nm.appendChild(memoEl);
-    }
     cell.appendChild(nm);
   }
 
