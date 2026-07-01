@@ -888,26 +888,26 @@ function makeItemRow(it, i, pg) {
 
   // 메모 컨트롤 행 (체크 시 표시)
   const memoRow = document.createElement('div');
-  memoRow.style.cssText = `display:${it.memoOn ? 'flex' : 'none'};margin-top:4px;gap:4px;align-items:center;flex-wrap:wrap;`;
+  memoRow.style.cssText = `display:${it.memoOn ? 'flex' : 'none'};margin-top:4px;gap:3px;align-items:center;`;
 
   const memoInp = document.createElement('input'); memoInp.type='text';
-  memoInp.placeholder = '메모 텍스트…'; memoInp.value = it.memo || '';
-  memoInp.style.cssText = 'flex:1;min-width:60px;height:28px;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:3px 6px;font-size:12px;font-family:inherit;';
+  memoInp.placeholder = '메모…'; memoInp.value = it.memo || '';
+  memoInp.style.cssText = 'flex:1;min-width:0;height:28px;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:3px 6px;font-size:12px;font-family:inherit;';
   memoInp.addEventListener('input', () => { it.memo = memoInp.value; renderGrid(pg); saveState(); });
 
   const memoSizeInp = document.createElement('input'); memoSizeInp.type='number';
   memoSizeInp.min=8; memoSizeInp.max=40; memoSizeInp.value = it.memoSize||14;
-  memoSizeInp.style.cssText = 'width:44px;height:28px;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:3px 4px;font-size:12px;font-family:inherit;text-align:center;';
+  memoSizeInp.style.cssText = 'width:38px;height:28px;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:3px 2px;font-size:12px;font-family:inherit;text-align:center;';
   memoSizeInp.title='글자크기';
   memoSizeInp.addEventListener('input', () => { it.memoSize = +memoSizeInp.value; renderGrid(pg); saveState(); });
 
   const memoColorInp = document.createElement('input'); memoColorInp.type='color';
   memoColorInp.value = it.memoColor||'#ffffff';
-  memoColorInp.style.cssText = 'width:28px;height:28px;border:none;background:none;cursor:pointer;padding:0;border-radius:4px;';
+  memoColorInp.style.cssText = 'width:26px;height:28px;border:none;background:none;cursor:pointer;padding:0;border-radius:4px;flex-shrink:0;';
   memoColorInp.title='글자색';
   memoColorInp.addEventListener('input', () => { it.memoColor = memoColorInp.value; renderGrid(pg); saveState(); });
 
-  const posStyle = 'height:28px;padding:0 7px;border-radius:5px;border:1px solid var(--ui-border);font-size:11px;cursor:pointer;font-family:inherit;';
+  const posStyle = 'height:28px;padding:0 6px;border-radius:5px;border:1px solid var(--ui-border);font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;';
   const posAboveBtn = document.createElement('button'); posAboveBtn.textContent='위'; posAboveBtn.style.cssText=posStyle;
   const posSideBtn  = document.createElement('button'); posSideBtn.textContent='옆'; posSideBtn.style.cssText=posStyle;
 
