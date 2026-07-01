@@ -629,7 +629,7 @@ function makeCell(it, ri, pg) {
     if (it.special) {
       const spBadge = document.createElement('span');
       spBadge.className = 'special-badge';
-      spBadge.textContent = '특전';
+      spBadge.textContent = '초회특전';
       nm.appendChild(spBadge);
     }
     // 메모 옆 배치
@@ -868,18 +868,24 @@ function makeItemRow(it, i, pg) {
   spLbl.textContent = '특전';
   spWrap.append(spChk, spLbl);
 
-  // 블러/흰배경/없음 드롭다운
-  const bgMode = it.whiteBg ? '흰배경' : (it.blur !== false ? '블러' : '없음');
-  const bgSel = document.createElement('select');
-  bgSel.style.cssText = 'height:28px;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:0 4px;font-size:11px;font-family:inherit;cursor:pointer;flex-shrink:0;';
-  ['블러','흰배경','없음'].forEach(opt => {
-    const o = document.createElement('option'); o.value=opt; o.textContent=opt;
-    if (opt===bgMode) o.selected=true;
-    bgSel.appendChild(o);
+  // 블러/흰배경/없음 스테퍼 (number input + 텍스트 레이블)
+  const BG_OPTS = ['블러','흰배경','없음'];
+  let bgIdx = it.whiteBg ? 1 : (it.blur !== false ? 0 : 2);
+  const bgStepper = document.createElement('div');
+  bgStepper.style.cssText = 'display:flex;align-items:center;gap:4px;flex-shrink:0;';
+  const bgNum = document.createElement('input'); bgNum.type='number';
+  bgNum.min=0; bgNum.max=2; bgNum.step=1; bgNum.value=bgIdx;
+  bgNum.style.cssText = 'width:38px;height:28px;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:3px 2px;font-size:12px;font-family:inherit;text-align:center;';
+  const bgModeLbl = document.createElement('span');
+  bgModeLbl.textContent = BG_OPTS[bgIdx];
+  bgModeLbl.style.cssText = 'font-size:11px;color:var(--ui-text);white-space:nowrap;';
+  bgNum.addEventListener('change', () => {
+    bgIdx = Math.min(2, Math.max(0, parseInt(bgNum.value)||0));
+    bgNum.value = bgIdx;
+    bgModeLbl.textContent = BG_OPTS[bgIdx];
+    it.blur = bgIdx===0; it.whiteBg = bgIdx===1; refresh(); saveState();
   });
-  bgSel.addEventListener('change', () => {
-    it.blur = bgSel.value==='블러'; it.whiteBg = bgSel.value==='흰배경'; refresh();
-  });
+  bgStepper.append(bgNum, bgModeLbl);
 
   // 메모 체크박스
   const memoWrap = document.createElement('label');
