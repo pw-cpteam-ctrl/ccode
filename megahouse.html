@@ -1436,6 +1436,30 @@ refresh(true);
 const _origRefresh = refresh;
 window.refresh = function(noUndo) { _origRefresh(noUndo); saveState(); };
 
+// 스테이지 패닝 (베이지 배경 드래그)
+(function() {
+  const stage = document.getElementById('stage');
+  let isPanning = false, startX, startY, scrollLeft, scrollTop;
+  stage.addEventListener('mousedown', e => {
+    if (e.target !== stage && e.target.closest('.poster-wrap')) return;
+    isPanning = true;
+    startX = e.clientX; startY = e.clientY;
+    scrollLeft = stage.scrollLeft; scrollTop = stage.scrollTop;
+    stage.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!isPanning) return;
+    stage.scrollLeft = scrollLeft - (e.clientX - startX);
+    stage.scrollTop  = scrollTop  - (e.clientY - startY);
+  });
+  document.addEventListener('mouseup', () => {
+    if (!isPanning) return;
+    isPanning = false;
+    stage.style.cursor = '';
+  });
+})();
+
 // Ctrl+Z undo
 document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
