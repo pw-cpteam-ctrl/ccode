@@ -669,24 +669,26 @@ function makeCell(it, ri, pg) {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); txtSpan.blur(); }
       if (e.key === 'Escape') { it.name = it.name||''; setNameHtml(txtSpan, it.name); txtSpan.contentEditable='false'; }
     });
-    // 뱃지를 txtSpan 앞에 배치 → 줄 넘침 시 뱃지가 위, 텍스트가 아래
+    // nm을 flex wrap-reverse로: 짧으면 [이름 뱃지] 한 줄, 길면 뱃지가 위 줄로 올라감
+    nm.style.display = 'flex';
+    nm.style.flexWrap = 'wrap-reverse';
+    nm.style.alignItems = 'flex-end';
+    nm.style.gap = '0 6px';
+    nm.appendChild(txtSpan);
     if (it.reprint) {
       const badge = document.createElement('span');
       badge.className = 'reprint-badge';
       badge.textContent = '재판';
-      badge.style.marginLeft = '0';
-      badge.style.marginRight = '8px';
+      badge.style.margin = '0';
       nm.appendChild(badge);
     }
     if (it.special) {
       const spBadge = document.createElement('span');
       spBadge.className = 'special-badge';
       spBadge.textContent = '초회특전';
-      spBadge.style.marginLeft = '0';
-      spBadge.style.marginRight = '8px';
+      spBadge.style.margin = '0';
       nm.appendChild(spBadge);
     }
-    nm.appendChild(txtSpan);
     // 메모 옆 배치
     if (it.memoOn && it.memo && (!it.memoPos || it.memoPos === 'side')) {
       const memoEl = document.createElement('span');
