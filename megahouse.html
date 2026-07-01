@@ -294,9 +294,10 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
     </div>
   </div>
 
-  <div class="actions">
+  <div class="actions" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
     <button class="ghost" id="btnReset">초기화</button>
-    <button class="primary" id="btnDownload">PNG 다운로드</button>
+    <button class="primary" id="btnDownload">개별 다운로드</button>
+    <button class="primary" id="btnDownloadAll">전체 다운로드</button>
   </div>
 </div>
 
@@ -1110,22 +1111,32 @@ function loadLogoFile(file, ids, isMega) {
 /* ═══════════════════════════════════════
    PNG 다운로드
 ═══════════════════════════════════════ */
+async function _savePng(el, name) {
+  const dataUrl = await htmlToImage.toPng(el, {pixelRatio:1, width:1080, height:1350, cacheBust:true, backgroundColor:'#fff'});
+  const a = document.createElement('a'); a.download = name + '.png'; a.href = dataUrl; a.click();
+  await new Promise(r => setTimeout(r, 400));
+}
 async function downloadPNG() {
   if (typeof htmlToImage === 'undefined') { toast('라이브러리 로드 실패 (인터넷 필요)'); return; }
   const m = $('#inMonth').value.trim().replace(/\s+/g,'') || 'preview';
-  const toDownload = [];
-  pages.forEach((pg, i) => { if (pg.length) toDownload.push({el:document.getElementById('poster'+(i+1)), name:`megahouse_${m}_p${i+1}`}); });
+  const pg = pages[curPage-1];
+  if (!pg || !pg.length) { toast('현재 페이지에 사진이 없습니다'); return; }
+  toast('이미지 생성 중…');
+  try {
+    await _savePng(document.getElementById('poster'+curPage), `megahouse_${m}_p${curPage}`);
+    toast('다운로드 완료!');
+  } catch(err) { toast('생성 실패: '+err.message); }
+}
+async function downloadAllPNG() {
+  if (typeof htmlToImage === 'undefined') { toast('라이브러리 로드 실패 (인터넷 필요)'); return; }
+  const m = $('#inMonth').value.trim().replace(/\s+/g,'') || 'preview';
+  const toDownload = pages.map((pg,i) => pg.length ? {el:document.getElementById('poster'+(i+1)), name:`megahouse_${m}_p${i+1}`} : null).filter(Boolean);
   if (!toDownload.length) { toast('사진을 먼저 올려주세요'); return; }
   toast('이미지 생성 중…');
-
   for (const {el, name} of toDownload) {
-    try {
-      const dataUrl = await htmlToImage.toPng(el, {pixelRatio:1, width:1080, height:1350, cacheBust:true, backgroundColor:'#fff'});
-      const a = document.createElement('a'); a.download = name + '.png'; a.href = dataUrl; a.click();
-      await new Promise(r => setTimeout(r, 400));
-    } catch(err) { toast('생성 실패: '+err.message); return; }
+    try { await _savePng(el, name); } catch(err) { toast('생성 실패: '+err.message); return; }
   }
-  toast('다운로드 완료!');
+  toast('전체 다운로드 완료!');
 }
 
 /* ═══════════════════════════════════════
@@ -1204,6 +1215,7 @@ $('#logoPW').addEventListener('change', e => { if (!e.target.files[0]) return; l
 $('#btnAddPage').addEventListener('click', addPage);
 $('#btnApplyBulk').addEventListener('click', applyBulk);
 $('#btnDownload').addEventListener('click', downloadPNG);
+$('#btnDownloadAll').addEventListener('click', downloadAllPNG);
 $('#btnReset').addEventListener('click', () => {
   if (!confirm('모두 초기화할까요?')) return;
   pages.splice(0, pages.length, []);
