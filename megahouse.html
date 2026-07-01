@@ -223,8 +223,8 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
     </div>
     <div class="sec">재판 배지</div>
     <div class="row2">
-      <div class="field"><label>배경색</label><input type="text" id="badgeBg" value="#0d1580" placeholder="#0d1580" oninput="syncBadgeStyle()"/></div>
-      <div class="field"><label>글자색</label><input type="text" id="badgeFg" value="#ffffff" placeholder="#ffffff" oninput="syncBadgeStyle()"/></div>
+      <div class="field"><label>배경색</label><input type="text" id="badgeBg" value="#0d1580" placeholder="#0d1580" oninput="syncBadgeStyle();saveState()"/></div>
+      <div class="field"><label>글자색</label><input type="text" id="badgeFg" value="#ffffff" placeholder="#ffffff" oninput="syncBadgeStyle();saveState()"/></div>
     </div>
     <div class="sec">푸터</div>
     <div class="row2">
@@ -317,6 +317,8 @@ let firstRowFlex = [null];
 let blurPx = 10;
 let blurBright = 80;
 let dragSrc = null;
+let customMegaSrc = null;
+let customPWSrc = null;
 const $ = s => document.querySelector(s);
 
 /* ─── Undo stack ─── */
@@ -590,6 +592,7 @@ function makeCell(it, ri, pg) {
       const panelInp = document.querySelector(`input[data-item-id="${it.id}"]`);
       if (panelInp) panelInp.value = newName.replace(/\n/g,'\\n');
       renderGrid(+txtSpan.closest('.cell').dataset.pg);
+      saveState();
     });
     txtSpan.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); txtSpan.blur(); }
@@ -937,8 +940,8 @@ function syncLogoSize() {
 function initWrapLogos(pg) {
   const logoEl = document.getElementById('logo'+pg);
   const pwEl = document.getElementById('pwlogo'+pg);
-  if (logoEl) logoEl.src = MEGA_SRC;
-  if (pwEl) pwEl.src = PW_SRC;
+  if (logoEl) logoEl.src = customMegaSrc || MEGA_SRC;
+  if (pwEl) pwEl.src = customPWSrc || PW_SRC;
 }
 function nudgeStore(delta) {
   const sl = $('#storeOffset');
@@ -1041,9 +1044,14 @@ function resizeDataURL(dataURL, maxSide, cb) {
   img.src = dataURL;
 }
 
-function loadLogoFile(file, ids) {
+function loadLogoFile(file, ids, isMega) {
   const r = new FileReader();
-  r.onload = e => ids.forEach(id => { const el = $(id); if(el) el.src = e.target.result; });
+  r.onload = e => {
+    const src = e.target.result;
+    if (isMega) customMegaSrc = src; else customPWSrc = src;
+    ids.forEach(id => { const el = $(id); if(el) el.src = src; });
+    saveState();
+  };
   r.readAsDataURL(file);
 }
 
@@ -1139,8 +1147,8 @@ $('#inFooter').addEventListener('input', syncHeader);
 
 // gradSlider replaced by syncGrad (gradStart/gradWidth/gradOpacity)
 
-$('#logoMega').addEventListener('change', e => { if (!e.target.files[0]) return; loadLogoFile(e.target.files[0], pages.map((_,i)=>'#logo'+(i+1))); });
-$('#logoPW').addEventListener('change', e => { if (!e.target.files[0]) return; loadLogoFile(e.target.files[0], pages.map((_,i)=>'#pwlogo'+(i+1))); });
+$('#logoMega').addEventListener('change', e => { if (!e.target.files[0]) return; loadLogoFile(e.target.files[0], pages.map((_,i)=>'#logo'+(i+1)), true); });
+$('#logoPW').addEventListener('change', e => { if (!e.target.files[0]) return; loadLogoFile(e.target.files[0], pages.map((_,i)=>'#pwlogo'+(i+1)), false); });
 $('#btnAddPage').addEventListener('click', addPage);
 $('#btnApplyBulk').addEventListener('click', applyBulk);
 $('#btnDownload').addEventListener('click', downloadPNG);
@@ -1202,6 +1210,8 @@ function saveState() {
       headerOn: $('#chkHeader') ? $('#chkHeader').checked : true,
       headerPad: $('#headerPad') ? $('#headerPad').value : '30',
       blurPx, blurBright,
+      customMegaSrc: customMegaSrc || null,
+      customPWSrc: customPWSrc || null,
     };
     localStorage.setItem('mh_maker_state', JSON.stringify(state));
   } catch(e) {}
@@ -1246,6 +1256,8 @@ function loadState() {
     toggleHeader();
     if (st.blurPx != null) { blurPx = st.blurPx; const sl=$('#sliderBlurPx'); if(sl){sl.value=blurPx;} const lbl=$('#blurPxVal'); if(lbl) lbl.textContent=blurPx; }
     if (st.blurBright != null) { blurBright = st.blurBright; const sl=$('#sliderBlurBright'); if(sl){sl.value=blurBright;} const lbl=$('#blurBrightVal'); if(lbl) lbl.textContent=blurBright; }
+    if (st.customMegaSrc) { customMegaSrc = st.customMegaSrc; document.querySelectorAll('.p-logo').forEach(el => el.src = customMegaSrc); }
+    if (st.customPWSrc) { customPWSrc = st.customPWSrc; document.querySelectorAll('.p-ft-logo').forEach(el => el.src = customPWSrc); }
     // update display labels for sliders
     if (st.storeOffset && $('#storeOffsetVal')) $('#storeOffsetVal').textContent = st.storeOffset;
     if (st.footerOffset && $('#footerOffsetVal')) $('#footerOffsetVal').textContent = st.footerOffset;
