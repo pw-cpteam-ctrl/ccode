@@ -225,7 +225,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:4px">
       <div class="field"><label>배경색</label><input type="text" id="badgeBg" value="#0d1580" placeholder="#0d1580" oninput="syncBadgeStyle();saveState()"/></div>
       <div class="field"><label>글자색</label><input type="text" id="badgeFg" value="#ffffff" placeholder="#ffffff" oninput="syncBadgeStyle();saveState()"/></div>
-      <div class="field"><label>글자블러</label><button id="badgeBlurBtn" class="ptab" style="width:100%;padding:5px 0;font-size:13px" onclick="toggleBadgeBlur()">OFF</button></div>
+      <div class="field"><label>글자그림자</label><button id="badgeBlurBtn" class="ptab" style="width:100%;padding:5px 0;font-size:13px" onclick="toggleBadgeBlur()">OFF</button></div>
     </div>
     <div class="sec">푸터</div>
     <div class="row2">
@@ -999,8 +999,8 @@ function syncBadgeStyle() {
   const fg = $('#badgeFg') ? $('#badgeFg').value.trim() : '#ffffff';
   let style = document.getElementById('badgeDynStyle');
   if (!style) { style = document.createElement('style'); style.id='badgeDynStyle'; document.head.appendChild(style); }
-  const blurRule = badgeBlur ? 'filter:blur(2px)!important;' : 'filter:none!important;';
-  style.textContent = `.reprint-badge{background:${bg}!important;color:${fg}!important;${blurRule}}`;
+  const shadowRule = badgeBlur ? '' : 'text-shadow:none!important;';
+  style.textContent = `.reprint-badge{background:${bg}!important;color:${fg}!important;${shadowRule}}`;
 }
 function toggleBadgeBlur() {
   badgeBlur = !badgeBlur;
