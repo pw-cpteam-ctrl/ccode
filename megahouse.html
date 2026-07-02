@@ -351,6 +351,9 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
     <button class="ghost" id="btnReset">초기화</button>
     <button class="primary" id="btnDownload">개별 다운로드</button>
     <button class="primary" id="btnDownloadAll">전체 다운로드</button>
+    <button class="ghost" id="btnExport">📤 내보내기</button>
+    <button class="ghost" id="btnImport">📥 불러오기</button>
+    <input type="file" id="importFile" accept=".json" style="display:none">
   </div>
 </div>
 
@@ -1380,6 +1383,32 @@ $('#btnAddPage').addEventListener('click', addPage);
 $('#btnApplyBulk').addEventListener('click', applyBulk);
 $('#btnDownload').addEventListener('click', downloadPNG);
 $('#btnDownloadAll').addEventListener('click', downloadAllPNG);
+$('#btnExport').addEventListener('click', () => {
+  const raw = localStorage.getItem('mh_maker_state');
+  if (!raw) { alert('저장된 데이터가 없습니다.'); return; }
+  const blob = new Blob([raw], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  a.download = `megahouse_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+$('#btnImport').addEventListener('click', () => $('#importFile').click());
+$('#importFile').addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      JSON.parse(ev.target.result); // 유효성 확인
+      if (!confirm('현재 작업을 덮어쓰고 불러올까요?')) return;
+      localStorage.setItem('mh_maker_state', ev.target.result);
+      location.reload();
+    } catch { alert('올바른 파일이 아닙니다.'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
 $('#btnReset').addEventListener('click', () => {
   if (!confirm('모두 초기화할까요?')) return;
   pages.splice(0, pages.length, []);
