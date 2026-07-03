@@ -118,6 +118,19 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .p-store{font-size:22px;font-weight:800;letter-spacing:5px;opacity:.95;flex:1;text-align:center;}
 .p-open{font-weight:700;font-size:38px;color:#FFE500;line-height:1;white-space:nowrap;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.15);flex-shrink:0;}
 .p-title{font-family:'Paperlogy','Pretendard',sans-serif;font-weight:900;font-size:92px;line-height:1;letter-spacing:-2px;text-shadow:0 3px 0 rgba(0,0,0,.1);text-align:center;}
+
+/* 오픈용 헤더 (검은 그라데이션 스타일) */
+.poster:not(.use-open-header) .p-hd-open{display:none!important;}
+.poster.use-open-header .p-hd{display:none!important;}
+.p-hd-open{background:#fff;flex:0 0 auto;padding:24px 36px 0;}
+.p-hd-open .oh-top{display:flex;align-items:flex-start;justify-content:space-between;}
+.p-hd-open .oh-title-wrap{display:flex;flex-direction:column;gap:2px;}
+.oh-title{font-family:'Paperlogy','Pretendard',sans-serif;font-weight:900;color:#111;line-height:1.05;letter-spacing:-1px;}
+.oh-date{font-family:'Paperlogy','Pretendard',sans-serif;font-weight:800;color:#111;line-height:1.1;letter-spacing:-.5px;}
+.oh-store-wrap{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.oh-store{background:linear-gradient(180deg,#4a4a4a,#2b2b2b);color:#fff;font-weight:700;border-radius:20px;padding:9px 22px;white-space:nowrap;}
+.oh-logo{height:52px;width:auto;display:block;border-radius:50%;}
+.oh-grad{height:36px;margin-top:10px;background:linear-gradient(to bottom,rgba(0,0,0,.55),rgba(0,0,0,0));}
 /* 재판 / 특전 스티커 */
 .reprint-badge,.special-badge{
   display:inline-block;font-weight:900;font-size:.72em;
@@ -317,6 +330,26 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
     </details>
   </div>
 
+  <!-- ══ 섹션 1.5: 오픈용 헤더 ══ -->
+  <button class="psec-toggle collapsed" onclick="toggleSection('sec-openhd',this)" style="margin-top:8px">오픈용 헤더 <span class="arrow">▾</span></button>
+  <div class="psec-body collapsed" id="sec-openhd" style="padding-top:10px">
+    <div class="row2" style="align-items:center">
+      <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;"><input type="checkbox" id="chkOpenHeader" onchange="toggleOpenHeader()"/> 오픈용 헤더 사용</label>
+    </div>
+    <div class="row2" style="margin-top:6px">
+      <div class="field"><label>타이틀 문구</label><input type="text" id="inOhTitle" value="26년 6월 신제품"/></div>
+      <div class="field"><label>날짜 문구</label><input type="text" id="inOhDate" value="6/4~7/12"/></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>타이틀 크기</label><input type="range" id="ohTitleSize" min="20" max="80" value="38" oninput="syncOpenHeader()"/></div>
+      <div class="field"><label>날짜 크기</label><input type="range" id="ohDateSize" min="12" max="48" value="22" oninput="syncOpenHeader()"/></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>스토어명 텍스트</label><input type="text" id="inOhStore" value="메가하우스 공식 스토어"/></div>
+      <div class="field"><label>스토어명 크기</label><input type="range" id="ohStoreSize" min="12" max="30" value="17" oninput="syncOpenHeader()"/></div>
+    </div>
+  </div>
+
   <!-- ══ 섹션 2: 사진 수정 ══ -->
   <button class="psec-toggle" onclick="toggleSection('sec-photo',this)" style="margin-top:8px">사진 수정 <span class="arrow">▾</span></button>
   <div class="psec-body" id="sec-photo" style="padding-top:10px">
@@ -431,6 +464,19 @@ function makePosterWrap(pg) {
           <div class="p-store" id="store${pg}">메가하우스 공식 스토어</div>
           <div class="p-open" id="open${pg}">6/4 오픈</div>
         </div><div class="p-title" id="title${pg}">6월 신제품 예고</div></div>
+        <div class="p-hd-open">
+          <div class="oh-top">
+            <div class="oh-title-wrap">
+              <div class="oh-title" id="ohTitle${pg}">26년 6월 신제품</div>
+              <div class="oh-date" id="ohDate${pg}">6/4~7/12</div>
+            </div>
+            <div class="oh-store-wrap">
+              <div class="oh-store" id="ohStore${pg}">메가하우스 공식 스토어</div>
+              <img class="oh-logo" id="ohLogo${pg}" alt="MH"/>
+            </div>
+          </div>
+          <div class="oh-grad"></div>
+        </div>
         <div class="p-grid" id="grid${pg}"></div>
         <div class="p-ft">
           <div class="p-ft-note" id="ftNote${pg}">국내외 사정에 따라 출시 시점 등 일부 사항이 변동될 수 있습니다.</div>
@@ -446,6 +492,8 @@ function ensurePosterWrap(pg) {
   if (!document.getElementById('wrap'+pg)) {
     document.getElementById('postersRow').appendChild(makePosterWrap(pg));
     syncHeader();
+    syncOpenHeader();
+    toggleOpenHeader();
     syncLogoSize();
     initWrapLogos(pg);
   }
@@ -1143,6 +1191,24 @@ function toggleHeader() {
   });
   requestAnimationFrame(fitScale);
 }
+function syncOpenHeader() {
+  const t = $('#inOhTitle') ? $('#inOhTitle').value.trim() : '';
+  const d = $('#inOhDate') ? $('#inOhDate').value.trim() : '';
+  const s = $('#inOhStore') ? $('#inOhStore').value.trim() : '';
+  const tSize = $('#ohTitleSize') ? $('#ohTitleSize').value + 'px' : '38px';
+  const dSize = $('#ohDateSize') ? $('#ohDateSize').value + 'px' : '22px';
+  const sSize = $('#ohStoreSize') ? $('#ohStoreSize').value + 'px' : '17px';
+  pages.forEach((_, i) => { const p = i+1;
+    const tEl = $(`#ohTitle${p}`); if (tEl) { tEl.textContent = t; tEl.style.fontSize = tSize; }
+    const dEl = $(`#ohDate${p}`); if (dEl) { dEl.textContent = d; dEl.style.fontSize = dSize; }
+    const sEl = $(`#ohStore${p}`); if (sEl) { sEl.textContent = s; sEl.style.fontSize = sSize; }
+  });
+}
+function toggleOpenHeader() {
+  const on = $('#chkOpenHeader') ? $('#chkOpenHeader').checked : false;
+  document.querySelectorAll('.poster').forEach(el => el.classList.toggle('use-open-header', on));
+  requestAnimationFrame(fitScale);
+}
 function syncLogoSize() {
   const topSz = $('#logoSize').value + 'px';
   document.querySelectorAll('.p-logo').forEach(el => el.style.height = topSz);
@@ -1152,8 +1218,10 @@ function syncLogoSize() {
 function initWrapLogos(pg) {
   const logoEl = document.getElementById('logo'+pg);
   const pwEl = document.getElementById('pwlogo'+pg);
+  const ohLogoEl = document.getElementById('ohLogo'+pg);
   if (logoEl) logoEl.src = customMegaSrc || MEGA_SRC;
   if (pwEl) pwEl.src = customPWSrc || PW_SRC;
+  if (ohLogoEl) ohLogoEl.src = customMegaSrc || MEGA_SRC;
 }
 function nudgeStore(delta) {
   const sl = $('#storeOffset');
@@ -1374,6 +1442,9 @@ $('#inMonth').addEventListener('input', syncHeader);
 $('#inOpen').addEventListener('input', syncHeader);
 $('#inStore').addEventListener('input', syncHeader);
 $('#inFooter').addEventListener('input', syncHeader);
+$('#inOhTitle').addEventListener('input', syncOpenHeader);
+$('#inOhDate').addEventListener('input', syncOpenHeader);
+$('#inOhStore').addEventListener('input', syncOpenHeader);
 
 // gradSlider replaced by syncGrad (gradStart/gradWidth/gradOpacity)
 
@@ -1493,6 +1564,13 @@ function buildState() {
       blurPx, blurBright,
       customMegaSrc: customMegaSrc || null,
       customPWSrc: customPWSrc || null,
+      ohOn: $('#chkOpenHeader') ? $('#chkOpenHeader').checked : false,
+      ohTitle: $('#inOhTitle') ? $('#inOhTitle').value : '',
+      ohDate: $('#inOhDate') ? $('#inOhDate').value : '',
+      ohStore: $('#inOhStore') ? $('#inOhStore').value : '',
+      ohTitleSize: $('#ohTitleSize') ? $('#ohTitleSize').value : '38',
+      ohDateSize: $('#ohDateSize') ? $('#ohDateSize').value : '22',
+      ohStoreSize: $('#ohStoreSize') ? $('#ohStoreSize').value : '17',
     };
 }
 
@@ -1549,8 +1627,17 @@ async function loadState() {
     toggleHeader();
     if (st.blurPx != null) { blurPx = st.blurPx; const sl=$('#sliderBlurPx'); if(sl){sl.value=blurPx;} const lbl=$('#blurPxVal'); if(lbl) lbl.textContent=blurPx; }
     if (st.blurBright != null) { blurBright = st.blurBright; const sl=$('#sliderBlurBright'); if(sl){sl.value=blurBright;} const lbl=$('#blurBrightVal'); if(lbl) lbl.textContent=blurBright; }
-    if (st.customMegaSrc) { customMegaSrc = st.customMegaSrc; document.querySelectorAll('.p-logo').forEach(el => el.src = customMegaSrc); }
+    if (st.customMegaSrc) { customMegaSrc = st.customMegaSrc; document.querySelectorAll('.p-logo').forEach(el => el.src = customMegaSrc); document.querySelectorAll('.oh-logo').forEach(el => el.src = customMegaSrc); }
     if (st.customPWSrc) { customPWSrc = st.customPWSrc; document.querySelectorAll('.p-ft-logo').forEach(el => el.src = customPWSrc); }
+    if (st.ohTitle != null && $('#inOhTitle')) $('#inOhTitle').value = st.ohTitle;
+    if (st.ohDate != null && $('#inOhDate')) $('#inOhDate').value = st.ohDate;
+    if (st.ohStore != null && $('#inOhStore')) $('#inOhStore').value = st.ohStore;
+    if (st.ohTitleSize && $('#ohTitleSize')) $('#ohTitleSize').value = st.ohTitleSize;
+    if (st.ohDateSize && $('#ohDateSize')) $('#ohDateSize').value = st.ohDateSize;
+    if (st.ohStoreSize && $('#ohStoreSize')) $('#ohStoreSize').value = st.ohStoreSize;
+    if (st.ohOn && $('#chkOpenHeader')) $('#chkOpenHeader').checked = true;
+    syncOpenHeader();
+    toggleOpenHeader();
     // update display labels for sliders
     if (st.storeOffset && $('#storeOffsetVal')) $('#storeOffsetVal').textContent = st.storeOffset;
     if (st.footerOffset && $('#footerOffsetVal')) $('#footerOffsetVal').textContent = st.footerOffset;
