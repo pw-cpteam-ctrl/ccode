@@ -125,7 +125,6 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .p-hd-open{
   position:absolute; top:0; left:0; right:0; z-index:3;
   padding:24px 36px 30px; pointer-events:none;
-  background:linear-gradient(to bottom, rgba(0,0,0,.6) 0%, rgba(0,0,0,.38) 60%, rgba(0,0,0,0) 100%);
 }
 .p-hd-open .oh-top{display:flex;align-items:flex-start;justify-content:space-between;}
 .p-hd-open .oh-title-wrap{display:flex;flex-direction:column;gap:2px;}
@@ -356,6 +355,11 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
         <button id="ohBoxBtn" class="ptab" style="width:100%;padding:5px 0;font-size:13px" onclick="toggleOhBox()">검정 반투명</button>
       </div>
     </div>
+    <div class="sec">그라데이션 (오버레이)</div>
+    <div class="row2">
+      <div class="field"><label>농도</label><input type="range" id="ohGradOpacity" min="0" max="100" value="60" oninput="syncOhGrad()"/></div>
+      <div class="field"><label>퍼짐</label><input type="range" id="ohGradSpread" min="10" max="90" value="60" oninput="syncOhGrad()"/></div>
+    </div>
   </div>
 
   <!-- ══ 섹션 2: 사진 수정 ══ -->
@@ -502,6 +506,7 @@ function ensurePosterWrap(pg) {
     syncOpenHeader();
     toggleOpenHeader();
     applyOhBox();
+    syncOhGrad();
     syncLogoSize();
     initWrapLogos(pg);
   }
@@ -1223,6 +1228,12 @@ function toggleOhBox() {
   applyOhBox();
   saveState();
 }
+function syncOhGrad() {
+  const op = ($('#ohGradOpacity') ? +$('#ohGradOpacity').value : 60) / 100;
+  const spread = $('#ohGradSpread') ? $('#ohGradSpread').value : '60';
+  const bg = `linear-gradient(to bottom, rgba(0,0,0,${op}) 0%, rgba(0,0,0,${(op*0.6).toFixed(3)}) ${spread}%, rgba(0,0,0,0) 100%)`;
+  document.querySelectorAll('.p-hd-open').forEach(el => el.style.background = bg);
+}
 function applyOhBox() {
   const btn = $('#ohBoxBtn'); if (btn) btn.textContent = ohBoxWhite ? '흰색 반투명' : '검정 반투명';
   document.querySelectorAll('.oh-store').forEach(el => {
@@ -1593,6 +1604,8 @@ function buildState() {
       ohDateSize: $('#ohDateSize') ? $('#ohDateSize').value : '22',
       ohStoreSize: $('#ohStoreSize') ? $('#ohStoreSize').value : '17',
       ohBoxWhite,
+      ohGradOpacity: $('#ohGradOpacity') ? $('#ohGradOpacity').value : '60',
+      ohGradSpread: $('#ohGradSpread') ? $('#ohGradSpread').value : '60',
     };
 }
 
@@ -1659,9 +1672,12 @@ async function loadState() {
     if (st.ohStoreSize && $('#ohStoreSize')) $('#ohStoreSize').value = st.ohStoreSize;
     if (st.ohOn && $('#chkOpenHeader')) $('#chkOpenHeader').checked = true;
     if (st.ohBoxWhite) ohBoxWhite = true;
+    if (st.ohGradOpacity && $('#ohGradOpacity')) $('#ohGradOpacity').value = st.ohGradOpacity;
+    if (st.ohGradSpread && $('#ohGradSpread')) $('#ohGradSpread').value = st.ohGradSpread;
     syncOpenHeader();
     toggleOpenHeader();
     applyOhBox();
+    syncOhGrad();
     // update display labels for sliders
     if (st.storeOffset && $('#storeOffsetVal')) $('#storeOffsetVal').textContent = st.storeOffset;
     if (st.footerOffset && $('#footerOffsetVal')) $('#footerOffsetVal').textContent = st.footerOffset;
