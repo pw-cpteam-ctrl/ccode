@@ -648,8 +648,30 @@ document.getElementById('doCopy').addEventListener('click', async ()=>{ const t=
 
 document.getElementById('download').addEventListener('click',()=>{ if(!runValidation()) return; cv.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='insta-card.png'; a.click(); },'image/png'); });
 
-window.addEventListener('beforeunload', ()=>{ if(appliedSource.trim()) pushSlot(snapshotWith(appliedSource), true); });  // 닫기 전 현재 작업도 보존
-(async ()=>{ try{ await document.fonts.load('800 76px Pretendard'); await document.fonts.load('300 60px Pretendard'); }catch{} composeTitle(); updatePreview(); render(); runValidation(); renderSlots(); checkWorkSpacing(); updateCopyCount(); })();
+window.addEventListener('beforeunload', ()=>{ pushSlot(snapshotWith(appliedSource), true); });  // 닫기 전 현재 작업 보존
+
+function restoreSlot(s){
+  // 페이지 로드 시 사용 — 현재 상태 저장 없이 슬롯 값만 복원
+  document.getElementById('t_source').value = s.source||'';
+  const hv=s.headline||'원형 최초공개'; setSelect('t_headline',hv); state.text.headline=hv;
+  const wv=s.work||'[작품명]'; document.getElementById('t_work').value=wv; state.work=wv;
+  const lv=s.line||'G.E.M. 시리즈'; setSelect('t_line',lv); state.line=lv;
+  state.linePrefix=s.linePrefix||'';
+  document.getElementById('t_product').value=s.product||''; state.text.product=s.product||'';
+  document.getElementById('t_jp').value=s.jp||''; state.jp=s.jp||'';
+  document.getElementById('t_saledate').value=s.saleDate||''; state.saleDate=s.saleDate||''; state.saleDow=s.saleDow||'목';
+  state.bullet=s.bullet!==false; document.getElementById('c_bullet').checked=state.bullet;
+  if(s.fg) state.fg={...state.fg,...s.fg}; if(s.bg) state.bg={...state.bg,...s.bg}; if(s.size) state.size={...state.size,...s.size};
+  appliedSource=s.source||'';
+}
+
+(async ()=>{
+  try{ await document.fonts.load('800 76px Pretendard'); await document.fonts.load('300 60px Pretendard'); }catch{}
+  const slots=loadSlots();
+  if(slots.length){ restoreSlot(slots[0]); syncControlsUI(); checkWorkSpacing(); }
+  composeTitle(); updatePreview(); render(); runValidation(); renderSlots(); updateCopyCount();
+  if(slots[0]?.imgData) loadImage(slots[0].imgData, true);
+})();
 </script>
 </body>
 </html>
