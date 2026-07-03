@@ -31,8 +31,8 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:'Pretendard',-appl
 .field input[type=range]{padding:4px 0;cursor:pointer;accent-color:var(--ui-accent);}
 .field input:focus,.field textarea:focus{outline:none;border-color:var(--ui-accent);}
 .row2{display:flex;gap:7px;}.row2 .field{flex:1;}
-.sec{font-size:10px;font-weight:700;color:var(--ui-sub);letter-spacing:.4px;text-transform:uppercase;
-  margin:14px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--ui-border);}
+.sec{font-size:15px;font-weight:800;color:var(--ui-text);letter-spacing:-.2px;
+  margin:16px 0 9px;padding-bottom:6px;border-bottom:2px solid var(--ui-border);}
 
 /* 페이지 탭 */
 .ptabs{display:flex;gap:6px;margin-bottom:9px;}
@@ -287,7 +287,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
   <!-- ══ 섹션 1: 레이아웃 수정 ══ -->
   <button class="psec-toggle collapsed" onclick="toggleSection('sec-layout',this)">레이아웃 수정 <span class="arrow">▾</span></button>
   <div class="psec-body collapsed" id="sec-layout" style="padding-top:10px">
-    <div class="sec">헤더</div>
+    <div class="sec">프리뷰용 헤더</div>
     <div class="row2" style="align-items:center">
       <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;"><input type="checkbox" id="chkHeader" checked onchange="toggleHeader()"/> 헤더 표시</label>
       <div class="field" style="margin:0"><label>꺼짐 여백</label><input type="range" id="headerPad" min="5" max="120" value="30" oninput="toggleHeader()"/></div>
