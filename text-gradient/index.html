@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>텍스트 그라데이션 이미지 생성기</title>
+<style>
+:root{
+  --poster-w:1080px; --poster-h:1350px; --preview-scale:0.3;
+  --ui-bg:#f0ede7; --ui-panel:#faf8f4; --ui-border:#ddd8ce;
+  --ui-text:#252018; --ui-sub:#7d7568; --ui-accent:#1452c0; --ui-card:#fff;
+}
+*{box-sizing:border-box;}html,body{margin:0;padding:0;}
+body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Malgun Gothic',sans-serif;display:flex;min-height:100vh;}
+
+/* ─── 좌측 패널 ─── */
+.panel{width:380px;min-width:380px;height:100vh;overflow-y:auto;border-right:1px solid var(--ui-border);background:var(--ui-panel);padding:16px 15px 100px;}
+.field{margin-bottom:10px;}
+.field label{display:block;font-size:13px;color:var(--ui-sub);margin-bottom:4px;font-weight:600;}
+.field input,.field textarea{width:100%;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:7px 10px;font-size:14.5px;font-family:inherit;color:var(--ui-text);}
+.sec{font-size:15px;font-weight:800;color:var(--ui-text);margin:16px 0 9px;padding-bottom:6px;border-bottom:2px solid var(--ui-border);}
+.actions{position:sticky;bottom:0;padding-top:10px;margin-top:12px;background:linear-gradient(transparent,var(--ui-panel) 35%);display:flex;gap:7px;}
+button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;border:1px solid var(--ui-border);font-family:inherit;background:var(--ui-accent);color:#fff;}
+
+/* ─── 페이지(슬롯) 탭 목록 ─── */
+.tabsRow{display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap;}
+.ptab-wrap{display:flex;align-items:stretch;border-radius:6px;overflow:hidden;border:1px solid var(--ui-border);}
+.ptab{padding:7px 9px;border:none;border-radius:0;background:var(--ui-card);font-size:12px;cursor:pointer;color:var(--ui-text);}
+.ptab.on{background:var(--ui-accent);color:#fff;}
+.ptab-del{padding:7px 8px;border:none;border-left:1px solid var(--ui-border);border-radius:0;background:var(--ui-card);font-size:11px;font-weight:700;color:#b33;cursor:pointer;}
+.ptab-del:hover{background:#fbe9e9;}
+
+/* ─── 우측 스테이지 ─── */
+.stage{flex:1;height:100vh;overflow:auto;padding:40px;}
+#slotsRow{display:flex;flex-direction:row;gap:24px;overflow-x:auto;}
+.slot-wrap{display:flex;flex-direction:column;gap:6px;flex-shrink:0;}
+.slot-num{font-size:12px;font-weight:700;color:var(--ui-sub);}
+.canvas-clip{
+  position:relative; overflow:hidden; flex-shrink:0;
+  width:calc(var(--poster-w) * var(--preview-scale)); height:calc(var(--poster-h) * var(--preview-scale));
+}
+.canvas{
+  width:var(--poster-w); height:var(--poster-h);
+  transform:scale(var(--preview-scale)); transform-origin:top left; /* 화면 맞춤 축소, 실제 export는 원본 크기로 캡처 */
+  position:absolute; top:0; left:0; overflow:hidden; background:transparent;
+}
+.badge{position:absolute; left:36px; top:900px; background:#111; color:#fff; border-radius:999px; padding:8px 20px; font-weight:700; display:inline-block; max-width:calc(100% - 72px);}
+.title{position:absolute; left:36px; top:970px; font-size:64px; font-weight:900; color:#fff; max-width:calc(100% - 72px);}
+.bullets{position:absolute; left:36px; top:1080px; color:#fff; font-size:28px; font-weight:700; max-width:calc(100% - 72px);}
+.grad-overlay{position:absolute; inset:0; pointer-events:none;}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>텍스트 그라데이션 이미지 생성기</h1>
+
+  <div class="sec">저장 슬롯</div>
+  <div class="tabsRow" id="tabsRow"></div>
+  <button onclick="addSlot()">＋ 슬롯 추가</button>
+
+  <div class="sec">텍스트</div>
+  <div class="field"><label>배지 문구</label><input type="text" id="inBadge" value="예약판매 기간 5% 할인 캠페인 중!"/></div>
+  <div class="field"><label>타이틀 (좌)</label><input type="text" id="inTitleL" value="주술회전"/></div>
+  <div class="field"><label>타이틀 (우)</label><input type="text" id="inTitleR" value="메가캣 프로젝트"/></div>
+  <div class="field"><label>불릿 리스트 (줄바꿈 구분)</label><textarea id="inBullets" rows="4">주술냥코 시부야 사변 (재판)
+유지/메구미/노바라
+고죠/나나미/스쿠나</textarea></div>
+
+  <div class="sec">그라데이션</div>
+  <div class="field"><label>시작점 %</label><input type="range" id="gradStart" min="0" max="90" value="40"/></div>
+  <div class="field"><label>퍼짐 %</label><input type="range" id="gradWidth" min="5" max="200" value="60"/></div>
+  <div class="field"><label>농도 %</label><input type="range" id="gradOpacity" min="0" max="200" value="85"/></div>
+
+  <div class="actions">
+    <button onclick="downloadPng()">PNG 다운로드 (투명)</button>
+  </div>
+</div>
+
+<div class="stage">
+  <div id="slotsRow"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+
+/* ── 저장소: IndexedDB (megahouse.html과 동일한 패턴) ── */
+const DB_NAME = 'tg_maker';
+const STATE_KEY = 'tg_maker_state';
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+function idbSet(key, val) {
+  return idbOpen().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').put(val, key);
+    tx.oncomplete = () => { db.close(); res(); };
+    tx.onerror = () => { db.close(); rej(tx.error); };
+  }));
+}
+function idbGet(key) {
+  return idbOpen().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readonly');
+    const rq = tx.objectStore('kv').get(key);
+    rq.onsuccess = () => { db.close(); res(rq.result); };
+    rq.onerror = () => { db.close(); rej(rq.error); };
+  }));
+}
+function persistState() {
+  idbSet(STATE_KEY, { slots, curSlot }).catch(() => {});
+}
+
+/* ── 상태: 슬롯 배열 (최대 30개) ── */
+const MAX_SLOTS = 30;
+let slots = [ makeEmptySlot() ];
+let curSlot = 1;
+
+function makeEmptySlot() {
+  return { badge:'', titleL:'', titleR:'', bullets:'', gradStart:40, gradWidth:60, gradOpacity:85 };
+}
+
+/* ── 실행취소 ── */
+const undoStack = []; const UNDO_MAX = 30;
+function pushUndo() {
+  undoStack.push(JSON.parse(JSON.stringify({ slots, curSlot })));
+  if (undoStack.length > UNDO_MAX) undoStack.shift();
+}
+function undo() {
+  if (!undoStack.length) return;
+  const s = undoStack.pop();
+  slots = s.slots; curSlot = s.curSlot;
+  renderTabs(); renderAllSlots(); loadInputsFromCurSlot(); persistState();
+}
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    e.preventDefault(); undo();
+  }
+});
+
+/* ── 슬롯 탭 + 썸네일 이동 ── */
+function renderTabs() {
+  const row = $('#tabsRow'); row.innerHTML = '';
+  slots.forEach((_, i) => {
+    const pg = i + 1;
+    const item = document.createElement('div'); item.className = 'ptab-wrap';
+
+    const btn = document.createElement('button');
+    btn.className = 'ptab' + (curSlot === pg ? ' on' : '');
+    btn.textContent = pg;
+    btn.onclick = () => {
+      curSlot = pg; renderTabs(); loadInputsFromCurSlot();
+      document.getElementById('slot' + pg).scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' });
+    };
+    item.appendChild(btn);
+
+    if (slots.length > 1) {
+      const del = document.createElement('button');
+      del.className = 'ptab-del'; del.title = '슬롯 삭제'; del.textContent = '×';
+      del.onclick = () => deleteSlot(pg);
+      item.appendChild(del);
+    }
+    row.appendChild(item);
+  });
+}
+function addSlot() {
+  if (slots.length >= MAX_SLOTS) { alert('최대 30개까지 가능합니다'); return; }
+  pushUndo();
+  slots.push(makeEmptySlot());
+  curSlot = slots.length;
+  renderTabs(); renderAllSlots(); loadInputsFromCurSlot(); persistState();
+}
+function deleteSlot(pg) {
+  if (slots.length <= 1) return;
+  if (!confirm(`슬롯 ${pg}을(를) 삭제할까요?`)) return;
+  pushUndo();
+  slots.splice(pg - 1, 1);
+  if (curSlot >= pg) curSlot = Math.max(1, curSlot - 1);
+  renderTabs(); renderAllSlots(); loadInputsFromCurSlot(); persistState();
+}
+
+/* ── 입력 → 상태 반영(화면+저장) ── */
+function loadInputsFromCurSlot() {
+  const s = slots[curSlot - 1];
+  $('#inBadge').value = s.badge; $('#inTitleL').value = s.titleL; $('#inTitleR').value = s.titleR;
+  $('#inBullets').value = s.bullets;
+  $('#gradStart').value = s.gradStart; $('#gradWidth').value = s.gradWidth; $('#gradOpacity').value = s.gradOpacity;
+}
+['inBadge','inTitleL','inTitleR','inBullets','gradStart','gradWidth','gradOpacity'].forEach(id => {
+  $('#'+id).addEventListener('input', () => {
+    syncInputsToState();   // ① 값 변경을 상태에 반영
+    renderCurSlotDom();    // ② 화면 반영
+    persistState();        // ③ 저장
+  });
+});
+function syncInputsToState() {
+  const s = slots[curSlot - 1];
+  s.badge = $('#inBadge').value; s.titleL = $('#inTitleL').value; s.titleR = $('#inTitleR').value;
+  s.bullets = $('#inBullets').value;
+  s.gradStart = +$('#gradStart').value; s.gradWidth = +$('#gradWidth').value; s.gradOpacity = +$('#gradOpacity').value;
+}
+
+/* ── 렌더 (상태 → DOM만 갱신, 입력값을 읽거나 저장하지 않음) ── */
+function renderAllSlots() {
+  const row = $('#slotsRow'); row.innerHTML = '';
+  slots.forEach((_, i) => {
+    const pg = i + 1;
+    const wrap = document.createElement('div'); wrap.className = 'slot-wrap'; wrap.id = 'slot'+pg;
+    wrap.innerHTML = `<div class="slot-num">슬롯 ${pg}</div>
+    <div class="canvas-clip"><div class="canvas" id="canvas${pg}">
+      <div class="grad-overlay" id="grad${pg}"></div>
+      <div class="badge" id="badge${pg}"></div>
+      <div class="title" id="title${pg}"></div>
+      <div class="bullets" id="bullets${pg}"></div>
+    </div></div>`;
+    row.appendChild(wrap);
+  });
+  slots.forEach((_, i) => renderSlotDom(i + 1));
+}
+function renderCurSlotDom() { renderSlotDom(curSlot); }
+function renderSlotDom(pg) {
+  const s = slots[pg - 1];
+  $('#badge'+pg).textContent = s.badge;
+  $('#title'+pg).textContent = s.titleL + (s.titleR ? ' | ' + s.titleR : '');
+  $('#bullets'+pg).innerHTML = s.bullets.split('\n').filter(Boolean).map(l => `• ${l}`).join('<br>');
+  applyGrad($('#grad'+pg), s.gradStart, s.gradWidth, s.gradOpacity);
+}
+function applyGrad(el, s, w, oRaw) {
+  const o = Math.min(1, oRaw / 100);
+  const p = f => Math.min(100, s + Math.round(w * f));
+  const a = f => Math.min(o, o * f).toFixed(3);
+  const grad = [
+    `rgba(0,0,0,0) ${s}%`,
+    `rgba(0,0,0,${a(0.2)}) ${p(0.4)}%`,
+    `rgba(0,0,0,${o.toFixed(3)}) ${p(1)}%`,
+    `rgba(0,0,0,${o.toFixed(3)}) 100%`,
+  ].join(',');
+  el.style.background = `linear-gradient(to bottom,${grad})`;
+}
+
+/* ── PNG 내보내기 (투명 배경, 항상 1080×1350 원본 크기) ── */
+async function downloadPng() {
+  if (typeof htmlToImage === 'undefined') { alert('라이브러리 로드 실패 (인터넷 연결을 확인해주세요)'); return; }
+  const el = document.getElementById('canvas' + curSlot);
+  const prevTransform = el.style.transform;
+  el.style.transform = 'none'; // 화면 미리보기용 축소를 잠깐 해제하고 원본 크기로 캡처
+  try {
+    const dataUrl = await htmlToImage.toPng(el, { pixelRatio:1, width:1080, height:1350, cacheBust:true, backgroundColor:null });
+    const a = document.createElement('a'); a.download = `slot${curSlot}.png`; a.href = dataUrl; a.click();
+  } finally {
+    el.style.transform = prevTransform;
+  }
+}
+
+/* ── 초기화 (부팅) ── */
+async function boot() {
+  let saved = null;
+  try { saved = await idbGet(STATE_KEY); } catch (e) {}
+  if (saved && Array.isArray(saved.slots) && saved.slots.length) {
+    slots = saved.slots;
+    curSlot = Math.min(Math.max(1, saved.curSlot || 1), slots.length);
+  }
+  loadInputsFromCurSlot(); // 입력창을 복원된 값으로 먼저 맞춘 뒤 렌더 (부팅 중 저장 로직이 기본값을 덮어쓰는 것 방지)
+  renderTabs();
+  renderAllSlots();
+}
+boot();
+</script>
+</body>
+</html>
