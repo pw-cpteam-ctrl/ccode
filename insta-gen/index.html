@@ -568,7 +568,6 @@ function buildCopy(){
   const raw=[ state.jp.trim()?tag(state.jp):null, work?tag(work):null, '#메가하우스공식스토어' ].filter(Boolean);
   const tags=[...new Set(raw)].join(' ');
   // 개발중(원형/채색원형 최초공개) → 팔로우 멘트 / 그 외(판매정보) → ※ 멘트 (줄바꿈 고정)
-  const isDev = (h==='원형 최초공개' || h==='채색원형 최초공개' || h==='샘플 최초공개' || h==='상품화 결정');
   const bottom = isDev
     ? '메가하우스 공식 스토어를 팔로우하고\n기다리는 굿즈의 후속 정보를 가장 빠르게 받아보세요!'
     : '※ 예약 오픈 시 별도 공지\n※ 일본 현지 기준 소식으로, 국내외 사정에 따라 일부 사항이 변동될 수 있습니다.';
