@@ -472,13 +472,13 @@ function saveSlots(a){
 function snapshotWith(src){ return { ts:Date.now(), source:src, headline:state.text.headline, work:state.work, line:state.line, linePrefix:state.linePrefix, product:state.text.product, jp:state.jp, saleDate:state.saleDate, saleDow:state.saleDow, bullet:state.bullet, imgData:state.imgData, fg:{...state.fg}, bg:{...state.bg}, size:{...state.size} }; }
 function slotLabel(s){ const w=(s.work||'').trim(); if(w && w!=='[작품명]') return w + (s.line?(' · '+s.line):''); const f=(s.source||'').split('\n').map(x=>x.trim()).filter(Boolean)[0]; return f || '(빈 입력)'; }
 function pushSlot(snap, skipRender){
-  if((!snap.work || snap.work==='[작품명]') && !(snap.product||'').trim() && !(snap.source||'').trim()) return;
+  if((!snap.work || snap.work==='[작품명]') && !(snap.product||'').trim() && !(snap.source||'').trim() && !snap.imgData) return;
   let a=loadSlots();
   if(a.length && a[0].source===snap.source && a[0].product===snap.product && a[0].work===snap.work) return; // 직전과 동일하면 스킵
   a.unshift(snap); a=a.slice(0,SLOT_MAX); saveSlots(a); if(!skipRender) renderSlots();
 }
 function applySlot(s){
-  if(appliedSource.trim()) pushSlot(snapshotWith(appliedSource));   // 현재 작업 먼저 보존
+  pushSlot(snapshotWith(appliedSource));   // 현재 작업 먼저 보존 (이미지 포함)
   document.getElementById('t_source').value = s.source||'';
   if(s.headline){ setSelect('t_headline',s.headline); state.text.headline=s.headline; }
   const wv = s.work || '[작품명]'; document.getElementById('t_work').value=wv; state.work=wv;
@@ -514,7 +514,6 @@ function renderSlots(){
 
 function applySource(){
   const txt = document.getElementById('t_source').value;
-  if(appliedSource.trim()) pushSlot(snapshotWith(appliedSource));  // 직전 작업을 슬롯에 보존
   const grab = re => { const m = txt.match(re); return m ? m[1].trim() : null; };
   let head=grab(/^\s*헤드라인\s*[:：]\s*(.+)$/m), work=grab(/^\s*작품(?:명)?\s*[:：]\s*(.+)$/m),
       line=grab(/^\s*(?:라인|시리즈)\s*[:：]\s*(.+)$/m), prod=grab(/^\s*제품명\s*[:：]\s*(.+)$/m),
@@ -530,7 +529,9 @@ function applySource(){
   document.getElementById('t_saledate').value = date||''; state.saleDate = date||''; state.saleDow = dow;
   state.linePrefix = (R && R.charPrefix) || '';   // 테노히라 등 접두어 (원고 시리즈 줄에 사용)
   appliedSource = txt;
-  composeTitle(); updatePreview(); render(); runValidation(); renderSlots(); checkWorkSpacing();
+  composeTitle(); updatePreview(); render(); runValidation();
+  pushSlot(snapshotWith(txt));  // 적용 후 현재 상태(이미지 포함) 저장
+  renderSlots(); checkWorkSpacing();
   const el=document.getElementById('srcStatus');
   const spc=spacingIssues(txt);   // 원문 자체의 띄어쓰기 오류
   const spcMsg = spc.length ? ('⚠ 띄어쓰기 오류가 있습니다: '+spc.map(i=>i.wrong+' → '+i.right).join(', ')) : '';
