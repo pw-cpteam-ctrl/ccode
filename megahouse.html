@@ -1258,7 +1258,7 @@ function resizeDataURL(dataURL, maxSide, cb) {
     const w = Math.round(img.width*scale), h = Math.round(img.height*scale);
     const c = document.createElement('canvas'); c.width=w; c.height=h;
     c.getContext('2d').drawImage(img,0,0,w,h);
-    cb(c.toDataURL('image/jpeg',0.9));
+    cb(c.toDataURL('image/jpeg',0.75));
   };
   img.onerror = () => cb(dataURL);
   img.src = dataURL;
@@ -1472,7 +1472,11 @@ function saveState() {
       customPWSrc: customPWSrc || null,
     };
     localStorage.setItem('mh_maker_state', JSON.stringify(state));
-  } catch(e) {}
+  } catch(e) {
+    if (e && (e.name === 'QuotaExceededError' || e.code === 22)) {
+      toast('⚠️ 저장 실패: 이미지 용량이 너무 커서 브라우저 저장소 한도를 초과했습니다. 이미지를 줄여주세요.');
+    }
+  }
 }
 
 function loadState() {
