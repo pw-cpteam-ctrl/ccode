@@ -101,7 +101,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .poster{
   width:var(--poster-w); height:var(--poster-h);
   background:#fff; font-family:'Pretendard',sans-serif;
-  overflow:hidden; display:flex; flex-direction:column;
+  overflow:hidden; display:flex; flex-direction:column; position:relative;
 }
 
 /* 헤더 — 레퍼런스 재현 */
@@ -119,18 +119,21 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .p-open{font-weight:700;font-size:38px;color:#FFE500;line-height:1;white-space:nowrap;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.15);flex-shrink:0;}
 .p-title{font-family:'Paperlogy','Pretendard',sans-serif;font-weight:900;font-size:92px;line-height:1;letter-spacing:-2px;text-shadow:0 3px 0 rgba(0,0,0,.1);text-align:center;}
 
-/* 오픈용 헤더 (검은 그라데이션 스타일) */
+/* 오픈용 헤더 — 그리드 위에 덮어씌우는 오버레이 (그리드 크기는 불변) */
 .poster:not(.use-open-header) .p-hd-open{display:none!important;}
 .poster.use-open-header .p-hd{display:none!important;}
-.p-hd-open{background:#fff;flex:0 0 auto;padding:24px 36px 0;}
+.p-hd-open{
+  position:absolute; top:0; left:0; right:0; z-index:3;
+  padding:24px 36px 30px; pointer-events:none;
+  background:linear-gradient(to bottom, rgba(0,0,0,.6) 0%, rgba(0,0,0,.38) 60%, rgba(0,0,0,0) 100%);
+}
 .p-hd-open .oh-top{display:flex;align-items:flex-start;justify-content:space-between;}
 .p-hd-open .oh-title-wrap{display:flex;flex-direction:column;gap:2px;}
-.oh-title{font-family:'Paperlogy','Pretendard',sans-serif;font-weight:900;color:#111;line-height:1.05;letter-spacing:-1px;}
-.oh-date{font-family:'Paperlogy','Pretendard',sans-serif;font-weight:800;color:#111;line-height:1.1;letter-spacing:-.5px;}
+.oh-title{font-family:'Paperlogy','Pretendard',sans-serif;font-weight:900;color:#fff;line-height:1.05;letter-spacing:-1px;text-shadow:0 1px 4px rgba(0,0,0,.4);}
+.oh-date{font-family:'Paperlogy','Pretendard',sans-serif;font-weight:800;color:#fff;line-height:1.1;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.4);}
 .oh-store-wrap{display:flex;align-items:center;gap:10px;flex-shrink:0;}
-.oh-store{background:linear-gradient(180deg,#4a4a4a,#2b2b2b);color:#fff;font-weight:700;border-radius:20px;padding:9px 22px;white-space:nowrap;}
+.oh-store{background:rgba(0,0,0,.4);color:#fff;font-weight:700;border-radius:8px;padding:8px 16px;white-space:nowrap;}
 .oh-logo{height:52px;width:auto;display:block;border-radius:50%;}
-.oh-grad{height:36px;margin-top:10px;background:linear-gradient(to bottom,rgba(0,0,0,.55),rgba(0,0,0,0));}
 /* 재판 / 특전 스티커 */
 .reprint-badge,.special-badge{
   display:inline-block;font-weight:900;font-size:.72em;
@@ -348,6 +351,11 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
       <div class="field"><label>스토어명 텍스트</label><input type="text" id="inOhStore" value="메가하우스 공식 스토어"/></div>
       <div class="field"><label>스토어명 크기</label><input type="range" id="ohStoreSize" min="12" max="30" value="17" oninput="syncOpenHeader()"/></div>
     </div>
+    <div class="row2">
+      <div class="field"><label>스토어명 박스색</label>
+        <button id="ohBoxBtn" class="ptab" style="width:100%;padding:5px 0;font-size:13px" onclick="toggleOhBox()">검정 반투명</button>
+      </div>
+    </div>
   </div>
 
   <!-- ══ 섹션 2: 사진 수정 ══ -->
@@ -475,7 +483,6 @@ function makePosterWrap(pg) {
               <img class="oh-logo" id="ohLogo${pg}" alt="MH"/>
             </div>
           </div>
-          <div class="oh-grad"></div>
         </div>
         <div class="p-grid" id="grid${pg}"></div>
         <div class="p-ft">
@@ -494,6 +501,7 @@ function ensurePosterWrap(pg) {
     syncHeader();
     syncOpenHeader();
     toggleOpenHeader();
+    applyOhBox();
     syncLogoSize();
     initWrapLogos(pg);
   }
@@ -1209,6 +1217,19 @@ function toggleOpenHeader() {
   document.querySelectorAll('.poster').forEach(el => el.classList.toggle('use-open-header', on));
   requestAnimationFrame(fitScale);
 }
+let ohBoxWhite = false;
+function toggleOhBox() {
+  ohBoxWhite = !ohBoxWhite;
+  applyOhBox();
+  saveState();
+}
+function applyOhBox() {
+  const btn = $('#ohBoxBtn'); if (btn) btn.textContent = ohBoxWhite ? '흰색 반투명' : '검정 반투명';
+  document.querySelectorAll('.oh-store').forEach(el => {
+    el.style.background = ohBoxWhite ? 'rgba(255,255,255,.55)' : 'rgba(0,0,0,.4)';
+    el.style.color = ohBoxWhite ? '#111' : '#fff';
+  });
+}
 function syncLogoSize() {
   const topSz = $('#logoSize').value + 'px';
   document.querySelectorAll('.p-logo').forEach(el => el.style.height = topSz);
@@ -1571,6 +1592,7 @@ function buildState() {
       ohTitleSize: $('#ohTitleSize') ? $('#ohTitleSize').value : '38',
       ohDateSize: $('#ohDateSize') ? $('#ohDateSize').value : '22',
       ohStoreSize: $('#ohStoreSize') ? $('#ohStoreSize').value : '17',
+      ohBoxWhite,
     };
 }
 
@@ -1636,8 +1658,10 @@ async function loadState() {
     if (st.ohDateSize && $('#ohDateSize')) $('#ohDateSize').value = st.ohDateSize;
     if (st.ohStoreSize && $('#ohStoreSize')) $('#ohStoreSize').value = st.ohStoreSize;
     if (st.ohOn && $('#chkOpenHeader')) $('#chkOpenHeader').checked = true;
+    if (st.ohBoxWhite) ohBoxWhite = true;
     syncOpenHeader();
     toggleOpenHeader();
+    applyOhBox();
     // update display labels for sliders
     if (st.storeOffset && $('#storeOffsetVal')) $('#storeOffsetVal').textContent = st.storeOffset;
     if (st.footerOffset && $('#footerOffsetVal')) $('#footerOffsetVal').textContent = st.footerOffset;
