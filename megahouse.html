@@ -439,6 +439,8 @@ const PW_SRC='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARoAAACQCAYAAADX76Sw
    상태
 ═══════════════════════════════════════ */
 const pages = [[]];
+let _bootDone = false; // loadState() 완료 전까지는 sync* 함수가 saveState()를 호출하지 않도록 막는 가드 —
+                        // 없으면 ensurePosterWrap(1)이 로드 전 기본값으로 먼저 저장해버려 실제 저장값을 덮어씀
 let curPage = 1;
 let idSeq = 1;
 let rowFontSizes = [36,36,36,36];
@@ -1217,6 +1219,7 @@ function syncHeader() {
     const fh = $('#footerHeight') ? $('#footerHeight').value + 'px' : '54px';
     if (ftEl) ftEl.style.height = fh;
   });
+  if (_bootDone) saveState();
 }
 function toggleSection(id, btn) {
   const body = document.getElementById(id);
@@ -1245,6 +1248,7 @@ function syncOpenHeader() {
     const dEl = $(`#ohDate${p}`); if (dEl) { dEl.textContent = d; dEl.style.fontSize = dSize; }
     const sEl = $(`#ohStore${p}`); if (sEl) { sEl.textContent = s; sEl.style.fontSize = sSize; }
   });
+  if (_bootDone) saveState();
 }
 function toggleOpenHeader() {
   const on = $('#chkOpenHeader') ? $('#chkOpenHeader').checked : false;
@@ -1262,6 +1266,7 @@ function syncOhGrad() {
   const spread = $('#ohGradSpread') ? $('#ohGradSpread').value : '60';
   const bg = `linear-gradient(to bottom, rgba(0,0,0,${op}) 0%, rgba(0,0,0,${(op*0.6).toFixed(3)}) ${spread}%, rgba(0,0,0,0) 100%)`;
   document.querySelectorAll('.p-hd-open').forEach(el => el.style.background = bg);
+  if (_bootDone) saveState();
 }
 function applyOhBox() {
   const btn = $('#ohBoxBtn'); if (btn) btn.textContent = ohBoxWhite ? '흰색' : '검정';
@@ -1276,6 +1281,7 @@ function syncLogoSize() {
   document.querySelectorAll('.p-logo').forEach(el => el.style.height = topSz);
   const pwSz = $('#pwLogoSize').value + 'px';
   document.querySelectorAll('.p-ft-logo').forEach(el => el.style.height = pwSz);
+  if (_bootDone) saveState();
 }
 function initWrapLogos(pg) {
   const logoEl = document.getElementById('logo'+pg);
@@ -1333,6 +1339,7 @@ function syncGrad() {
     nm.style.background = `linear-gradient(to bottom,${grad})`;
     nm.style.paddingTop = pt + 'px';
   });
+  if (_bootDone) saveState();
 }
 let badgeBlur = false;
 function syncBadgeStyle() {
@@ -1807,6 +1814,7 @@ ensurePosterWrap(1);
   if (navigator.storage && navigator.storage.persist) { try { await navigator.storage.persist(); } catch(e) {} }
   await loadState();
   await populateSlotSelect();
+  _bootDone = true; // 이 시점부터는 sync* 함수의 saveState() 호출을 허용
   syncHeader();
   syncLogoSize();
   syncBadgeStyle();
