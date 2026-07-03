@@ -523,8 +523,7 @@ function applySource(){
   const miss=[];
   if(head){ if(!setSelect('t_headline',head)) miss.push('헤드라인'); else state.text.headline=head; } else miss.push('헤드라인');
   { const wv = work || '[작품명]'; document.getElementById('t_work').value = wv; state.work = wv; if(!work) miss.push('작품'); }
-  if(line){ if(!setSelect('t_line',line)) miss.push('라인('+line+')'); else state.line=line; }
-  else { state.line='G.E.M. 시리즈'; setSelect('t_line','G.E.M. 시리즈'); miss.push('라인'); }
+  if(line){ if(!setSelect('t_line',line)) miss.push('라인('+line+')'); else state.line=line; } else miss.push('라인');
   { const v=(prod||'').split(/[\n／/]/).map(s=>s.trim()).filter(Boolean).join('\n'); document.getElementById('t_product').value=v; state.text.product=v; if(!v && !pendingKanji.length) miss.push('제품명(캐릭터)'); }
   document.getElementById('t_jp').value = jp||''; state.jp = jp||'';
   document.getElementById('t_saledate').value = date||''; state.saleDate = date||''; state.saleDow = dow;
