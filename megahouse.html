@@ -577,22 +577,29 @@ function renderGrid(pg) {
     gridEl.appendChild(row);
   });
   // allow dropping onto empty grid area (moves item to end of this page)
-  gridEl.addEventListener('dragover', e => { e.preventDefault(); gridEl.classList.add('drag-over-grid'); });
-  gridEl.addEventListener('dragleave', e => { if (!gridEl.contains(e.relatedTarget)) gridEl.classList.remove('drag-over-grid'); });
-  gridEl.addEventListener('drop', e => {
-    e.preventDefault();
-    gridEl.classList.remove('drag-over-grid');
-    if (!dragSrc) return;
-    const srcPg = dragSrc.pg;
-    const srcIdx = dragSrc.idx;
-    dragSrc = null;
-    if (srcPg === pg) return; // same page, ignore (cell handles same-page reorder)
-    if (pages[pg-1].length >= 12) { toast('대상 페이지가 꽉 찼습니다 (최대 12장)'); return; }
-    const [moved] = pages[srcPg-1].splice(srcIdx, 1);
-    pages[pg-1].push(moved);
-    curPage = pg;
-    refresh();
-  });
+  // renderGrid() re-runs on every refresh(); gridEl itself persists across renders
+  // (only its children are cleared), so guard against re-attaching these listeners
+  // every time — otherwise they stack up and a single drop fires the move N times.
+  if (!gridEl._dndBound) {
+    gridEl._dndBound = true;
+    gridEl.addEventListener('dragover', e => { e.preventDefault(); gridEl.classList.add('drag-over-grid'); });
+    gridEl.addEventListener('dragleave', e => { if (!gridEl.contains(e.relatedTarget)) gridEl.classList.remove('drag-over-grid'); });
+    gridEl.addEventListener('drop', e => {
+      e.preventDefault();
+      gridEl.classList.remove('drag-over-grid');
+      if (!dragSrc) return;
+      const srcPg = dragSrc.pg;
+      const srcIdx = dragSrc.idx;
+      dragSrc = null;
+      const destPg = +gridEl.id.replace('grid','');
+      if (srcPg === destPg) return; // same page, ignore (cell handles same-page reorder)
+      if (pages[destPg-1].length >= 12) { toast('대상 페이지가 꽉 찼습니다 (최대 12장)'); return; }
+      const [moved] = pages[srcPg-1].splice(srcIdx, 1);
+      pages[destPg-1].push(moved);
+      curPage = destPg;
+      refresh();
+    });
+  }
   requestAnimationFrame(() => { applyRowFontSizes(); applyRowHeights(pg); syncGrad(); });
 }
 
@@ -809,42 +816,47 @@ function applyImgTransform(img, it) {
   img.style.transform = `scale(${sc}) translate(${ox}px,${oy}px)`;
 }
 
-/* ── 셀 인터랙션: 드래그(이동) + 스크롤(확대) ── */
+/* ── 셀 인터랙션: 드래그(이동) + 스크롤(확대) ──
+   makeCell()이 refresh()마다 새 cell/img 노드로 다시 그려지므로, 여기서 매번
+   window에 mousemove/mouseup 리스너를 새로 붙이면 옛 리스너가 지워지지 않고
+   계속 쌓인다 (누적 메모리 누수 → 장시간 작업 시 브라우저 먹통 위험).
+   그래서 window 리스너는 딱 1벌만 전역으로 등록하고, 어떤 셀이 드래그 중인지는
+   공유 상태(_cellDrag)로 추적한다. */
+let _cellDrag = null;
+window.addEventListener('mousemove', e => {
+  if (!_cellDrag) return;
+  const { img, it, sx, sy, sox, soy } = _cellDrag;
+  const dx = (e.clientX - sx) / (it.scale || 1);
+  const dy = (e.clientY - sy) / (it.scale || 1);
+  it.ox = sox + dx; it.oy = soy + dy;
+  applyImgTransform(img, it);
+});
+window.addEventListener('mouseup', e => {
+  if (!_cellDrag) return;
+  const { cell, it, sx, sy } = _cellDrag;
+  _cellDrag = null;
+  const moved = Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy);
+  cell.classList.remove('editing');
+  // click (no drag) → activate name text editing + flash panel row
+  if (moved < 6) {
+    const span = cell.querySelector('.name-text');
+    if (span) { span.contentEditable='true'; span.focus(); }
+    // 패널 해당 row 선택 하이라이트 (이전 선택 해제 후 유지)
+    document.querySelectorAll('.item.selected').forEach(r => r.classList.remove('selected'));
+    const row = document.querySelector(`.item[data-item-id="${it.id}"]`);
+    if (row) {
+      row.classList.add('selected');
+      row.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    }
+  }
+});
 function bindCellInteraction(cell, img, it) {
-  let dragging = false, sx = 0, sy = 0, sox = 0, soy = 0;
-
   cell.addEventListener('mousedown', e => {
     // don't intercept clicks on name-text (for contenteditable)
     if (e.target.classList.contains('name-text') || e.target.classList.contains('reprint-badge')) return;
     e.preventDefault();
-    dragging = true;
-    sx = e.clientX; sy = e.clientY;
-    sox = it.ox || 0; soy = it.oy || 0;
+    _cellDrag = { cell, img, it, sx: e.clientX, sy: e.clientY, sox: it.ox || 0, soy: it.oy || 0 };
     cell.classList.add('editing');
-  });
-  window.addEventListener('mousemove', e => {
-    if (!dragging) return;
-    const dx = (e.clientX - sx) / (it.scale || 1);
-    const dy = (e.clientY - sy) / (it.scale || 1);
-    it.ox = sox + dx; it.oy = soy + dy;
-    applyImgTransform(img, it);
-  });
-  window.addEventListener('mouseup', e => {
-    if (!dragging) return;
-    const moved = Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy);
-    dragging = false; cell.classList.remove('editing');
-    // click (no drag) → activate name text editing + flash panel row
-    if (moved < 6) {
-      const span = cell.querySelector('.name-text');
-      if (span) { span.contentEditable='true'; span.focus(); }
-      // 패널 해당 row 선택 하이라이트 (이전 선택 해제 후 유지)
-      document.querySelectorAll('.item.selected').forEach(r => r.classList.remove('selected'));
-      const row = document.querySelector(`.item[data-item-id="${it.id}"]`);
-      if (row) {
-        row.classList.add('selected');
-        row.scrollIntoView({ behavior:'smooth', block:'nearest' });
-      }
-    }
   });
 
   cell.addEventListener('wheel', e => {
@@ -1530,7 +1542,7 @@ $('#btnReset').addEventListener('click', () => {
   const row = document.getElementById('postersRow');
   row.innerHTML = '';
   curPage = 1;
-  localStorage.removeItem(STATE_KEY);
+  localStorage.removeItem(STATE_KEY); // 구버전 폴백 데이터 정리 (실제 상태는 아래 refresh()가 IndexedDB에 다시 저장)
   ensurePosterWrap(1);
   refresh();
 });
