@@ -225,6 +225,15 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
   <h1>메가하우스 신제품 예고 메이커</h1>
   <p class="desc">셀 위 드래그=위치 조정 · 스크롤=확대. 12장 초과 시 자동으로 2페이지.</p>
 
+  <!-- ══ 저장 슬롯 (월별) ══ -->
+  <div class="row2" style="align-items:flex-end;margin-bottom:12px;">
+    <div class="field" style="margin:0;flex:1">
+      <label>저장 슬롯 (월별)</label>
+      <select id="slotSelect" onchange="switchSlot(this.value)" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:7px 8px;font-size:12.5px;font-family:inherit;"></select>
+    </div>
+    <button class="ptab" id="btnNewSlot" style="flex:0 0 auto;padding:8px 12px;font-size:14px;" title="새 슬롯 추가 (YYYY-MM)">＋</button>
+  </div>
+
   <!-- ══ 섹션 0: 도움말 ══ -->
   <button class="psec-toggle collapsed" onclick="toggleSection('sec-help',this)" style="background:#555;margin-bottom:0">❓ 도움말 / 사용법 <span class="arrow">▾</span></button>
   <div class="psec-body collapsed" id="sec-help" style="padding-top:10px;margin-bottom:8px">
@@ -1523,6 +1532,14 @@ $('#btnExport').addEventListener('click', () => {
   a.click();
   URL.revokeObjectURL(a.href);
 });
+$('#btnNewSlot').addEventListener('click', () => {
+  const input = prompt('새 슬롯 (예: 2026-08)', currentMonthSlot().replace('_','-'));
+  if (!input) return;
+  const m = input.trim().match(/^(\d{4})-(\d{1,2})$/);
+  if (!m) { alert('YYYY-MM 형식으로 입력해주세요 (예: 2026-08)'); return; }
+  const slot = `${m[1]}_${m[2].padStart(2,'0')}`;
+  switchSlot(slot);
+});
 $('#btnImport').addEventListener('click', () => $('#importFile').click());
 $('#importFile').addEventListener('change', e => {
   const file = e.target.files[0]; if (!file) return;
@@ -1531,7 +1548,7 @@ $('#importFile').addEventListener('change', e => {
     try {
       JSON.parse(ev.target.result); // 유효성 확인
       if (!confirm('현재 작업을 덮어쓰고 불러올까요?')) return;
-      idbSet(STATE_KEY, ev.target.result).then(() => location.reload());
+      idbSet(slotStateKey(getActiveSlot()), ev.target.result).then(() => location.reload());
     } catch { alert('올바른 파일이 아닙니다.'); }
   };
   reader.readAsText(file);
@@ -1545,7 +1562,7 @@ $('#btnReset').addEventListener('click', () => {
   const row = document.getElementById('postersRow');
   row.innerHTML = '';
   curPage = 1;
-  localStorage.removeItem(STATE_KEY); // 구버전 폴백 데이터 정리 (실제 상태는 아래 refresh()가 IndexedDB에 다시 저장)
+  localStorage.removeItem(slotStateKey(getActiveSlot())); // 구버전 폴백 데이터 정리 (실제 상태는 아래 refresh()가 IndexedDB에 다시 저장)
   ensurePosterWrap(1);
   refresh();
 });
@@ -1568,7 +1585,7 @@ function toast(msg) {
 // logos initialized per-wrap by initWrapLogos()
 
 /* ── 저장소: IndexedDB (용량 제한 없음) + localStorage 폴백 ── */
-const STATE_KEY = 'mh_maker_state';
+const STATE_KEY = 'mh_maker_state'; // 구버전 단일 저장 키 (월별 슬롯 도입 전) — 1회 마이그레이션 용도로만 사용
 function idbOpen() {
   return new Promise((res, rej) => {
     const req = indexedDB.open('mh_maker', 1);
@@ -1592,6 +1609,47 @@ function idbGet(key) {
     rq.onsuccess = () => { db.close(); res(rq.result); };
     rq.onerror = () => { db.close(); rej(rq.error); };
   }));
+}
+function idbGetAllKeys() {
+  return idbOpen().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readonly');
+    const rq = tx.objectStore('kv').getAllKeys();
+    rq.onsuccess = () => { db.close(); res(rq.result); };
+    rq.onerror = () => { db.close(); rej(rq.error); };
+  }));
+}
+
+/* ── 월별 저장 슬롯 ── */
+const ACTIVE_SLOT_KEY = 'mh_maker_active_slot';
+function currentMonthSlot() {
+  const d = new Date();
+  return `${d.getFullYear()}_${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function slotStateKey(slot) { return 'mh_maker_state_' + slot; }
+function monthLabel(slot) {
+  const m = slot.match(/^(\d{4})_(\d{2})$/);
+  return m ? `${m[1]}년 ${+m[2]}월` : slot;
+}
+function getActiveSlot() { return localStorage.getItem(ACTIVE_SLOT_KEY) || currentMonthSlot(); }
+function setActiveSlot(slot) { localStorage.setItem(ACTIVE_SLOT_KEY, slot); }
+async function listSlots() {
+  const keys = await idbGetAllKeys().catch(() => []);
+  const slots = new Set(keys.filter(k => /^mh_maker_state_\d{4}_\d{2}$/.test(k)).map(k => k.replace('mh_maker_state_', '')));
+  slots.add(currentMonthSlot());
+  slots.add(getActiveSlot());
+  return [...slots].sort().reverse();
+}
+async function populateSlotSelect() {
+  const sel = $('#slotSelect');
+  if (!sel) return;
+  const slots = await listSlots();
+  const active = getActiveSlot();
+  sel.innerHTML = slots.map(s => `<option value="${s}"${s===active?' selected':''}>${monthLabel(s)}</option>`).join('');
+}
+async function switchSlot(slot) {
+  await saveState(); // 나가기 전에 현재 슬롯 상태 확정 저장
+  setActiveSlot(slot);
+  location.reload(); // 전역 상태를 안전하게 초기화하기 위해 새로고침으로 재부팅
 }
 
 function buildState() {
@@ -1640,19 +1698,25 @@ function buildState() {
 
 function saveState() {
   const json = JSON.stringify(buildState());
-  idbSet(STATE_KEY, json).catch(() => {
+  return idbSet(slotStateKey(getActiveSlot()), json).catch(() => {
     // IndexedDB 실패 시 localStorage 폴백 (5MB 한도 내에서만 성공)
-    try { localStorage.setItem(STATE_KEY, json); }
+    try { localStorage.setItem(slotStateKey(getActiveSlot()), json); }
     catch(e) { toast('⚠️ 저장 실패: 브라우저 저장소에 기록하지 못했습니다. 📤 내보내기로 백업하세요.'); }
   });
 }
 
 async function loadState() {
   try {
-    let raw = await idbGet(STATE_KEY).catch(() => null);
+    const slot = getActiveSlot();
+    let raw = await idbGet(slotStateKey(slot)).catch(() => null);
     if (!raw) {
-      raw = localStorage.getItem(STATE_KEY);
-      if (raw) idbSet(STATE_KEY, raw).catch(() => {}); // 기존 데이터 마이그레이션 (localStorage 원본은 보존)
+      raw = localStorage.getItem(slotStateKey(slot));
+      if (raw) idbSet(slotStateKey(slot), raw).catch(() => {});
+    }
+    // 슬롯을 한 번도 선택한 적 없다면(구버전 사용자) 예전 단일 저장 데이터를 현재 슬롯으로 1회 마이그레이션
+    if (!raw && !localStorage.getItem(ACTIVE_SLOT_KEY)) {
+      raw = await idbGet(STATE_KEY).catch(() => null) || localStorage.getItem(STATE_KEY);
+      if (raw) { idbSet(slotStateKey(slot), raw).catch(() => {}); setActiveSlot(slot); }
     }
     if (!raw) return;
     const st = JSON.parse(raw);
@@ -1719,6 +1783,7 @@ ensurePosterWrap(1);
 (async () => {
   if (navigator.storage && navigator.storage.persist) { try { await navigator.storage.persist(); } catch(e) {} }
   await loadState();
+  await populateSlotSelect();
   syncHeader();
   syncLogoSize();
   syncBadgeStyle();
