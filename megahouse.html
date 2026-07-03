@@ -131,7 +131,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .oh-title{font-family:'Paperlogy','Pretendard',sans-serif;font-weight:900;color:#fff;line-height:1.05;letter-spacing:-1px;text-shadow:0 1px 4px rgba(0,0,0,.4);}
 .oh-date{font-family:'Paperlogy','Pretendard',sans-serif;font-weight:800;color:#fff;line-height:1.1;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.4);}
 .oh-store-wrap{display:flex;align-items:center;gap:10px;flex-shrink:0;}
-.oh-store{background:rgba(0,0,0,.4);color:#fff;font-weight:700;border-radius:8px;padding:8px 16px;white-space:nowrap;}
+.oh-store{font-family:'Pretendard',sans-serif;background:rgba(0,0,0,.4);color:#fff;font-weight:700;border-radius:8px;padding:8px 16px;white-space:nowrap;}
 .oh-logo{height:52px;width:auto;display:block;border-radius:50%;}
 /* 재판 / 특전 스티커 */
 .reprint-badge,.special-badge{
@@ -348,12 +348,24 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
     </div>
     <div class="row2">
       <div class="field"><label>스토어명 텍스트</label><input type="text" id="inOhStore" value="메가하우스 공식 스토어"/></div>
-      <div class="field"><label>스토어명 크기</label><input type="range" id="ohStoreSize" min="12" max="30" value="17" oninput="syncOpenHeader()"/></div>
+      <div class="field"><label>굵기</label>
+        <select id="ohStoreFontWeight" onchange="syncOpenHeader()" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;">
+          <option value="300">3—Light</option>
+          <option value="400">4—Regular</option>
+          <option value="500" selected>5—Medium</option>
+          <option value="600">6—SemiBold</option>
+          <option value="700">7—Bold</option>
+        </select>
+      </div>
     </div>
     <div class="row2">
-      <div class="field"><label>스토어명 박스색</label>
-        <button id="ohBoxBtn" class="ptab" style="width:100%;padding:5px 0;font-size:13px" onclick="toggleOhBox()">검정 반투명</button>
+      <div class="field"><label>스토어명 크기</label><input type="range" id="ohStoreSize" min="12" max="60" value="34" oninput="syncOpenHeader()"/></div>
+      <div class="field"><label>박스 색</label>
+        <button id="ohBoxBtn" class="ptab" style="width:100%;padding:5px 0;font-size:13px" onclick="toggleOhBox()">검정</button>
       </div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>박스 투명도</label><input type="range" id="ohBoxOpacity" min="0" max="100" value="40" oninput="applyOhBox();saveState()"/></div>
     </div>
     <div class="sec">그라데이션 (오버레이)</div>
     <div class="row2">
@@ -1210,11 +1222,12 @@ function syncOpenHeader() {
   const s = $('#inOhStore') ? $('#inOhStore').value.trim() : '';
   const tSize = $('#ohTitleSize') ? $('#ohTitleSize').value + 'px' : '38px';
   const dSize = $('#ohDateSize') ? $('#ohDateSize').value + 'px' : '22px';
-  const sSize = $('#ohStoreSize') ? $('#ohStoreSize').value + 'px' : '17px';
+  const sSize = $('#ohStoreSize') ? $('#ohStoreSize').value + 'px' : '34px';
+  const sWeight = $('#ohStoreFontWeight') ? $('#ohStoreFontWeight').value : '500';
   pages.forEach((_, i) => { const p = i+1;
     const tEl = $(`#ohTitle${p}`); if (tEl) { tEl.textContent = t; tEl.style.fontSize = tSize; }
     const dEl = $(`#ohDate${p}`); if (dEl) { dEl.textContent = d; dEl.style.fontSize = dSize; }
-    const sEl = $(`#ohStore${p}`); if (sEl) { sEl.textContent = s; sEl.style.fontSize = sSize; }
+    const sEl = $(`#ohStore${p}`); if (sEl) { sEl.textContent = s; sEl.style.fontSize = sSize; sEl.style.fontWeight = sWeight; }
   });
 }
 function toggleOpenHeader() {
@@ -1235,9 +1248,10 @@ function syncOhGrad() {
   document.querySelectorAll('.p-hd-open').forEach(el => el.style.background = bg);
 }
 function applyOhBox() {
-  const btn = $('#ohBoxBtn'); if (btn) btn.textContent = ohBoxWhite ? '흰색 반투명' : '검정 반투명';
+  const btn = $('#ohBoxBtn'); if (btn) btn.textContent = ohBoxWhite ? '흰색' : '검정';
+  const op = ($('#ohBoxOpacity') ? +$('#ohBoxOpacity').value : 40) / 100;
   document.querySelectorAll('.oh-store').forEach(el => {
-    el.style.background = ohBoxWhite ? 'rgba(255,255,255,.55)' : 'rgba(0,0,0,.4)';
+    el.style.background = ohBoxWhite ? `rgba(255,255,255,${op})` : `rgba(0,0,0,${op})`;
     el.style.color = ohBoxWhite ? '#111' : '#fff';
   });
 }
@@ -1602,8 +1616,10 @@ function buildState() {
       ohStore: $('#inOhStore') ? $('#inOhStore').value : '',
       ohTitleSize: $('#ohTitleSize') ? $('#ohTitleSize').value : '38',
       ohDateSize: $('#ohDateSize') ? $('#ohDateSize').value : '22',
-      ohStoreSize: $('#ohStoreSize') ? $('#ohStoreSize').value : '17',
+      ohStoreSize: $('#ohStoreSize') ? $('#ohStoreSize').value : '34',
+      ohStoreFontWeight: $('#ohStoreFontWeight') ? $('#ohStoreFontWeight').value : '500',
       ohBoxWhite,
+      ohBoxOpacity: $('#ohBoxOpacity') ? $('#ohBoxOpacity').value : '40',
       ohGradOpacity: $('#ohGradOpacity') ? $('#ohGradOpacity').value : '60',
       ohGradSpread: $('#ohGradSpread') ? $('#ohGradSpread').value : '60',
     };
@@ -1670,8 +1686,10 @@ async function loadState() {
     if (st.ohTitleSize && $('#ohTitleSize')) $('#ohTitleSize').value = st.ohTitleSize;
     if (st.ohDateSize && $('#ohDateSize')) $('#ohDateSize').value = st.ohDateSize;
     if (st.ohStoreSize && $('#ohStoreSize')) $('#ohStoreSize').value = st.ohStoreSize;
+    if (st.ohStoreFontWeight && $('#ohStoreFontWeight')) $('#ohStoreFontWeight').value = st.ohStoreFontWeight;
     if (st.ohOn && $('#chkOpenHeader')) $('#chkOpenHeader').checked = true;
     if (st.ohBoxWhite) ohBoxWhite = true;
+    if (st.ohBoxOpacity && $('#ohBoxOpacity')) $('#ohBoxOpacity').value = st.ohBoxOpacity;
     if (st.ohGradOpacity && $('#ohGradOpacity')) $('#ohGradOpacity').value = st.ohGradOpacity;
     if (st.ohGradSpread && $('#ohGradSpread')) $('#ohGradSpread').value = st.ohGradSpread;
     syncOpenHeader();
