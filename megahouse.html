@@ -1384,8 +1384,7 @@ $('#btnApplyBulk').addEventListener('click', applyBulk);
 $('#btnDownload').addEventListener('click', downloadPNG);
 $('#btnDownloadAll').addEventListener('click', downloadAllPNG);
 $('#btnExport').addEventListener('click', () => {
-  const raw = localStorage.getItem('mh_maker_state');
-  if (!raw) { alert('저장된 데이터가 없습니다.'); return; }
+  const raw = JSON.stringify(buildState());
   const blob = new Blob([raw], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1402,8 +1401,7 @@ $('#importFile').addEventListener('change', e => {
     try {
       JSON.parse(ev.target.result); // 유효성 확인
       if (!confirm('현재 작업을 덮어쓰고 불러올까요?')) return;
-      localStorage.setItem('mh_maker_state', ev.target.result);
-      location.reload();
+      idbSet(STATE_KEY, ev.target.result).then(() => location.reload());
     } catch { alert('올바른 파일이 아닙니다.'); }
   };
   reader.readAsText(file);
@@ -1417,7 +1415,7 @@ $('#btnReset').addEventListener('click', () => {
   const row = document.getElementById('postersRow');
   row.innerHTML = '';
   curPage = 1;
-  localStorage.removeItem('mh_maker_state');
+  localStorage.removeItem(STATE_KEY);
   ensurePosterWrap(1);
   refresh();
 });
@@ -1439,10 +1437,35 @@ function toast(msg) {
 ═══════════════════════════════════════ */
 // logos initialized per-wrap by initWrapLogos()
 
-/* ── localStorage 캐시 ── */
-function saveState() {
-  try {
-    const state = {
+/* ── 저장소: IndexedDB (용량 제한 없음) + localStorage 폴백 ── */
+const STATE_KEY = 'mh_maker_state';
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open('mh_maker', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+function idbSet(key, val) {
+  return idbOpen().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').put(val, key);
+    tx.oncomplete = () => { db.close(); res(); };
+    tx.onerror = () => { db.close(); rej(tx.error); };
+  }));
+}
+function idbGet(key) {
+  return idbOpen().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readonly');
+    const rq = tx.objectStore('kv').get(key);
+    rq.onsuccess = () => { db.close(); res(rq.result); };
+    rq.onerror = () => { db.close(); rej(rq.error); };
+  }));
+}
+
+function buildState() {
+  return {
       pages: pages.map(pg => pg.map(it => ({...it}))),
       rowFontSizes, firstRowFlex,
       month: $('#inMonth').value,
@@ -1471,17 +1494,24 @@ function saveState() {
       customMegaSrc: customMegaSrc || null,
       customPWSrc: customPWSrc || null,
     };
-    localStorage.setItem('mh_maker_state', JSON.stringify(state));
-  } catch(e) {
-    if (e && (e.name === 'QuotaExceededError' || e.code === 22)) {
-      toast('⚠️ 저장 실패: 이미지 용량이 너무 커서 브라우저 저장소 한도를 초과했습니다. 이미지를 줄여주세요.');
-    }
-  }
 }
 
-function loadState() {
+function saveState() {
+  const json = JSON.stringify(buildState());
+  idbSet(STATE_KEY, json).catch(() => {
+    // IndexedDB 실패 시 localStorage 폴백 (5MB 한도 내에서만 성공)
+    try { localStorage.setItem(STATE_KEY, json); }
+    catch(e) { toast('⚠️ 저장 실패: 브라우저 저장소에 기록하지 못했습니다. 📤 내보내기로 백업하세요.'); }
+  });
+}
+
+async function loadState() {
   try {
-    const raw = localStorage.getItem('mh_maker_state');
+    let raw = await idbGet(STATE_KEY).catch(() => null);
+    if (!raw) {
+      raw = localStorage.getItem(STATE_KEY);
+      if (raw) idbSet(STATE_KEY, raw).catch(() => {}); // 기존 데이터 마이그레이션 (localStorage 원본은 보존)
+    }
     if (!raw) return;
     const st = JSON.parse(raw);
     if (st.pages && st.pages.length) {
@@ -1528,16 +1558,19 @@ function loadState() {
 }
 
 ensurePosterWrap(1);
-loadState();
-syncHeader();
-syncLogoSize();
-syncBadgeStyle();
-syncGrad();
-refresh(true);
+(async () => {
+  if (navigator.storage && navigator.storage.persist) { try { await navigator.storage.persist(); } catch(e) {} }
+  await loadState();
+  syncHeader();
+  syncLogoSize();
+  syncBadgeStyle();
+  syncGrad();
+  refresh(true);
 
-// auto-save on any data change — hook into refresh
-const _origRefresh = refresh;
-window.refresh = function(noUndo) { _origRefresh(noUndo); saveState(); };
+  // auto-save on any data change — hook into refresh
+  const _origRefresh = refresh;
+  window.refresh = function(noUndo) { _origRefresh(noUndo); saveState(); };
+})();
 
 // 스테이지 패닝 (베이지 배경 드래그)
 (function() {
