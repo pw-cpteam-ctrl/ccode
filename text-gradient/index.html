@@ -18,6 +18,7 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Mal
 .field{margin-bottom:10px;}
 .field label{display:block;font-size:13px;color:var(--ui-sub);margin-bottom:4px;font-weight:600;}
 .field input,.field textarea{width:100%;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:7px 10px;font-size:14.5px;font-family:inherit;color:var(--ui-text);}
+.field textarea#inBulkMd{font-family:'SFMono-Regular',Consolas,monospace;font-size:13px;white-space:pre;}
 .sec{font-size:15px;font-weight:800;color:var(--ui-text);margin:16px 0 9px;padding-bottom:6px;border-bottom:2px solid var(--ui-border);}
 .actions{position:sticky;bottom:0;padding-top:10px;margin-top:12px;background:linear-gradient(transparent,var(--ui-panel) 35%);display:flex;gap:7px;}
 button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;border:1px solid var(--ui-border);font-family:inherit;background:var(--ui-accent);color:#fff;}
@@ -32,7 +33,11 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 
 /* ─── 우측 스테이지 ─── */
 .stage{flex:1;height:100vh;overflow:auto;padding:40px;}
-#slotsRow{display:flex;flex-direction:row;gap:24px;overflow-x:auto;}
+.stage-toolbar{position:sticky;top:0;z-index:5;display:flex;gap:8px;margin-bottom:16px;background:var(--ui-bg);}
+.viewBtn{background:var(--ui-card);color:var(--ui-text);padding:6px 14px;font-size:13px;border-radius:7px;}
+.viewBtn.on{background:var(--ui-accent);color:#fff;}
+#slotsRow{display:flex;flex-direction:row;flex-wrap:nowrap;gap:24px;overflow-x:auto;}
+#slotsRow.grid-mode{flex-wrap:wrap;overflow-x:visible;}
 .slot-wrap{display:flex;flex-direction:column;gap:6px;flex-shrink:0;}
 .slot-num{font-size:12px;font-weight:700;color:var(--ui-sub);}
 .canvas-clip{
@@ -59,6 +64,19 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
   <div class="tabsRow" id="tabsRow"></div>
   <button onclick="addSlot()">＋ 슬롯 추가</button>
 
+  <div class="sec">마크다운 일괄입력</div>
+  <div class="field"><label>공통 배지 문구 (생성되는 슬롯 전체에 적용)</label><input type="text" id="inBulkBadge" value="예약판매 기간 5% 할인 캠페인 중!"/></div>
+  <div class="field">
+    <label>최상위 불릿(-) = 슬롯 1개 · "좌 | 우"로 타이틀 구분 · 들여쓴 하위 불릿 = 불릿리스트</label>
+    <textarea id="inBulkMd" rows="10" placeholder="- 주술회전 | 메가캣 프로젝트
+  - 주술냥코 시부야 사변 (재판)
+  - 유지/메구미/노바라
+  - 고죠/나나미/스쿠나
+- 진격의 거인 | 스케일 피규어
+  - 에렌 예거 & 리바이 병장"></textarea>
+  </div>
+  <button onclick="applyBulkMarkdown()" style="width:100%;margin-bottom:4px;">일괄 적용 (기존 슬롯 전부 교체)</button>
+
   <div class="sec">텍스트</div>
   <div class="field"><label>배지 문구</label><input type="text" id="inBadge" value="예약판매 기간 5% 할인 캠페인 중!"/></div>
   <div class="field"><label>타이틀 (좌)</label><input type="text" id="inTitleL" value="주술회전"/></div>
@@ -78,6 +96,10 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 </div>
 
 <div class="stage">
+  <div class="stage-toolbar">
+    <button class="viewBtn" id="viewRowBtn" onclick="setViewMode('row')">가로 일렬</button>
+    <button class="viewBtn" id="viewGridBtn" onclick="setViewMode('grid')">바둑판</button>
+  </div>
   <div id="slotsRow"></div>
 </div>
 
@@ -113,13 +135,14 @@ function idbGet(key) {
   }));
 }
 function persistState() {
-  idbSet(STATE_KEY, { slots, curSlot }).catch(() => {});
+  idbSet(STATE_KEY, { slots, curSlot, viewMode }).catch(() => {});
 }
 
-/* ── 상태: 슬롯 배열 (최대 30개) ── */
-const MAX_SLOTS = 30;
+/* ── 상태: 슬롯 배열 (개수 제한 없음) ── */
+const BULK_WARN_THRESHOLD = 100; // 이 이상을 한 번에 만들려고 하면 확인창만 띄움 (하드 제한 아님)
 let slots = [ makeEmptySlot() ];
 let curSlot = 1;
+let viewMode = 'grid'; // 'row' | 'grid' — 기본값은 창 너비에 따라 열 개수가 자동으로 바뀌는 바둑판
 
 function makeEmptySlot() {
   return { badge:'', titleL:'', titleR:'', bullets:'', gradStart:40, gradWidth:60, gradOpacity:85 };
@@ -171,7 +194,6 @@ function renderTabs() {
   });
 }
 function addSlot() {
-  if (slots.length >= MAX_SLOTS) { alert('최대 30개까지 가능합니다'); return; }
   pushUndo();
   slots.push(makeEmptySlot());
   curSlot = slots.length;
@@ -184,6 +206,56 @@ function deleteSlot(pg) {
   slots.splice(pg - 1, 1);
   if (curSlot >= pg) curSlot = Math.max(1, curSlot - 1);
   renderTabs(); renderAllSlots(); loadInputsFromCurSlot(); persistState();
+}
+
+/* ── 마크다운 일괄입력: 최상위 불릿 = 슬롯, 하위 불릿 = 불릿리스트 ── */
+function applyBulkMarkdown() {
+  const bulletLines = [];
+  $('#inBulkMd').value.split('\n').forEach(line => {
+    const m = line.match(/^(\s*)[-*•]\s+(.*)$/);
+    if (m && m[2].trim()) bulletLines.push({ indent: m[1].length, text: m[2].trim() });
+  });
+  if (!bulletLines.length) { alert('불릿 형식("- 항목")을 인식하지 못했습니다. 형식을 확인해주세요.'); return; }
+
+  const minIndent = Math.min(...bulletLines.map(b => b.indent));
+  const items = [];
+  let cur = null;
+  bulletLines.forEach(b => {
+    if (b.indent <= minIndent) { cur = { title: b.text, bullets: [] }; items.push(cur); }
+    else if (cur) cur.bullets.push(b.text);
+  });
+
+  if (items.length > BULK_WARN_THRESHOLD) {
+    const ok = confirm(`${items.length}개 슬롯을 한 번에 만들려고 합니다. 슬롯이 많으면 브라우저가 느려질 수 있어요. 계속할까요?`);
+    if (!ok) return;
+  }
+
+  const commonBadge = $('#inBulkBadge').value;
+  const g = slots[curSlot - 1] || makeEmptySlot(); // 그라데이션 설정은 기존 값을 새 슬롯들에 유지
+
+  pushUndo();
+  slots = items.map(it => {
+    const bar = it.title.indexOf('|');
+    const titleL = bar >= 0 ? it.title.slice(0, bar).trim() : it.title;
+    const titleR = bar >= 0 ? it.title.slice(bar + 1).trim() : '';
+    return { badge: commonBadge, titleL, titleR, bullets: it.bullets.join('\n'),
+      gradStart: g.gradStart, gradWidth: g.gradWidth, gradOpacity: g.gradOpacity };
+  });
+  curSlot = 1;
+  renderTabs(); renderAllSlots(); loadInputsFromCurSlot(); persistState();
+  alert(`${items.length}개 슬롯 생성 완료`);
+}
+
+/* ── 미리보기 배치 모드 (가로 일렬 ↔ 바둑판) ── */
+function setViewMode(mode) {
+  viewMode = mode;
+  applyViewMode();
+  persistState();
+}
+function applyViewMode() {
+  $('#slotsRow').classList.toggle('grid-mode', viewMode === 'grid');
+  $('#viewRowBtn').classList.toggle('on', viewMode === 'row');
+  $('#viewGridBtn').classList.toggle('on', viewMode === 'grid');
 }
 
 /* ── 입력 → 상태 반영(화면+저장) ── */
@@ -267,9 +339,11 @@ async function boot() {
     slots = saved.slots;
     curSlot = Math.min(Math.max(1, saved.curSlot || 1), slots.length);
   }
+  if (saved && (saved.viewMode === 'row' || saved.viewMode === 'grid')) viewMode = saved.viewMode;
   loadInputsFromCurSlot(); // 입력창을 복원된 값으로 먼저 맞춘 뒤 렌더 (부팅 중 저장 로직이 기본값을 덮어쓰는 것 방지)
   renderTabs();
   renderAllSlots();
+  applyViewMode();
 }
 boot();
 </script>
