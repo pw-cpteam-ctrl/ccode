@@ -271,7 +271,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 
       <div style="background:var(--ui-bg);border-radius:8px;padding:10px 12px;border:1px solid var(--ui-border)">
         <div style="font-weight:700;margin-bottom:4px;font-size:12px;">🏷 오픈용 헤더</div>
-        <div style="color:var(--ui-sub)"><b>레이아웃 수정</b> 옆 <b>오픈용 헤더</b> 섹션에서 체크 → 기존 파란 헤더 대신 검정 그라데이션 오버레이로 전환<br>타이틀·날짜·스토어명 문구/크기/굵기 조정 가능<br>스토어명 박스 색(흑백)·투명도, 그라데이션 농도·퍼짐 세부 조절 가능</div>
+        <div style="color:var(--ui-sub)"><b>레이아웃 수정</b> 섹션 안 <b>오픈용 헤더</b> 항목에서 체크 → 기존 파란 헤더 대신 검정 그라데이션 오버레이로 전환<br>타이틀·날짜·스토어명 문구/크기/굵기 조정 가능<br>스토어명 박스 색(흑백)·투명도, 그라데이션 농도·퍼짐 세부 조절 가능</div>
       </div>
 
       <div style="background:var(--ui-bg);border-radius:8px;padding:10px 12px;border:1px solid var(--ui-border)">
@@ -311,6 +311,41 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
       <div class="field"><label>타이틀 크기</label><input type="range" id="titleFontSize" min="40" max="120" value="92" oninput="syncHeader()"/></div>
       <div class="field"><label>스토어명 위치</label><input type="range" id="storeOffset" min="-400" max="400" value="0" oninput="syncHeader()"/></div>
     </div>
+    <div class="sec">오픈용 헤더</div>
+    <div class="row2" style="align-items:center">
+      <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;"><input type="checkbox" id="chkOpenHeader" onchange="toggleOpenHeader()"/> 오픈용 헤더 사용 (검정 그라데이션 오버레이로 전환)</label>
+    </div>
+    <div class="row2" style="margin-top:6px">
+      <div class="field"><label>타이틀 문구</label><input type="text" id="inOhTitle" value="26년 6월 신제품"/></div>
+      <div class="field"><label>날짜 문구</label><input type="text" id="inOhDate" value="6/4~7/12"/></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>타이틀 크기</label><input type="range" id="ohTitleSize" min="20" max="80" value="38" oninput="syncOpenHeader()"/></div>
+      <div class="field"><label>날짜 크기</label><input type="range" id="ohDateSize" min="12" max="48" value="22" oninput="syncOpenHeader()"/></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>스토어명 텍스트</label><input type="text" id="inOhStore" value="메가하우스 공식 스토어"/></div>
+      <div class="field"><label>굵기</label>
+        <select id="ohStoreFontWeight" onchange="syncOpenHeader()" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;">
+          <option value="300">3—Light</option>
+          <option value="400">4—Regular</option>
+          <option value="500" selected>5—Medium</option>
+          <option value="600">6—SemiBold</option>
+          <option value="700">7—Bold</option>
+        </select>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>스토어명 크기</label><input type="range" id="ohStoreSize" min="12" max="60" value="34" oninput="syncOpenHeader()"/></div>
+      <div class="field"><label>박스 색</label>
+        <button id="ohBoxBtn" class="ptab" style="width:100%;padding:5px 0;font-size:13px" onclick="toggleOhBox()">검정</button>
+      </div>
+      <div class="field"><label>박스 투명도</label><input type="range" id="ohBoxOpacity" min="0" max="100" value="40" oninput="applyOhBox();saveState()"/></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>그라데이션 농도</label><input type="range" id="ohGradOpacity" min="0" max="100" value="60" oninput="syncOhGrad()"/></div>
+      <div class="field"><label>그라데이션 퍼짐</label><input type="range" id="ohGradSpread" min="10" max="90" value="60" oninput="syncOhGrad()"/></div>
+    </div>
     <div class="sec">재판 배지</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:4px">
       <div class="field"><label>배경색</label><input type="color" id="badgeBg" value="#0d1580" oninput="syncBadgeStyle();saveState()" style="width:100%;height:32px;border:none;background:none;cursor:pointer;padding:0;border-radius:6px;"/></div>
@@ -342,46 +377,6 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
       <div class="field" style="margin-top:7px"><label>메가하우스 로고</label><input type="file" id="logoMega" accept="image/*"/></div>
       <div class="field"><label>PW: 로고</label><input type="file" id="logoPW" accept="image/*"/></div>
     </details>
-  </div>
-
-  <!-- ══ 섹션 1.5: 오픈용 헤더 ══ -->
-  <button class="psec-toggle collapsed" onclick="toggleSection('sec-openhd',this)" style="margin-top:8px">오픈용 헤더 <span class="arrow">▾</span></button>
-  <div class="psec-body collapsed" id="sec-openhd" style="padding-top:10px">
-    <div class="row2" style="align-items:center">
-      <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;"><input type="checkbox" id="chkOpenHeader" onchange="toggleOpenHeader()"/> 오픈용 헤더 사용</label>
-    </div>
-    <div class="row2" style="margin-top:6px">
-      <div class="field"><label>타이틀 문구</label><input type="text" id="inOhTitle" value="26년 6월 신제품"/></div>
-      <div class="field"><label>날짜 문구</label><input type="text" id="inOhDate" value="6/4~7/12"/></div>
-    </div>
-    <div class="row2">
-      <div class="field"><label>타이틀 크기</label><input type="range" id="ohTitleSize" min="20" max="80" value="38" oninput="syncOpenHeader()"/></div>
-      <div class="field"><label>날짜 크기</label><input type="range" id="ohDateSize" min="12" max="48" value="22" oninput="syncOpenHeader()"/></div>
-    </div>
-    <div class="row2">
-      <div class="field"><label>스토어명 텍스트</label><input type="text" id="inOhStore" value="메가하우스 공식 스토어"/></div>
-      <div class="field"><label>굵기</label>
-        <select id="ohStoreFontWeight" onchange="syncOpenHeader()" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;">
-          <option value="300">3—Light</option>
-          <option value="400">4—Regular</option>
-          <option value="500" selected>5—Medium</option>
-          <option value="600">6—SemiBold</option>
-          <option value="700">7—Bold</option>
-        </select>
-      </div>
-    </div>
-    <div class="row2">
-      <div class="field"><label>스토어명 크기</label><input type="range" id="ohStoreSize" min="12" max="60" value="34" oninput="syncOpenHeader()"/></div>
-      <div class="field"><label>박스 색</label>
-        <button id="ohBoxBtn" class="ptab" style="width:100%;padding:5px 0;font-size:13px" onclick="toggleOhBox()">검정</button>
-      </div>
-      <div class="field"><label>박스 투명도</label><input type="range" id="ohBoxOpacity" min="0" max="100" value="40" oninput="applyOhBox();saveState()"/></div>
-    </div>
-    <div class="sec">그라데이션 (오버레이)</div>
-    <div class="row2">
-      <div class="field"><label>농도</label><input type="range" id="ohGradOpacity" min="0" max="100" value="60" oninput="syncOhGrad()"/></div>
-      <div class="field"><label>퍼짐</label><input type="range" id="ohGradSpread" min="10" max="90" value="60" oninput="syncOhGrad()"/></div>
-    </div>
   </div>
 
   <!-- ══ 섹션 2: 사진 수정 ══ -->
@@ -1387,6 +1382,35 @@ function addFiles(files) {
   });
 }
 
+/* 클립보드 붙여넣기(Ctrl+V) — 항상 맨 마지막 페이지의 빈 칸부터 채움 */
+function pasteFiles(files) {
+  const imgs = [...files].filter(f => f.type.startsWith('image/'));
+  if (!imgs.length) return;
+  const MAX = 12;
+  let pending = imgs.length;
+  let lastPg = pages.length;
+  imgs.forEach(f => {
+    const r = new FileReader();
+    r.onload = e => resizeDataURL(e.target.result, 900, src => {
+      let pg = pages.length;
+      while (pages[pg - 1] && pages[pg - 1].length >= MAX) pg++;
+      while (pages.length < pg) {
+        pages.push([]);
+        firstRowFlex.push(null);
+      }
+      pages[pg - 1].push({id:idSeq++, src, name:'', scale:1, ox:0, oy:0, blur:true});
+      lastPg = pg;
+      if (--pending === 0) {
+        pages.forEach((_, i) => ensurePosterWrap(i+1));
+        curPage = lastPg;
+        refresh();
+        toast('클립보드 이미지 붙여넣기 완료');
+      }
+    });
+    r.readAsDataURL(f);
+  });
+}
+
 function resizeDataURL(dataURL, maxSide, cb) {
   const img = new Image();
   img.onload = () => {
@@ -1835,6 +1859,15 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     undo();
   }
+});
+
+// Ctrl+V 클립보드 이미지 붙여넣기 — 맨 마지막 페이지 빈 칸에 추가
+document.addEventListener('paste', e => {
+  const items = [...(e.clipboardData ? e.clipboardData.items : [])];
+  const files = items.filter(i => i.kind === 'file' && i.type.startsWith('image/')).map(i => i.getAsFile()).filter(Boolean);
+  if (!files.length) return; // 이미지 없으면 평소처럼 텍스트 붙여넣기 등 그대로 둠
+  e.preventDefault();
+  pasteFiles(files);
 });
 </script>
 </body>
