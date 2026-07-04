@@ -121,6 +121,7 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 나루토2"></textarea></div>
   <div class="field"><label>사진 폴더 경로</label><input type="text" id="inFolderPath" placeholder="C:\Users\Judy\Downloads\7월소식"/></div>
   <div class="field"><label>투명제목 폴더 경로 (그룹 사용 시에만)</label><input type="text" id="inTitleFolderPath" placeholder="C:\Users\Judy\Downloads\투명제목"/></div>
+  <button onclick="autoDetectFromFolder()" style="width:100%;margin-bottom:4px;background:#3a3428;">캐릭터별 하위 폴더에서 자동 인식 (Chrome/Edge)</button>
   <button onclick="downloadFileListTxt()" style="width:100%;margin-bottom:4px;">유니코드 텍스트로 다운로드</button>
 
   <div class="actions">
@@ -438,7 +439,58 @@ function buildFileListLines() {
   const missing = entries.find(e => e.title === null);
   if (missing) { alert(`"${missing.name}" 항목이 어느 그룹인지 알 수 없어요. 그 위에 [제목파일명] 줄을 먼저 넣어주세요.`); return null; }
 
-  return ['<@사진1>\t<@사진2>', ...entries.map(e => joinPath(folder, e.name) + '\t' + joinPath(titleFolder, e.title))];
+  let prevTitle = null; // 그룹의 첫 번째 사진에만 제목을 붙이고 나머지는 비워둠 (인디자인 실사용 확인된 방식)
+  return ['<@사진1>\t<@사진2>', ...entries.map(e => {
+    const isFirstOfGroup = e.title !== prevTitle;
+    prevTitle = e.title;
+    const titleCol = isFirstOfGroup ? joinPath(titleFolder, e.title) : '';
+    return joinPath(folder, e.name) + '\t' + titleCol;
+  })];
+}
+
+// 캐릭터별 하위 폴더 구조를 브라우저에서 직접 읽어 파일명 목록을 자동 생성 (수동 타이핑 대체)
+async function autoDetectFromFolder() {
+  if (!window.showDirectoryPicker) {
+    alert('이 브라우저는 폴더 자동 인식을 지원하지 않아요. 크롬 또는 엣지 브라우저로 열어주세요.');
+    return;
+  }
+  let dirHandle;
+  try {
+    dirHandle = await window.showDirectoryPicker();
+  } catch (e) {
+    return; // 선택 취소
+  }
+
+  const IMG_EXT = /\.(png|jpe?g|webp|gif)$/i;
+  const groups = [];
+  for await (const [name, handle] of dirHandle.entries()) {
+    if (handle.kind !== 'directory') continue;
+    const files = [];
+    for await (const [fname, fhandle] of handle.entries()) {
+      if (fhandle.kind === 'file' && IMG_EXT.test(fname)) files.push(fname);
+    }
+    if (!files.length) continue;
+    files.sort((a, b) => a.localeCompare(b, 'ko'));
+    const coverIdx = files.findIndex(f => f.includes('표지'));
+    const cover = coverIdx >= 0 ? files.splice(coverIdx, 1)[0] : files.shift();
+    groups.push({ folderName: name, photos: [cover, ...files] });
+  }
+
+  if (!groups.length) {
+    alert('하위 폴더에서 사진을 찾지 못했어요. 캐릭터별 하위 폴더 구조가 맞는지 확인해주세요.');
+    return;
+  }
+  groups.sort((a, b) => a.folderName.localeCompare(b.folderName, 'ko'));
+
+  const lines = [];
+  groups.forEach(g => {
+    lines.push(`[${g.folderName}_제목.png]`);
+    g.photos.forEach(p => lines.push(p));
+  });
+  fileListText = lines.join('\n');
+  $('#inFileList').value = fileListText;
+  persistState();
+  alert(`${groups.length}개 캐릭터 폴더, 총 ${groups.reduce((n, g) => n + g.photos.length, 0)}장 인식 완료.\n각 폴더의 첫 번째 사진(표지)이 제목과 매칭돼요 — 순서를 한 번 확인해주세요.`);
 }
 
 function downloadFileListTxt() {
