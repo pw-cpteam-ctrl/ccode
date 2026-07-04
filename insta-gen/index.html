@@ -649,6 +649,9 @@ document.getElementById('doCopy').addEventListener('click', async ()=>{ const t=
 document.getElementById('download').addEventListener('click',()=>{ if(!runValidation()) return; cv.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='insta-card.png'; a.click(); },'image/png'); });
 
 window.addEventListener('beforeunload', ()=>{ pushSlot(snapshotWith(appliedSource), true); });  // 닫기 전 현재 작업 보존
+// beforeunload는 모바일 백그라운드 전환·브라우저 강제종료 시 안 불릴 수 있어
+// visibilitychange(탭이 숨겨질 때)에도 동일하게 보존해 이중 안전망을 둔다.
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden'){ pushSlot(snapshotWith(appliedSource), true); } });
 
 function restoreSlot(s){
   // 페이지 로드 시 사용 — 현재 상태 저장 없이 슬롯 값만 복원
