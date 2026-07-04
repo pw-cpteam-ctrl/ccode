@@ -4,4 +4,4 @@
 `index.html`을 브라우저로 바로 엽니다.
 
 - 사진 그리드 배치, 프리뷰용/오픈용 헤더, 재판·특전 뱃지, 메모, 월별 저장 슬롯 등
-- 자세한 변경 이력은 저장소 루트의 [CHANGELOG.md](../CHANGELOG.md) 참고
+- 자세한 변경 이력은 [CHANGELOG.md](./CHANGELOG.md) 참고
