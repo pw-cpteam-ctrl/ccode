@@ -20,6 +20,8 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Mal
 .field input,.field textarea{width:100%;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:7px 10px;font-size:14.5px;font-family:inherit;color:var(--ui-text);}
 .field textarea#inBulkMd{font-family:'SFMono-Regular',Consolas,monospace;font-size:13px;white-space:pre;}
 .row2{display:flex;gap:7px;}.row2 .field{flex:1;min-width:0;}
+.row3{display:flex;gap:6px;}.row3 .field-col{flex:1;min-width:0;}
+.col-title{font-size:12px;font-weight:700;color:var(--ui-sub);text-align:center;margin-bottom:4px;}
 .sec{font-size:15px;font-weight:800;color:var(--ui-text);margin:16px 0 9px;padding-bottom:6px;border-bottom:2px solid var(--ui-border);}
 .actions{position:sticky;bottom:0;padding-top:10px;margin-top:12px;background:linear-gradient(transparent,var(--ui-panel) 35%);display:flex;gap:7px;}
 button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;border:1px solid var(--ui-border);font-family:inherit;background:var(--ui-accent);color:#fff;}
@@ -87,17 +89,22 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 고죠/나나미/스쿠나</textarea></div>
 
   <div class="sec">배치 · 크기</div>
-  <div class="row2">
-    <div class="field"><label>배지 위치(Y)</label><input type="range" id="badgeY" min="0" max="1350" value="900"/></div>
-    <div class="field"><label>배지 크기</label><input type="range" id="badgeSize" min="10" max="60" value="20"/></div>
-  </div>
-  <div class="row2">
-    <div class="field"><label>타이틀 위치(Y)</label><input type="range" id="titleY" min="0" max="1350" value="970"/></div>
-    <div class="field"><label>타이틀 크기</label><input type="range" id="titleSize" min="20" max="140" value="64"/></div>
-  </div>
-  <div class="row2">
-    <div class="field"><label>불릿 위치(Y)</label><input type="range" id="bulletsY" min="0" max="1350" value="1080"/></div>
-    <div class="field"><label>불릿 크기</label><input type="range" id="bulletsSize" min="14" max="60" value="28"/></div>
+  <div class="row3">
+    <div class="field-col">
+      <div class="col-title">배지</div>
+      <div class="field"><label>위치(Y)</label><input type="range" id="badgeY" min="0" max="1350" value="900"/></div>
+      <div class="field"><label>크기</label><input type="range" id="badgeSize" min="10" max="60" value="20"/></div>
+    </div>
+    <div class="field-col">
+      <div class="col-title">타이틀</div>
+      <div class="field"><label>위치(Y)</label><input type="range" id="titleY" min="0" max="1350" value="970"/></div>
+      <div class="field"><label>크기</label><input type="range" id="titleSize" min="20" max="140" value="64"/></div>
+    </div>
+    <div class="field-col">
+      <div class="col-title">불릿</div>
+      <div class="field"><label>위치(Y)</label><input type="range" id="bulletsY" min="0" max="1350" value="1080"/></div>
+      <div class="field"><label>크기</label><input type="range" id="bulletsSize" min="14" max="60" value="28"/></div>
+    </div>
   </div>
 
   <div class="sec">그라데이션</div>
@@ -106,10 +113,14 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
   <div class="field"><label>농도 %</label><input type="range" id="gradOpacity" min="0" max="200" value="85"/></div>
 
   <div class="sec">인디자인 파일목록 생성기</div>
-  <div class="field"><label>파일명 목록 (줄바꿈 구분, 확장자 생략 시 .png 자동 추가)</label><textarea id="inFileList" rows="6" placeholder="slot1
-slot2
-slot3"></textarea></div>
-  <div class="field"><label>파일이 있는 폴더 경로</label><input type="text" id="inFolderPath" placeholder="C:\Users\Judy\Downloads\7월소식"/></div>
+  <div class="field"><label>파일명 목록 (줄바꿈 구분 · 확장자 생략 시 .png 자동 추가 · [제목파일명] 줄로 그룹 지정 가능)</label><textarea id="inFileList" rows="8" placeholder="[바쿠고_제목.png]
+바쿠고1
+바쿠고2
+[나루토_제목.png]
+나루토1
+나루토2"></textarea></div>
+  <div class="field"><label>사진 폴더 경로</label><input type="text" id="inFolderPath" placeholder="C:\Users\Judy\Downloads\7월소식"/></div>
+  <div class="field"><label>투명제목 폴더 경로 (그룹 사용 시에만)</label><input type="text" id="inTitleFolderPath" placeholder="C:\Users\Judy\Downloads\투명제목"/></div>
   <button onclick="downloadFileListTxt()" style="width:100%;margin-bottom:4px;">유니코드 텍스트로 다운로드</button>
 
   <div class="actions">
@@ -157,7 +168,7 @@ function idbGet(key) {
   }));
 }
 function persistState() {
-  idbSet(STATE_KEY, { slots, curSlot, viewMode, fileListText, folderPath }).catch(() => {});
+  idbSet(STATE_KEY, { slots, curSlot, viewMode, fileListText, folderPath, titleFolderPath }).catch(() => {});
 }
 
 /* ── 상태: 슬롯 배열 (개수 제한 없음) ── */
@@ -168,6 +179,7 @@ let curSlot = 1;
 let viewMode = 'grid'; // 'row' | 'grid' — 기본값은 창 너비에 따라 열 개수가 자동으로 바뀌는 바둑판
 let fileListText = '';
 let folderPath = '';
+let titleFolderPath = '';
 
 function makeEmptySlot() {
   return { badge:'', titleL:'', titleR:'', bullets:'', gradStart:40, gradWidth:60, gradOpacity:85, ...LAYOUT_DEFAULTS };
@@ -383,17 +395,50 @@ $('#inFolderPath').addEventListener('input', () => {
   folderPath = $('#inFolderPath').value;
   persistState();
 });
+$('#inTitleFolderPath').addEventListener('input', () => {
+  titleFolderPath = $('#inTitleFolderPath').value;
+  persistState();
+});
 
-function buildFileListLines() {
-  const names = fileListText.split('\n').map(l => l.trim()).filter(Boolean);
-  const folder = folderPath.trim();
-  if (!folder) { alert('폴더 경로를 입력해주세요.'); return null; }
-  if (!names.length) { alert('파일명을 한 줄에 하나씩 입력해주세요.'); return null; }
-
+function withExt(name) {
+  return /\.[a-zA-Z0-9]{2,4}$/.test(name) ? name : name + '.png';
+}
+function joinPath(folder, name) {
   const sep = folder.includes('\\') ? '\\' : '/';
   const base = /[\\/]$/.test(folder) ? folder : folder + sep;
+  return base + withExt(name);
+}
+// [제목파일명] 줄을 만나면 그 아래 사진들에 계속 적용 (다음 [ ] 줄 나오기 전까지)
+function parseFileListGroups() {
+  const entries = [];
+  let currentTitle = null;
+  fileListText.split('\n').forEach(raw => {
+    const line = raw.trim();
+    if (!line) return;
+    const m = line.match(/^\[(.+)\]$/);
+    if (m) { currentTitle = m[1].trim(); return; }
+    entries.push({ name: line, title: currentTitle });
+  });
+  return entries;
+}
 
-  return ['<@사진1>', ...names.map(name => base + (/\.[a-zA-Z0-9]{2,4}$/.test(name) ? name : name + '.png'))];
+function buildFileListLines() {
+  const entries = parseFileListGroups();
+  const folder = folderPath.trim();
+  const titleFolder = titleFolderPath.trim();
+  if (!folder) { alert('사진 폴더 경로를 입력해주세요.'); return null; }
+  if (!entries.length) { alert('파일명을 한 줄에 하나씩 입력해주세요.'); return null; }
+
+  const hasGroups = entries.some(e => e.title !== null);
+  if (!hasGroups) {
+    return ['<@사진1>', ...entries.map(e => joinPath(folder, e.name))];
+  }
+
+  if (!titleFolder) { alert('그룹([제목파일명])을 사용하려면 투명제목 폴더 경로도 입력해주세요.'); return null; }
+  const missing = entries.find(e => e.title === null);
+  if (missing) { alert(`"${missing.name}" 항목이 어느 그룹인지 알 수 없어요. 그 위에 [제목파일명] 줄을 먼저 넣어주세요.`); return null; }
+
+  return ['<@사진1>\t<@사진2>', ...entries.map(e => joinPath(folder, e.name) + '\t' + joinPath(titleFolder, e.title))];
 }
 
 function downloadFileListTxt() {
@@ -423,9 +468,11 @@ async function boot() {
   if (saved && (saved.viewMode === 'row' || saved.viewMode === 'grid')) viewMode = saved.viewMode;
   if (saved && typeof saved.fileListText === 'string') fileListText = saved.fileListText;
   if (saved && typeof saved.folderPath === 'string') folderPath = saved.folderPath;
+  if (saved && typeof saved.titleFolderPath === 'string') titleFolderPath = saved.titleFolderPath;
   loadInputsFromCurSlot(); // 입력창을 복원된 값으로 먼저 맞춘 뒤 렌더 (부팅 중 저장 로직이 기본값을 덮어쓰는 것 방지)
   $('#inFileList').value = fileListText;
   $('#inFolderPath').value = folderPath;
+  $('#inTitleFolderPath').value = titleFolderPath;
   renderTabs();
   renderAllSlots();
   applyViewMode();
