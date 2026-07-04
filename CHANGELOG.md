@@ -88,3 +88,6 @@
 
 - **배포**
   - GitHub Pages 배포 실패 이슈 대응 (인프라 오류로 인한 재배포 트리거 다수)
+
+- **기타**
+  - 파일명을 megahouse.html → megahouse-matome.html로 변경 (파일명만으로 구분이 안 돼 혼동 방지)
