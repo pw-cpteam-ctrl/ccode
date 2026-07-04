@@ -91,3 +91,4 @@
 
 - **기타**
   - 파일명을 megahouse.html → megahouse-matome.html로 변경 (파일명만으로 구분이 안 돼 혼동 방지)
+  - `megahouse-matome/index.html`로 폴더화 (다른 도구들과 구조 통일, README 추가)
