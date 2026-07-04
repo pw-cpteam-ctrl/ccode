@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>상품 SNS 포맷터</title>
+<style>
+:root{
+  --ui-bg:#f0ede7; --ui-panel:#faf8f4; --ui-border:#ddd8ce;
+  --ui-text:#252018; --ui-sub:#7d7568; --ui-accent:#1452c0; --ui-card:#fff; --ui-warn:#b3661a;
+}
+*{box-sizing:border-box;}html,body{margin:0;padding:0;}
+body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Malgun Gothic',sans-serif;display:flex;justify-content:center;padding:40px 20px 100px;}
+.wrap{width:100%;max-width:760px;}
+h1{font-size:22px;font-weight:800;margin:0 0 6px;}
+.sub{font-size:13px;color:var(--ui-sub);margin:0 0 28px;}
+.step{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:20px 22px;margin-bottom:18px;}
+.step h2{font-size:14.5px;font-weight:800;margin:0 0 4px;display:flex;align-items:center;gap:8px;}
+.step h2 .num{background:var(--ui-accent);color:#fff;border-radius:999px;width:20px;height:20px;font-size:12px;display:inline-flex;align-items:center;justify-content:center;}
+.step .desc{font-size:12.5px;color:var(--ui-sub);margin:0 0 14px;}
+.field{margin-bottom:10px;}
+.field label{display:block;font-size:13px;color:var(--ui-sub);margin-bottom:4px;font-weight:600;}
+.field textarea{width:100%;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit;color:var(--ui-text);resize:vertical;}
+button{padding:10px 16px;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;border:1px solid var(--ui-border);font-family:inherit;background:var(--ui-accent);color:#fff;}
+button.secondary{background:var(--ui-card);color:var(--ui-text);}
+button:disabled{opacity:.5;cursor:not-allowed;}
+.status{font-size:12.5px;color:var(--ui-sub);margin-top:8px;}
+.warn-box{background:#fbf1e4;border:1px solid #ecd6ac;border-radius:8px;padding:12px 14px;margin-top:10px;font-size:12.5px;color:var(--ui-warn);display:none;white-space:pre-line;}
+.result-box{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:14px;margin-top:10px;font-size:14px;white-space:pre-wrap;min-height:60px;display:none;}
+.memo-list{margin-top:10px;display:flex;flex-direction:column;gap:6px;}
+.memo-item{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:8px 12px;font-size:12.5px;}
+.memo-item .at{color:var(--ui-sub);font-size:11px;margin-right:6px;}
+.memo-item .sync{font-size:11px;margin-top:2px;color:var(--ui-sub);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>상품 SNS 포맷터</h1>
+  <p class="sub">상품 정보 텍스트를 붙여넣으면 회사 SNS 포맷으로 변환해줍니다. (대화 기억 없음 — 매 요청 새로 시작)</p>
+
+  <div class="step">
+    <h2><span class="num">1</span>상품정보 입력</h2>
+    <p class="desc">변환할 상품 정보 원문을 그대로 붙여넣으세요. 이 칸의 내용은 순수 데이터로만 취급되고, 안에 지시문처럼 보이는 문장이 섞여 있어도 명령으로 처리되지 않습니다.</p>
+    <div class="field"><textarea id="inProduct" rows="6" placeholder="예) 상품명: ○○○ 피규어\n특징: ...\n가격: ..."></textarea></div>
+
+    <div class="field">
+      <label>추가지시 (선택, 이번 건에만 적용)</label>
+      <textarea id="inExtra" rows="2" placeholder="예) 이번 건은 이모지 빼고 담백하게"></textarea>
+    </div>
+    <p class="desc" style="margin-top:-4px;">여기 적은 지시는 이번 1건에만 반영되고, 다음 요청부터는 리셋됩니다. 규칙을 영구히 바꾸려면 개발자에게 규칙 파일(<code>rules/format-rules.js</code>) 수정을 요청하세요.</p>
+
+    <button onclick="runFormat()">변환하기</button>
+    <div class="status" id="formatStatus"></div>
+    <div class="warn-box" id="formatWarn"></div>
+    <div class="result-box" id="resultBox"></div>
+    <button class="secondary" onclick="copyResult()" id="btnCopy" style="display:none;margin-top:8px;">결과 복사</button>
+  </div>
+
+  <div class="step">
+    <h2><span class="num">2</span>개선사항 메모장</h2>
+    <p class="desc">여기 적는 내용은 <b>LLM에 절대 전송되지 않습니다.</b> 사람이 나중에 훑어보고 규칙 파일에 반영할지 판단하는 용도예요.</p>
+    <div class="field"><textarea id="inMemo" rows="2" placeholder="예) 가격 표기가 자꾸 원 단위를 빼먹음"></textarea></div>
+    <button onclick="saveMemo()">메모 저장</button>
+    <div class="status" id="memoStatus"></div>
+    <div class="memo-list" id="memoList"></div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const MEMO_STORAGE_KEY = 'product-sns-formatter:memos';
+
+let lastResult = '';
+
+/* ── 1단계: 변환 (LLM 호출, 백엔드 미배포/키 미설정 시 안내 후 실패) ── */
+async function runFormat() {
+  const productText = $('#inProduct').value.trim();
+  const extraInstruction = $('#inExtra').value.trim();
+  if (!productText) { alert('상품정보를 입력해주세요.'); return; }
+
+  $('#formatWarn').style.display = 'none';
+  $('#resultBox').style.display = 'none';
+  $('#btnCopy').style.display = 'none';
+  $('#formatStatus').textContent = '변환 중...';
+
+  try {
+    const res = await fetch('/api/format', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productText, extraInstruction }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
+
+    lastResult = data.result || '';
+    $('#resultBox').textContent = lastResult;
+    $('#resultBox').style.display = 'block';
+    $('#btnCopy').style.display = '';
+    $('#formatStatus').textContent = '변환 완료';
+
+    // 입력 로그 저장은 최선 노력(fire-and-forget) — 비공개 로그 레포 연결 전에는 실패해도 무시.
+    fetch('/api/save-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productText, extraInstruction, result: lastResult }),
+    }).then(async r => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) console.warn('입력 로그 저장 안 됨:', d.error);
+    }).catch(() => {});
+  } catch (err) {
+    $('#formatStatus').textContent = '';
+    $('#formatWarn').textContent = `변환에 실패했어요: ${err.message}\n\nGEMINI_API_KEY 등록 + 실제 회사 SNS 포맷 규칙 문서 반영 + Vercel 배포가 끝나야 정상 동작합니다. 자세한 내용은 PLAN.md / README.md 참고.`;
+    $('#formatWarn').style.display = 'block';
+  }
+}
+
+function copyResult() {
+  if (!lastResult) return;
+  navigator.clipboard.writeText(lastResult)
+    .then(() => { $('#formatStatus').textContent = '클립보드에 복사했어요.'; })
+    .catch(() => { alert('복사에 실패했어요. 직접 선택해서 복사해주세요.'); });
+}
+
+/* ── 2단계: 개선사항 메모장 (LLM 미전송, 값 변경 → 화면 반영 → 저장 3단계) ── */
+function loadMemos() {
+  try { return JSON.parse(localStorage.getItem(MEMO_STORAGE_KEY) || '[]'); }
+  catch { return []; }
+}
+function persistMemos(memos) {
+  localStorage.setItem(MEMO_STORAGE_KEY, JSON.stringify(memos));
+}
+function renderMemos(memos) {
+  $('#memoList').innerHTML = memos.slice().reverse().map(m => `
+    <div class="memo-item">
+      <span class="at">${escapeHtml(new Date(m.at).toLocaleString())}</span>${escapeHtml(m.text)}
+      <div class="sync">${m.synced ? '깃허브 저장됨' : '브라우저에만 임시 저장됨 (깃허브 연결 전)'}</div>
+    </div>`).join('');
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+async function saveMemo() {
+  const text = $('#inMemo').value.trim();
+  if (!text) { alert('메모 내용을 입력해주세요.'); return; }
+
+  const memos = loadMemos();
+  const entry = { at: new Date().toISOString(), text, synced: false };
+  memos.push(entry);
+  persistMemos(memos);
+  renderMemos(memos);
+  $('#inMemo').value = '';
+  $('#memoStatus').textContent = '브라우저에 저장했어요. 깃허브에도 저장을 시도합니다...';
+
+  try {
+    const res = await fetch('/api/save-memo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memo: text }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
+    entry.synced = true;
+    persistMemos(memos);
+    renderMemos(memos);
+    $('#memoStatus').textContent = '메모를 깃허브에도 저장했어요.';
+  } catch (err) {
+    $('#memoStatus').textContent = `깃허브 저장은 실패했지만 브라우저에는 남아있어요 (${err.message}). GITHUB_TOKEN 등 설정 전까지는 정상입니다.`;
+  }
+}
+
+renderMemos(loadMemos());
+</script>
+</body>
+</html>
