@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>이벤트 추첨기</title>
+<style>
+:root{
+  --ui-bg:#f0ede7; --ui-panel:#faf8f4; --ui-border:#ddd8ce;
+  --ui-text:#252018; --ui-sub:#7d7568; --ui-accent:#1452c0; --ui-card:#fff; --ui-warn:#b3661a;
+}
+*{box-sizing:border-box;}html,body{margin:0;padding:0;}
+body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Malgun Gothic',sans-serif;display:flex;justify-content:center;padding:40px 20px 100px;}
+.wrap{width:100%;max-width:760px;}
+h1{font-size:22px;font-weight:800;margin:0 0 6px;}
+.sub{font-size:13px;color:var(--ui-sub);margin:0 0 28px;}
+.step{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:20px 22px;margin-bottom:18px;}
+.step h2{font-size:14.5px;font-weight:800;margin:0 0 4px;display:flex;align-items:center;gap:8px;}
+.step h2 .num{background:var(--ui-accent);color:#fff;border-radius:999px;width:20px;height:20px;font-size:12px;display:inline-flex;align-items:center;justify-content:center;}
+.step .desc{font-size:12.5px;color:var(--ui-sub);margin:0 0 14px;}
+.field{margin-bottom:10px;}
+.field label{display:block;font-size:13px;color:var(--ui-sub);margin-bottom:4px;font-weight:600;}
+.field input[type=text],.field input[type=number],.field textarea{width:100%;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit;color:var(--ui-text);}
+.field textarea{resize:vertical;}
+input[type=file]{font-size:13px;}
+button{padding:10px 16px;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;border:1px solid var(--ui-border);font-family:inherit;background:var(--ui-accent);color:#fff;}
+button.secondary{background:var(--ui-card);color:var(--ui-text);}
+button:disabled{opacity:.5;cursor:not-allowed;}
+.status{font-size:12.5px;color:var(--ui-sub);margin-top:8px;}
+.warn-box{background:#fbf1e4;border:1px solid #ecd6ac;border-radius:8px;padding:12px 14px;margin-top:10px;font-size:12.5px;color:var(--ui-warn);display:none;}
+.tbl-wrap{overflow-x:auto;margin-top:10px;border:1px solid var(--ui-border);border-radius:8px;}
+table{border-collapse:collapse;width:100%;font-size:12.5px;}
+th,td{padding:6px 10px;border-bottom:1px solid var(--ui-border);text-align:left;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis;}
+th{background:var(--ui-card);position:sticky;top:0;}
+tr:last-child td{border-bottom:none;}
+.count-badge{font-size:12px;color:var(--ui-sub);margin-top:6px;}
+.winner-card{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:10px 14px;margin-top:8px;font-size:14px;font-weight:700;}
+.winner-card .reason{font-size:12px;font-weight:400;color:var(--ui-sub);margin-top:2px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>이벤트 추첨기</h1>
+  <p class="sub">참가자 엑셀/CSV 업로드 → 자유텍스트 조건으로 필터링 → 랜덤 추첨</p>
+
+  <div class="step">
+    <h2><span class="num">1</span>참가자 파일 업로드</h2>
+    <p class="desc">엑셀(.xlsx) 또는 CSV 파일. 첫 줄은 헤더(컬럼명)로 인식합니다.</p>
+    <input type="file" id="inFile" accept=".xlsx,.xls,.csv"/>
+    <div class="status" id="uploadStatus"></div>
+    <div class="tbl-wrap" id="previewWrap" style="display:none;"></div>
+  </div>
+
+  <div class="step">
+    <h2><span class="num">2</span>이번 회차 조건</h2>
+    <p class="desc">이번에만 적용할 조건을 자유롭게 문장으로 적어주세요. (예: 사진 첨부한 사람 + 나루토를 언급한 사람 + 댓글을 정성스럽게 쓴 사람)</p>
+    <div class="field"><textarea id="inCondition" rows="3" placeholder="사진 첨부한 사람 + 나루토를 언급한 사람 + 정성스럽게 쓴 사람"></textarea></div>
+    <button onclick="runFilter()">필터링 실행</button>
+    <button class="secondary" onclick="useAllAsFallback()">필터링 없이 전체 참가자로 진행 (테스트용)</button>
+    <div class="status" id="filterStatus"></div>
+    <div class="warn-box" id="filterFallback"></div>
+    <div class="tbl-wrap" id="candidateWrap" style="display:none;"></div>
+    <div class="count-badge" id="candidateCount"></div>
+  </div>
+
+  <div class="step">
+    <h2><span class="num">3</span>추첨</h2>
+    <p class="desc">위 후보 명단 중에서 코드가 실제 난수로 당첨자를 뽑습니다 (LLM은 관여하지 않음).</p>
+    <div class="field" style="max-width:140px;"><label>당첨 인원수</label><input type="number" id="inWinnerCount" min="1" value="1"/></div>
+    <button onclick="drawWinners()">추첨하기</button>
+    <div id="winnerResult"></div>
+    <button class="secondary" onclick="downloadResult()" id="btnDownloadResult" style="display:none;margin-top:10px;">결과 다운로드 (명단+조건만, 원본 데이터 제외)</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+
+let participants = [];  // 업로드된 원본 행 (세션 중에만 메모리에 존재, 저장 안 함)
+let candidates = [];    // [{ row, reason }]
+let lastWinners = [];   // [{ row, reason }]
+
+/* ── 1단계: 파일 업로드 ── */
+$('#inFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    if (!rows.length) { $('#uploadStatus').textContent = '파일에서 데이터를 찾지 못했어요. 첫 줄이 헤더인지 확인해주세요.'; return; }
+    participants = rows;
+    $('#uploadStatus').textContent = `${rows.length}명 인식 완료`;
+    renderTable('#previewWrap', rows.slice(0, 5), Object.keys(rows[0]));
+    resetDownstream();
+  } catch (err) {
+    $('#uploadStatus').textContent = `파일을 읽지 못했어요: ${err.message}`;
+  }
+});
+
+function resetDownstream() {
+  candidates = []; lastWinners = [];
+  $('#candidateWrap').style.display = 'none';
+  $('#candidateCount').textContent = '';
+  $('#filterFallback').style.display = 'none';
+  $('#filterStatus').textContent = '';
+  $('#winnerResult').innerHTML = '';
+  $('#btnDownloadResult').style.display = 'none';
+}
+
+function renderTable(wrapSel, rows, columns) {
+  const wrap = $(wrapSel);
+  if (!rows.length) { wrap.style.display = 'none'; return; }
+  const cols = columns.length ? columns : ['reason'];
+  const head = '<tr>' + cols.map(c => `<th>${escapeHtml(c)}</th>`).join('') + '</tr>';
+  const body = rows.map(r => '<tr>' + cols.map(c => `<td>${escapeHtml(String(r[c] ?? ''))}</td>`).join('') + '</tr>').join('');
+  wrap.innerHTML = `<table>${head}${body}</table>`;
+  wrap.style.display = '';
+}
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+/* ── 2단계: 조건 필터링 (LLM 호출, 백엔드 미배포 시 실패 → 안내 후 대체 경로 제공) ── */
+async function runFilter() {
+  if (!participants.length) { alert('먼저 참가자 파일을 업로드해주세요.'); return; }
+  const condition = $('#inCondition').value.trim();
+  if (!condition) { alert('이번 조건을 입력해주세요.'); return; }
+
+  $('#filterFallback').style.display = 'none';
+  $('#filterStatus').textContent = '필터링 중...';
+  try {
+    const res = await fetch('/api/filter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows: participants, condition }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
+    candidates = (data.matches || []).map(m => ({ row: participants[m.index], reason: m.reason }));
+    applyCandidates(true);
+    $('#filterStatus').textContent = `"${condition}" 조건으로 ${candidates.length}명 선정됨`;
+  } catch (err) {
+    $('#filterStatus').textContent = '';
+    $('#filterFallback').textContent = `필터링 서버에 연결할 수 없어요 (${err.message}). Vercel 배포 + API 키(GEMINI_API_KEY) 설정 전에는 이 버튼이 작동하지 않아요. 그동안은 "전체 참가자로 진행"으로 추첨 기능만 미리 테스트해볼 수 있어요.`;
+    $('#filterFallback').style.display = 'block';
+  }
+}
+
+function useAllAsFallback() {
+  if (!participants.length) { alert('먼저 참가자 파일을 업로드해주세요.'); return; }
+  candidates = participants.map(row => ({ row, reason: '(필터링 없이 전체 명단)' }));
+  applyCandidates(false);
+  $('#filterStatus').textContent = `필터링 없이 전체 ${candidates.length}명을 후보로 사용 중`;
+}
+
+function applyCandidates(withReason) {
+  const cols = candidates.length ? Object.keys(candidates[0].row) : [];
+  const rowsForTable = candidates.map(c => withReason ? { ...c.row, __판단근거: c.reason } : c.row);
+  renderTable('#candidateWrap', rowsForTable, candidates.length ? Object.keys(rowsForTable[0]) : []);
+  $('#candidateCount').textContent = `후보 ${candidates.length}명`;
+  lastWinners = [];
+  $('#winnerResult').innerHTML = '';
+  $('#btnDownloadResult').style.display = 'none';
+}
+
+/* ── 3단계: 추첨 (LLM 관여 없이 코드가 실제 난수로 뽑음) ── */
+function drawWinners() {
+  if (!candidates.length) { alert('먼저 후보 명단을 만들어주세요 (필터링 실행 또는 전체 참가자로 진행).'); return; }
+  const n = Math.max(1, Math.min(candidates.length, +$('#inWinnerCount').value || 1));
+  const pool = [...candidates];
+  const winners = [];
+  for (let i = 0; i < n; i++) {
+    const idx = Math.floor(Math.random() * pool.length);
+    winners.push(pool.splice(idx, 1)[0]);
+  }
+  lastWinners = winners;
+  renderWinners(winners);
+  $('#btnDownloadResult').style.display = '';
+}
+
+function winnerLabel(row) {
+  const nameKey = Object.keys(row).find(k => /닉네임|이름|name|nickname/i.test(k));
+  return nameKey ? String(row[nameKey]) : JSON.stringify(row);
+}
+
+function renderWinners(winners) {
+  $('#winnerResult').innerHTML = winners.map(w => `
+    <div class="winner-card">
+      🎉 ${escapeHtml(winnerLabel(w.row))}
+      <div class="reason">${escapeHtml(w.reason || '')}</div>
+    </div>`).join('');
+}
+
+/* ── 결과 다운로드: 당첨자 명단 + 조건만 (원본 참가자 데이터는 포함하지 않음) ── */
+function downloadResult() {
+  if (!lastWinners.length) return;
+  const result = {
+    drawnAt: new Date().toISOString(),
+    condition: $('#inCondition').value.trim(),
+    winners: lastWinners.map(w => ({ id: winnerLabel(w.row), reason: w.reason })),
+  };
+  const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'raffle-result.json'; a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
