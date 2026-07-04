@@ -19,6 +19,7 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Mal
 .field label{display:block;font-size:13px;color:var(--ui-sub);margin-bottom:4px;font-weight:600;}
 .field input,.field textarea{width:100%;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:7px 10px;font-size:14.5px;font-family:inherit;color:var(--ui-text);}
 .field textarea#inBulkMd{font-family:'SFMono-Regular',Consolas,monospace;font-size:13px;white-space:pre;}
+.row2{display:flex;gap:7px;}.row2 .field{flex:1;min-width:0;}
 .sec{font-size:15px;font-weight:800;color:var(--ui-text);margin:16px 0 9px;padding-bottom:6px;border-bottom:2px solid var(--ui-border);}
 .actions{position:sticky;bottom:0;padding-top:10px;margin-top:12px;background:linear-gradient(transparent,var(--ui-panel) 35%);display:flex;gap:7px;}
 button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;border:1px solid var(--ui-border);font-family:inherit;background:var(--ui-accent);color:#fff;}
@@ -86,12 +87,18 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 고죠/나나미/스쿠나</textarea></div>
 
   <div class="sec">배치 · 크기</div>
-  <div class="field"><label>배지 위치(Y)</label><input type="range" id="badgeY" min="0" max="1350" value="900"/></div>
-  <div class="field"><label>배지 크기</label><input type="range" id="badgeSize" min="10" max="60" value="20"/></div>
-  <div class="field"><label>타이틀 위치(Y)</label><input type="range" id="titleY" min="0" max="1350" value="970"/></div>
-  <div class="field"><label>타이틀 크기</label><input type="range" id="titleSize" min="20" max="140" value="64"/></div>
-  <div class="field"><label>불릿 위치(Y)</label><input type="range" id="bulletsY" min="0" max="1350" value="1080"/></div>
-  <div class="field"><label>불릿 크기</label><input type="range" id="bulletsSize" min="14" max="60" value="28"/></div>
+  <div class="row2">
+    <div class="field"><label>배지 위치(Y)</label><input type="range" id="badgeY" min="0" max="1350" value="900"/></div>
+    <div class="field"><label>배지 크기</label><input type="range" id="badgeSize" min="10" max="60" value="20"/></div>
+  </div>
+  <div class="row2">
+    <div class="field"><label>타이틀 위치(Y)</label><input type="range" id="titleY" min="0" max="1350" value="970"/></div>
+    <div class="field"><label>타이틀 크기</label><input type="range" id="titleSize" min="20" max="140" value="64"/></div>
+  </div>
+  <div class="row2">
+    <div class="field"><label>불릿 위치(Y)</label><input type="range" id="bulletsY" min="0" max="1350" value="1080"/></div>
+    <div class="field"><label>불릿 크기</label><input type="range" id="bulletsSize" min="14" max="60" value="28"/></div>
+  </div>
 
   <div class="sec">그라데이션</div>
   <div class="field"><label>시작점 %</label><input type="range" id="gradStart" min="0" max="90" value="40"/></div>
