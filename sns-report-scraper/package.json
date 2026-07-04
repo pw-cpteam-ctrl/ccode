@@ -1,0 +1,14 @@
+{
+  "name": "sns-report-scraper",
+  "private": true,
+  "version": "0.1.0",
+  "description": "SNS 성과 리포트 자동화 — 자사/경쟁사 게시물 수집 + 비교표 취합 + 엑셀 저장",
+  "main": "run.js",
+  "scripts": {
+    "verify": "node verify-mock.js"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "playwright": "^1.55.0"
+  }
+}
