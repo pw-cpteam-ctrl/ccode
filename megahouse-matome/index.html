@@ -1234,6 +1234,7 @@ function toggleHeader() {
     el.style.setProperty('--hpad', pad);
   });
   requestAnimationFrame(fitScale);
+  if (_bootDone) saveState();
 }
 function syncOpenHeader() {
   const t = $('#inOhTitle') ? $('#inOhTitle').value.trim() : '';
@@ -1254,6 +1255,7 @@ function toggleOpenHeader() {
   const on = $('#chkOpenHeader') ? $('#chkOpenHeader').checked : false;
   document.querySelectorAll('.poster').forEach(el => el.classList.toggle('use-open-header', on));
   requestAnimationFrame(fitScale);
+  if (_bootDone) saveState();
 }
 let ohBoxWhite = false;
 function toggleOhBox() {
