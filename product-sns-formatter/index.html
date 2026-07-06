@@ -31,12 +31,32 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 .memo-item{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:8px 12px;font-size:12.5px;}
 .memo-item .at{color:var(--ui-sub);font-size:11px;margin-right:6px;}
 .memo-item .sync{font-size:11px;margin-top:2px;color:var(--ui-sub);}
+.guide-box{background:#fff8e6;border:2px solid #f0c96b;border-radius:12px;padding:20px 22px;margin-bottom:24px;}
+.guide-box h2{font-size:16px;font-weight:800;margin:0 0 12px;color:#8a5a00;}
+.guide-box ol{margin:0 0 14px;padding-left:20px;font-size:13.5px;line-height:1.9;}
+.guide-box ol li b{color:var(--ui-accent);}
+.guide-box .tip{background:#fff;border:1px solid #f0c96b;border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.7;color:#5a4a2a;margin-bottom:8px;}
+.guide-box .tip:last-child{margin-bottom:0;}
+.guide-box .tip b{color:#b3661a;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>상품 SNS 포맷터</h1>
   <p class="sub">상품 정보 텍스트를 붙여넣으면 회사 SNS 포맷으로 변환해줍니다. (대화 기억 없음 — 매 요청 새로 시작)</p>
+
+  <div class="guide-box">
+    <h2>📌 필독! 처음 쓰시는 분은 여기부터 읽어주세요</h2>
+    <p style="font-size:13px;margin:0 0 14px;">이 도구는 "상품 정보를 그냥 텍스트로 붙여넣으면, AI가 알아서 우리 회사 SNS 올리는 포맷으로 바꿔주는 도구"예요. 사용법은 딱 3단계예요.</p>
+    <ol>
+      <li><b>①</b> 아래 "상품정보 입력" 칸에 상품 정보를 그냥 복사해서 붙여넣으세요. (형식 신경 안 써도 돼요, 아무렇게나 써도 AI가 알아서 정리해줘요)</li>
+      <li><b>②</b> "변환하기" 버튼을 누르면 몇 초 안에 완성된 SNS 원고가 나와요.</li>
+      <li><b>③</b> "결과 복사" 버튼을 눌러서 그대로 SNS에 붙여넣으면 끝!</li>
+    </ol>
+    <div class="tip"><b>💡 알아두면 좋은 것 1</b> — 이 도구는 "기억력"이 없어요. 버튼 누를 때마다 완전히 처음 상태로 시작해요. 그래서 "이전에 말한 거 기억해서 이번에도 그렇게 해줘" 같은 건 안 통해요. 매번 새로 다 알려줘야 해요.</div>
+    <div class="tip"><b>💡 알아두면 좋은 것 2</b> — "추가지시" 칸에 뭔가 적으면 <b>이번 한 번만</b> 적용돼요. 다음에 또 쓸 때는 다시 안 써도 되는 게 아니라, 매번 새로 써줘야 해요. (예: "이모지 빼줘"라고 한 번 적었다고 다음부터 계속 빠지지 않아요)</div>
+    <div class="tip"><b>💡 알아두면 좋은 것 3</b> — 결과물 포맷이 마음에 안 들면, 그냥 넘어가지 말고 <b>아래 "개선사항 메모장"</b>에 적어주세요! 이 메모는 AI한테 전달되는 게 아니라, 사람이 나중에 확인하고 규칙을 고칠지 판단하는 용도예요. 적어주셔야 나중에 더 좋아져요.</div>
+  </div>
 
   <div class="step">
     <h2><span class="num">1</span>상품정보 입력</h2>
@@ -109,7 +129,7 @@ async function runFormat() {
     }).catch(() => {});
   } catch (err) {
     $('#formatStatus').textContent = '';
-    $('#formatWarn').textContent = `변환에 실패했어요: ${err.message}\n\nGEMINI_API_KEY 등록 + 실제 회사 SNS 포맷 규칙 문서 반영 + Vercel 배포가 끝나야 정상 동작합니다. 자세한 내용은 PLAN.md / README.md 참고.`;
+    $('#formatWarn').textContent = `변환에 실패했어요: ${err.message}\n\nANTHROPIC_API_KEY 등록 + Vercel 배포가 끝나야 정상 동작합니다. 자세한 내용은 PLAN.md / README.md 참고.`;
     $('#formatWarn').style.display = 'block';
   }
 }
