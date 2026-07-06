@@ -95,12 +95,14 @@ function renderPlatformSection(platformKey, data) {
     return `<tr class="${rank <= 3 ? 'top3' : ''}">${cells}</tr>${embedRow}`;
   }).join('');
 
+  // 번호(PW #1, BH #1...)를 붙여둠 — 수동 매칭 지시할 때 "PW 3번 BH 1번 매칭해줘"처럼
+  // 번호로 바로 가리킬 수 있게.
   const unmatchedList = (label, posts, textField) => {
     if (posts.length === 0) return `<p class="unmatched-empty">매칭 안 된 ${label} 게시물 없음</p>`;
-    const items = posts.map(post => {
+    const items = posts.map((post, i) => {
       const link = post.link || post.url || '';
       const preview = escapeHtml((post[textField] || '').replace(/\n/g, ' ').slice(0, 70));
-      return `<li><a href="${escapeHtml(link)}" target="_blank" rel="noopener">${preview || '(본문 없음)'}</a></li>`;
+      return `<li><b>${label} #${i + 1}</b> <a href="${escapeHtml(link)}" target="_blank" rel="noopener">${preview || '(본문 없음)'}</a></li>`;
     }).join('');
     return `<ul class="unmatched-list">${items}</ul>`;
   };

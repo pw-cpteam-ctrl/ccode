@@ -6,7 +6,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { parseCount, buildComparisonReport, extractOwnProductName, extractCompetitorProductName, extractKeywords } = require('./aggregate');
+const { parseCount, buildComparisonReport, buildProductComparison, extractOwnProductName, extractCompetitorProductName, extractKeywords, formatKstTime } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
 
 function check(label, fn) {
@@ -104,8 +104,8 @@ check('buildProductComparison: 본문 템플릿 기반 상품명 추출 + 키워
   // PW/BH 값이 한 행에 나란히 + 차이/배수/시각차이/결과까지 계산되는지 확인
   assert.strictEqual(eunhon.diffText.likes, '4000 (1.5배)'); // 12000-8000=4000, 12000/8000=1.5
   assert.strictEqual(eunhon.verdict, '우세'); // 리트윗/좋아요 둘 다 자사가 큼
-  assert.strictEqual(eunhon.pwTime, '11:00'); // 2026-07-01T02:00:00Z + 9h
-  assert.strictEqual(eunhon.bhTime, '12:00'); // 2026-07-01T03:00:00Z + 9h
+  assert.strictEqual(eunhon.pwTime, '7/1 11:00'); // 2026-07-01T02:00:00Z + 9h
+  assert.strictEqual(eunhon.bhTime, '7/1 12:00'); // 2026-07-01T03:00:00Z + 9h
   assert.strictEqual(eunhon.timeDiffMinutes, 60);
 
   const ig = report.platforms.instagram.productComparison;
@@ -135,6 +135,27 @@ check('extractKeywords: 실전에서 발견된 오매칭 패턴들이 다시 생
   const f = extractKeywords('은혼 컬렉션 SET');
   const singleWordOverlap = e.filter(k => f.includes(k));
   assert.ok(singleWordOverlap.length < 2, '흔한 단어 1개 겹침만으로는 매칭 기준(2개 이상)에 못 미쳐야 함');
+});
+
+check('수동 매칭(manual-matches): 자동으로 안 묶이는 게시물도 사람이 지정하면 상품 행에 들어감', () => {
+  const ownP = [{ link: 'https://x.com/own/999', datetime: '2026-07-01T01:00:00.000Z', likes: '10', retweets: '5', text: '전혀 안 겹치는 문구' }];
+  const compP = [{ link: 'https://x.com/comp/999', datetime: '2026-07-01T02:00:00.000Z', likes: '3', retweets: '1', text: '완전히 다른 문구' }];
+  const result = buildProductComparison(ownP, compP, ['likes', 'retweets'], 'text', ['retweets', 'likes'], [
+    { pw: ['https://x.com/own/999'], bh: ['https://x.com/comp/999'], label: '수동상품' },
+  ]);
+  assert.strictEqual(result.products.length, 1, '수동 매칭 1건이 상품 행으로 만들어져야 함');
+  assert.strictEqual(result.products[0].ip, '수동상품');
+  assert.strictEqual(result.products[0].own.total_likes, 10);
+  assert.strictEqual(result.products[0].competitor.total_likes, 3);
+  assert.strictEqual(result.ownUnmatched.length, 0, '수동 매칭된 게시물은 매칭 안 됨 목록에서 빠져야 함');
+  assert.strictEqual(result.competitorUnmatched.length, 0);
+});
+
+check('formatKstTime: 날짜가 다른 게시물끼리 비교할 때 날짜도 같이 표시돼야 함', () => {
+  // 실제 데이터에서 "시각차이 1496분"처럼 이상해 보이는 값이 나온 원인 — PW/BH가 하루
+  // 넘게 차이나는 날 각각 게시했는데 시:분만 보여줘서 헷갈렸음. 날짜 포함 표시로 수정.
+  assert.strictEqual(formatKstTime('2026-07-02T08:06:45.000Z'), '7/2 17:06');
+  assert.strictEqual(formatKstTime('2026-07-01T07:11:00.000Z'), '7/1 16:11');
 });
 
 check('extractOwnProductName / extractCompetitorProductName: 템플릿 위치 기반 추출', () => {

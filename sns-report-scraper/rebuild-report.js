@@ -16,6 +16,7 @@ const { saveHtmlReport } = require('./html-report');
 const CACHE_PATH = './reports/_last-collection.json';
 const OUTPUT_PATH = './reports/sns-report.xlsx';
 const HTML_OUTPUT_PATH = './reports/sns-report.html';
+const MANUAL_MATCHES_PATH = './manual-matches.json';
 
 async function main() {
   if (!fs.existsSync(CACHE_PATH)) {
@@ -26,11 +27,16 @@ async function main() {
   const cached = JSON.parse(fs.readFileSync(CACHE_PATH, 'utf-8'));
   console.log(`📂 캐시 로드: ${cached.startDate}~${cached.endDate} (수집 시각: ${cached.collectedAt})`);
 
+  const manualMatches = fs.existsSync(MANUAL_MATCHES_PATH)
+    ? JSON.parse(fs.readFileSync(MANUAL_MATCHES_PATH, 'utf-8'))
+    : {};
+
   const report = buildComparisonReport({
     startDate: cached.startDate,
     endDate: cached.endDate,
     own: cached.own,
     competitors: cached.competitors,
+    manualMatches,
   });
 
   const sheetName = await saveReportToExcel(report, OUTPUT_PATH);

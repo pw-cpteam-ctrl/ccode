@@ -28,6 +28,9 @@ const CONFIG = {
   // 수집한 원본 게시물을 여기에 캐시해둠 — 리포트 포맷만 고칠 땐 재수집(몇 분) 없이
   // rebuild-report.js로 이 캐시만 다시 읽어서 몇 초 안에 엑셀만 새로 뽑을 수 있음.
   cachePath: './reports/_last-collection.json',
+  // 자동 매칭이 놓친 게시물을 수동으로 짝지어주는 목록. "매칭 안 됨" 목록에서 번호(PW #n,
+  // BH #n)로 지정해서 { pw: [링크], bh: [링크], label: "표시할 이름" } 형태로 추가하면 됨.
+  manualMatchesPath: './manual-matches.json',
 
   own: [
     { platform: 'twitter', account: 'megahousestore', sessionFile: './x-session.json' },
@@ -70,11 +73,16 @@ async function main() {
   }, null, 2));
   console.log(`💾 원본 수집 데이터 캐시 저장: ${CONFIG.cachePath}`);
 
+  const manualMatches = fs.existsSync(CONFIG.manualMatchesPath)
+    ? JSON.parse(fs.readFileSync(CONFIG.manualMatchesPath, 'utf-8'))
+    : {};
+
   const report = buildComparisonReport({
     startDate: CONFIG.startDate,
     endDate: CONFIG.endDate,
     own,
     competitors,
+    manualMatches,
   });
 
   const sheetName = await saveReportToExcel(report, CONFIG.outputPath);

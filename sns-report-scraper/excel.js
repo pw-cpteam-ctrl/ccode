@@ -124,17 +124,19 @@ function writeProductPlatformSection(sheet, platformKey, data) {
   }
   sheet.addRow([]);
 
-  // 매칭 안 된 게시물도 숨기지 않고 그대로 노출 (상품명 추출 실패/양쪽 표현이 달라 매칭 실패)
+  // 매칭 안 된 게시물도 숨기지 않고 그대로 노출 (상품명 추출 실패/양쪽 표현이 달라 매칭 실패).
+  // 번호(PW #1, BH #1...)를 붙여둠 — 수동 매칭 지시할 때 "PW 3번 BH 1번 매칭해줘"처럼
+  // 번호로 바로 가리킬 수 있게.
   const textField = { twitter: 'text', instagram: 'caption' }[platformKey];
   const writeUnmatchedTable = (label, posts) => {
     const noteRow = sheet.addRow([`▸ 매칭 안 된 ${label} 게시물 (${posts.length}건) — 상품명을 못 뽑았거나 상대측과 겹치는 키워드가 없어서 매칭 안 됨`]);
     noteRow.font = { italic: true };
     if (posts.length === 0) return;
-    sheet.addRow(['링크', '날짜', ...data.fields.map(f => FIELD_LABELS[f] || f), '본문 일부']);
-    posts.forEach(post => {
+    sheet.addRow(['번호', '링크', '날짜', ...data.fields.map(f => FIELD_LABELS[f] || f), '본문 일부']);
+    posts.forEach((post, i) => {
       const link = post.link || post.url || '';
       const preview = (post[textField] || '').replace(/\n/g, ' ').slice(0, 60);
-      sheet.addRow([link, post.datetime, ...data.fields.map(f => post[f]), preview]);
+      sheet.addRow([`${label} #${i + 1}`, link, post.datetime, ...data.fields.map(f => post[f]), preview]);
     });
   };
   writeUnmatchedTable('자사', ownUnmatched);

@@ -219,11 +219,15 @@ function formatDiffWithMultiplier(pw, bh) {
   return multiplier === null ? `${diff}` : `${diff} (${multiplier}배)`;
 }
 
-// UTC ISO datetime → KST 기준 "H:MM" (예: "3:26")
+// UTC ISO datetime → KST 기준 "M/D H:MM" (예: "7/2 17:06"). 날짜도 항상 같이 표시 —
+// PW/BH가 같은 상품이라도 다른 날 게시하는 경우가 실제로 많아서(예: 경쟁사가 하루 전에
+// 먼저 올림), 시:분만 보여주면 "시각차이"가 왜 24시간 넘게 나오는지 헷갈림.
 function formatKstTime(isoDatetime) {
   const utc = new Date(isoDatetime);
   const kst = new Date(utc.getTime() + 9 * 3600 * 1000);
-  return `${kst.getUTCHours()}:${String(kst.getUTCMinutes()).padStart(2, '0')}`;
+  const month = kst.getUTCMonth() + 1;
+  const day = kst.getUTCDate();
+  return `${month}/${day} ${kst.getUTCHours()}:${String(kst.getUTCMinutes()).padStart(2, '0')}`;
 }
 
 function earliestDatetime(posts) {
@@ -249,8 +253,18 @@ function earliestDatetime(posts) {
  * @param {string[]} fields          집계할 숫자 필드 (예: ['likes', 'retweets'])
  * @param {string} textField         본문 필드명 ('text' 또는 'caption')
  * @param {string[]} displayFields   상품별 표에 나란히 놓을 지표 순서
+ * @param {Array<{pw:string[], bh:string[], label?:string}>} [manualMatches] 수동 매칭 목록
+ *   (manual-matches.json) — 여기 지정된 게시물은 자동 매칭보다 먼저 확정되고, 자동 매칭
+ *   대상 풀에서 빠짐
  */
-function buildProductComparison(ownPosts, competitorPosts, fields, textField, displayFields) {
+function buildProductComparison(ownPosts, competitorPosts, fields, textField, displayFields, manualMatches = []) {
+  const linkField = textField === 'text' ? 'link' : 'url';
+  const { manualProducts, remainingOwn, remainingCompetitor } = extractManualMatches(
+    ownPosts, competitorPosts, manualMatches, linkField, fields, displayFields
+  );
+  ownPosts = remainingOwn;
+  competitorPosts = remainingCompetitor;
+
   const ownEntries = ownPosts.map(post => ({ side: 'own', post, title: extractOwnProductName(post[textField]) }));
   const competitorEntries = competitorPosts.map(post => ({ side: 'competitor', post, title: extractCompetitorProductName(post[textField]) }));
   // 매칭(그룹화) 판단은 좁은 title 한 줄이 아니라 본문 전체 텍스트 기준 — 프랜차이즈명이
@@ -285,37 +299,15 @@ function buildProductComparison(ownPosts, competitorPosts, fields, textField, di
   });
 
   const matchedPosts = new Set();
-  const products = [];
+  const products = [...manualProducts];
   groups.forEach(group => {
-    const ownInGroup = group.filter(e => e.side === 'own');
-    const competitorInGroup = group.filter(e => e.side === 'competitor');
+    const ownInGroup = group.filter(e => e.side === 'own').map(e => e.post);
+    const competitorInGroup = group.filter(e => e.side === 'competitor').map(e => e.post);
     if (ownInGroup.length === 0 || competitorInGroup.length === 0) return; // 양쪽 다 있어야 "비교"
 
-    const ownSummary = summarizeAccount({ platform: null, account: 'PW', posts: ownInGroup.map(e => e.post), fields });
-    const competitorSummary = summarizeAccount({ platform: null, account: 'BH', posts: competitorInGroup.map(e => e.post), fields });
-    const { ip, line } = splitIpAndLine(ownInGroup[0].title || competitorInGroup[0].title);
-
-    const pwTime = earliestDatetime(ownInGroup.map(e => e.post));
-    const bhTime = earliestDatetime(competitorInGroup.map(e => e.post));
-    const timeDiffMinutes = Math.round(Math.abs(pwTime - bhTime) / 60000);
-
-    const diffs = {};
-    const diffText = {};
-    displayFields.forEach(f => {
-      diffs[f] = ownSummary[`total_${f}`] - competitorSummary[`total_${f}`];
-      diffText[f] = formatDiffWithMultiplier(ownSummary[`total_${f}`], competitorSummary[`total_${f}`]);
-    });
-    const diffValues = displayFields.map(f => diffs[f]);
-    const verdict = diffValues.every(d => d > 0) ? '우세' : diffValues.every(d => d < 0) ? '약세' : '경합';
-
+    const titleHint = (group.find(e => e.side === 'own') || {}).title || (group.find(e => e.side === 'competitor') || {}).title;
     group.forEach(e => matchedPosts.add(e.post));
-    products.push({
-      ip, line,
-      own: ownSummary, competitor: competitorSummary,
-      ownPosts: ownInGroup.map(e => e.post), competitorPosts: competitorInGroup.map(e => e.post),
-      pwTime: formatKstTime(pwTime), bhTime: formatKstTime(bhTime), timeDiffMinutes,
-      diffText, verdict,
-    });
+    products.push(buildProductEntry(ownInGroup, competitorInGroup, fields, displayFields, titleHint));
   });
   // 표시 지표(보통 리트윗/좋아요) 합산 큰 상품 먼저 — 임팩트 큰 것부터 보이게
   const impact = p => displayFields.reduce((sum, f) => sum + p.own[`total_${f}`] + p.competitor[`total_${f}`], 0);
@@ -327,15 +319,85 @@ function buildProductComparison(ownPosts, competitorPosts, fields, textField, di
   return { products, ownUnmatched, competitorUnmatched, displayFields };
 }
 
+// 게시물 묶음(자동 매칭이든 수동 지정이든) 하나로 "상품별 비교" 행 하나를 만듦.
+// buildProductComparison(자동 매칭)과 applyManualMatches(수동 매칭)가 공통으로 사용.
+function buildProductEntry(ownPosts, competitorPosts, fields, displayFields, titleHint) {
+  const ownSummary = summarizeAccount({ platform: null, account: 'PW', posts: ownPosts, fields });
+  const competitorSummary = summarizeAccount({ platform: null, account: 'BH', posts: competitorPosts, fields });
+  const { ip, line } = splitIpAndLine(titleHint);
+
+  const pwTime = earliestDatetime(ownPosts);
+  const bhTime = earliestDatetime(competitorPosts);
+  const timeDiffMinutes = Math.round(Math.abs(pwTime - bhTime) / 60000);
+
+  const diffs = {};
+  const diffText = {};
+  displayFields.forEach(f => {
+    diffs[f] = ownSummary[`total_${f}`] - competitorSummary[`total_${f}`];
+    diffText[f] = formatDiffWithMultiplier(ownSummary[`total_${f}`], competitorSummary[`total_${f}`]);
+  });
+  const diffValues = displayFields.map(f => diffs[f]);
+  const verdict = diffValues.every(d => d > 0) ? '우세' : diffValues.every(d => d < 0) ? '약세' : '경합';
+
+  return {
+    ip, line,
+    own: ownSummary, competitor: competitorSummary,
+    ownPosts, competitorPosts,
+    pwTime: formatKstTime(pwTime), bhTime: formatKstTime(bhTime), timeDiffMinutes,
+    diffText, verdict,
+  };
+}
+
+/**
+ * 수동 매칭 목록(manual-matches.json)을 자동 매칭 이전에 적용. 지정된 게시물들은
+ * 자동 매칭 대상 풀에서 미리 빼내서 별도로 상품 행을 만듦 — 자동/수동이 겹치지 않게.
+ *
+ * @param {object[]} ownPosts
+ * @param {object[]} competitorPosts
+ * @param {Array<{pw:string[], bh:string[], label?:string}>} manualMatches  pw/bh는 게시물 링크(link 또는 url) 목록
+ * @param {string} linkField  'link'(트위터) 또는 'url'(인스타)
+ * @returns {{ manualProducts: object[], remainingOwn: object[], remainingCompetitor: object[] }}
+ */
+function extractManualMatches(ownPosts, competitorPosts, manualMatches, linkField, fields, displayFields) {
+  if (!manualMatches || manualMatches.length === 0) {
+    return { manualProducts: [], remainingOwn: ownPosts, remainingCompetitor: competitorPosts };
+  }
+
+  const usedOwn = new Set();
+  const usedCompetitor = new Set();
+  const manualProducts = manualMatches.map(entry => {
+    const own = ownPosts.filter(p => (entry.pw || []).includes(p[linkField]));
+    const competitor = competitorPosts.filter(p => (entry.bh || []).includes(p[linkField]));
+    own.forEach(p => usedOwn.add(p));
+    competitor.forEach(p => usedCompetitor.add(p));
+    const textField = linkField === 'link' ? 'text' : 'caption';
+    const titleHint = entry.label || extractOwnProductName(own[0]?.[textField]) || extractCompetitorProductName(competitor[0]?.[textField]);
+    const product = buildProductEntry(own, competitor, fields, displayFields, titleHint);
+    // label을 사람이 직접 지정했으면 splitIpAndLine의 자동 정리(상용구 제거 등)를 거치지 않고
+    // 그대로 사용 — 라벨 안에 우연히 "상품" 같은 제외 단어가 들어있어도 잘려나가면 안 되니까
+    if (entry.label) product.ip = entry.label;
+    return product;
+  }).filter(p => p.ownPosts.length > 0 && p.competitorPosts.length > 0); // pw/bh 둘 다 실제로 매칭된 링크가 있어야 함
+
+  return {
+    manualProducts,
+    remainingOwn: ownPosts.filter(p => !usedOwn.has(p)),
+    remainingCompetitor: competitorPosts.filter(p => !usedCompetitor.has(p)),
+  };
+}
+
 /**
  * @param {object} input
  * @param {string} input.startDate
  * @param {string} input.endDate
  * @param {Array<{platform:string, account:string, posts:object[]}>} input.own       자사 계정(들)
  * @param {Array<{platform:string, account:string, posts:object[]}>} input.competitors 경쟁사 계정(들)
+ * @param {object} [input.manualMatches] 플랫폼별 수동 매칭 목록 (예: { twitter: [...], instagram: [...] })
+ *   — manual-matches.json 내용을 그대로 넘기면 됨. 파일 읽기는 이 함수를 호출하는 쪽(run.js 등)
+ *   책임이고, aggregate.js는 순수 함수로 유지.
  * @returns {object} platform별 비교표 + 비율
  */
-function buildComparisonReport({ startDate, endDate, own, competitors }) {
+function buildComparisonReport({ startDate, endDate, own, competitors, manualMatches = {} }) {
   const platforms = {};
 
   const allCollections = [...own, ...competitors];
@@ -406,7 +468,9 @@ function buildComparisonReport({ startDate, endDate, own, competitors }) {
     const ownPosts = own.filter(c => c.platform === platform).flatMap(c => c.posts);
     const competitorPosts = competitors.filter(c => c.platform === platform).flatMap(c => c.posts);
     const displayFields = PRODUCT_TABLE_FIELD_ORDER[platform] || fields;
-    const productComparison = buildProductComparison(ownPosts, competitorPosts, fields, PLATFORM_TEXT_FIELD[platform], displayFields);
+    const productComparison = buildProductComparison(
+      ownPosts, competitorPosts, fields, PLATFORM_TEXT_FIELD[platform], displayFields, manualMatches[platform] || []
+    );
 
     platforms[platform] = {
       fields,
@@ -433,6 +497,8 @@ module.exports = {
   splitIpAndLine,
   formatDiffWithMultiplier,
   formatKstTime,
+  buildProductEntry,
+  extractManualMatches,
   buildProductComparison,
   buildComparisonReport,
   PLATFORM_FIELDS,
