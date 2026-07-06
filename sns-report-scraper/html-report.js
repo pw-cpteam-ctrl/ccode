@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const FIELD_LABELS = { likes: '좋아요', retweets: '리트윗', comments: '댓글' };
+const FIELD_ICONS = { likes: '♥️', retweets: '♻️', comments: '💬' };
 const PLATFORM_TITLES = { twitter: 'X(트위터)', instagram: '인스타그램' };
 
 function escapeHtml(s) {
@@ -16,6 +17,24 @@ function verdictBadge(verdict) {
 function formatRatioCard(pwTotal, bhTotal) {
   if (!bhTotal) return 'N/A';
   return `${Math.round((pwTotal / bhTotal) * 100)}%`;
+}
+
+function fieldIcon(f) {
+  return FIELD_ICONS[f] || FIELD_LABELS[f] || f;
+}
+
+// PW vs BH 비교는 "부분 대 전체" 문제라 프로그레스 바(단일값 대 한계치)가 아니라
+// 막대 하나를 두 값의 비율로 나눠 채우는 분할 바가 맞음 — 2px 표면 간극으로 두 구간을 분리.
+function miniBar(pw, bh) {
+  const total = pw + bh;
+  const title = `PW ${pw.toLocaleString()} · BH ${bh.toLocaleString()}`;
+  if (total <= 0) return `<div class="vsbar empty" title="${escapeHtml(title)}"></div>`;
+  const pwPct = (pw / total) * 100;
+  const bhPct = 100 - pwPct;
+  return `<div class="vsbar" title="${escapeHtml(title)}">
+    <div class="vsbar-pw" style="width:${pwPct}%"></div>
+    <div class="vsbar-bh" style="width:${bhPct}%"></div>
+  </div>`;
 }
 
 // 트위터/인스타 공식 oEmbed 마크업. 실제 카드로 렌더링되려면 각 서비스의 위젯 스크립트가
@@ -55,10 +74,10 @@ function renderPlatformSection(platformKey, data) {
     </div>`;
 
   const headerCells = ['순위', 'IP', '시리즈',
-    ...displayFields.flatMap(f => [`PW ${FIELD_LABELS[f] || f}`, `BH ${FIELD_LABELS[f] || f}`]),
-    'PW 시각', 'BH 시각',
-    ...displayFields.map(f => `${FIELD_LABELS[f] || f}차이`),
-    '시각차이', '결과', '게시물'];
+    ...displayFields.flatMap(f => [`PW ${fieldIcon(f)}`, `BH ${fieldIcon(f)}`]),
+    'PW ⏰', 'BH ⏰',
+    ...displayFields.map(f => `${fieldIcon(f)}차이`),
+    '⏰차이', '결과', '게시물'];
 
   const rows = products.map((p, i) => {
     const rank = i + 1;
@@ -74,7 +93,7 @@ function renderPlatformSection(platformKey, data) {
       ]),
       `<td class="time">${escapeHtml(p.pwTime)}</td>`,
       `<td class="time">${escapeHtml(p.bhTime)}</td>`,
-      ...displayFields.map(f => `<td class="diff">${escapeHtml(p.diffText[f])}</td>`),
+      ...displayFields.map(f => `<td class="diff">${miniBar(p.own[`total_${f}`], p.competitor[`total_${f}`])}<span class="diff-text">${escapeHtml(p.diffText[f])}</span></td>`),
       `<td class="diff">${p.timeDiffMinutes}분</td>`,
       `<td>${verdictBadge(p.verdict)}</td>`,
       `<td><button class="toggle-btn" onclick="toggleEmbeds('${embedRowId}','${platformKey}',this)">▶ 보기</button></td>`,
@@ -110,7 +129,13 @@ function renderPlatformSection(platformKey, data) {
 
   return `
   <section class="platform">
-    <h2>[${title}] 상품별 비교</h2>
+    <div class="section-head">
+      <h2>[${title}] 상품별 비교</h2>
+      <div class="toggle-all">
+        <button class="toggle-all-btn" onclick="toggleAllEmbeds('${platformKey}',true)">전체 펼치기</button>
+        <button class="toggle-all-btn" onclick="toggleAllEmbeds('${platformKey}',false)">전체 접기</button>
+      </div>
+    </div>
     ${cards}
     <div class="table-wrap">
       <table>
@@ -150,8 +175,12 @@ function buildHtmlReport(report) {
 *{box-sizing:border-box}body{margin:0;font-family:'Malgun Gothic',system-ui,sans-serif;background:#f4f6fb;color:#1f2937}
 .wrap{max-width:1200px;margin:0 auto;padding:28px 18px}
 h1{font-size:24px;margin:0 0 4px}.sub{color:#6b7280;font-size:13px;margin-bottom:24px}
-h2{font-size:18px;margin:0 0 12px}
+h2{font-size:18px;margin:0}
 section.platform{margin-bottom:36px}
+.section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.toggle-all{display:flex;gap:8px}
+.toggle-all-btn{border:1px solid #d0d5e0;background:#fff;color:#3b5bdb;font-size:12px;padding:5px 12px;border-radius:8px;cursor:pointer}
+.toggle-all-btn:hover{background:#eef2ff}
 .cards{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .card{background:#fff;border-radius:12px;padding:14px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08);flex:1;min-width:150px}
 .card .k{color:#6b7280;font-size:12px}.card .v{font-size:20px;font-weight:700;color:#3b5bdb;margin-top:2px}
@@ -164,7 +193,12 @@ tr.top3{background:#fffbeb}tr:hover{background:#f0f4ff}
 .rank{font-size:15px;font-weight:700;width:38px}
 td.name{text-align:left;font-weight:600}
 td.num.pw{color:#e8590c;font-weight:600}td.num.bh{color:#c0504d;font-weight:600}
-td.diff{color:#374151;font-size:12px}td.time{color:#6b7280;font-size:12px}
+td.diff{color:#374151;font-size:12px;min-width:64px}td.time{color:#6b7280;font-size:12px}
+.vsbar{display:flex;width:100%;height:8px;border-radius:4px;overflow:hidden;background:#eef0f4;margin:0 auto 4px}
+.vsbar.empty{background:#eef0f4}
+.vsbar-pw{background:#e8590c;border-right:2px solid #fff}
+.vsbar-bh{background:#c0504d}
+.diff-text{font-size:11px}
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
 .badge.ok{background:#ebfbee;color:#2f9e44}.badge.mid{background:#fff4e6;color:#e8590c}.badge.low{background:#fff0f0;color:#c0504d}
 td.empty{color:#9099a6;padding:24px}
@@ -210,6 +244,14 @@ function toggleEmbeds(rowId, platform, btn) {
     if (platform === 'twitter' && window.twttr) window.twttr.widgets.load(row);
     if (platform === 'instagram' && window.instgrm) window.instgrm.Embeds.process();
   }
+}
+function toggleAllEmbeds(platform, forceOpen) {
+  document.querySelectorAll('tr.embed-row[id^="embed-' + platform + '-"]').forEach(function (row) {
+    var isOpen = row.classList.contains('open');
+    if (forceOpen === isOpen) return;
+    var btn = row.previousElementSibling.querySelector('.toggle-btn');
+    toggleEmbeds(row.id, platform, btn);
+  });
 }
 </script>
 ${needsTwitterWidget ? '<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>' : ''}
