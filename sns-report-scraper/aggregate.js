@@ -77,19 +77,56 @@ const PLATFORM_TEXT_FIELD = {
   instagram: 'caption',
 };
 
-// 본문에서 해시태그만 뽑음 (한글 포함). "#은혼", "#메가하우스공식스토어" 등
-function extractHashtags(text) {
-  if (!text) return [];
-  const matches = text.match(/#[\p{L}\p{N}_]+/gu) || [];
-  return [...new Set(matches.map(h => h.slice(1)))];
+// 당사 템플릿: 본문 첫 줄이 상품명 ("[예약시작] 은혼 GEM 피규어\n\n..." → "은혼 GEM 피규어")
+function extractOwnProductName(text) {
+  if (!text) return null;
+  const firstLine = text.split('\n').map(l => l.trim()).find(Boolean);
+  if (!firstLine) return null;
+  return firstLine.replace(/^\[[^\]]*\]\s*/, '').trim() || null; // 앞의 "[예약시작]" 등 태그 제거
+}
+
+// 경쟁사 템플릿: "바로가기"/링크가 있는 줄 바로 위 줄이 상품명
+// ("✔️G.E.M. 시리즈 손바닥 엘런 & 리바이 병장 세트\n\n🛍️바로가기 : https://...")
+function extractCompetitorProductName(text) {
+  if (!text) return null;
+  const lines = text.split('\n').map(l => l.trim());
+  const linkIdx = lines.findIndex(l => /바로가기|http/i.test(l));
+  if (linkIdx > 0) {
+    for (let i = linkIdx - 1; i >= 0; i--) {
+      if (lines[i]) return lines[i].replace(/^[✔✅☑️\s]+/, '').trim() || null;
+    }
+  }
+  // 백업: 링크 줄을 못 찾으면 ✔️로 시작하는 줄을 그냥 찾음
+  const checkLine = lines.find(l => /^[✔✅☑️]/.test(l));
+  return checkLine ? checkLine.replace(/^[✔✅☑️\s]+/, '').trim() || null : null;
+}
+
+// 매칭에 쓰기엔 너무 흔한 단어(브랜드/시리즈/판매 관련 상용구) — 이 단어들만 겹쳐서는
+// 같은 상품으로 보지 않음. 실제 매칭 결과 보고 계속 추가해나가면 됨.
+const GENERIC_KEYWORDS = new Set([
+  '메가하우스', 'GEM', 'G.E.M', '시리즈', '피규어', '세트', '예약', '판매', '할인', '혜택',
+  '마감', '발매', '캠페인', '공식', '스토어', '신제품', '특가', '한정', '재입고', '정품', '구매',
+  '바로가기', '이벤트', '사전', '오픈', '입고',
+]);
+
+// 상품명 텍스트에서 매칭용 키워드만 추출 (한글/영문/숫자 토큰, 상용구 제외)
+function extractKeywords(title) {
+  if (!title) return [];
+  const normalized = title.replace(/(?<=[A-Za-z])\.(?=[A-Za-z])/g, ''); // "G.E.M." → "GEM"
+  const tokens = normalized.match(/[\p{L}\p{N}]+/gu) || [];
+  return [...new Set(tokens.filter(t => t.length >= 2 && !GENERIC_KEYWORDS.has(t)))];
 }
 
 /**
- * 자사/경쟁사 게시물을 해시태그 기준으로 매칭해서 "상품별" 비교표를 만듦.
- * 브랜드/스토어명처럼 한쪽만 쓰는 태그는 자동으로 제외됨 — 자사와 경쟁사 둘 다 사용한
- * 해시태그(교집합)만 "같은 상품"으로 보고 매칭하기 때문에 수동 제외 목록이 필요 없음.
- * 해시태그가 없거나 양쪽이 다른 표현을 쓴 게시물은 매칭 안 됨(unmatched)으로 분리해서
- * 투명하게 보여줌 — 조용히 누락시키지 않음.
+ * 자사/경쟁사 게시물을 상품명(본문 템플릿 위치 기반 추출) 기준으로 매칭해서
+ * "상품별" 비교표를 만듦. 자사는 첫 줄, 경쟁사는 링크 줄 바로 위 줄에서 상품명을 뽑고,
+ * 상품명에서 뽑은 키워드가 하나라도 겹치면 같은 상품으로 그룹화(Union-Find).
+ * 상품명이 없거나(템플릿과 다른 형식) 겹치는 키워드가 없는 게시물은 매칭 안 됨(unmatched)으로
+ * 분리해서 투명하게 보여줌 — 조용히 누락시키지 않음.
+ *
+ * ⚠️ 순수 텍스트/키워드 매칭이라 완벽하지 않음 — 표현이 아예 다르면 매칭 실패할 수 있고,
+ * 흔한 단어(GENERIC_KEYWORDS)가 겹쳐서 상관없는 상품이 잘못 묶일 가능성도 있음. 실제 결과
+ * 보고 이상한 매칭/과도한 미매칭 있으면 계속 다듬어야 함.
  *
  * @param {object[]} ownPosts        자사 게시물 전체 (여러 계정 합친 것)
  * @param {object[]} competitorPosts 경쟁사 게시물 전체 (여러 계정 합친 것)
@@ -97,35 +134,54 @@ function extractHashtags(text) {
  * @param {string} textField         본문 필드명 ('text' 또는 'caption')
  */
 function buildProductComparison(ownPosts, competitorPosts, fields, textField) {
-  const withTags = posts => posts.map(p => ({ post: p, tags: extractHashtags(p[textField]) }));
-  const ownTagged = withTags(ownPosts);
-  const competitorTagged = withTags(competitorPosts);
+  const ownEntries = ownPosts.map(post => ({ side: 'own', post, title: extractOwnProductName(post[textField]) }));
+  const competitorEntries = competitorPosts.map(post => ({ side: 'competitor', post, title: extractCompetitorProductName(post[textField]) }));
+  const entries = [...ownEntries, ...competitorEntries].map(e => ({ ...e, keywords: extractKeywords(e.title) }));
 
-  const ownTagSet = new Set(ownTagged.flatMap(t => t.tags));
-  const competitorTagSet = new Set(competitorTagged.flatMap(t => t.tags));
-  const sharedTags = [...ownTagSet].filter(t => competitorTagSet.has(t));
+  // Union-Find: 키워드가 하나라도 겹치는 게시물들을 같은 상품 그룹으로 묶음
+  const parent = entries.map((_, i) => i);
+  function find(i) { return parent[i] === i ? i : (parent[i] = find(parent[i])); }
+  function union(i, j) { const a = find(i), b = find(j); if (a !== b) parent[a] = b; }
 
-  const products = sharedTags.map(tag => {
-    const ownMatched = ownTagged.filter(t => t.tags.includes(tag)).map(t => t.post);
-    const competitorMatched = competitorTagged.filter(t => t.tags.includes(tag)).map(t => t.post);
+  for (let i = 0; i < entries.length; i++) {
+    if (entries[i].keywords.length === 0) continue;
+    for (let j = i + 1; j < entries.length; j++) {
+      if (entries[j].keywords.length === 0) continue;
+      if (entries[i].keywords.some(k => entries[j].keywords.includes(k))) union(i, j);
+    }
+  }
 
-    const ownSummary = summarizeAccount({ platform: null, account: '자사', posts: ownMatched, fields });
-    const competitorSummary = summarizeAccount({ platform: null, account: '경쟁사', posts: competitorMatched, fields });
+  const groups = new Map();
+  entries.forEach((e, i) => {
+    if (e.keywords.length === 0) return; // 상품명을 못 뽑았으면 그룹화 대상 아님(매칭 안 됨으로)
+    const root = find(i);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root).push(e);
+  });
 
+  const matchedPosts = new Set();
+  const products = [];
+  groups.forEach(group => {
+    const ownInGroup = group.filter(e => e.side === 'own');
+    const competitorInGroup = group.filter(e => e.side === 'competitor');
+    if (ownInGroup.length === 0 || competitorInGroup.length === 0) return; // 양쪽 다 있어야 "비교"
+
+    const ownSummary = summarizeAccount({ platform: null, account: '자사', posts: ownInGroup.map(e => e.post), fields });
+    const competitorSummary = summarizeAccount({ platform: null, account: '경쟁사', posts: competitorInGroup.map(e => e.post), fields });
     const metrics = { postCount: compareMetric(ownSummary.postCount, competitorSummary.postCount) };
     fields.forEach(f => {
       metrics[`total_${f}`] = compareMetric(ownSummary[`total_${f}`], competitorSummary[`total_${f}`]);
       metrics[`avg_${f}`] = compareMetric(ownSummary[`avg_${f}`], competitorSummary[`avg_${f}`]);
     });
 
-    return { tag, own: ownSummary, competitor: competitorSummary, metrics };
+    group.forEach(e => matchedPosts.add(e.post));
+    products.push({ label: ownInGroup[0].title || competitorInGroup[0].title, own: ownSummary, competitor: competitorSummary, metrics });
   });
   // 게시물 수(자사+경쟁사 합) 많은 상품 먼저 — 임팩트 큰 것부터 보이게
   products.sort((a, b) => (b.own.postCount + b.competitor.postCount) - (a.own.postCount + a.competitor.postCount));
 
-  const isMatched = tags => tags.some(t => sharedTags.includes(t));
-  const ownUnmatched = ownTagged.filter(t => !isMatched(t.tags)).map(t => t.post);
-  const competitorUnmatched = competitorTagged.filter(t => !isMatched(t.tags)).map(t => t.post);
+  const ownUnmatched = ownPosts.filter(p => !matchedPosts.has(p));
+  const competitorUnmatched = competitorPosts.filter(p => !matchedPosts.has(p));
 
   return { products, ownUnmatched, competitorUnmatched };
 }
@@ -229,7 +285,9 @@ module.exports = {
   parseCount,
   summarizeAccount,
   compareMetric,
-  extractHashtags,
+  extractOwnProductName,
+  extractCompetitorProductName,
+  extractKeywords,
   buildProductComparison,
   buildComparisonReport,
   PLATFORM_FIELDS,

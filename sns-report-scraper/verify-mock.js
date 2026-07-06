@@ -6,7 +6,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { parseCount, buildComparisonReport } = require('./aggregate');
+const { parseCount, buildComparisonReport, extractOwnProductName, extractCompetitorProductName } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
 
 function check(label, fn) {
@@ -33,22 +33,22 @@ check('parseCount: 콤마/만/천/K/M/실패 케이스', () => {
 });
 
 // ── 2. 모킹 데이터: twitter.js / instagram.js가 실제로 뱉을 형태 흉내 ──
-// 상품별 비교(해시태그 매칭) 검증을 위해 자사/경쟁사가 공통으로 쓰는 해시태그(#은혼, #카무이)와
-// 한쪽만 쓰는 해시태그(브랜드명)/해시태그 없는 게시물(매칭 안 됨 케이스)을 섞어 넣음.
+// 상품별 비교(본문 템플릿 기반 상품명 추출) 검증용. 당사는 "첫 줄 = 상품명", 경쟁사는
+// "바로가기/링크 줄 바로 위 줄(✔️ 표시) = 상품명" 템플릿을 따른다고 가정.
 const ownTwitterPosts = [
-  { link: 'https://x.com/own/status/1', datetime: '2026-07-01T02:00:00.000Z', likes: '1.2만', retweets: '3,400', text: '은혼 신상품 안내 #은혼 #메가하우스공식스토어' },
-  { link: 'https://x.com/own/status/2', datetime: '2026-07-01T05:00:00.000Z', likes: '5,000', retweets: '900', text: '그냥 공지 (해시태그 없음)' },
+  { link: 'https://x.com/own/status/1', datetime: '2026-07-01T02:00:00.000Z', likes: '1.2만', retweets: '3,400', text: '은혼 GEM 카무이 ver.2\n\n예약판매 중\nhttps://m.site.naver.com/xyz' },
+  { link: 'https://x.com/own/status/2', datetime: '2026-07-01T05:00:00.000Z', likes: '5,000', retweets: '900', text: '정기 휴무 안내입니다 (특정 상품 아님)' },
 ];
 const compTwitterPosts = [
-  { link: 'https://x.com/comp/status/1', datetime: '2026-07-01T03:00:00.000Z', likes: '8,000', retweets: '1,000', text: '은혼 재입고 #은혼 #경쟁사스토어' },
+  { link: 'https://x.com/comp/status/1', datetime: '2026-07-01T03:00:00.000Z', likes: '8,000', retweets: '1,000', text: '✔️은혼 카무이 ver.2 세컨드\n\n🛍️바로가기 : https://mkt.shopping.naver.com/link/xyz' },
 ];
 const ownInstaPosts = [
   // instagram.js는 좌표 파싱 실패 시 likes/comments가 null일 수 있음 — 그 케이스도 포함
-  { url: 'https://instagram.com/p/1', datetime: '2026-07-01T01:00:00.000Z', likes: '2.3만', comments: '150', caption: '카무이 신제품 #카무이 #메가하우스공식스토어' },
-  { url: 'https://instagram.com/p/2', datetime: '2026-07-01T04:00:00.000Z', likes: null, comments: '알수없음', caption: '그냥 공지 (해시태그 없음)' },
+  { url: 'https://instagram.com/p/1', datetime: '2026-07-01T01:00:00.000Z', likes: '2.3만', comments: '150', caption: '카무이 GEM 세트\n\n예약중\nhttps://m.site.naver.com/abc' },
+  { url: 'https://instagram.com/p/2', datetime: '2026-07-01T04:00:00.000Z', likes: null, comments: '알수없음', caption: '정기 점검 안내 (특정 상품 아님)' },
 ];
 const compInstaPosts = [
-  { url: 'https://instagram.com/p/3', datetime: '2026-07-01T02:00:00.000Z', likes: '1.5만', comments: '80', caption: '카무이 판매중 #카무이 #경쟁사스토어' },
+  { url: 'https://instagram.com/p/3', datetime: '2026-07-01T02:00:00.000Z', likes: '1.5만', comments: '80', caption: '✔️카무이 세컨드 버전\n\n🛍️바로가기 : https://mkt.shopping.naver.com/link/abc' },
 ];
 
 const report = buildComparisonReport({
@@ -81,21 +81,29 @@ check('buildComparisonReport: 인스타 파싱 실패 건수 투명하게 집계
   assert.strictEqual(own.total_likes, 23000); // null은 실패로 안 세고 그냥 제외, 있는 값만 합산
 });
 
-check('buildProductComparison: 해시태그 교집합으로 상품 자동 매칭', () => {
+check('buildProductComparison: 본문 템플릿 기반 상품명 추출 + 키워드 매칭', () => {
   const tw = report.platforms.twitter.productComparison;
-  assert.strictEqual(tw.products.length, 1, '자사/경쟁사 공통 해시태그(#은혼) 1개만 매칭돼야 함');
-  assert.strictEqual(tw.products[0].tag, '은혼');
+  assert.strictEqual(tw.products.length, 1, '자사/경쟁사가 같은 상품(은혼 카무이)을 언급한 게시물 1쌍만 매칭돼야 함');
+  assert.match(tw.products[0].label, /은혼|카무이/);
   assert.strictEqual(tw.products[0].own.total_likes, 12000);
   assert.strictEqual(tw.products[0].competitor.total_likes, 8000);
-  assert.strictEqual(tw.ownUnmatched.length, 1, '해시태그 없는 자사 게시물 1건은 매칭 안 됨으로 분리돼야 함');
+  assert.strictEqual(tw.ownUnmatched.length, 1, '특정 상품 아닌 자사 공지 게시물 1건은 매칭 안 됨으로 분리돼야 함');
   assert.strictEqual(tw.competitorUnmatched.length, 0);
 
   const ig = report.platforms.instagram.productComparison;
   assert.strictEqual(ig.products.length, 1);
-  assert.strictEqual(ig.products[0].tag, '카무이');
+  assert.match(ig.products[0].label, /카무이/);
   assert.strictEqual(ig.products[0].own.total_comments, 150);
   assert.strictEqual(ig.products[0].competitor.total_comments, 80);
   assert.strictEqual(ig.ownUnmatched.length, 1);
+});
+
+check('extractOwnProductName / extractCompetitorProductName: 템플릿 위치 기반 추출', () => {
+  assert.strictEqual(extractOwnProductName('[예약시작] 은혼 GEM 피규어\n\n다음 줄'), '은혼 GEM 피규어');
+  assert.strictEqual(
+    extractCompetitorProductName('✔️G.E.M. 시리즈 손바닥 엘런 & 리바이 병장 세트\n\n🛍️바로가기 : https://example.com'),
+    'G.E.M. 시리즈 손바닥 엘런 & 리바이 병장 세트'
+  );
 });
 
 // ── 3. 엑셀 저장: 히스토리 누적(기존 시트 보존) + 재실행 시 이름 충돌 처리 확인 ──

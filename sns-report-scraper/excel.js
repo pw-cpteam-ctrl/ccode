@@ -78,11 +78,11 @@ function writePlatformSection(sheet, platformKey, data) {
 
 function writeProductPlatformSection(sheet, platformKey, data) {
   const platformTitle = { twitter: 'X(트위터)', instagram: '인스타그램' }[platformKey] || platformKey;
-  const titleRow = sheet.addRow([`[${platformTitle}] 상품별 비교 (해시태그 자동 매칭)`]);
+  const titleRow = sheet.addRow([`[${platformTitle}] 상품별 비교 (본문에서 상품명 자동 추출 후 매칭)`]);
   titleRow.font = { bold: true, size: 12 };
 
   const metricKeys = ['postCount', ...data.fields.flatMap(f => [`total_${f}`, `avg_${f}`])];
-  const header = ['상품(해시태그)'];
+  const header = ['상품명'];
   metricKeys.forEach(key => header.push(`자사 ${metricLabel(key)}`, `경쟁사 ${metricLabel(key)}`, '비율'));
   const headerRow = sheet.addRow(header);
   headerRow.font = { bold: true };
@@ -91,10 +91,10 @@ function writeProductPlatformSection(sheet, platformKey, data) {
   const { products, ownUnmatched, competitorUnmatched } = data.productComparison;
 
   if (products.length === 0) {
-    sheet.addRow(['매칭된 상품 없음 (자사/경쟁사 게시물에 공통 해시태그가 없음)']);
+    sheet.addRow(['매칭된 상품 없음 (자사/경쟁사 게시물에서 공통 키워드를 찾지 못함)']);
   }
   products.forEach(p => {
-    const row = [`#${p.tag}`];
+    const row = [p.label];
     metricKeys.forEach(key => {
       row.push(p.own[key], p.competitor[key], ratioText(p.metrics[key]));
     });
@@ -102,10 +102,10 @@ function writeProductPlatformSection(sheet, platformKey, data) {
   });
   sheet.addRow([]);
 
-  // 매칭 안 된 게시물도 숨기지 않고 그대로 노출 (해시태그 없음/표현 달라서 매칭 실패)
+  // 매칭 안 된 게시물도 숨기지 않고 그대로 노출 (상품명 추출 실패/양쪽 표현이 달라 매칭 실패)
   const textField = { twitter: 'text', instagram: 'caption' }[platformKey];
   const writeUnmatchedTable = (label, posts) => {
-    const noteRow = sheet.addRow([`▸ 매칭 안 된 ${label} 게시물 (${posts.length}건) — 해시태그 없음 또는 상대측과 표현이 달라서 매칭 안 됨`]);
+    const noteRow = sheet.addRow([`▸ 매칭 안 된 ${label} 게시물 (${posts.length}건) — 상품명을 못 뽑았거나 상대측과 겹치는 키워드가 없어서 매칭 안 됨`]);
     noteRow.font = { italic: true };
     if (posts.length === 0) return;
     sheet.addRow(['링크', '날짜', ...data.fields.map(f => FIELD_LABELS[f] || f), '본문 일부']);
