@@ -71,6 +71,65 @@ const PLATFORM_FIELDS = {
   instagram: ['likes', 'comments'],
 };
 
+// 게시물 본문 필드명 — 플랫폼마다 다름 (twitter.js는 text, instagram.js는 caption)
+const PLATFORM_TEXT_FIELD = {
+  twitter: 'text',
+  instagram: 'caption',
+};
+
+// 본문에서 해시태그만 뽑음 (한글 포함). "#은혼", "#메가하우스공식스토어" 등
+function extractHashtags(text) {
+  if (!text) return [];
+  const matches = text.match(/#[\p{L}\p{N}_]+/gu) || [];
+  return [...new Set(matches.map(h => h.slice(1)))];
+}
+
+/**
+ * 자사/경쟁사 게시물을 해시태그 기준으로 매칭해서 "상품별" 비교표를 만듦.
+ * 브랜드/스토어명처럼 한쪽만 쓰는 태그는 자동으로 제외됨 — 자사와 경쟁사 둘 다 사용한
+ * 해시태그(교집합)만 "같은 상품"으로 보고 매칭하기 때문에 수동 제외 목록이 필요 없음.
+ * 해시태그가 없거나 양쪽이 다른 표현을 쓴 게시물은 매칭 안 됨(unmatched)으로 분리해서
+ * 투명하게 보여줌 — 조용히 누락시키지 않음.
+ *
+ * @param {object[]} ownPosts        자사 게시물 전체 (여러 계정 합친 것)
+ * @param {object[]} competitorPosts 경쟁사 게시물 전체 (여러 계정 합친 것)
+ * @param {string[]} fields          집계할 숫자 필드 (예: ['likes', 'retweets'])
+ * @param {string} textField         본문 필드명 ('text' 또는 'caption')
+ */
+function buildProductComparison(ownPosts, competitorPosts, fields, textField) {
+  const withTags = posts => posts.map(p => ({ post: p, tags: extractHashtags(p[textField]) }));
+  const ownTagged = withTags(ownPosts);
+  const competitorTagged = withTags(competitorPosts);
+
+  const ownTagSet = new Set(ownTagged.flatMap(t => t.tags));
+  const competitorTagSet = new Set(competitorTagged.flatMap(t => t.tags));
+  const sharedTags = [...ownTagSet].filter(t => competitorTagSet.has(t));
+
+  const products = sharedTags.map(tag => {
+    const ownMatched = ownTagged.filter(t => t.tags.includes(tag)).map(t => t.post);
+    const competitorMatched = competitorTagged.filter(t => t.tags.includes(tag)).map(t => t.post);
+
+    const ownSummary = summarizeAccount({ platform: null, account: '자사', posts: ownMatched, fields });
+    const competitorSummary = summarizeAccount({ platform: null, account: '경쟁사', posts: competitorMatched, fields });
+
+    const metrics = { postCount: compareMetric(ownSummary.postCount, competitorSummary.postCount) };
+    fields.forEach(f => {
+      metrics[`total_${f}`] = compareMetric(ownSummary[`total_${f}`], competitorSummary[`total_${f}`]);
+      metrics[`avg_${f}`] = compareMetric(ownSummary[`avg_${f}`], competitorSummary[`avg_${f}`]);
+    });
+
+    return { tag, own: ownSummary, competitor: competitorSummary, metrics };
+  });
+  // 게시물 수(자사+경쟁사 합) 많은 상품 먼저 — 임팩트 큰 것부터 보이게
+  products.sort((a, b) => (b.own.postCount + b.competitor.postCount) - (a.own.postCount + a.competitor.postCount));
+
+  const isMatched = tags => tags.some(t => sharedTags.includes(t));
+  const ownUnmatched = ownTagged.filter(t => !isMatched(t.tags)).map(t => t.post);
+  const competitorUnmatched = competitorTagged.filter(t => !isMatched(t.tags)).map(t => t.post);
+
+  return { products, ownUnmatched, competitorUnmatched };
+}
+
 /**
  * @param {object} input
  * @param {string} input.startDate
@@ -147,6 +206,10 @@ function buildComparisonReport({ startDate, endDate, own, competitors }) {
       return metrics;
     })() : null;
 
+    const ownPosts = own.filter(c => c.platform === platform).flatMap(c => c.posts);
+    const competitorPosts = competitors.filter(c => c.platform === platform).flatMap(c => c.posts);
+    const productComparison = buildProductComparison(ownPosts, competitorPosts, fields, PLATFORM_TEXT_FIELD[platform]);
+
     platforms[platform] = {
       fields,
       own: ownAccounts,
@@ -155,10 +218,20 @@ function buildComparisonReport({ startDate, endDate, own, competitors }) {
       competitorAverage,
       perCompetitorComparison,
       vsAverage,
+      productComparison,
     };
   });
 
   return { startDate, endDate, generatedAt: new Date().toISOString(), platforms };
 }
 
-module.exports = { parseCount, summarizeAccount, compareMetric, buildComparisonReport, PLATFORM_FIELDS };
+module.exports = {
+  parseCount,
+  summarizeAccount,
+  compareMetric,
+  extractHashtags,
+  buildProductComparison,
+  buildComparisonReport,
+  PLATFORM_FIELDS,
+  PLATFORM_TEXT_FIELD,
+};

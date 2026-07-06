@@ -76,6 +76,51 @@ function writePlatformSection(sheet, platformKey, data) {
   sheet.addRow([]); // 섹션 구분 공백
 }
 
+function writeProductPlatformSection(sheet, platformKey, data) {
+  const platformTitle = { twitter: 'X(트위터)', instagram: '인스타그램' }[platformKey] || platformKey;
+  const titleRow = sheet.addRow([`[${platformTitle}] 상품별 비교 (해시태그 자동 매칭)`]);
+  titleRow.font = { bold: true, size: 12 };
+
+  const metricKeys = ['postCount', ...data.fields.flatMap(f => [`total_${f}`, `avg_${f}`])];
+  const header = ['상품(해시태그)'];
+  metricKeys.forEach(key => header.push(`자사 ${metricLabel(key)}`, `경쟁사 ${metricLabel(key)}`, '비율'));
+  const headerRow = sheet.addRow(header);
+  headerRow.font = { bold: true };
+  headerRow.eachCell(cell => { cell.border = { bottom: { style: 'thin' } }; });
+
+  const { products, ownUnmatched, competitorUnmatched } = data.productComparison;
+
+  if (products.length === 0) {
+    sheet.addRow(['매칭된 상품 없음 (자사/경쟁사 게시물에 공통 해시태그가 없음)']);
+  }
+  products.forEach(p => {
+    const row = [`#${p.tag}`];
+    metricKeys.forEach(key => {
+      row.push(p.own[key], p.competitor[key], ratioText(p.metrics[key]));
+    });
+    sheet.addRow(row);
+  });
+  sheet.addRow([]);
+
+  // 매칭 안 된 게시물도 숨기지 않고 그대로 노출 (해시태그 없음/표현 달라서 매칭 실패)
+  const textField = { twitter: 'text', instagram: 'caption' }[platformKey];
+  const writeUnmatchedTable = (label, posts) => {
+    const noteRow = sheet.addRow([`▸ 매칭 안 된 ${label} 게시물 (${posts.length}건) — 해시태그 없음 또는 상대측과 표현이 달라서 매칭 안 됨`]);
+    noteRow.font = { italic: true };
+    if (posts.length === 0) return;
+    sheet.addRow(['링크', '날짜', ...data.fields.map(f => FIELD_LABELS[f] || f), '본문 일부']);
+    posts.forEach(post => {
+      const link = post.link || post.url || '';
+      const preview = (post[textField] || '').replace(/\n/g, ' ').slice(0, 60);
+      sheet.addRow([link, post.datetime, ...data.fields.map(f => post[f]), preview]);
+    });
+  };
+  writeUnmatchedTable('자사', ownUnmatched);
+  writeUnmatchedTable('경쟁사', competitorUnmatched);
+
+  sheet.addRow([]);
+}
+
 /**
  * 취합 리포트를 엑셀 파일에 저장. 기존 시트는 절대 지우지 않고 새 시트를 추가만 함(히스토리 누적).
  * 쓰기 중 프로세스가 죽어도 원본이 깨지지 않도록 임시 파일에 쓴 뒤 교체(원자적 교체)한다.
@@ -104,6 +149,13 @@ async function saveReportToExcel(report, outputPath) {
   });
 
   sheet.columns.forEach(col => { col.width = 20; });
+
+  const productSheetName = uniqueSheetName(workbook, `${baseName}-상품별`);
+  const productSheet = workbook.addWorksheet(productSheetName);
+  Object.entries(report.platforms).forEach(([platformKey, data]) => {
+    writeProductPlatformSection(productSheet, platformKey, data);
+  });
+  productSheet.columns.forEach(col => { col.width = 22; });
 
   const dir = path.dirname(outputPath);
   fs.mkdirSync(dir, { recursive: true });

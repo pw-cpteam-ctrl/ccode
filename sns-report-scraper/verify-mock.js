@@ -33,20 +33,22 @@ check('parseCount: 콤마/만/천/K/M/실패 케이스', () => {
 });
 
 // ── 2. 모킹 데이터: twitter.js / instagram.js가 실제로 뱉을 형태 흉내 ──
+// 상품별 비교(해시태그 매칭) 검증을 위해 자사/경쟁사가 공통으로 쓰는 해시태그(#은혼, #카무이)와
+// 한쪽만 쓰는 해시태그(브랜드명)/해시태그 없는 게시물(매칭 안 됨 케이스)을 섞어 넣음.
 const ownTwitterPosts = [
-  { link: 'https://x.com/own/status/1', datetime: '2026-07-01T02:00:00.000Z', likes: '1.2만', retweets: '3,400', text: 'a' },
-  { link: 'https://x.com/own/status/2', datetime: '2026-07-01T05:00:00.000Z', likes: '5,000', retweets: '900', text: 'b' },
+  { link: 'https://x.com/own/status/1', datetime: '2026-07-01T02:00:00.000Z', likes: '1.2만', retweets: '3,400', text: '은혼 신상품 안내 #은혼 #메가하우스공식스토어' },
+  { link: 'https://x.com/own/status/2', datetime: '2026-07-01T05:00:00.000Z', likes: '5,000', retweets: '900', text: '그냥 공지 (해시태그 없음)' },
 ];
 const compTwitterPosts = [
-  { link: 'https://x.com/comp/status/1', datetime: '2026-07-01T03:00:00.000Z', likes: '8,000', retweets: '1,000', text: 'c' },
+  { link: 'https://x.com/comp/status/1', datetime: '2026-07-01T03:00:00.000Z', likes: '8,000', retweets: '1,000', text: '은혼 재입고 #은혼 #경쟁사스토어' },
 ];
 const ownInstaPosts = [
   // instagram.js는 좌표 파싱 실패 시 likes/comments가 null일 수 있음 — 그 케이스도 포함
-  { url: 'https://instagram.com/p/1', datetime: '2026-07-01T01:00:00.000Z', likes: '2.3만', comments: '150', caption: 'x' },
-  { url: 'https://instagram.com/p/2', datetime: '2026-07-01T04:00:00.000Z', likes: null, comments: '알수없음', caption: 'y' },
+  { url: 'https://instagram.com/p/1', datetime: '2026-07-01T01:00:00.000Z', likes: '2.3만', comments: '150', caption: '카무이 신제품 #카무이 #메가하우스공식스토어' },
+  { url: 'https://instagram.com/p/2', datetime: '2026-07-01T04:00:00.000Z', likes: null, comments: '알수없음', caption: '그냥 공지 (해시태그 없음)' },
 ];
 const compInstaPosts = [
-  { url: 'https://instagram.com/p/3', datetime: '2026-07-01T02:00:00.000Z', likes: '1.5만', comments: '80', caption: 'z' },
+  { url: 'https://instagram.com/p/3', datetime: '2026-07-01T02:00:00.000Z', likes: '1.5만', comments: '80', caption: '카무이 판매중 #카무이 #경쟁사스토어' },
 ];
 
 const report = buildComparisonReport({
@@ -79,6 +81,23 @@ check('buildComparisonReport: 인스타 파싱 실패 건수 투명하게 집계
   assert.strictEqual(own.total_likes, 23000); // null은 실패로 안 세고 그냥 제외, 있는 값만 합산
 });
 
+check('buildProductComparison: 해시태그 교집합으로 상품 자동 매칭', () => {
+  const tw = report.platforms.twitter.productComparison;
+  assert.strictEqual(tw.products.length, 1, '자사/경쟁사 공통 해시태그(#은혼) 1개만 매칭돼야 함');
+  assert.strictEqual(tw.products[0].tag, '은혼');
+  assert.strictEqual(tw.products[0].own.total_likes, 12000);
+  assert.strictEqual(tw.products[0].competitor.total_likes, 8000);
+  assert.strictEqual(tw.ownUnmatched.length, 1, '해시태그 없는 자사 게시물 1건은 매칭 안 됨으로 분리돼야 함');
+  assert.strictEqual(tw.competitorUnmatched.length, 0);
+
+  const ig = report.platforms.instagram.productComparison;
+  assert.strictEqual(ig.products.length, 1);
+  assert.strictEqual(ig.products[0].tag, '카무이');
+  assert.strictEqual(ig.products[0].own.total_comments, 150);
+  assert.strictEqual(ig.products[0].competitor.total_comments, 80);
+  assert.strictEqual(ig.ownUnmatched.length, 1);
+});
+
 // ── 3. 엑셀 저장: 히스토리 누적(기존 시트 보존) + 재실행 시 이름 충돌 처리 확인 ──
 (async () => {
   const outPath = path.join(__dirname, 'verify-output', 'mock-report.xlsx');
@@ -95,7 +114,8 @@ check('buildComparisonReport: 인스타 파싱 실패 건수 투명하게 집계
     assert.notStrictEqual(sheet1, sheet2, '같은 기간 재실행 시 시트 이름이 달라야 함(덮어쓰기 방지)');
     assert.ok(wb.getWorksheet(sheet1), '첫 번째 시트가 남아있어야 함');
     assert.ok(wb.getWorksheet(sheet2), '두 번째 시트도 존재해야 함');
-    assert.strictEqual(wb.worksheets.length, 2);
+    // 저장 1회당 요약 시트 + 상품별 비교 시트 2개씩 생성됨 → 2회 저장 시 총 4개
+    assert.strictEqual(wb.worksheets.length, 4);
   });
 
   check('엑셀: 임시파일이 정리되고 최종 파일만 남음', () => {
