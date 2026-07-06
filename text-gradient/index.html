@@ -70,13 +70,13 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
   <div class="sec">마크다운 일괄입력</div>
   <div class="field"><label>공통 배지 문구 (생성되는 슬롯 전체에 적용)</label><input type="text" id="inBulkBadge" value="예약판매 기간 5% 할인 캠페인 중!"/></div>
   <div class="field">
-    <label>최상위 불릿(-) = 슬롯 1개 · "좌 | 우"로 타이틀 구분 · 들여쓴 하위 불릿 = 불릿리스트</label>
-    <textarea id="inBulkMd" rows="10" placeholder="- 주술회전 | 메가캣 프로젝트
-  - 주술냥코 시부야 사변 (재판)
-  - 유지/메구미/노바라
-  - 고죠/나나미/스쿠나
-- 진격의 거인 | 스케일 피규어
-  - 에렌 예거 & 리바이 병장"></textarea>
+    <label>"**좌 | 우**" 볼드 헤더 = 슬롯 1개(아래 - 항목 전부 그 슬롯 불릿) · 헤더 없으면 최상위 불릿=슬롯 · 들여쓴 하위 불릿=불릿리스트</label>
+    <textarea id="inBulkMd" rows="10" placeholder="**⚔️ 헌터×헌터 | 룩업**
+- 곤 프릭스
+- 키르아 조르딕
+
+**🏴‍☠️ 원피스 | 메가캣 프로젝트**
+- 냥피스 냥! DINER!"></textarea>
   </div>
   <button onclick="applyBulkMarkdown()" style="width:100%;margin-bottom:4px;">일괄 적용 (기존 슬롯 전부 교체)</button>
 
@@ -248,14 +248,30 @@ function deleteSlot(pg) {
 }
 
 /* ── 마크다운 일괄입력: 최상위 불릿 = 슬롯, 하위 불릿 = 불릿리스트 ── */
-function applyBulkMarkdown() {
+/* "**시리즈명 | 상품유형**" 볼드 헤더 줄이 하나라도 있으면 헤더 방식으로,
+   없으면 기존 방식(들여쓰기로 슬롯/하위불릿 구분)으로 파싱한다. */
+function parseBulkHeaderFormat(raw) {
+  const items = [];
+  let cur = null;
+  raw.split('\n').forEach(line => {
+    const headerM = line.match(/^\*\*(.+?)\*\*\s*$/);
+    if (headerM) {
+      const title = headerM[1].trim().replace(/^[^\p{L}\p{N}]+/u, '').trim(); // 맨 앞 이모지 등 기호 제거
+      if (title) { cur = { title, bullets: [] }; items.push(cur); }
+      return;
+    }
+    const bulletM = line.match(/^\s*[-*•]\s+(.*)$/);
+    if (bulletM && bulletM[1].trim() && cur) cur.bullets.push(bulletM[1].trim());
+  });
+  return items;
+}
+function parseBulkDashFormat(raw) {
   const bulletLines = [];
-  $('#inBulkMd').value.split('\n').forEach(line => {
+  raw.split('\n').forEach(line => {
     const m = line.match(/^(\s*)[-*•]\s+(.*)$/);
     if (m && m[2].trim()) bulletLines.push({ indent: m[1].length, text: m[2].trim() });
   });
-  if (!bulletLines.length) { alert('불릿 형식("- 항목")을 인식하지 못했습니다. 형식을 확인해주세요.'); return; }
-
+  if (!bulletLines.length) return [];
   const minIndent = Math.min(...bulletLines.map(b => b.indent));
   const items = [];
   let cur = null;
@@ -263,6 +279,12 @@ function applyBulkMarkdown() {
     if (b.indent <= minIndent) { cur = { title: b.text, bullets: [] }; items.push(cur); }
     else if (cur) cur.bullets.push(b.text);
   });
+  return items;
+}
+function applyBulkMarkdown() {
+  const raw = $('#inBulkMd').value;
+  const items = raw.includes('**') ? parseBulkHeaderFormat(raw) : parseBulkDashFormat(raw);
+  if (!items.length) { alert('항목을 인식하지 못했습니다. "**시리즈 | 상품유형**" 헤더 형식이나 "- 항목" 불릿 형식을 확인해주세요.'); return; }
 
   if (items.length > BULK_WARN_THRESHOLD) {
     const ok = confirm(`${items.length}개 슬롯을 한 번에 만들려고 합니다. 슬롯이 많으면 브라우저가 느려질 수 있어요. 계속할까요?`);
