@@ -129,6 +129,11 @@
   원칙적으로 운용하는 자사/경쟁사 계정(X: megahousestore/megahouse_BH, 인스타:
   megahouse_store/megahouse_korea_dt_bh) 고정 반영됨. **실제로 한 번 실행해서 요약 비교표까지는
   정상 동작 확인됨.** 상품별 비교 기능은 이번에 추가된 것이라 아직 실제 데이터로 재실행 전.
+  - 수집한 원본 게시물을 `reports/_last-collection.json`에 캐시로 저장함 (수집은 몇 분 걸리는데
+    리포트 포맷만 고칠 때마다 매번 재수집시키는 게 비효율적이라는 피드백 받고 추가).
+- `rebuild-report.js` — 위 캐시를 다시 읽어서 취합+엑셀 저장만 재실행 (브라우저/세션 필요 없어서
+  몇 초 안에 끝남). `aggregate.js`/`excel.js` 포맷만 고쳤을 때 이걸로 재생성, 계정/기간을 바꿔서
+  새로 수집해야 하면 `run.js`를 다시 돌려야 함.
 - `verify-mock.js` — 브라우저/로그인 세션 없이 `aggregate.js`+`excel.js` 내부 로직만 모킹
   데이터로 검증하는 스크립트 (`npm run verify`). 트위터.js/instagram.js가 실제로 반환할 형태를
   흉내낸 값으로 합계·비율 계산, 파싱 실패 집계, 엑셀 히스토리 누적(재실행 시 덮어쓰기 안 됨)까지 확인함.

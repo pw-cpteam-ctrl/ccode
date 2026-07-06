@@ -10,6 +10,8 @@
  *
  * 매번 돌릴 때 startDate/endDate만 그 달 리포트 기간에 맞게 바꿔주면 됨.
  */
+const fs = require('fs');
+const path = require('path');
 const { collectTwitter } = require('./twitter');
 const { collectInstagram } = require('./instagram');
 const { buildComparisonReport } = require('./aggregate');
@@ -19,6 +21,9 @@ const CONFIG = {
   startDate: '2026-07-01',
   endDate: '2026-07-02',
   outputPath: './reports/sns-report.xlsx',
+  // 수집한 원본 게시물을 여기에 캐시해둠 — 리포트 포맷만 고칠 땐 재수집(몇 분) 없이
+  // rebuild-report.js로 이 캐시만 다시 읽어서 몇 초 안에 엑셀만 새로 뽑을 수 있음.
+  cachePath: './reports/_last-collection.json',
 
   own: [
     { platform: 'twitter', account: 'megahousestore', sessionFile: './x-session.json' },
@@ -49,6 +54,17 @@ async function collectAll(accounts) {
 async function main() {
   const own = await collectAll(CONFIG.own);
   const competitors = await collectAll(CONFIG.competitors);
+
+  // 원본 게시물 캐시 저장 — 재수집 없이 rebuild-report.js로 리포트만 다시 만들 수 있게
+  fs.mkdirSync(path.dirname(CONFIG.cachePath), { recursive: true });
+  fs.writeFileSync(CONFIG.cachePath, JSON.stringify({
+    startDate: CONFIG.startDate,
+    endDate: CONFIG.endDate,
+    collectedAt: new Date().toISOString(),
+    own,
+    competitors,
+  }, null, 2));
+  console.log(`💾 원본 수집 데이터 캐시 저장: ${CONFIG.cachePath}`);
 
   const report = buildComparisonReport({
     startDate: CONFIG.startDate,
