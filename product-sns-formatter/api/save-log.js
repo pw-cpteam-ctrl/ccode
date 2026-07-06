@@ -1,7 +1,7 @@
 // 입력 로그(상품정보/추가지시/변환결과) 저장용 Vercel 서버리스 함수.
-// 미공개 신제품 정보가 섞일 수 있어서 이 레포가 아니라 별도 비공개(private)
-// 레포에 저장해야 한다 (PLAN.md 참고). 그 비공개 레포 자체가 아직 정해지지
-// 않아서 GITHUB_LOG_REPO 환경변수가 없으면 동작하지 않는다.
+// 공개돼도 되는 정보로 판단해서 별도 비공개 레포 없이 이 레포(GITHUB_REPO)에
+// 같이 저장하기로 결정함 (PLAN.md 참고). 필요해지면 GITHUB_LOG_OWNER /
+// GITHUB_LOG_REPO 환경변수로 다른 레포를 지정할 수 있게 남겨둠.
 
 import { appendToGithubFile } from '../lib/github.js';
 
@@ -13,10 +13,10 @@ export default async function handler(req, res) {
 
   const token = process.env.GITHUB_TOKEN;
   const owner = process.env.GITHUB_LOG_OWNER || process.env.GITHUB_OWNER;
-  const repo = process.env.GITHUB_LOG_REPO;
+  const repo = process.env.GITHUB_LOG_REPO || process.env.GITHUB_REPO;
   const branch = process.env.GITHUB_BRANCH || 'main';
   if (!token || !owner || !repo) {
-    res.status(500).json({ error: 'GITHUB_TOKEN / GITHUB_LOG_OWNER / GITHUB_LOG_REPO(비공개 레포) 환경변수가 아직 설정되지 않았어요. 이번 로그는 저장되지 않고 넘어가요.' });
+    res.status(500).json({ error: 'GITHUB_TOKEN / GITHUB_OWNER / GITHUB_REPO 환경변수가 아직 설정되지 않았어요. 이번 로그는 저장되지 않고 넘어가요.' });
     return;
   }
 

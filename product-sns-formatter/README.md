@@ -34,9 +34,9 @@ FAQ봇이 아니라 **단발성 텍스트 변환기**이며, 대화를 기억하
 | 환경변수 | 용도 | 비고 |
 |---|---|---|
 | `GEMINI_API_KEY` | `api/format.js`의 LLM 호출 | [ai.google.dev](https://ai.google.dev)에서 무료 발급 |
-| `GITHUB_TOKEN` | `api/save-memo.js`, `api/save-log.js`의 깃허브 커밋 | fine-grained PAT, 쓰기 권한 |
-| `GITHUB_OWNER`, `GITHUB_REPO` | 메모 저장 대상 (이 레포) | `GITHUB_BRANCH` 생략 시 `main` |
-| `GITHUB_LOG_OWNER`(생략 시 `GITHUB_OWNER`), `GITHUB_LOG_REPO` | 입력 로그 저장 대상 (**비공개 레포**) | 미공개 신제품 정보가 섞일 수 있어 반드시 별도 비공개 레포 사용 — 아직 레포 자체가 안 정해짐 |
+| `GITHUB_TOKEN` | `api/save-memo.js`, `api/save-log.js`의 깃허브 커밋 | fine-grained PAT, 이 레포에 Contents 쓰기 권한 |
+| `GITHUB_OWNER`, `GITHUB_REPO` | 메모 + 입력 로그 저장 대상 (둘 다 이 레포) | `GITHUB_BRANCH` 생략 시 `main` |
+| `GITHUB_LOG_OWNER`, `GITHUB_LOG_REPO` | (선택) 입력 로그를 다른 레포에 저장하고 싶을 때만 | 지금은 로그도 공개 정보로 판단해서 별도 비공개 레포 없이 이 레포에 같이 저장하기로 결정 — 필요해지면 이 두 값만 채우면 됨 |
 
 ## 막혀서 다음 단계로 못 넘어가는 것 (사용자 준비 필요)
 
@@ -46,5 +46,3 @@ FAQ봇이 아니라 **단발성 텍스트 변환기**이며, 대화를 기억하
 3. **깃허브 Personal Access Token** — 이 레포 한정, 쓰기 권한, fine-grained 추천
 4. **실제 회사 SNS 포맷 규칙 문서** — 회사 컴퓨터에 이미 만들어둔 문서를 공유받으면
    `rules/format-rules.js`의 `FORMAT_RULES` 내용만 그 문서로 교체하면 된다
-5. (추가) **입력 로그용 비공개 레포** — 새로 만들지 기존 걸 쓸지 결정 필요
-   (`PLAN.md`의 "아직 안 정한 것" 참고)
