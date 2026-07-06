@@ -21,15 +21,37 @@ async function collectInstagram({ account, sessionFile, startDate, endDate, head
   const rangeStart = new Date(`${startDate}T00:00:00+09:00`);
   const rangeEnd = new Date(`${endDate}T23:59:59+09:00`);
 
+  // 그리드에 보이는 링크만으론 날짜를 알 수 없어서, 새로 발견한 링크 중 가장 나중 것(=그리드
+  // 순서상 가장 오래됐을 가능성이 큰 것) 하나를 별도 탭으로 슬쩍 열어 날짜만 확인. 메인 page의
+  // 스크롤 위치는 그대로 유지됨 (별도 탭이라 프로필 새로고침/재스크롤이 필요 없음).
+  async function peekPostDate(url) {
+    const probePage = await context.newPage();
+    try {
+      await probePage.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await probePage.waitForTimeout(1000);
+      const iso = await probePage.evaluate(() => {
+        const t = document.querySelector('time[datetime]');
+        return t ? t.getAttribute('datetime') : null;
+      });
+      return iso ? new Date(iso) : null;
+    } catch {
+      return null; // 프로브 실패는 무시하고 스크롤 계속 (다음 패스에서 다시 시도됨)
+    } finally {
+      await probePage.close();
+    }
+  }
+
   // ── Step 1: 프로필 그리드에서 게시물 링크 수집 ──
   await page.goto(`https://www.instagram.com/${account}/`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(3000);
 
   const links = new Set();
+  const orderedLinks = []; // 발견 순서 보존 (그리드는 최신→과거 순으로 쌓임)
   let stallCount = 0;
   const MAX_STALL = 3; // 스크롤해도 새 링크가 안 늘어나는 게 3번 연속이면 그리드 끝으로 판단
+  let reachedRangeStart = false;
 
-  while (stallCount < MAX_STALL) {
+  while (stallCount < MAX_STALL && !reachedRangeStart) {
     const found = await page.evaluate(() => {
       return [...document.querySelectorAll('a[href*="/p/"]')]
         .map(a => a.href.split('?')[0])
@@ -37,8 +59,19 @@ async function collectInstagram({ account, sessionFile, startDate, endDate, head
     });
 
     const before = links.size;
-    found.forEach(l => links.add(l));
+    found.forEach(l => {
+      if (!links.has(l)) { links.add(l); orderedLinks.push(l); }
+    });
     stallCount = links.size === before ? stallCount + 1 : 0;
+
+    if (orderedLinks.length > 0) {
+      const probeDate = await peekPostDate(orderedLinks[orderedLinks.length - 1]);
+      if (probeDate && probeDate < rangeStart) {
+        console.log(`[instagram:${account}] 그리드에서 범위 시작일 이전 게시물 발견 → 스크롤 중단`);
+        reachedRangeStart = true;
+        continue;
+      }
+    }
 
     await page.mouse.wheel(0, 2500);
     await page.waitForTimeout(1500);
@@ -102,7 +135,7 @@ async function collectInstagram({ account, sessionFile, startDate, endDate, head
   });
 
   const endTime = new Date();
-  console.log(`[instagram:${account}] 수집 완료: ${((endTime - startTime) / 1000 / 60).toFixed(1)}분, ${filtered.length}건`);
+  console.log(`[instagram:${account}] 수집 완료: ${((endTime - startTime) / 1000 / 60).toFixed(1)}분, 링크 ${links.size}개 → 파싱 성공 ${results.length}건 → 기간 필터링 후 ${filtered.length}건`);
 
   await browser.close();
   return filtered;
