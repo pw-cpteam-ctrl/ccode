@@ -78,28 +78,50 @@ function writePlatformSection(sheet, platformKey, data) {
 
 function writeProductPlatformSection(sheet, platformKey, data) {
   const platformTitle = { twitter: 'X(트위터)', instagram: '인스타그램' }[platformKey] || platformKey;
-  const titleRow = sheet.addRow([`[${platformTitle}] 상품별 비교 (본문에서 상품명 자동 추출 후 매칭)`]);
+  const titleRow = sheet.addRow([`[${platformTitle}] 상품별 비교 (PW=자사, BH=경쟁사)`]);
   titleRow.font = { bold: true, size: 12 };
 
-  const metricKeys = ['postCount', ...data.fields.flatMap(f => [`total_${f}`, `avg_${f}`])];
-  const header = ['상품명'];
-  metricKeys.forEach(key => header.push(`자사 ${metricLabel(key)}`, `경쟁사 ${metricLabel(key)}`, '비율'));
+  const { products, ownUnmatched, competitorUnmatched, displayFields } = data.productComparison;
+
+  const header = ['IP', '시리즈'];
+  displayFields.forEach(f => header.push(`PW ${FIELD_LABELS[f] || f}`, `BH ${FIELD_LABELS[f] || f}`));
+  header.push('PW 시각', 'BH 시각');
+  displayFields.forEach(f => header.push(`${FIELD_LABELS[f] || f}차이`));
+  header.push('시각차이', '결과');
   const headerRow = sheet.addRow(header);
   headerRow.font = { bold: true };
   headerRow.eachCell(cell => { cell.border = { bottom: { style: 'thin' } }; });
-
-  const { products, ownUnmatched, competitorUnmatched } = data.productComparison;
 
   if (products.length === 0) {
     sheet.addRow(['매칭된 상품 없음 (자사/경쟁사 게시물에서 공통 키워드를 찾지 못함)']);
   }
   products.forEach(p => {
-    const row = [p.label];
-    metricKeys.forEach(key => {
-      row.push(p.own[key], p.competitor[key], ratioText(p.metrics[key]));
-    });
+    const row = [p.ip || '(미분류)', p.line || '-'];
+    displayFields.forEach(f => row.push(p.own[`total_${f}`], p.competitor[`total_${f}`]));
+    row.push(p.pwTime, p.bhTime);
+    displayFields.forEach(f => row.push(p.diffText[f]));
+    row.push(`${p.timeDiffMinutes}분`, p.verdict);
     sheet.addRow(row);
   });
+
+  // 합계("계") 행 — 시각/결과는 상품마다 달라서 총합 의미가 없어 비워둠
+  if (products.length > 0) {
+    const totalRow = ['계', '계'];
+    displayFields.forEach(f => {
+      const pwSum = products.reduce((s, p) => s + p.own[`total_${f}`], 0);
+      const bhSum = products.reduce((s, p) => s + p.competitor[`total_${f}`], 0);
+      totalRow.push(pwSum, bhSum);
+    });
+    totalRow.push('', '');
+    displayFields.forEach(f => {
+      const pwSum = products.reduce((s, p) => s + p.own[`total_${f}`], 0);
+      const bhSum = products.reduce((s, p) => s + p.competitor[`total_${f}`], 0);
+      totalRow.push(pwSum - bhSum);
+    });
+    totalRow.push('', '');
+    const totalRowObj = sheet.addRow(totalRow);
+    totalRowObj.font = { bold: true };
+  }
   sheet.addRow([]);
 
   // 매칭 안 된 게시물도 숨기지 않고 그대로 노출 (상품명 추출 실패/양쪽 표현이 달라 매칭 실패)

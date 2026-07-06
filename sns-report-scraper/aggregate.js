@@ -127,12 +127,79 @@ function extractKeywords(title) {
   ))];
 }
 
+// 상품별 표에서 PW/BH를 나란히 놓을 때 쓰는 지표 순서 (트위터는 리트윗 먼저, 인스타는 좋아요 먼저)
+const PRODUCT_TABLE_FIELD_ORDER = {
+  twitter: ['retweets', 'likes'],
+  instagram: ['likes', 'comments'],
+};
+
+// 알려진 메가하우스 상품 라인명 — 본문에서 이 중 하나를 찾으면 "시리즈"로 분리하고
+// 나머지를 "IP"(캐릭터/작품명)로 봄. 지금까지 실제로 나온 것들만 채워뒀으니, 새로운
+// 라인명이 나오면 계속 추가해야 함(예: 여기 없는 라인명은 시리즈 칸이 빈 채로 나감).
+const KNOWN_PRODUCT_LINES = [
+  '룩업', 'Look Up', 'GEM', 'G.E.M', '메가캣', 'MegaCat', '테노히라', '컬렉션', 'Collection',
+  'GGG', 'G.M.G', 'GMG', '쁘띠라마', 'INSIDE FANTASY',
+];
+
+// 상품명 문자열에서 "시리즈"(알려진 상품 라인)를 분리해내고, 남은 부분을 "IP"로 정리.
+function splitIpAndLine(title) {
+  if (!title) return { ip: null, line: null };
+  let remaining = title.replace(/(?<=[A-Za-z])\.(?=[A-Za-z])/g, ''); // "G.E.M." → "GEM"
+
+  let line = null;
+  for (const candidate of KNOWN_PRODUCT_LINES) {
+    const idx = remaining.toLowerCase().indexOf(candidate.toLowerCase());
+    if (idx !== -1) {
+      line = candidate;
+      remaining = remaining.slice(0, idx) + remaining.slice(idx + candidate.length);
+      break;
+    }
+  }
+
+  GENERIC_KEYWORDS.forEach(g => {
+    remaining = remaining.replace(new RegExp(g.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ' ');
+  });
+  remaining = remaining
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/\d+\s*(년|월|일)?/g, ' ') // "26년", "7월" 등 날짜 표현 통째로 제거
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[.,\-\s]+|[.,\-\s]+$/g, '');
+
+  return { ip: remaining || null, line };
+}
+
+// PW/BH 두 숫자의 차이와 배수를 "322 (24배)" 형태로. 작은 쪽이 분모가 되어 0으로
+// 나뉘는 경우엔 배수 없이 차이만 표시.
+function formatDiffWithMultiplier(pw, bh) {
+  const diff = Math.round((pw - bh) * 10) / 10;
+  if (pw === bh) return `${diff}`;
+  const multiplier = pw > bh
+    ? (bh === 0 ? null : Math.round((pw / bh) * 10) / 10)
+    : (pw === 0 ? null : -Math.round((bh / pw) * 10) / 10);
+  return multiplier === null ? `${diff}` : `${diff} (${multiplier}배)`;
+}
+
+// UTC ISO datetime → KST 기준 "H:MM" (예: "3:26")
+function formatKstTime(isoDatetime) {
+  const utc = new Date(isoDatetime);
+  const kst = new Date(utc.getTime() + 9 * 3600 * 1000);
+  return `${kst.getUTCHours()}:${String(kst.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+function earliestDatetime(posts) {
+  return posts.reduce((min, p) => {
+    const d = new Date(p.datetime);
+    return !min || d < min ? d : min;
+  }, null);
+}
+
 /**
  * 자사/경쟁사 게시물을 상품명(본문 템플릿 위치 기반 추출) 기준으로 매칭해서
- * "상품별" 비교표를 만듦. 자사는 첫 줄, 경쟁사는 링크 줄 바로 위 줄에서 상품명을 뽑고,
- * 상품명에서 뽑은 키워드가 하나라도 겹치면 같은 상품으로 그룹화(Union-Find).
- * 상품명이 없거나(템플릿과 다른 형식) 겹치는 키워드가 없는 게시물은 매칭 안 됨(unmatched)으로
- * 분리해서 투명하게 보여줌 — 조용히 누락시키지 않음.
+ * "상품별" 비교표를 만듦(한 상품 = 한 행, PW/BH 값이 나란히). 자사는 첫 줄, 경쟁사는
+ * 링크 줄 바로 위 줄에서 상품명을 뽑고, 상품명에서 뽑은 키워드가 하나라도 겹치면
+ * 같은 상품으로 그룹화(Union-Find). 상품명이 없거나 겹치는 키워드가 없는 게시물은
+ * 매칭 안 됨(unmatched)으로 분리해서 투명하게 보여줌 — 조용히 누락시키지 않음.
  *
  * ⚠️ 순수 텍스트/키워드 매칭이라 완벽하지 않음 — 표현이 아예 다르면 매칭 실패할 수 있고,
  * 흔한 단어(GENERIC_KEYWORDS)가 겹쳐서 상관없는 상품이 잘못 묶일 가능성도 있음. 실제 결과
@@ -142,8 +209,9 @@ function extractKeywords(title) {
  * @param {object[]} competitorPosts 경쟁사 게시물 전체 (여러 계정 합친 것)
  * @param {string[]} fields          집계할 숫자 필드 (예: ['likes', 'retweets'])
  * @param {string} textField         본문 필드명 ('text' 또는 'caption')
+ * @param {string[]} displayFields   상품별 표에 나란히 놓을 지표 순서
  */
-function buildProductComparison(ownPosts, competitorPosts, fields, textField) {
+function buildProductComparison(ownPosts, competitorPosts, fields, textField, displayFields) {
   const ownEntries = ownPosts.map(post => ({ side: 'own', post, title: extractOwnProductName(post[textField]) }));
   const competitorEntries = competitorPosts.map(post => ({ side: 'competitor', post, title: extractCompetitorProductName(post[textField]) }));
   const entries = [...ownEntries, ...competitorEntries].map(e => ({ ...e, keywords: extractKeywords(e.title) }));
@@ -176,24 +244,39 @@ function buildProductComparison(ownPosts, competitorPosts, fields, textField) {
     const competitorInGroup = group.filter(e => e.side === 'competitor');
     if (ownInGroup.length === 0 || competitorInGroup.length === 0) return; // 양쪽 다 있어야 "비교"
 
-    const ownSummary = summarizeAccount({ platform: null, account: '자사', posts: ownInGroup.map(e => e.post), fields });
-    const competitorSummary = summarizeAccount({ platform: null, account: '경쟁사', posts: competitorInGroup.map(e => e.post), fields });
-    const metrics = { postCount: compareMetric(ownSummary.postCount, competitorSummary.postCount) };
-    fields.forEach(f => {
-      metrics[`total_${f}`] = compareMetric(ownSummary[`total_${f}`], competitorSummary[`total_${f}`]);
-      metrics[`avg_${f}`] = compareMetric(ownSummary[`avg_${f}`], competitorSummary[`avg_${f}`]);
+    const ownSummary = summarizeAccount({ platform: null, account: 'PW', posts: ownInGroup.map(e => e.post), fields });
+    const competitorSummary = summarizeAccount({ platform: null, account: 'BH', posts: competitorInGroup.map(e => e.post), fields });
+    const { ip, line } = splitIpAndLine(ownInGroup[0].title || competitorInGroup[0].title);
+
+    const pwTime = earliestDatetime(ownInGroup.map(e => e.post));
+    const bhTime = earliestDatetime(competitorInGroup.map(e => e.post));
+    const timeDiffMinutes = Math.round(Math.abs(pwTime - bhTime) / 60000);
+
+    const diffs = {};
+    const diffText = {};
+    displayFields.forEach(f => {
+      diffs[f] = ownSummary[`total_${f}`] - competitorSummary[`total_${f}`];
+      diffText[f] = formatDiffWithMultiplier(ownSummary[`total_${f}`], competitorSummary[`total_${f}`]);
     });
+    const diffValues = displayFields.map(f => diffs[f]);
+    const verdict = diffValues.every(d => d > 0) ? '우세' : diffValues.every(d => d < 0) ? '약세' : '경합';
 
     group.forEach(e => matchedPosts.add(e.post));
-    products.push({ label: ownInGroup[0].title || competitorInGroup[0].title, own: ownSummary, competitor: competitorSummary, metrics });
+    products.push({
+      ip, line,
+      own: ownSummary, competitor: competitorSummary,
+      pwTime: formatKstTime(pwTime), bhTime: formatKstTime(bhTime), timeDiffMinutes,
+      diffText, verdict,
+    });
   });
-  // 게시물 수(자사+경쟁사 합) 많은 상품 먼저 — 임팩트 큰 것부터 보이게
-  products.sort((a, b) => (b.own.postCount + b.competitor.postCount) - (a.own.postCount + a.competitor.postCount));
+  // 표시 지표(보통 리트윗/좋아요) 합산 큰 상품 먼저 — 임팩트 큰 것부터 보이게
+  const impact = p => displayFields.reduce((sum, f) => sum + p.own[`total_${f}`] + p.competitor[`total_${f}`], 0);
+  products.sort((a, b) => impact(b) - impact(a));
 
   const ownUnmatched = ownPosts.filter(p => !matchedPosts.has(p));
   const competitorUnmatched = competitorPosts.filter(p => !matchedPosts.has(p));
 
-  return { products, ownUnmatched, competitorUnmatched };
+  return { products, ownUnmatched, competitorUnmatched, displayFields };
 }
 
 /**
@@ -274,7 +357,8 @@ function buildComparisonReport({ startDate, endDate, own, competitors }) {
 
     const ownPosts = own.filter(c => c.platform === platform).flatMap(c => c.posts);
     const competitorPosts = competitors.filter(c => c.platform === platform).flatMap(c => c.posts);
-    const productComparison = buildProductComparison(ownPosts, competitorPosts, fields, PLATFORM_TEXT_FIELD[platform]);
+    const displayFields = PRODUCT_TABLE_FIELD_ORDER[platform] || fields;
+    const productComparison = buildProductComparison(ownPosts, competitorPosts, fields, PLATFORM_TEXT_FIELD[platform], displayFields);
 
     platforms[platform] = {
       fields,
@@ -298,8 +382,13 @@ module.exports = {
   extractOwnProductName,
   extractCompetitorProductName,
   extractKeywords,
+  splitIpAndLine,
+  formatDiffWithMultiplier,
+  formatKstTime,
   buildProductComparison,
   buildComparisonReport,
   PLATFORM_FIELDS,
   PLATFORM_TEXT_FIELD,
+  PRODUCT_TABLE_FIELD_ORDER,
+  KNOWN_PRODUCT_LINES,
 };

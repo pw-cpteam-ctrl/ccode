@@ -88,10 +88,11 @@ check('buildComparisonReport: 인스타 파싱 실패 건수 투명하게 집계
 check('buildProductComparison: 본문 템플릿 기반 상품명 추출 + 키워드 매칭', () => {
   const tw = report.platforms.twitter.productComparison;
   assert.strictEqual(tw.products.length, 2, '은혼 상품, 진격의거인 상품 각각 따로 매칭돼야 함(날짜로 서로 엮이면 안 됨)');
-  const eunhon = tw.products.find(p => /은혼|카무이/.test(p.label));
-  const attack = tw.products.find(p => /진격|엘런/.test(p.label));
+  const eunhon = tw.products.find(p => /은혼|카무이/.test(p.ip));
+  const attack = tw.products.find(p => /진격|엘런/.test(p.ip));
   assert.ok(eunhon, '은혼 상품 그룹이 있어야 함');
   assert.ok(attack, '진격의거인 상품 그룹이 있어야 함');
+  assert.strictEqual(eunhon.line, 'GEM');
   assert.strictEqual(eunhon.own.total_likes, 12000);
   assert.strictEqual(eunhon.competitor.total_likes, 8000);
   assert.strictEqual(attack.own.total_likes, 2000);
@@ -100,9 +101,16 @@ check('buildProductComparison: 본문 템플릿 기반 상품명 추출 + 키워
   assert.strictEqual(tw.ownUnmatched.length, 1, '특정 상품 아닌 자사 공지 게시물 1건만 매칭 안 됨으로 분리돼야 함');
   assert.strictEqual(tw.competitorUnmatched.length, 0);
 
+  // PW/BH 값이 한 행에 나란히 + 차이/배수/시각차이/결과까지 계산되는지 확인
+  assert.strictEqual(eunhon.diffText.likes, '4000 (1.5배)'); // 12000-8000=4000, 12000/8000=1.5
+  assert.strictEqual(eunhon.verdict, '우세'); // 리트윗/좋아요 둘 다 자사가 큼
+  assert.strictEqual(eunhon.pwTime, '11:00'); // 2026-07-01T02:00:00Z + 9h
+  assert.strictEqual(eunhon.bhTime, '12:00'); // 2026-07-01T03:00:00Z + 9h
+  assert.strictEqual(eunhon.timeDiffMinutes, 60);
+
   const ig = report.platforms.instagram.productComparison;
   assert.strictEqual(ig.products.length, 1);
-  assert.match(ig.products[0].label, /카무이/);
+  assert.match(ig.products[0].ip, /카무이/);
   assert.strictEqual(ig.products[0].own.total_comments, 150);
   assert.strictEqual(ig.products[0].competitor.total_comments, 80);
   assert.strictEqual(ig.ownUnmatched.length, 1);
