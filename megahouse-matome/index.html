@@ -845,6 +845,7 @@ window.addEventListener('mouseup', e => {
   _cellDrag = null;
   const moved = Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy);
   cell.classList.remove('editing');
+  if (moved >= 6) saveStateSoon(); // 실제로 위치를 옮긴 경우 저장 (ox/oy 변경분)
   // click (no drag) → activate name text editing + flash panel row
   if (moved < 6) {
     const span = cell.querySelector('.name-text');
@@ -872,6 +873,7 @@ function bindCellInteraction(cell, img, it) {
     const delta = e.deltaY < 0 ? 0.08 : -0.08;
     it.scale = Math.max(0.5, Math.min(5, (it.scale || 1) + delta));
     applyImgTransform(img, it);
+    saveStateSoon(); // 확대/축소분 저장 (연타 시 마지막 한 번만)
   }, { passive: false });
 
   // 터치 지원
@@ -898,7 +900,10 @@ function bindCellInteraction(cell, img, it) {
       applyImgTransform(img, it);
     }
   }, { passive: false });
-  cell.addEventListener('touchend', () => { lastDist = null; t0 = null; });
+  cell.addEventListener('touchend', () => {
+    if (lastDist !== null || t0 !== null) saveStateSoon(); // 터치 이동/핀치줌 변경분 저장
+    lastDist = null; t0 = null;
+  });
 }
 
 /* ═══════════════════════════════════════
@@ -909,7 +914,7 @@ function applyRowFontSizes() {
     const gridEl = $(`#grid${i+1}`);
     if (!gridEl) return;
     gridEl.querySelectorAll('.p-row').forEach((row, ri) => {
-      const sz = rowFontSizes[ri] || 36;
+      const sz = rowFontSizes[ri] || 38;
       row.querySelectorAll('.name').forEach(nm => {
         nm.style.fontSize = sz + 'px';
         nm.querySelectorAll('.name-text').forEach(s => s.style.fontSize = sz + 'px');
@@ -945,17 +950,19 @@ function renderRowControls() {
       firstRowFlex[pg-1] = +e.target.value;
       hd.querySelector(`#firstRowVal_${pg}`).textContent = e.target.value + '%';
       applyRowHeights(pg);
+      saveStateSoon();
     });
     wrap.appendChild(hd);
   }
   counts.forEach((_, ri) => {
-    const cur = rowFontSizes[ri] || 36;
+    const cur = rowFontSizes[ri] || 38;
     const d = document.createElement('div'); d.className = 'rci';
     d.innerHTML = `<span class="lbl">${ri+1}줄</span><input type="range" min="16" max="60" value="${cur}" data-ri="${ri}"/><span class="val">${cur}px</span>`;
     d.querySelector('input').addEventListener('input', e => {
       rowFontSizes[ri] = +e.target.value;
       d.querySelector('.val').textContent = e.target.value + 'px';
       applyRowFontSizes();
+      saveStateSoon();
     });
     wrap.appendChild(d);
   });
@@ -1117,12 +1124,17 @@ function makeItemRow(it, i, pg) {
 
   // ctrl: swap page + delete (▲▼ removed; drag handles reorder)
   const ctrl = document.createElement('div'); ctrl.className = 'ctrl';
+  // 페이지 이동: 1페이지면 다음(2)으로, 그 외엔 이전 페이지로.
+  // (기존 pages[2-pg] 하드코딩은 페이지가 1개뿐이거나 3페이지 이상일 때
+  //  pages[-1]/pages[1]=undefined 를 참조해 TypeError로 죽는 버그가 있었음)
+  const destPgNum = pg === 1 ? 2 : pg - 1;
   const swapBtn = document.createElement('button');
   swapBtn.className = 'pg-swap';
-  swapBtn.textContent = pg === 1 ? '→2' : '←1';
-  swapBtn.title = pg === 1 ? '2페이지로 이동' : '1페이지로 이동';
+  swapBtn.textContent = pg === 1 ? '→2' : `←${destPgNum}`;
+  swapBtn.title = `${destPgNum}페이지로 이동`;
   swapBtn.addEventListener('click', () => {
-    const src = pages[pg-1]; const dst = pages[2-pg];
+    while (pages.length < destPgNum) { pages.push([]); firstRowFlex.push(null); } // 1페이지뿐일 때 2페이지 자동 생성
+    const src = pages[pg-1]; const dst = pages[destPgNum-1];
     if (dst.length >= 12) { toast('대상 페이지가 꽉 찼습니다'); return; }
     const [moved] = src.splice(i, 1);
     dst.push(moved);
@@ -1171,13 +1183,6 @@ function renderItemList() {
 function mkbtn(t, fn) {
   const b = document.createElement('button'); b.textContent = t;
   b.addEventListener('click', fn); return b;
-}
-function moveItem(i, dir) {
-  const items = pages[curPage-1];
-  const j = i + dir;
-  if (j < 0 || j >= items.length) return;
-  [items[i], items[j]] = [items[j], items[i]];
-  refresh();
 }
 
 /* ═══════════════════════════════════════
@@ -1234,6 +1239,7 @@ function toggleHeader() {
     el.style.setProperty('--hpad', pad);
   });
   requestAnimationFrame(fitScale);
+  if (_bootDone) saveState();
 }
 function syncOpenHeader() {
   const t = $('#inOhTitle') ? $('#inOhTitle').value.trim() : '';
@@ -1254,6 +1260,7 @@ function toggleOpenHeader() {
   const on = $('#chkOpenHeader') ? $('#chkOpenHeader').checked : false;
   document.querySelectorAll('.poster').forEach(el => el.classList.toggle('use-open-header', on));
   requestAnimationFrame(fitScale);
+  if (_bootDone) saveState();
 }
 let ohBoxWhite = false;
 function toggleOhBox() {
@@ -1726,13 +1733,25 @@ function buildState() {
     };
 }
 
+// 저장은 큐로 직렬화한다 — idbSet이 매번 새 커넥션을 여는 구조라, 연속 호출 시
+// 먼저 시작한 쓰기(옛 데이터)가 나중에 커밋되면 최신 저장을 덮어쓸 수 있기 때문.
+// JSON은 호출 시점에 직렬화해 큐에 순서대로 넣으므로 항상 마지막 호출 내용이 최종본이 된다.
+let _saveQueue = Promise.resolve();
 function saveState() {
   const json = JSON.stringify(buildState());
-  return idbSet(slotStateKey(getActiveSlot()), json).catch(() => {
+  const key = slotStateKey(getActiveSlot());
+  _saveQueue = _saveQueue.then(() => idbSet(key, json)).catch(() => {
     // IndexedDB 실패 시 localStorage 폴백 (5MB 한도 내에서만 성공)
-    try { localStorage.setItem(slotStateKey(getActiveSlot()), json); }
+    try { localStorage.setItem(key, json); }
     catch(e) { toast('⚠️ 저장 실패: 브라우저 저장소에 기록하지 못했습니다. 📤 내보내기로 백업하세요.'); }
   });
+  return _saveQueue;
+}
+// 휠 확대·드래그처럼 짧은 시간에 수십 번 발생하는 조작용 — 마지막 조작 후 한 번만 저장
+let _saveSoonT;
+function saveStateSoon() {
+  clearTimeout(_saveSoonT);
+  _saveSoonT = setTimeout(saveState, 400);
 }
 
 async function loadState() {
@@ -1753,7 +1772,7 @@ async function loadState() {
     if (st.pages && st.pages.length) {
       pages.splice(0, pages.length, ...st.pages.map(pg => (pg||[]).map(it => ({...it, id: idSeq++}))));
     }
-    rowFontSizes = (Array.isArray(st.rowFontSizes) && typeof st.rowFontSizes[0] === 'number') ? st.rowFontSizes : [36,36,36,36];
+    rowFontSizes = (Array.isArray(st.rowFontSizes) && typeof st.rowFontSizes[0] === 'number') ? st.rowFontSizes : [38,38,38,38];
     firstRowFlex = st.firstRowFlex || pages.map(() => null);
     // ensure poster wraps for all loaded pages
     const postersRow = document.getElementById('postersRow');

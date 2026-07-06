@@ -560,35 +560,40 @@ function applyImgTransform(img, it) {
   img.style.transform = `scale(${sc}) translate(${ox}px,${oy}px)`;
 }
 
-/* ── 셀 인터랙션: 드래그(이동) + 스크롤(확대) ── */
+/* ── 셀 인터랙션: 드래그(이동) + 스크롤(확대) ──
+   makeCell()이 refresh()마다 새 cell/img 노드로 다시 그려지므로, 여기서 매번
+   window에 mousemove/mouseup 리스너를 새로 붙이면 옛 리스너가 지워지지 않고
+   계속 쌓인다 (누적 메모리 누수 → 장시간 작업 시 브라우저 먹통 위험).
+   그래서 window 리스너는 딱 1벌만 전역으로 등록하고, 어떤 셀이 드래그 중인지는
+   공유 상태(_cellDrag)로 추적한다. (megahouse-matome/index.html과 동일 패턴) */
+let _cellDrag = null;
+window.addEventListener('mousemove', e => {
+  if (!_cellDrag) return;
+  const { img, it, sx, sy, sox, soy } = _cellDrag;
+  const dx = (e.clientX - sx) / (it.scale || 1);
+  const dy = (e.clientY - sy) / (it.scale || 1);
+  it.ox = sox + dx; it.oy = soy + dy;
+  applyImgTransform(img, it);
+});
+window.addEventListener('mouseup', e => {
+  if (!_cellDrag) return;
+  const { cell, sx, sy } = _cellDrag;
+  _cellDrag = null;
+  const moved = Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy);
+  cell.classList.remove('editing');
+  // click (no drag) → activate name text editing
+  if (moved < 6) {
+    const span = cell.querySelector('.name-text');
+    if (span) { span.contentEditable='true'; span.focus(); }
+  }
+});
 function bindCellInteraction(cell, img, it) {
-  let dragging = false, sx = 0, sy = 0, sox = 0, soy = 0;
-
   cell.addEventListener('mousedown', e => {
     // don't intercept clicks on name-text (for contenteditable)
     if (e.target.classList.contains('name-text') || e.target.classList.contains('reprint-badge')) return;
     e.preventDefault();
-    dragging = true;
-    sx = e.clientX; sy = e.clientY;
-    sox = it.ox || 0; soy = it.oy || 0;
+    _cellDrag = { cell, img, it, sx: e.clientX, sy: e.clientY, sox: it.ox || 0, soy: it.oy || 0 };
     cell.classList.add('editing');
-  });
-  window.addEventListener('mousemove', e => {
-    if (!dragging) return;
-    const dx = (e.clientX - sx) / (it.scale || 1);
-    const dy = (e.clientY - sy) / (it.scale || 1);
-    it.ox = sox + dx; it.oy = soy + dy;
-    applyImgTransform(img, it);
-  });
-  window.addEventListener('mouseup', e => {
-    if (!dragging) return;
-    const moved = Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy);
-    dragging = false; cell.classList.remove('editing');
-    // click (no drag) → activate name text editing
-    if (moved < 6) {
-      const span = cell.querySelector('.name-text');
-      if (span) { span.contentEditable='true'; span.focus(); }
-    }
   });
 
   cell.addEventListener('wheel', e => {
@@ -931,6 +936,7 @@ function syncGrad() {
     nm.style.background = `linear-gradient(to bottom,${grad})`;
     nm.style.paddingTop = pt + 'px';
   });
+  saveState();
 }
 function syncBadgeStyle() {
   const bg = $('#badgeBg') ? $('#badgeBg').value.trim() : '#0d1580';
