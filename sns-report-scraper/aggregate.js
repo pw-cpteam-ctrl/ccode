@@ -177,23 +177,49 @@ const PRODUCT_TABLE_FIELD_ORDER = {
 // 라인명이 나오면 계속 추가해야 함(예: 여기 없는 라인명은 시리즈 칸이 빈 채로 나감).
 const KNOWN_PRODUCT_LINES = [
   '룩업', 'Look Up', 'GEM', 'G.E.M', '메가캣', 'MegaCat', '테노히라', '컬렉션', 'Collection',
-  'GGG', 'G.M.G', 'GMG', '쁘띠라마', 'INSIDE FANTASY',
+  'GGG', 'G.M.G', 'GMG', '쁘띠라마', 'INSIDE FANTASY', '스케일', 'POP', 'P.O.P',
 ];
 
+// 같은 상품 라인을 자사/경쟁사가 다른 말로 부르는 경우 — 매칭 시엔 같은 걸로 취급.
+// 예: 당사는 "원피스 스케일 피규어"(스케일)라고 쓰고 경쟁사는 "P.O.P 시리즈"(POP)라고 씀 —
+// 둘 다 같은 라인인데 문자열이 달라서 자동으로 분리돼버렸던 걸 여기서 통일.
+const LINE_ALIASES = { '스케일': 'POP', 'P.O.P': 'POP', 'Look Up': '룩업', 'MegaCat': '메가캣', 'Collection': '컬렉션', 'G.E.M': 'GEM', 'GMG': 'G.M.G' };
+function canonicalLine(rawLine) {
+  return rawLine ? (LINE_ALIASES[rawLine] || rawLine) : null;
+}
+
+// 본문 텍스트에서 알려진 상품 라인명을 찾아 "정식 명칭"(canonicalLine)으로 반환. 같은 IP라도
+// 라인이 다르면 상품별 표에서 분리해야 해서(예: "원피스 룩업" vs "원피스 POP/스케일") 매칭
+// 단계에서도 씀.
+function detectProductLine(text) {
+  if (!text) return null;
+  const normalized = text.replace(/(?<=[A-Za-z])\.(?=[A-Za-z])/g, '');
+  for (const candidate of KNOWN_PRODUCT_LINES) {
+    if (normalized.toLowerCase().includes(candidate.toLowerCase())) return canonicalLine(candidate);
+  }
+  return null;
+}
+
 // 상품명 문자열에서 "시리즈"(알려진 상품 라인)를 분리해내고, 남은 부분을 "IP"로 정리.
-function splitIpAndLine(title) {
-  if (!title) return { ip: null, line: null };
+// lineOverride(정식 명칭)를 주면, 그 라인의 별칭(예: POP → 스케일/P.O.P) 중 title에 실제로
+// 있는 걸 찾아서 지우고, line은 항상 정식 명칭(lineOverride)으로 확정.
+function splitIpAndLine(title, lineOverride) {
+  if (!title) return { ip: null, line: lineOverride || null };
   let remaining = title.replace(/(?<=[A-Za-z])\.(?=[A-Za-z])/g, ''); // "G.E.M." → "GEM"
 
   let line = null;
-  for (const candidate of KNOWN_PRODUCT_LINES) {
+  const candidates = lineOverride
+    ? KNOWN_PRODUCT_LINES.filter(c => canonicalLine(c) === lineOverride)
+    : KNOWN_PRODUCT_LINES;
+  for (const candidate of candidates) {
     const idx = remaining.toLowerCase().indexOf(candidate.toLowerCase());
     if (idx !== -1) {
-      line = candidate;
+      line = canonicalLine(candidate);
       remaining = remaining.slice(0, idx) + remaining.slice(idx + candidate.length);
       break;
     }
   }
+  if (lineOverride && !line) line = lineOverride; // title엔 안 나와도 그룹 차원에서 확정된 라인은 유지
 
   GENERIC_KEYWORDS.forEach(g => {
     remaining = remaining.replace(new RegExp(g.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ' ');
@@ -269,13 +295,21 @@ function buildProductComparison(ownPosts, competitorPosts, fields, textField, di
   const competitorEntries = competitorPosts.map(post => ({ side: 'competitor', post, title: extractCompetitorProductName(post[textField]) }));
   // 매칭(그룹화) 판단은 좁은 title 한 줄이 아니라 본문 전체 텍스트 기준 — 프랜차이즈명이
   // title 추출 규칙이 못 잡는 다른 줄/해시태그에 있는 경우가 많아서(위 extractKeywords 설명 참고)
-  const entries = [...ownEntries, ...competitorEntries].map(e => ({ ...e, keywords: extractKeywords(e.post[textField]) }));
+  const entries = [...ownEntries, ...competitorEntries].map(e => ({
+    ...e,
+    keywords: extractKeywords(e.post[textField]),
+    line: detectProductLine(e.post[textField]),
+  }));
 
-  // Union-Find: 키워드가 **2개 이상** 겹치는 게시물들을 같은 상품 그룹으로 묶음.
-  // 딱 1개만 겹쳐도 매칭시켰을 때, 실제 데이터에서 상용구 제외 목록에 없는 단어 하나
-  // (예: "SET", "버전")가 우연히 겹치는 것만으로 서로 다른 프랜차이즈 게시물들이 사슬처럼
-  // 전부 연결돼버리는 문제가 반복적으로 나왔음. 2개 이상 요구하면 그런 우연한 단일 단어
-  // 충돌은 걸러지고, 진짜 같은 상품(프랜차이즈명 + 구체적 단어 등 최소 2개 겹침)은 잘 잡힘.
+  // Union-Find: 키워드가 **2개 이상** 겹치고 **감지된 상품 라인이 정확히 같아야**(둘 다
+  // null인 경우도 "같음"으로 취급) 같은 상품 그룹으로 묶음.
+  // - 키워드 1개만 겹쳐도 매칭시켰을 때, 상용구 제외 목록에 없는 단어 하나(예: "SET", "버전")가
+  //   우연히 겹치는 것만으로 서로 다른 프랜차이즈가 사슬처럼 전부 연결되는 문제가 있었음
+  //   → 2개 이상 요구.
+  // - 라인 조건이 "둘 중 하나라도 null이면 통과"였을 때, 라인이 감지 안 된 게시물 하나가
+  //   다리 역할을 해서 룩업/스케일/컬렉션처럼 서로 다른 라인 그룹이 전이적으로(Union-Find라
+  //   A-B, B-C만 연결돼도 A-C까지 한 그룹이 됨) 다시 합쳐지는 문제가 있었음 → **정확히
+  //   같은 라인끼리만** 묶도록 강화(null↔다른 라인 연결도 금지).
   const MIN_SHARED_KEYWORDS = 2;
   const parent = entries.map((_, i) => i);
   function find(i) { return parent[i] === i ? i : (parent[i] = find(parent[i])); }
@@ -285,6 +319,7 @@ function buildProductComparison(ownPosts, competitorPosts, fields, textField, di
     if (entries[i].keywords.length === 0) continue;
     for (let j = i + 1; j < entries.length; j++) {
       if (entries[j].keywords.length === 0) continue;
+      if (entries[i].line !== entries[j].line) continue;
       const overlap = entries[i].keywords.filter(k => entries[j].keywords.includes(k));
       if (overlap.length >= MIN_SHARED_KEYWORDS) union(i, j);
     }
@@ -306,8 +341,9 @@ function buildProductComparison(ownPosts, competitorPosts, fields, textField, di
     if (ownInGroup.length === 0 || competitorInGroup.length === 0) return; // 양쪽 다 있어야 "비교"
 
     const titleHint = (group.find(e => e.side === 'own') || {}).title || (group.find(e => e.side === 'competitor') || {}).title;
+    const lineHint = group.map(e => e.line).find(Boolean) || null;
     group.forEach(e => matchedPosts.add(e.post));
-    products.push(buildProductEntry(ownInGroup, competitorInGroup, fields, displayFields, titleHint));
+    products.push(buildProductEntry(ownInGroup, competitorInGroup, fields, displayFields, titleHint, lineHint));
   });
   // 표시 지표(보통 리트윗/좋아요) 합산 큰 상품 먼저 — 임팩트 큰 것부터 보이게
   const impact = p => displayFields.reduce((sum, f) => sum + p.own[`total_${f}`] + p.competitor[`total_${f}`], 0);
@@ -321,10 +357,10 @@ function buildProductComparison(ownPosts, competitorPosts, fields, textField, di
 
 // 게시물 묶음(자동 매칭이든 수동 지정이든) 하나로 "상품별 비교" 행 하나를 만듦.
 // buildProductComparison(자동 매칭)과 applyManualMatches(수동 매칭)가 공통으로 사용.
-function buildProductEntry(ownPosts, competitorPosts, fields, displayFields, titleHint) {
+function buildProductEntry(ownPosts, competitorPosts, fields, displayFields, titleHint, lineHint) {
   const ownSummary = summarizeAccount({ platform: null, account: 'PW', posts: ownPosts, fields });
   const competitorSummary = summarizeAccount({ platform: null, account: 'BH', posts: competitorPosts, fields });
-  const { ip, line } = splitIpAndLine(titleHint);
+  const { ip, line } = splitIpAndLine(titleHint, lineHint);
 
   const pwTime = earliestDatetime(ownPosts);
   const bhTime = earliestDatetime(competitorPosts);
@@ -495,6 +531,7 @@ module.exports = {
   extractCompetitorProductName,
   extractKeywords,
   splitIpAndLine,
+  detectProductLine,
   formatDiffWithMultiplier,
   formatKstTime,
   buildProductEntry,
