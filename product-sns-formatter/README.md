@@ -4,20 +4,20 @@
 FAQ봇이 아니라 **단발성 텍스트 변환기**이며, 대화를 기억하지 않는 stateless
 설계다. 기획 배경은 [`PLAN.md`](./PLAN.md) 참고.
 
-## 지금 상태 (막힌 부분 빼고 뼈대만 완성)
+## 지금 상태 (설정 완료, 배포됨)
 
-- **화면(`index.html`)은 지금 바로 열어볼 수 있음** — 상품정보/추가지시 입력,
-  메모장 저장(브라우저 `localStorage`)까지는 백엔드 없이도 동작한다.
-- **변환 기능(`api/format.js`)은 아직 작동 안 함** — 아래 두 가지가 모두 채워져야
-  실제로 동작한다.
-  1. Vercel 환경변수 `GEMINI_API_KEY`
-  2. `rules/format-rules.js`에 실제 회사 SNS 포맷 규칙 문서 내용 (지금은 자리표시자)
-- **메모/로그의 깃허브 저장(`api/save-memo.js`, `api/save-log.js`)도 아직 작동
-  안 함** — `GITHUB_TOKEN` 등 환경변수가 없어서다. 메모는 그동안 브라우저에만
-  임시로 남는다 (새로고침해도 유지됨, 단 다른 컴퓨터로는 인수인계 안 됨).
-- **Vercel 배포 자체가 안 됨** — 계정이 아직 없다.
+- **화면(`index.html`)**: 상품정보/추가지시 입력, 메모장 저장(브라우저
+  `localStorage`)까지 동작한다.
+- **변환 기능(`api/format.js`)**: Claude API(Anthropic)로 변환한다. Vercel
+  환경변수 `ANTHROPIC_API_KEY`와 `rules/format-rules.js`의 실제 회사 SNS
+  포맷 규칙 문서가 채워져 있어야 동작한다.
+  - 원래 Gemini 무료 티어로 시작했으나, 무료 티어 등급 판별 문제로 결제
+    연결이 필요해졌고 선불 충전 최소 금액이 부담스러워서 Claude API로
+    전환함.
+- **메모/로그의 깃허브 저장(`api/save-memo.js`, `api/save-log.js`)**:
+  `GITHUB_TOKEN` 등 환경변수로 이 레포에 커밋한다.
 
-## 사용법 (백엔드 준비 후)
+## 사용법
 
 1. `index.html`에서 상품정보(본문)와 추가지시(선택, 이번 건 한정)를 각각 입력
 2. **변환하기** → 결과가 나오면 **결과 복사**로 그대로 SNS에 붙여넣기
@@ -33,16 +33,14 @@ FAQ봇이 아니라 **단발성 텍스트 변환기**이며, 대화를 기억하
 
 | 환경변수 | 용도 | 비고 |
 |---|---|---|
-| `GEMINI_API_KEY` | `api/format.js`의 LLM 호출 | [ai.google.dev](https://ai.google.dev)에서 무료 발급 |
+| `ANTHROPIC_API_KEY` | `api/format.js`의 LLM 호출 | [console.anthropic.com](https://console.anthropic.com)에서 발급 (결제 필요) |
 | `GITHUB_TOKEN` | `api/save-memo.js`, `api/save-log.js`의 깃허브 커밋 | fine-grained PAT, 이 레포에 Contents 쓰기 권한 |
 | `GITHUB_OWNER`, `GITHUB_REPO` | 메모 + 입력 로그 저장 대상 (둘 다 이 레포) | `GITHUB_BRANCH` 생략 시 `main` |
 | `GITHUB_LOG_OWNER`, `GITHUB_LOG_REPO` | (선택) 입력 로그를 다른 레포에 저장하고 싶을 때만 | 지금은 로그도 공개 정보로 판단해서 별도 비공개 레포 없이 이 레포에 같이 저장하기로 결정 — 필요해지면 이 두 값만 채우면 됨 |
 
-## 막혀서 다음 단계로 못 넘어가는 것 (사용자 준비 필요)
+## 규칙 문서 갱신
 
-1. **Gemini API 키** — [ai.google.dev](https://ai.google.dev)에서 무료 발급
-   (카드 불필요). 채팅에 붙여넣지 말고 Vercel 환경변수로 바로 등록할 것.
-2. **Vercel 계정** — 깃허브 레포 연결, Root Directory는 `product-sns-formatter`
-3. **깃허브 Personal Access Token** — 이 레포 한정, 쓰기 권한, fine-grained 추천
-4. **실제 회사 SNS 포맷 규칙 문서** — 회사 컴퓨터에 이미 만들어둔 문서를 공유받으면
-   `rules/format-rules.js`의 `FORMAT_RULES` 내용만 그 문서로 교체하면 된다
+실제 회사 SNS 포맷 규칙이 바뀌면 `rules/format-rules.js`의 `FORMAT_RULES`
+내용만 그 문서로 교체하면 된다. AI에게 "기억해"라고 요청해도 반영 안 되는
+구조 — 반드시 이 파일을 직접 수정해야 한다 (PLAN.md의 stateless 설계 원칙
+참고).
