@@ -78,6 +78,10 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
   let stop = false;
   let retries = 0;
   const MAX_RETRIES = 5;
+  // "인용/멘션으로 옛날 글 끌올" 등 다양한 방식으로 오래된 게시물 하나가 최신 게시물들
+  // 사이에 섞여 나올 수 있어서, 그 1건만 보고 바로 멈추면 오탐. 새로 발견된 순서(=피드 순서)
+  // 기준으로 연속 N건이 전부 범위 시작일보다 오래돼야 "진짜로 과거로 넘어갔다"고 판단.
+  const OLD_STREAK_THRESHOLD = 3;
 
   while (!stop) {
     try {
@@ -88,16 +92,14 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
       const all = await page.evaluate(() => window._tweetData);
       if (all.length === 0) { retries++; if (retries >= MAX_RETRIES) stop = true; continue; }
 
-      let oldest = new Date();
-      let oldestTweet = null;
-      all.forEach(t => {
-        const d = new Date(t.datetime);
-        if (d < oldest) { oldest = d; oldestTweet = t; }
-      });
+      let streak = 0;
+      for (let i = all.length - 1; i >= 0; i--) {
+        if (new Date(all[i].datetime) < rangeStartUTC) streak++;
+        else break;
+      }
 
-      if (oldest < rangeStartUTC) {
-        // 디버그용: 정확히 어떤 게시물 때문에 멈췄는지 눈으로 확인 가능하게 남김
-        console.log(`[twitter:${account}] 범위 시작일 이전 게시물 발견 → 스크롤 중단. 원인 게시물: ${oldestTweet?.link} (${oldestTweet?.datetime})`);
+      if (streak >= OLD_STREAK_THRESHOLD) {
+        console.log(`[twitter:${account}] 최근 발견된 게시물 ${streak}건 연속으로 범위 시작일 이전 → 스크롤 중단`);
         stop = true;
       }
       retries = 0;
