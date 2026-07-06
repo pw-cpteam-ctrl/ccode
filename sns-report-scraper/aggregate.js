@@ -203,7 +203,7 @@ function splitIpAndLine(title) {
     .replace(/\d+\s*(년|월|일)?/g, ' ') // "26년", "7월" 등 날짜 표현 통째로 제거
     .replace(/\s+/g, ' ')
     .trim()
-    .replace(/^[.,\-\s]+|[.,\-\s]+$/g, '');
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''); // 앞뒤에 남은 이모지/기호("📢", "!") 제거
 
   return { ip: remaining || null, line };
 }

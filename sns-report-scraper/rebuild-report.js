@@ -11,9 +11,11 @@
 const fs = require('fs');
 const { buildComparisonReport } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
+const { saveHtmlReport } = require('./html-report');
 
 const CACHE_PATH = './reports/_last-collection.json';
 const OUTPUT_PATH = './reports/sns-report.xlsx';
+const HTML_OUTPUT_PATH = './reports/sns-report.html';
 
 async function main() {
   if (!fs.existsSync(CACHE_PATH)) {
@@ -32,7 +34,10 @@ async function main() {
   });
 
   const sheetName = await saveReportToExcel(report, OUTPUT_PATH);
-  console.log(`✅ 저장 완료: ${OUTPUT_PATH} (시트: ${sheetName})`);
+  console.log(`✅ 엑셀 저장 완료: ${OUTPUT_PATH} (시트: ${sheetName})`);
+
+  saveHtmlReport(report, HTML_OUTPUT_PATH);
+  console.log(`✅ HTML 저장 완료: ${HTML_OUTPUT_PATH} (브라우저로 열어서 확인)`);
 }
 
 main().catch(err => {

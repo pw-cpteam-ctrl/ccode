@@ -16,11 +16,15 @@ const { collectTwitter } = require('./twitter');
 const { collectInstagram } = require('./instagram');
 const { buildComparisonReport } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
+const { saveHtmlReport } = require('./html-report');
 
 const CONFIG = {
   startDate: '2026-07-01',
   endDate: '2026-07-02',
   outputPath: './reports/sns-report.xlsx',
+  // 히스토리 누적 없이 매번 최신 결과로 덮어씀 — 브라우저로 열어서 보기 좋게 확인하는 용도.
+  // 과거 데이터 보존은 엑셀(outputPath)이 담당.
+  htmlOutputPath: './reports/sns-report.html',
   // 수집한 원본 게시물을 여기에 캐시해둠 — 리포트 포맷만 고칠 땐 재수집(몇 분) 없이
   // rebuild-report.js로 이 캐시만 다시 읽어서 몇 초 안에 엑셀만 새로 뽑을 수 있음.
   cachePath: './reports/_last-collection.json',
@@ -74,7 +78,10 @@ async function main() {
   });
 
   const sheetName = await saveReportToExcel(report, CONFIG.outputPath);
-  console.log(`✅ 저장 완료: ${CONFIG.outputPath} (시트: ${sheetName})`);
+  console.log(`✅ 엑셀 저장 완료: ${CONFIG.outputPath} (시트: ${sheetName})`);
+
+  saveHtmlReport(report, CONFIG.htmlOutputPath);
+  console.log(`✅ HTML 저장 완료: ${CONFIG.htmlOutputPath} (브라우저로 열어서 확인)`);
 }
 
 main().catch(err => {
