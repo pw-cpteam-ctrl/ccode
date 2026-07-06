@@ -28,36 +28,49 @@ function isTruthy(v) {
 
 function parseExpires(raw) {
   const s = (raw || '').trim();
-  if (!s || /session/i.test(s)) return -1;
+  // "세션"(한국어 로케일 크롬) / "Session" 둘 다 브라우저 종료 시 삭제되는 세션 쿠키를 의미
+  if (!s || /session/i.test(s) || s === '세션') return -1;
   const parsed = Date.parse(s);
   if (!Number.isNaN(parsed)) return Math.floor(parsed / 1000);
   return Math.floor(Date.now() / 1000) + 3600 * 24 * 365; // 파싱 실패 시 1년 후로 안전하게
 }
 
+// 크롬 Application > Cookies 패널의 고정 열 순서 (표 안에서 Ctrl+A/C 하면 헤더 없이 이 순서로만 복사됨)
+const DEFAULT_COLUMNS = ['name', 'value', 'domain', 'path', 'expires', 'size', 'httpOnly', 'secure', 'sameSite', 'partitionKey', 'crossSite', 'priority'];
+
 function convert(tableText, origin) {
   const lines = tableText.trim().split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) {
+  if (lines.length < 1) {
     throw new Error('표 형태가 아님 — Application > Cookies 표에서 Ctrl+A → Ctrl+C 한 내용을 그대로 붙여넣었는지 확인 필요');
   }
 
-  const header = lines[0].split('\t').map(h => h.trim().toLowerCase());
-  const col = {
-    name: findColumn(header, 'name'),
-    value: findColumn(header, 'value'),
-    domain: findColumn(header, 'domain'),
-    path: findColumn(header, 'path'),
-    expires: findColumn(header, 'expires'),
-    httpOnly: findColumn(header, 'http'),
-    secure: findColumn(header, 'secure'),
-    sameSite: findColumn(header, 'samesite'),
-  };
-  if (col.name === -1 || col.value === -1) {
-    throw new Error('name/value 열을 못 찾음 — 표 맨 위 헤더 줄(Name, Value, Domain...)까지 포함해서 복사했는지 확인 필요');
+  const headerCandidate = lines[0].split('\t').map(h => h.trim().toLowerCase());
+  const looksLikeHeader = findColumn(headerCandidate, 'name') !== -1 && findColumn(headerCandidate, 'value') !== -1;
+
+  let col;
+  let dataLines;
+  if (looksLikeHeader) {
+    col = {
+      name: findColumn(headerCandidate, 'name'),
+      value: findColumn(headerCandidate, 'value'),
+      domain: findColumn(headerCandidate, 'domain'),
+      path: findColumn(headerCandidate, 'path'),
+      expires: findColumn(headerCandidate, 'expires'),
+      httpOnly: findColumn(headerCandidate, 'http'),
+      secure: findColumn(headerCandidate, 'secure'),
+      sameSite: findColumn(headerCandidate, 'samesite'),
+    };
+    dataLines = lines.slice(1);
+  } else {
+    // 헤더 줄이 없음 — 크롬 고정 열 순서로 간주 (표 본문만 선택돼서 복사된 일반적인 경우)
+    col = {};
+    DEFAULT_COLUMNS.forEach((name, i) => { col[name] = i; });
+    dataLines = lines;
   }
 
   const get = (cols, i) => (i >= 0 && cols[i] !== undefined) ? cols[i].trim() : '';
 
-  const cookies = lines.slice(1).map(line => {
+  const cookies = dataLines.map(line => {
     const cols = line.split('\t');
     const name = get(cols, col.name);
     if (!name) return null;

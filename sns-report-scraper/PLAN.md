@@ -40,15 +40,27 @@
   크롬 버전에 따라 동작 안 할 수 있음, 참고용으로만 남김):**
   1. F12 → Network 탭 → 새로고침 → 맨 위 문서 요청 우클릭 → Copy → Copy as cURL
   2. `node curl-cookies-to-storage-state.js <파일> x-session.json https://x.com`
-- **대안 경로 A-2 (개발자도구 Application 탭 쿠키 표 복사) — 확장 없이 가능, 현재 이 방식으로
-  진행 중:**
+- **대안 경로 A-2 (개발자도구 Application 탭 쿠키 표 복사) — 확장 없이 가능, 채택된 방식:**
   1. F12 → **Application** 탭 → Storage → Cookies → `https://x.com` 클릭
-  2. 쿠키 표 안 클릭 → **Ctrl+A**(전체선택) → **Ctrl+C**(복사) — 헤더 줄(Name, Value, Domain...)
-     포함해서 복사됨
+  2. 쿠키 표 안 클릭 → **Ctrl+A**(전체선택) → **Ctrl+C**(복사)
+     — 실제로 해보니 **헤더 줄(Name, Value...)은 안 딸려오고 표 본문만 복사됨** (헤더는 고정
+     영역이라 스크롤 영역 선택에 안 포함되는 듯). `table-cookies-to-storage-state.js`가 헤더 유무를
+     자동 판별해서 헤더 없으면 크롬 고정 열 순서(Name/Value/Domain/Path/Expires/Size/HttpOnly/
+     Secure/SameSite/PartitionKey/CrossSite/Priority)로 처리하도록 대응함
+     — 만료일이 "세션"(한국어 로케일)으로 표시되는 것도 처리함
   3. `node table-cookies-to-storage-state.js <붙여넣은 텍스트 파일> x-session.json https://x.com` 실행
      → 표에 있는 실제 httpOnly/secure/SameSite/만료일 속성을 그대로 반영 (curl 방식보다 정확).
-     Playwright 컨텍스트에 실제 로드해서 검증 완료
+     Playwright 컨텍스트에 실제 로드되는 것까지 검증 완료 (모킹 값 + 실제 계정 쿠키 둘 다 확인)
   4. 인스타그램도 동일하게 origin만 `https://www.instagram.com`으로
+  - ⚠️ **가상 스크롤 때문에 Ctrl+A가 화면에 보이는 근처 행만 선택할 수 있음.** 필요한 쿠키가 안
+    보이면 패널 상단 필터(돋보기) 입력창에 쿠키 이름(`auth_token`, `ct0` 등)을 검색해서 그 행만
+    복사하는 걸 추천
+  - ⚠️ **실제 로그인 쿠키 값(`auth_token` 등)은 비밀번호와 동급으로 민감함 — 채팅에 붙여넣지 말고
+    본인 컴퓨터에서 직접 `table-cookies-to-storage-state.js`를 돌려서 로컬에만 `x-session.json`을
+    만들어 쓸 것.** (Claude Code 웹 실행 환경은 격리된 원격 샌드박스라 브라우저의 실제 네트워크
+    접속 자체가 막혀있어서 — `example.com`조차 `ERR_CONNECTION_RESET` — 이 환경에서 실제
+    x.com/인스타그램 접속 테스트도 못 함. `twitter.js`/`instagram.js` 실전 검증은 어차피
+    PLAN대로 로컬 컴퓨터에서만 가능)
 - **대안 경로 B (확장 설치, Cookie-Editor)** — A가 안 되면 시도:
   1. "Cookie-Editor" 확장 설치 → 정상 로그인 → "Export as JSON"으로 내보내기
   2. `node cookies-to-storage-state.js cookies-x-raw.json x-session.json https://x.com` 실행
