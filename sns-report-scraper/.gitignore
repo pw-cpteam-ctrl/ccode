@@ -2,3 +2,4 @@ node_modules/
 verify-output/
 reports/
 *-session.json
+cookies-*.json
