@@ -1,12 +1,14 @@
 /**
  * 전체 실행 스크립트: 계정별 수집(twitter.js/instagram.js) → 취합(aggregate.js) → 엑셀 저장(excel.js)
  *
- * ⚠️ 현재 상태: 아래 CONFIG는 예시용 placeholder. 실제로 돌리려면
- *   1) 로그인 세션 파일(x-session.json / instagram-session.json)을 PLAN.md 안내대로 생성해서 채우고
- *   2) 자사/경쟁사 실제 계정 핸들로 교체해야 함.
- * twitter.js, instagram.js는 아직 실제 세션으로 검증되지 않은 초안이므로,
- * 처음 실행할 땐 headless:false로 브라우저 창을 직접 보면서 확인 권장.
- * (특히 instagram.js의 좋아요/댓글 좌표 파싱은 계정마다 레이아웃이 다를 수 있음)
+ * twitter.js, instagram.js는 실제 계정(megahousestore/megahouse_store)으로 검증 완료
+ * (PLAN.md 참고). 아래 CONFIG는 원칙적으로 운용하는 자사/경쟁사 계정 고정 세팅 —
+ * 예외적인 계정을 수집해야 할 땐 이 CONFIG를 건드리지 말고 그때그때 따로 요청.
+ *
+ * 경쟁사 계정도 sessionFile은 자사와 동일한 세션 파일을 씀 — 경쟁사 로그인이 아니라,
+ * "내 계정으로 로그인한 상태에서 경쟁사의 공개 게시물을 조회"하는 방식이라서 정상임.
+ *
+ * 매번 돌릴 때 startDate/endDate만 그 달 리포트 기간에 맞게 바꿔주면 됨.
  */
 const { collectTwitter } = require('./twitter');
 const { collectInstagram } = require('./instagram');
@@ -19,13 +21,12 @@ const CONFIG = {
   outputPath: './reports/sns-report.xlsx',
 
   own: [
-    { platform: 'twitter', account: 'YOUR_BRAND_TWITTER', sessionFile: './x-session.json' },
-    { platform: 'instagram', account: 'YOUR_BRAND_INSTAGRAM', sessionFile: './instagram-session.json' },
+    { platform: 'twitter', account: 'megahousestore', sessionFile: './x-session.json' },
+    { platform: 'instagram', account: 'megahouse_store', sessionFile: './instagram-session.json' },
   ],
   competitors: [
-    { platform: 'twitter', account: 'COMPETITOR_A_TWITTER', sessionFile: './x-session.json' },
-    { platform: 'instagram', account: 'COMPETITOR_A_INSTAGRAM', sessionFile: './instagram-session.json' },
-    // 경쟁사 계정 여러 개면 이렇게 계속 추가
+    { platform: 'twitter', account: 'megahouse_BH', sessionFile: './x-session.json' },
+    { platform: 'instagram', account: 'megahouse_korea_dt_bh', sessionFile: './instagram-session.json' },
   ],
 };
 
