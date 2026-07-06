@@ -3,3 +3,5 @@ verify-output/
 reports/
 *-session.json
 cookies-*.json
+cookie-table*.txt
+curl-*.txt

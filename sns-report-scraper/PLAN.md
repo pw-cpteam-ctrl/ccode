@@ -35,14 +35,20 @@
     새로 내려받은 낯선 크로미움 + 자동화 흔적을 봇으로 의심해서 차단하는 것으로 추정
     (계정 2개 다 동일하게 막혀서 계정 문제가 아니라 브라우저 지문 문제로 판단).
     `--channel=chrome`(설치된 크롬 그대로 사용)로도 시도했으나 마찬가지로 막힘.
-- **대안 경로 A (확장 없이, 개발자도구 cURL 복사) — 현재 이 방식으로 진행 중, 사용자 선호:**
-  1. x.com / instagram.com에 로그인된 상태에서 F12 → Network 탭 → 새로고침
-  2. 맨 위 문서 요청 우클릭 → Copy → **Copy as cURL**
-  3. `node curl-cookies-to-storage-state.js <붙여넣은 텍스트 파일> x-session.json https://x.com` 실행
-     → cURL 텍스트의 Cookie 헤더만 추출해서 storageState로 변환 (직접 만든 도구, Playwright로 로드 검증 완료)
+- **대안 경로 A-1 (개발자도구 cURL 복사) — ⚠️ 최신 크롬은 보안상 Cookie 헤더를 빼고 복사함,
+  실제로 시도했으나 쿠키가 아예 없이 복사돼서 이 방식은 사실상 못 씀 (도구는 만들어뒀지만
+  크롬 버전에 따라 동작 안 할 수 있음, 참고용으로만 남김):**
+  1. F12 → Network 탭 → 새로고침 → 맨 위 문서 요청 우클릭 → Copy → Copy as cURL
+  2. `node curl-cookies-to-storage-state.js <파일> x-session.json https://x.com`
+- **대안 경로 A-2 (개발자도구 Application 탭 쿠키 표 복사) — 확장 없이 가능, 현재 이 방식으로
+  진행 중:**
+  1. F12 → **Application** 탭 → Storage → Cookies → `https://x.com` 클릭
+  2. 쿠키 표 안 클릭 → **Ctrl+A**(전체선택) → **Ctrl+C**(복사) — 헤더 줄(Name, Value, Domain...)
+     포함해서 복사됨
+  3. `node table-cookies-to-storage-state.js <붙여넣은 텍스트 파일> x-session.json https://x.com` 실행
+     → 표에 있는 실제 httpOnly/secure/SameSite/만료일 속성을 그대로 반영 (curl 방식보다 정확).
+     Playwright 컨텍스트에 실제 로드해서 검증 완료
   4. 인스타그램도 동일하게 origin만 `https://www.instagram.com`으로
-  - httpOnly/secure/sameSite/만료일은 헤더 문자열만으론 알 수 없어서 안전한 기본값(secure/httpOnly
-    true, sameSite Lax, 1년 후 만료)으로 채움 — 요청 전송에는 지장 없음
 - **대안 경로 B (확장 설치, Cookie-Editor)** — A가 안 되면 시도:
   1. "Cookie-Editor" 확장 설치 → 정상 로그인 → "Export as JSON"으로 내보내기
   2. `node cookies-to-storage-state.js cookies-x-raw.json x-session.json https://x.com` 실행
@@ -103,8 +109,9 @@
 
 ### 🔴 막혀있는 부분 (사용자 준비 필요 — 코드로 미리 처리 불가)
 - [ ] 인스타그램/X 로그인 세션 파일 생성해서 전달 (`x-session.json`, `instagram-session.json`)
-  — `playwright codegen` 로그인이 막혀서 위 "대안 경로 A(F12 cURL 복사)"로 진행 중. 변환 도구
-  (`curl-cookies-to-storage-state.js`)는 준비/검증 완료, F12로 cURL 복사해서 전달하는 것만 남음
+  — `playwright codegen` 로그인 막힘 → cURL 복사도 크롬이 쿠키 헤더를 가려서 못 씀 → 현재
+  "대안 경로 A-2(F12 Application 탭 쿠키 표 복사)"로 진행 중. 변환 도구
+  (`table-cookies-to-storage-state.js`)는 준비/검증 완료, F12로 쿠키 표 복사해서 전달하는 것만 남음
 - [ ] `twitter.js`, `instagram.js`를 실제 계정으로 돌려보고 검증 — **특히 인스타 좌표 파싱
   (`x>700, y 400~580`)은 실제 화면 레이아웃 확인 전까지 신뢰 불가. 세션 없이는 Playwright로도
   모킹 한계가 있어서(실제 인스타 DOM 구조 자체가 필요) 검증 불가능함.**
