@@ -23,6 +23,7 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Mal
 .row3{display:flex;gap:6px;}.row3 .field-col{flex:1;min-width:0;}
 .col-title{font-size:12px;font-weight:700;color:var(--ui-sub);text-align:center;margin-bottom:4px;}
 .sec{font-size:15px;font-weight:800;color:var(--ui-text);margin:16px 0 9px;padding-bottom:6px;border-bottom:2px solid var(--ui-border);}
+.panel code{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:4px;padding:1px 5px;font-size:11.5px;}
 .actions{position:sticky;bottom:0;padding-top:10px;margin-top:12px;background:linear-gradient(transparent,var(--ui-panel) 35%);display:flex;gap:7px;}
 button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;border:1px solid var(--ui-border);font-family:inherit;background:var(--ui-accent);color:#fff;}
 
@@ -138,7 +139,18 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
   </div>
 
   <div class="sec">인디자인 파일목록 생성기</div>
-  <div class="field"><label>파일명 목록 (줄바꿈 구분 · 확장자 생략 시 .png 자동 추가 · [제목파일명] 줄로 그룹 지정 가능)</label><textarea id="inFileList" rows="8" placeholder="[바쿠고_제목.png]
+  <div style="font-size:12px;color:var(--ui-sub);line-height:1.6;margin-bottom:8px;">
+    • 파일명을 한 줄에 하나씩 입력. 확장자 생략 시 <b>.png 자동 추가</b>.<br>
+    • <code>[그룹제목.png]</code> 줄을 넣으면 그 아래 사진들이 한 그룹으로 묶이고,
+    <b>그룹의 첫 번째 사진에만</b> 투명제목 이미지가 매칭된다 (인디자인에서 폴더 맨 앞장에만
+    제목을 붙이는 방식과 동일) — 그룹 사용 시 아래 <b>"투명제목 폴더 경로"도 필수</b>.<br>
+    • <b>캐릭터별 하위 폴더에서 자동 인식</b>(Chrome/Edge 전용) = 상위 폴더를 고르면 폴더마다
+    "표지"가 들어간 사진(없으면 이름순 첫 장)을 그룹 맨 앞에 놓고 파일명 목록을 자동으로
+    채워준다. 단, 브라우저 보안상 <b>실제 절대경로는 읽을 수 없어서</b>, 다운로드용
+    "사진 폴더 경로"는 이 기능과 별개로 여전히 직접 입력해야 한다.<br>
+    • 다운로드 결과는 UTF-16LE(BOM) 텍스트라 <b>인디자인 데이터 병합 가져오기에 바로</b> 쓸 수 있다.
+  </div>
+  <div class="field"><label>파일명 목록 (한 줄에 하나씩)</label><textarea id="inFileList" rows="8" placeholder="[바쿠고_제목.png]
 바쿠고1
 바쿠고2
 [나루토_제목.png]
