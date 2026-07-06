@@ -52,10 +52,10 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
   transform:scale(var(--preview-scale)); transform-origin:top left; /* 화면 맞춤 축소, 실제 export는 원본 크기로 캡처 */
   position:absolute; top:0; left:0; overflow:hidden; background:transparent;
 }
-.badge{position:absolute; left:36px; background:#111; color:#fff; border-radius:999px; padding:8px 20px; font-weight:700; display:inline-block; max-width:calc(100% - 72px);}
-.title{position:absolute; left:36px; font-weight:900; color:#fff; max-width:calc(100% - 72px);}
-.bullets{position:absolute; left:36px; color:#fff; font-weight:700; max-width:calc(100% - 72px);}
-.grad-overlay{position:absolute; inset:0; pointer-events:none;}
+.badge{position:absolute; left:36px; background:rgba(0,0,0,.9); color:#fff; border-radius:999px; padding:8px 20px; font-weight:700; display:inline-block; max-width:calc(100% - 72px);}
+.title{position:absolute; left:36px; font-weight:900; color:#fff; max-width:calc(100% - 72px); text-shadow:0 2px 10px rgba(0,0,0,.85), 0 1px 4px rgba(0,0,0,.9);}
+.bullets{position:absolute; left:36px; color:#fff; font-weight:700; max-width:calc(100% - 72px); text-shadow:0 2px 10px rgba(0,0,0,.85), 0 1px 4px rgba(0,0,0,.9);}
+.grad-overlay{position:absolute; left:0; right:0; bottom:0; pointer-events:none;}
 </style>
 </head>
 <body>
@@ -89,6 +89,7 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 고죠/나나미/스쿠나</textarea></div>
 
   <div class="sec">배치 · 크기</div>
+  <div style="font-size:12px;color:var(--ui-sub);margin-bottom:6px;">개별 조정 — 지금 보고 있는 슬롯에만 적용</div>
   <div class="row3">
     <div class="field-col">
       <div class="col-title">배지</div>
@@ -107,10 +108,30 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
     </div>
   </div>
 
+  <div style="font-size:12px;color:var(--ui-sub);margin:12px 0 6px;">전체 적용 — 슬라이더를 움직이면 모든 슬롯에 한번에 반영</div>
+  <div class="row3">
+    <div class="field-col">
+      <div class="col-title">배지</div>
+      <div class="field"><label>위치(Y)</label><input type="range" id="allBadgeY" min="0" max="1350" value="900"/></div>
+      <div class="field"><label>크기</label><input type="range" id="allBadgeSize" min="10" max="60" value="20"/></div>
+    </div>
+    <div class="field-col">
+      <div class="col-title">타이틀</div>
+      <div class="field"><label>위치(Y)</label><input type="range" id="allTitleY" min="0" max="1350" value="970"/></div>
+      <div class="field"><label>크기</label><input type="range" id="allTitleSize" min="20" max="140" value="64"/></div>
+    </div>
+    <div class="field-col">
+      <div class="col-title">불릿</div>
+      <div class="field"><label>위치(Y)</label><input type="range" id="allBulletsY" min="0" max="1350" value="1080"/></div>
+      <div class="field"><label>크기</label><input type="range" id="allBulletsSize" min="14" max="60" value="28"/></div>
+    </div>
+  </div>
+
   <div class="sec">그라데이션</div>
   <div class="field"><label>시작점 %</label><input type="range" id="gradStart" min="0" max="90" value="40"/></div>
   <div class="field"><label>퍼짐 %</label><input type="range" id="gradWidth" min="5" max="200" value="60"/></div>
   <div class="field"><label>농도 %</label><input type="range" id="gradOpacity" min="0" max="200" value="85"/></div>
+  <div class="field"><label>압축 %</label><input type="range" id="gradCompress" min="0" max="60" value="0"/></div>
 
   <div class="sec">인디자인 파일목록 생성기</div>
   <div class="field"><label>파일명 목록 (줄바꿈 구분 · 확장자 생략 시 .png 자동 추가 · [제목파일명] 줄로 그룹 지정 가능)</label><textarea id="inFileList" rows="8" placeholder="[바쿠고_제목.png]
@@ -183,7 +204,7 @@ let folderPath = '';
 let titleFolderPath = '';
 
 function makeEmptySlot() {
-  return { badge:'', titleL:'', titleR:'', bullets:'', gradStart:40, gradWidth:60, gradOpacity:85, ...LAYOUT_DEFAULTS };
+  return { badge:'', titleL:'', titleR:'', bullets:'', gradStart:40, gradWidth:60, gradOpacity:85, gradCompress:0, ...LAYOUT_DEFAULTS };
 }
 function layoutVal(s, key) { return s[key] ?? LAYOUT_DEFAULTS[key]; } // 이전에 저장된 슬롯엔 이 필드들이 없을 수 있어 기본값으로 대체
 
@@ -300,7 +321,7 @@ function applyBulkMarkdown() {
     const titleL = bar >= 0 ? it.title.slice(0, bar).trim() : it.title;
     const titleR = bar >= 0 ? it.title.slice(bar + 1).trim() : '';
     return { badge: commonBadge, titleL, titleR, bullets: it.bullets.join('\n'),
-      gradStart: g.gradStart, gradWidth: g.gradWidth, gradOpacity: g.gradOpacity,
+      gradStart: g.gradStart, gradWidth: g.gradWidth, gradOpacity: g.gradOpacity, gradCompress: g.gradCompress ?? 0,
       badgeY: layoutVal(g,'badgeY'), badgeSize: layoutVal(g,'badgeSize'),
       titleY: layoutVal(g,'titleY'), titleSize: layoutVal(g,'titleSize'),
       bulletsY: layoutVal(g,'bulletsY'), bulletsSize: layoutVal(g,'bulletsSize') };
@@ -323,16 +344,23 @@ function applyViewMode() {
 }
 
 /* ── 입력 → 상태 반영(화면+저장) ── */
+const ALL_LAYOUT_FIELDS = [
+  ['allBadgeY','badgeY'], ['allBadgeSize','badgeSize'],
+  ['allTitleY','titleY'], ['allTitleSize','titleSize'],
+  ['allBulletsY','bulletsY'], ['allBulletsSize','bulletsSize'],
+];
 function loadInputsFromCurSlot() {
   const s = slots[curSlot - 1];
   $('#inBadge').value = s.badge; $('#inTitleL').value = s.titleL; $('#inTitleR').value = s.titleR;
   $('#inBullets').value = s.bullets;
   $('#gradStart').value = s.gradStart; $('#gradWidth').value = s.gradWidth; $('#gradOpacity').value = s.gradOpacity;
+  $('#gradCompress').value = s.gradCompress ?? 0;
   $('#badgeY').value = layoutVal(s,'badgeY'); $('#badgeSize').value = layoutVal(s,'badgeSize');
   $('#titleY').value = layoutVal(s,'titleY'); $('#titleSize').value = layoutVal(s,'titleSize');
   $('#bulletsY').value = layoutVal(s,'bulletsY'); $('#bulletsSize').value = layoutVal(s,'bulletsSize');
+  ALL_LAYOUT_FIELDS.forEach(([id, key]) => { $('#'+id).value = layoutVal(s, key); }); // "전체 적용" 슬라이더도 현재 슬롯 값으로 시작점 맞춤
 }
-['inBadge','inTitleL','inTitleR','inBullets','gradStart','gradWidth','gradOpacity',
+['inBadge','inTitleL','inTitleR','inBullets','gradStart','gradWidth','gradOpacity','gradCompress',
  'badgeY','badgeSize','titleY','titleSize','bulletsY','bulletsSize'].forEach(id => {
   $('#'+id).addEventListener('input', () => {
     syncInputsToState();   // ① 값 변경을 상태에 반영
@@ -345,10 +373,21 @@ function syncInputsToState() {
   s.badge = $('#inBadge').value; s.titleL = $('#inTitleL').value; s.titleR = $('#inTitleR').value;
   s.bullets = $('#inBullets').value;
   s.gradStart = +$('#gradStart').value; s.gradWidth = +$('#gradWidth').value; s.gradOpacity = +$('#gradOpacity').value;
+  s.gradCompress = +$('#gradCompress').value;
   s.badgeY = +$('#badgeY').value; s.badgeSize = +$('#badgeSize').value;
   s.titleY = +$('#titleY').value; s.titleSize = +$('#titleSize').value;
   s.bulletsY = +$('#bulletsY').value; s.bulletsSize = +$('#bulletsSize').value;
 }
+/* "전체 적용" 슬라이더: 개별 슬롯 상태(badgeY 등)는 그대로 두고 모든 슬롯에 같은 값을 일괄 반영 */
+ALL_LAYOUT_FIELDS.forEach(([id, key]) => {
+  $('#'+id).addEventListener('input', () => {
+    const val = +$('#'+id).value;
+    slots.forEach(s => { s[key] = val; });
+    $('#'+key).value = val; // 현재 슬롯의 개별 슬라이더도 동기화
+    renderAllSlots();
+    persistState();
+  });
+});
 
 /* ── 렌더 (상태 → DOM만 갱신, 입력값을 읽거나 저장하지 않음) ── */
 function renderAllSlots() {
@@ -380,19 +419,21 @@ function renderSlotDom(pg) {
   bulletsEl.innerHTML = s.bullets.split('\n').filter(Boolean).map(l => `• ${l}`).join('<br>');
   bulletsEl.style.top = layoutVal(s,'bulletsY') + 'px';
   bulletsEl.style.fontSize = layoutVal(s,'bulletsSize') + 'px';
-  applyGrad($('#grad'+pg), s.gradStart, s.gradWidth, s.gradOpacity);
+  applyGrad($('#grad'+pg), s.gradStart, s.gradWidth, s.gradOpacity, s.gradCompress ?? 0);
 }
-function applyGrad(el, s, w, oRaw) {
+function applyGrad(el, s, w, oRaw, c) {
   const o = Math.min(1, oRaw / 100);
   const p = f => Math.min(100, s + Math.round(w * f));
   const a = f => Math.min(o, o * f).toFixed(3);
   const grad = [
     `rgba(0,0,0,0) ${s}%`,
-    `rgba(0,0,0,${a(0.2)}) ${p(0.4)}%`,
+    `rgba(0,0,0,${a(0.15)}) ${p(0.35)}%`,
+    `rgba(0,0,0,${a(0.4)}) ${p(0.6)}%`,
     `rgba(0,0,0,${o.toFixed(3)}) ${p(1)}%`,
     `rgba(0,0,0,${o.toFixed(3)}) 100%`,
   ].join(',');
   el.style.background = `linear-gradient(to bottom,${grad})`;
+  el.style.top = Math.round((c || 0) * 6) + 'px'; // 압축: 오버레이 상단을 아래로 밀어 그라데이션 밴드를 압축
 }
 
 /* ── PNG 내보내기 (투명 배경, 항상 1080×1350 원본 크기) ── */
