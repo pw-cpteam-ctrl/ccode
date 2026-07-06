@@ -18,6 +18,22 @@ function formatRatioCard(pwTotal, bhTotal) {
   return `${Math.round((pwTotal / bhTotal) * 100)}%`;
 }
 
+// 트위터/인스타 공식 oEmbed 마크업. 실제 카드로 렌더링되려면 각 서비스의 위젯 스크립트가
+// 네트워크로 로드돼야 함(사용자가 인터넷 되는 본인 브라우저로 열 때 정상 동작) — 네트워크가
+// 없으면 이 blockquote가 그냥 "게시물로 이동" 링크로 보임(oEmbed 기본 동작, 이 정도도 하이퍼링크
+// 역할은 함).
+function embedBlockquote(platformKey, post) {
+  if (platformKey === 'twitter') {
+    const link = escapeHtml(post.link || '');
+    return `<blockquote class="twitter-tweet" data-dnt="true"><a href="${link}">${link}</a></blockquote>`;
+  }
+  if (platformKey === 'instagram') {
+    const url = escapeHtml(post.url || '');
+    return `<blockquote class="instagram-media" data-instgrm-permalink="${url}" data-instgrm-version="14"><a href="${url}">${url}</a></blockquote>`;
+  }
+  return '';
+}
+
 function renderPlatformSection(platformKey, data) {
   const { products, ownUnmatched, competitorUnmatched, displayFields } = data.productComparison;
   const title = PLATFORM_TITLES[platformKey] || platformKey;
@@ -42,11 +58,12 @@ function renderPlatformSection(platformKey, data) {
     ...displayFields.flatMap(f => [`PW ${FIELD_LABELS[f] || f}`, `BH ${FIELD_LABELS[f] || f}`]),
     'PW 시각', 'BH 시각',
     ...displayFields.map(f => `${FIELD_LABELS[f] || f}차이`),
-    '시각차이', '결과'];
+    '시각차이', '결과', '게시물'];
 
   const rows = products.map((p, i) => {
     const rank = i + 1;
     const rankCell = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+    const embedRowId = `embed-${platformKey}-${i}`;
     const cells = [
       `<td class="rank">${rankCell}</td>`,
       `<td class="name">${escapeHtml(p.ip || '(미분류)')}</td>`,
@@ -60,8 +77,22 @@ function renderPlatformSection(platformKey, data) {
       ...displayFields.map(f => `<td class="diff">${escapeHtml(p.diffText[f])}</td>`),
       `<td class="diff">${p.timeDiffMinutes}분</td>`,
       `<td>${verdictBadge(p.verdict)}</td>`,
+      `<td><button class="toggle-btn" onclick="toggleEmbeds('${embedRowId}','${platformKey}',this)">▶ 보기</button></td>`,
     ].join('');
-    return `<tr class="${rank <= 3 ? 'top3' : ''}">${cells}</tr>`;
+
+    const embedCol = (label, cls, posts) => `
+      <div class="embed-col">
+        <h4 class="${cls}">${label} (${posts.length})</h4>
+        ${posts.length === 0 ? '<p class="embed-empty">게시물 없음</p>' : posts.map(post => embedBlockquote(platformKey, post)).join('')}
+      </div>`;
+    const embedRow = `<tr class="embed-row" id="${embedRowId}"><td colspan="${headerCells.length}">
+      <div class="embed-cols">
+        ${embedCol('PW', 'pw', p.ownPosts)}
+        ${embedCol('BH', 'bh', p.competitorPosts)}
+      </div>
+    </td></tr>`;
+
+    return `<tr class="${rank <= 3 ? 'top3' : ''}">${cells}</tr>${embedRow}`;
   }).join('');
 
   const unmatchedList = (label, posts, textField) => {
@@ -99,11 +130,19 @@ function renderPlatformSection(platformKey, data) {
  * 취합 리포트를 사람이 읽기 좋은 HTML로 렌더링. 엑셀(히스토리 누적용)과는 별개로,
  * 매번 최신 결과를 보기 좋게 보는 용도 — 이 파일은 매번 덮어씀(히스토리 보존 안 함).
  *
+ * 각 상품 행의 "보기" 버튼을 누르면 PW/BH 게시물을 2열로 임베드해서 보여줌(다시 누르면 접힘).
+ * 실제 트위터/인스타 카드로 렌더링되려면 브라우저가 인터넷에 연결돼서 각 서비스의 위젯
+ * 스크립트를 불러와야 함 — 오프라인이면 게시물 링크로만 보임(그래도 클릭하면 이동 가능).
+ *
  * @param {object} report aggregate.js의 buildComparisonReport() 결과
  * @returns {string} HTML 문서 전체
  */
 function buildHtmlReport(report) {
-  const sections = Object.entries(report.platforms).map(([key, data]) => renderPlatformSection(key, data)).join('\n');
+  const platformKeys = Object.keys(report.platforms);
+  const sections = platformKeys.map(key => renderPlatformSection(key, report.platforms[key])).join('\n');
+  const needsTwitterWidget = platformKeys.includes('twitter');
+  const needsInstagramWidget = platformKeys.includes('instagram');
+
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SNS 성과 비교 리포트</title><style>
 *{box-sizing:border-box}body{margin:0;font-family:'Malgun Gothic',system-ui,sans-serif;background:#f4f6fb;color:#1f2937}
@@ -127,6 +166,16 @@ td.diff{color:#374151;font-size:12px}td.time{color:#6b7280;font-size:12px}
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
 .badge.ok{background:#ebfbee;color:#2f9e44}.badge.mid{background:#fff4e6;color:#e8590c}.badge.low{background:#fff0f0;color:#c0504d}
 td.empty{color:#9099a6;padding:24px}
+.toggle-btn{border:1px solid #d0d5e0;background:#fff;color:#3b5bdb;font-size:11px;padding:4px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.toggle-btn:hover{background:#eef2ff}
+tr.embed-row{display:none;background:#fafbfd}
+tr.embed-row.open{display:table-row}
+tr.embed-row td{white-space:normal;text-align:left}
+.embed-cols{display:flex;gap:20px;padding:12px 4px}
+.embed-col{flex:1;min-width:0;max-height:640px;overflow-y:auto}
+.embed-col h4{margin:0 0 8px;font-size:12px;padding-bottom:6px;border-bottom:2px solid #eef0f4}
+.embed-col h4.pw{color:#e8590c}.embed-col h4.bh{color:#c0504d}
+.embed-empty{color:#9099a6;font-size:12px}
 details.unmatched{margin-top:10px;background:#fff;border-radius:12px;padding:10px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 details.unmatched summary{cursor:pointer;color:#6b7280;font-size:13px}
 .unmatched-cols{display:flex;gap:24px;margin-top:10px;flex-wrap:wrap}
@@ -144,9 +193,26 @@ ${sections}
 <div class="foot">
 ※ 상품명은 게시물 본문에서 자동 추출(당사: 첫 줄 / 경쟁사: 링크 줄 위) 후, 키워드 2개 이상 겹치는 게시물끼리 그룹화한 결과입니다.<br>
 ※ 표현이 서로 다르거나 상품명을 못 뽑은 게시물은 "매칭 안 됨" 목록에 별도로 있습니다 — 조용히 빠진 게 아닙니다.<br>
-※ 결과(우세/경합/약세)는 표에 표시된 지표(리트윗+좋아요 또는 좋아요+댓글)가 둘 다 PW가 크면 우세, 둘 다 작으면 약세, 엇갈리면 경합입니다.
+※ 결과(우세/경합/약세)는 표에 표시된 지표(리트윗+좋아요 또는 좋아요+댓글)가 둘 다 PW가 크면 우세, 둘 다 작으면 약세, 엇갈리면 경합입니다.<br>
+※ "게시물 보기"는 인터넷 연결된 브라우저에서 열어야 실제 카드로 보입니다 — 오프라인/차단 상태면 링크만 보임.
 </div>
-</div></body></html>`;
+</div>
+<script>
+function toggleEmbeds(rowId, platform, btn) {
+  var row = document.getElementById(rowId);
+  var opening = !row.classList.contains('open');
+  row.classList.toggle('open');
+  btn.textContent = opening ? '▼ 접기' : '▶ 보기';
+  if (opening && !row.dataset.rendered) {
+    row.dataset.rendered = '1';
+    if (platform === 'twitter' && window.twttr) window.twttr.widgets.load(row);
+    if (platform === 'instagram' && window.instgrm) window.instgrm.Embeds.process();
+  }
+}
+</script>
+${needsTwitterWidget ? '<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>' : ''}
+${needsInstagramWidget ? '<script async src="https://www.instagram.com/embed.js"></script>' : ''}
+</body></html>`;
 }
 
 /**

@@ -312,6 +312,7 @@ function buildProductComparison(ownPosts, competitorPosts, fields, textField, di
     products.push({
       ip, line,
       own: ownSummary, competitor: competitorSummary,
+      ownPosts: ownInGroup.map(e => e.post), competitorPosts: competitorInGroup.map(e => e.post),
       pwTime: formatKstTime(pwTime), bhTime: formatKstTime(bhTime), timeDiffMinutes,
       diffText, verdict,
     });
