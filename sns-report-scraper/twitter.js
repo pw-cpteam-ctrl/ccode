@@ -50,6 +50,15 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
           return;
         }
 
+        // 인용 트윗(quote tweet) 안에 인용된 원본 게시물이 똑같은 article[data-testid="tweet"]
+        // 구조로 중첩 렌더링되는 경우가 있음 — querySelectorAll이 이 중첩 카드까지 별도
+        // "게시물"로 잡아버리면, 인용된 옛날 글의 날짜가 그대로 들어와서 똑같이 날짜 판단
+        // 로직을 오작동시킴. 최상위 피드 게시물이 아니라 카드 안에 중첩된 것이면 제외.
+        if (article.parentElement && article.parentElement.closest('article[data-testid="tweet"]')) {
+          window._seenLinks.add(link);
+          return;
+        }
+
         const rtEl = article.querySelector('[data-testid="retweet"] span[data-testid="app-text-transition-container"]');
         const likeEl = article.querySelector('[data-testid="like"] span[data-testid="app-text-transition-container"]');
         const textEl = article.querySelector('[data-testid="tweetText"]');
@@ -79,12 +88,18 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
       const all = await page.evaluate(() => window._tweetData);
       if (all.length === 0) { retries++; if (retries >= MAX_RETRIES) stop = true; continue; }
 
-      const oldest = all.reduce((min, t) => {
+      let oldest = new Date();
+      let oldestTweet = null;
+      all.forEach(t => {
         const d = new Date(t.datetime);
-        return d < min ? d : min;
-      }, new Date());
+        if (d < oldest) { oldest = d; oldestTweet = t; }
+      });
 
-      if (oldest < rangeStartUTC) stop = true;
+      if (oldest < rangeStartUTC) {
+        // 디버그용: 정확히 어떤 게시물 때문에 멈췄는지 눈으로 확인 가능하게 남김
+        console.log(`[twitter:${account}] 범위 시작일 이전 게시물 발견 → 스크롤 중단. 원인 게시물: ${oldestTweet?.link} (${oldestTweet?.datetime})`);
+        stop = true;
+      }
       retries = 0;
     } catch (e) {
       // 블랙스크린/CDP timeout 대응 — 대기 후 재시도
