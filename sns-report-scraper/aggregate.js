@@ -364,7 +364,10 @@ function buildProductEntry(ownPosts, competitorPosts, fields, displayFields, tit
 
   const pwTime = earliestDatetime(ownPosts);
   const bhTime = earliestDatetime(competitorPosts);
-  const timeDiffMinutes = Math.round(Math.abs(pwTime - bhTime) / 60000);
+  // 양수면 BH가 PW보다 늦게 올림(PW가 먼저), 음수면 BH가 먼저 — PW 시각을 기준선(0)으로 봤을 때
+  // BH가 어느 쪽으로 얼마나 떨어져 있는지를 나타내는 부호 있는 값.
+  const timeDiffSignedMinutes = Math.round((bhTime - pwTime) / 60000);
+  const timeDiffMinutes = Math.abs(timeDiffSignedMinutes);
 
   const diffs = {};
   const diffText = {};
@@ -379,7 +382,7 @@ function buildProductEntry(ownPosts, competitorPosts, fields, displayFields, tit
     ip, line,
     own: ownSummary, competitor: competitorSummary,
     ownPosts, competitorPosts,
-    pwTime: formatKstTime(pwTime), bhTime: formatKstTime(bhTime), timeDiffMinutes,
+    pwTime: formatKstTime(pwTime), bhTime: formatKstTime(bhTime), timeDiffMinutes, timeDiffSignedMinutes,
     diffText, verdict,
   };
 }

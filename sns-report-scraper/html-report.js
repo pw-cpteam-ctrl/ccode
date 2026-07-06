@@ -44,16 +44,29 @@ function metricBar(pw, bh, diffText) {
   </div>`;
 }
 
-// 시각(PW/BH 게시 시각)은 합이 의미 없는 값(부분-전체 관계가 아님)이라 폭을 비율로 나누면
-// 값을 왜곡해서 보여주는 셈이 됨 — 그래서 절반씩 칩 2개로만 시각적 계열을 맞추고, 실제 시간
-// 차이는 막대 밑 캡션 텍스트로 정확히 표기.
-function timeCell(pwTime, bhTime, diffMinutes) {
-  return `<div class="metriccell">
-    <div class="timebar">
-      <span class="timebar-chip pw">${escapeHtml(pwTime)}</span>
-      <span class="timebar-chip bh">${escapeHtml(bhTime)}</span>
+// 시각은 "PW 대비 BH가 얼마나 앞/뒤로 떨어져 있나"(기준선 대비 편차)라 부분-전체(분할 바) 문제가
+// 아니라 diverging 문제임 — PW 시각을 컬럼 중앙 기준선(0)으로 놓고, BH가 그보다 늦으면 오른쪽,
+// 빠르면 왼쪽으로 뻗는 막대(도트+선)로 표시. 두 값이 거의 동시인 대다수 행에서도 편차가 늘/줄어드는
+// 게 바로 보이게, 스케일은 4시간(240분) 고정 — 그보다 큰 이상치(예: 하루 이상 차이)는 막대를
+// 끝까지 채우고 점에 흰 테두리+살짝 큰 반경으로 "스케일 밖" 표시만 하고, 정확한 분 차이는 항상
+// 캡션 텍스트로 그대로 보여줌(막대가 잘려도 숫자는 안 잘림).
+const TIME_SCALE_CAP_MINUTES = 240;
+function timeCell(pwTime, bhTime, diffSignedMinutes) {
+  const abs = Math.abs(diffSignedMinutes);
+  const pct = Math.min(abs / TIME_SCALE_CAP_MINUTES, 1) * 50;
+  const clipped = abs > TIME_SCALE_CAP_MINUTES;
+  const later = diffSignedMinutes > 0; // BH가 PW보다 늦게 올림
+  const label = abs === 0 ? '동시' : later ? `PW ${abs}분 먼저` : `BH ${abs}분 먼저`;
+  const dotLeftPct = later ? 50 + pct : 50 - pct;
+  const lineStyle = later ? `left:50%;width:${pct}%` : `right:50%;width:${pct}%`;
+  return `<div class="metriccell" title="PW ${escapeHtml(pwTime)} · BH ${escapeHtml(bhTime)}">
+    <div class="divbar">
+      <div class="divbar-track"></div>
+      <div class="divbar-baseline"></div>
+      ${abs > 0 ? `<div class="divbar-line" style="${lineStyle}"></div>` : ''}
+      <div class="divbar-dot${clipped ? ' clipped' : ''}" style="left:${dotLeftPct}%"></div>
     </div>
-    <div class="metric-diff">${diffMinutes}분 차이</div>
+    <div class="metric-diff">${label}</div>
   </div>`;
 }
 
@@ -107,7 +120,7 @@ function renderPlatformSection(platformKey, data) {
       `<td class="name">${escapeHtml(p.ip || '(미분류)')}</td>`,
       `<td>${escapeHtml(p.line || '-')}</td>`,
       ...displayFields.map(f => `<td class="metric">${metricBar(p.own[`total_${f}`], p.competitor[`total_${f}`], p.diffText[f])}</td>`),
-      `<td class="metric">${timeCell(p.pwTime, p.bhTime, p.timeDiffMinutes)}</td>`,
+      `<td class="metric">${timeCell(p.pwTime, p.bhTime, p.timeDiffSignedMinutes)}</td>`,
       `<td>${verdictBadge(p.verdict)}</td>`,
       `<td><button class="toggle-btn" onclick="toggleEmbeds('${embedRowId}','${platformKey}',this)">▶ 보기</button></td>`,
     ].join('');
@@ -214,10 +227,12 @@ td.metric{min-width:170px}
 .metricbar-pw{background:#1971c2;border-right:2px solid #fff}
 .metricbar-bh{background:#c0504d}
 .metric-diff{font-size:11px;color:#6b7280}
-.timebar{display:flex;gap:6px;width:100%;justify-content:center}
-.timebar-chip{flex:1;font-size:11px;padding:3px 6px;border-radius:6px;text-align:center;white-space:nowrap}
-.timebar-chip.pw{background:#e7f1fb;color:#1971c2}
-.timebar-chip.bh{background:#fbeceb;color:#c0504d}
+.divbar{position:relative;width:100%;height:16px}
+.divbar-track{position:absolute;top:50%;left:0;right:0;height:2px;background:#eef0f4;transform:translateY(-50%)}
+.divbar-baseline{position:absolute;top:2px;bottom:2px;left:50%;width:2px;background:#1971c2;transform:translateX(-1px)}
+.divbar-line{position:absolute;top:50%;height:2px;background:#c0504d;transform:translateY(-50%)}
+.divbar-dot{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;background:#c0504d;transform:translate(-50%,-50%);box-shadow:0 0 0 2px #fff}
+.divbar-dot.clipped{width:10px;height:10px;box-shadow:0 0 0 2px #fff,0 0 0 3px #c0504d}
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
 .badge.ok{background:#ebfbee;color:#2f9e44}.badge.mid{background:#fff4e6;color:#e8590c}.badge.low{background:#fff0f0;color:#c0504d}
 td.empty{color:#9099a6;padding:24px}
