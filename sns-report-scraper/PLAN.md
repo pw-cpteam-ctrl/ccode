@@ -116,17 +116,21 @@
 - `verify-mock.js` — 브라우저/로그인 세션 없이 `aggregate.js`+`excel.js` 내부 로직만 모킹
   데이터로 검증하는 스크립트 (`npm run verify`). 트위터.js/instagram.js가 실제로 반환할 형태를
   흉내낸 값으로 합계·비율 계산, 파싱 실패 집계, 엑셀 히스토리 누적(재실행 시 덮어쓰기 안 됨)까지 확인함.
+- `test-collect.js` — `twitter.js`/`instagram.js`를 계정 하나만 빠르게 테스트하는 CLI
+  (`node test-collect.js twitter <계정> <시작일> <종료일>`). `headless:false` 고정이라 브라우저
+  창을 직접 보면서 확인 가능. `run.js` 전체 CONFIG 채우기 전 사전 점검용.
 
 ## 다음에 재개할 때 할 일
 
 ### 🔴 막혀있는 부분 (사용자 준비 필요 — 코드로 미리 처리 불가)
-- [ ] 인스타그램/X 로그인 세션 파일 생성해서 전달 (`x-session.json`, `instagram-session.json`)
-  — `playwright codegen` 로그인 막힘 → cURL 복사도 크롬이 쿠키 헤더를 가려서 못 씀 → 현재
-  "대안 경로 A-2(F12 Application 탭 쿠키 표 복사)"로 진행 중. 변환 도구
-  (`table-cookies-to-storage-state.js`)는 준비/검증 완료, F12로 쿠키 표 복사해서 전달하는 것만 남음
+- [x] 인스타그램/X 로그인 세션 파일 생성 — `x-session.json`(auth_token/ct0/guest_id 등 5개),
+  `instagram-session.json`(sessionid/csrftoken/ds_user_id 3개) 사용자 로컬에 생성 완료
+  (`table-cookies-to-storage-state.js`로 변환, F12 Application 탭 쿠키 표 복사 방식 채택)
 - [ ] `twitter.js`, `instagram.js`를 실제 계정으로 돌려보고 검증 — **특히 인스타 좌표 파싱
-  (`x>700, y 400~580`)은 실제 화면 레이아웃 확인 전까지 신뢰 불가. 세션 없이는 Playwright로도
-  모킹 한계가 있어서(실제 인스타 DOM 구조 자체가 필요) 검증 불가능함.**
+  (`x>700, y 400~580`)은 실제 화면 레이아웃 확인 전까지 신뢰 불가.** Claude Code 웹 실행
+  환경(원격 샌드박스)은 브라우저 네트워크 접속이 막혀있어 이 검증은 **사용자 로컬 컴퓨터에서만
+  가능** — `test-collect.js`로 계정 하나씩 빠르게 테스트 가능 (`headless:false`로 브라우저 보면서
+  확인). 사용자가 로컬에서 실행하고 결과/에러를 전달하면 그걸 보고 이어서 디버깅하는 방식으로 진행 중
 - [ ] 네이버 커머스API 신청 가능 여부 확인 (2단계, 후속)
 
 ### 🟢 지금 가능한 부분 중 남은 것
