@@ -38,6 +38,18 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
         const link = 'https://x.com' + linkEl.getAttribute('href');
         if (window._seenLinks.has(link)) return;
 
+        // 리트윗/고정 게시물엔 socialContext 라벨("OO님이 리트윗함", "고정된 게시물")이 붙는데,
+        // 이 경우 <time>이 "지금 이 계정이 리트윗한 시점"이 아니라 "원본 게시물이 처음 올라간
+        // 날짜"를 그대로 보여줌. 그래서 오늘 옛날 글을 리트윗하면 실제로는 최신 타임라인인데도
+        // 날짜만 보면 옛날 글처럼 보여서, 기간 시작일 판단 로직(아래)이 스크롤을 시작하기도
+        // 전에 "범위 벗어남"으로 착각해 멈춰버림. 좋아요/RT수도 이 계정 자신의 성과가 아니라
+        // 원본 게시물 것이라 집계에도 안 맞음 — 그래서 리트윗/고정 게시물은 통째로 제외.
+        const socialContext = article.querySelector('[data-testid="socialContext"]');
+        if (socialContext) {
+          window._seenLinks.add(link);
+          return;
+        }
+
         const rtEl = article.querySelector('[data-testid="retweet"] span[data-testid="app-text-transition-container"]');
         const likeEl = article.querySelector('[data-testid="like"] span[data-testid="app-text-transition-container"]');
         const textEl = article.querySelector('[data-testid="tweetText"]');
@@ -93,7 +105,7 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
   });
 
   const endTime = new Date();
-  console.log(`[twitter:${account}] 수집 완료: ${((endTime - startTime) / 1000 / 60).toFixed(1)}분, ${filtered.length}건`);
+  console.log(`[twitter:${account}] 수집 완료: ${((endTime - startTime) / 1000 / 60).toFixed(1)}분, 원본 ${allTweets.length}건 → 기간 필터링 후 ${filtered.length}건 (리트윗/고정 게시물은 원본 수집 단계에서 이미 제외됨)`);
 
   await browser.close();
   return filtered;
