@@ -85,7 +85,11 @@ function extractOwnProductName(text) {
   return firstLine.replace(/^\[[^\]]*\]\s*/, '').trim() || null; // 앞의 "[예약시작]" 등 태그 제거
 }
 
-// 경쟁사 템플릿: "바로가기"/링크가 있는 줄 바로 위 줄이 상품명
+// 구조적 라벨 줄("박스 :", "단품 :" 등) — 경쟁사가 링크를 여러 개 나눠 걸 때 각 링크 위에
+// 붙는 짧은 라벨이라 상품명이 아님. 이 줄을 만나면 무시하고 더 위쪽 줄을 찾음.
+const STRUCTURAL_LABEL_LINE = /^(박스|단품|특전|특전\s*세트|일반품\s*세트?)\s*:?\s*$/;
+
+// 경쟁사 템플릿: "바로가기"/링크가 있는 줄 바로 위(구조적 라벨 줄은 건너뜀)가 상품명
 // ("✔️G.E.M. 시리즈 손바닥 엘런 & 리바이 병장 세트\n\n🛍️바로가기 : https://...")
 function extractCompetitorProductName(text) {
   if (!text) return null;
@@ -93,7 +97,9 @@ function extractCompetitorProductName(text) {
   const linkIdx = lines.findIndex(l => /바로가기|http/i.test(l));
   if (linkIdx > 0) {
     for (let i = linkIdx - 1; i >= 0; i--) {
-      if (lines[i]) return lines[i].replace(/^[✔✅☑️\s]+/, '').trim() || null;
+      if (!lines[i]) continue;
+      if (STRUCTURAL_LABEL_LINE.test(lines[i])) continue;
+      return lines[i].replace(/^[✔✅☑️\s]+/, '').trim() || null;
     }
   }
   // 백업: 링크 줄을 못 찾으면 ✔️로 시작하는 줄을 그냥 찾음
@@ -101,30 +107,63 @@ function extractCompetitorProductName(text) {
   return checkLine ? checkLine.replace(/^[✔✅☑️\s]+/, '').trim() || null : null;
 }
 
-// 매칭에 쓰기엔 너무 흔한 단어(브랜드/시리즈/판매/공지 관련 상용구) — 이 단어들만 겹쳐서는
-// 같은 상품으로 보지 않음. **부분 포함(substring)으로 걸러냄** — 한국어는 띄어쓰기 없이
-// 붙여 쓰는 경우가 많아서("예약시작", "정보공개") 정확히 일치하는 단어만 걸러내면 놓치는
-// 경우가 많았음. 실제 매칭 결과 보고 계속 추가해나가면 됨.
+// 매칭에 쓰기엔 너무 흔한 단어(브랜드/시리즈/판매/공지/URL 관련 상용구) — 이 단어들만
+// 겹쳐서는 같은 상품으로 보지 않음. **부분 포함(substring)으로 걸러냄** — 한국어는
+// 띄어쓰기 없이 붙여 쓰는 경우가 많아서("예약시작", "정보공개") 정확히 일치하는 단어만
+// 걸러내면 놓치는 경우가 많았음. 실제 매칭 결과 보고 계속 추가해나가면 됨.
+// ⚠️ KNOWN_PRODUCT_LINES(룩업/GEM/컬렉션 등)도 매칭 단계에서는 반드시 같이 제외해야 함 —
+// 여러 프랜차이즈가 같은 상품 라인을 공유해서, 안 그러면 그걸로 전부 하나로 묶여버림.
 const GENERIC_KEYWORDS = [
-  '메가하우스', 'GEM', 'G.E.M', '시리즈', '피규어', '액션', '세트', '예약', '판매', '할인', '혜택',
-  '마감', '발매', '캠페인', '공식', '스토어', '신제품', '특가', '한정', '재입고', '정품', '구매',
-  '바로가기', '이벤트', '사전', '오픈', '입고', '정보', '공개', '쿠폰', '발급', '안내', '참여',
-  '당첨', '감사', '진행', '완료', '확인', '전체', '구경', '클릭', '링크', '프로필', '알림',
-  '세컨드', '재판', '리뉴얼', '복간', '한정판',
+  '메가하우스', '프레젠스월드', '프레젠스', '월드', '베스트하비', 'GEM', 'G.E.M', '시리즈', '피규어',
+  '액션', '세트', '예약', '판매', '할인', '혜택', '마감', '발매', '캠페인', '공식', '스토어',
+  '신제품', '특가', '한정', '재입고', '정품', '구매', '바로가기', '이벤트', '사전', '오픈', '입고',
+  '정보', '공개', '쿠폰', '발급', '안내', '참여', '당첨', '감사', '진행', '완료', '확인', '전체',
+  '구경', '클릭', '링크', '프로필', '알림', '세컨드', '재판', '리뉴얼', '복간', '한정판', '개시',
+  '시작', '기간', '예정', '상품', '제품', '품절', '가격', '박스', '단품', '특전', '일반품',
+  '버전', 'Ver',
+  // 팔로우 유도 등 반복 상용구(여러 프랜차이즈 게시물에 그대로 재사용돼서 매칭 오염됨)
+  '팔로우하고', '기다리는', '굿즈의', '후속', '가장', '빠르게', '받아보세요',
+  // 인스타 "구매는 프로필 링크를 참고해 주세요!" 등 반복 CTA 문구
+  '참고해', '참조', '참고', '주세요', '해주세요', '하단', '구성', '자세한', '내용',
+  'mkt', 'shopping', 'naver', 'com', 'link', 'https', 'site',
 ];
 
-// 상품명 텍스트에서 매칭용 키워드만 추출 (한글/영문 토큰, 상용구/숫자 제외)
-function extractKeywords(title) {
-  if (!title) return [];
-  const normalized = title.replace(/(?<=[A-Za-z])\.(?=[A-Za-z])/g, ''); // "G.E.M." → "GEM"
-  const tokens = normalized.match(/[\p{L}\p{N}]+/gu) || [];
-  return [...new Set(tokens.filter(t =>
-    t.length >= 2
-    && !/\d/.test(t) // "26년", "7월" 같은 날짜/숫자 토큰은 거의 모든 게시물에 공통으로 등장해서
-                     // 매칭 신호로 못 씀 — 이걸 걸러내지 않으면 날짜 하나로 전체 게시물이
-                     // 사슬처럼 다 이어져서 하나의 "상품"으로 잘못 뭉쳐짐
-    && !GENERIC_KEYWORDS.some(g => t.includes(g))
-  ))];
+// naver.com 등 상품 링크 줄을 통째로 제거. 이 링크 뒤에 붙는 해시값(예: "6a44b667b")은
+// 16진수라 a~f 알파벳 6개뿐이라, 숫자만 지우고 남기면 무관한 게시물끼리도 "ca", "ef" 같은
+// 조각이 우연히 겹쳐서 전부 하나로 잘못 뭉쳐지는 문제가 있었음 — 그래서 낱말 단위 제외가
+// 아니라 그 줄 자체를 통째로 지워야 함.
+function stripUrlNoise(text) {
+  return text.split('\n').filter(line => {
+    const t = line.trim();
+    if (!t) return true; // 빈 줄은 무해하니 유지
+    if (/^https?:\/\//i.test(t)) return false;
+    if (/naver\.com|\.com\//i.test(t)) return false;
+    if (/^[a-f0-9]{8,}$/i.test(t)) return false; // 순수 16진수 해시 줄
+    if (/^[.…]+$/.test(t)) return false; // "…" / "..."
+    return true;
+  }).join('\n');
+}
+
+// 상품명 매칭용 키워드 추출. **본문 전체**를 대상으로 함 — 자사/경쟁사 둘 다 실제
+// 프랜차이즈명이 제목 한 줄이 아니라 본문 여기저기(본문 중간 줄 + 해시태그)에 흩어져
+// 있어서, 좁은 "제목 한 줄"만 보면 진짜 식별 정보를 놓치는 경우가 많았음.
+// (예: 경쟁사는 "원피스 #ワンピース" 프랜차이즈 줄과 "토비마스 원피스 (재판)" 상품 줄이
+// 따로 떨어져 있고, 자사는 첫 줄엔 라인명만 있고 구체적 상품명은 3~4줄 아래에 있음)
+// 상용구/라인명 제거는 토큰을 통째로 버리지 않고 **문자열에서 부분 제거**하는 방식 —
+// "배리어블액션"처럼 붙여 쓴 단어에서 "액션"만 지우고 "배리어블"은 남기기 위함.
+// 토큰은 한글/영문 글자만 인정(숫자 제외) — "26년", "7월" 같은 날짜가 자동으로 안 걸림.
+function extractKeywords(text) {
+  if (!text) return [];
+  let cleaned = stripUrlNoise(text)
+    .replace(/(?<=[A-Za-z])\.(?=[A-Za-z])/g, '') // "G.E.M." → "GEM"
+    .replace(/\[[^\]]*\]/g, ' '); // "[예약시작]", "[채색원형 최초공개]" 같은 브라켓 태그는 통째로
+                                  // 제거 — 안 지우면 서로 다른 상품 게시물에 반복돼서 그 브라켓
+                                  // 안 문구(예: "채색원형", "최초") 하나로 무관한 상품들이 엮임
+  [...GENERIC_KEYWORDS, ...KNOWN_PRODUCT_LINES].forEach(g => {
+    cleaned = cleaned.replace(new RegExp(g.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ' ');
+  });
+  const tokens = cleaned.match(/[\p{L}]+/gu) || [];
+  return [...new Set(tokens.filter(t => t.length >= 2))];
 }
 
 // 상품별 표에서 PW/BH를 나란히 놓을 때 쓰는 지표 순서 (트위터는 리트윗 먼저, 인스타는 좋아요 먼저)
@@ -214,9 +253,16 @@ function earliestDatetime(posts) {
 function buildProductComparison(ownPosts, competitorPosts, fields, textField, displayFields) {
   const ownEntries = ownPosts.map(post => ({ side: 'own', post, title: extractOwnProductName(post[textField]) }));
   const competitorEntries = competitorPosts.map(post => ({ side: 'competitor', post, title: extractCompetitorProductName(post[textField]) }));
-  const entries = [...ownEntries, ...competitorEntries].map(e => ({ ...e, keywords: extractKeywords(e.title) }));
+  // 매칭(그룹화) 판단은 좁은 title 한 줄이 아니라 본문 전체 텍스트 기준 — 프랜차이즈명이
+  // title 추출 규칙이 못 잡는 다른 줄/해시태그에 있는 경우가 많아서(위 extractKeywords 설명 참고)
+  const entries = [...ownEntries, ...competitorEntries].map(e => ({ ...e, keywords: extractKeywords(e.post[textField]) }));
 
-  // Union-Find: 키워드가 하나라도 겹치는 게시물들을 같은 상품 그룹으로 묶음
+  // Union-Find: 키워드가 **2개 이상** 겹치는 게시물들을 같은 상품 그룹으로 묶음.
+  // 딱 1개만 겹쳐도 매칭시켰을 때, 실제 데이터에서 상용구 제외 목록에 없는 단어 하나
+  // (예: "SET", "버전")가 우연히 겹치는 것만으로 서로 다른 프랜차이즈 게시물들이 사슬처럼
+  // 전부 연결돼버리는 문제가 반복적으로 나왔음. 2개 이상 요구하면 그런 우연한 단일 단어
+  // 충돌은 걸러지고, 진짜 같은 상품(프랜차이즈명 + 구체적 단어 등 최소 2개 겹침)은 잘 잡힘.
+  const MIN_SHARED_KEYWORDS = 2;
   const parent = entries.map((_, i) => i);
   function find(i) { return parent[i] === i ? i : (parent[i] = find(parent[i])); }
   function union(i, j) { const a = find(i), b = find(j); if (a !== b) parent[a] = b; }
@@ -225,7 +271,8 @@ function buildProductComparison(ownPosts, competitorPosts, fields, textField, di
     if (entries[i].keywords.length === 0) continue;
     for (let j = i + 1; j < entries.length; j++) {
       if (entries[j].keywords.length === 0) continue;
-      if (entries[i].keywords.some(k => entries[j].keywords.includes(k))) union(i, j);
+      const overlap = entries[i].keywords.filter(k => entries[j].keywords.includes(k));
+      if (overlap.length >= MIN_SHARED_KEYWORDS) union(i, j);
     }
   }
 

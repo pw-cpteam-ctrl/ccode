@@ -6,7 +6,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { parseCount, buildComparisonReport, extractOwnProductName, extractCompetitorProductName } = require('./aggregate');
+const { parseCount, buildComparisonReport, extractOwnProductName, extractCompetitorProductName, extractKeywords } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
 
 function check(label, fn) {
@@ -48,11 +48,11 @@ const compTwitterPosts = [
 ];
 const ownInstaPosts = [
   // instagram.js는 좌표 파싱 실패 시 likes/comments가 null일 수 있음 — 그 케이스도 포함
-  { url: 'https://instagram.com/p/1', datetime: '2026-07-01T01:00:00.000Z', likes: '2.3만', comments: '150', caption: '카무이 GEM 세트\n\n예약중\nhttps://m.site.naver.com/abc' },
+  { url: 'https://instagram.com/p/1', datetime: '2026-07-01T01:00:00.000Z', likes: '2.3만', comments: '150', caption: '은혼 카무이 GEM 세트\n\n예약중\nhttps://m.site.naver.com/abc' },
   { url: 'https://instagram.com/p/2', datetime: '2026-07-01T04:00:00.000Z', likes: null, comments: '알수없음', caption: '정기 점검 안내 (특정 상품 아님)' },
 ];
 const compInstaPosts = [
-  { url: 'https://instagram.com/p/3', datetime: '2026-07-01T02:00:00.000Z', likes: '1.5만', comments: '80', caption: '✔️카무이 세컨드 버전\n\n🛍️바로가기 : https://mkt.shopping.naver.com/link/abc' },
+  { url: 'https://instagram.com/p/3', datetime: '2026-07-01T02:00:00.000Z', likes: '1.5만', comments: '80', caption: '✔️은혼 카무이 세컨드 버전\n\n🛍️바로가기 : https://mkt.shopping.naver.com/link/abc' },
 ];
 
 const report = buildComparisonReport({
@@ -114,6 +114,27 @@ check('buildProductComparison: 본문 템플릿 기반 상품명 추출 + 키워
   assert.strictEqual(ig.products[0].own.total_comments, 150);
   assert.strictEqual(ig.products[0].competitor.total_comments, 80);
   assert.strictEqual(ig.ownUnmatched.length, 1);
+});
+
+// 실제 계정 데이터로 검증했을 때 발견된 3가지 오매칭 패턴 회귀 방지 테스트
+check('extractKeywords: 실전에서 발견된 오매칭 패턴들이 다시 생기지 않는지', () => {
+  // 1) 브라켓 태그("[채색원형 최초공개]")가 서로 다른 프랜차이즈 게시물을 연결하면 안 됨
+  const a = extractKeywords('[채색원형 최초공개] 원피스 메가캣\n\nMEGA CAT PROJECT 냥피스');
+  const b = extractKeywords('[채색원형 최초공개] 은혼 룩업 미니어처 컬렉션');
+  const bracketOverlap = a.filter(k => b.includes(k));
+  assert.strictEqual(bracketOverlap.length, 0, '브라켓 태그 문구만으로는 겹치는 키워드가 없어야 함');
+
+  // 2) naver.com 링크의 16진수 해시 조각("ca","ef" 등)이 무관한 게시물을 연결하면 안 됨
+  const c = extractKeywords('원피스 토비마스\n\nhttps://\nmkt.shopping.naver.com/link/6a44b667b\nb3426556b41926e\n…');
+  const d = extractKeywords('은혼 카무이\n\nhttps://\nmkt.shopping.naver.com/link/6a45eb80b\nb3426556b41939a\n…');
+  const urlHashOverlap = c.filter(k => d.includes(k));
+  assert.strictEqual(urlHashOverlap.length, 0, 'URL 해시 조각으로는 겹치는 키워드가 없어야 함');
+
+  // 3) 흔한 단어("SET") 하나만 겹치는 건 매칭 기준(2개 이상) 미달이어야 함
+  const e = extractKeywords('원피스 컬렉션 SET');
+  const f = extractKeywords('은혼 컬렉션 SET');
+  const singleWordOverlap = e.filter(k => f.includes(k));
+  assert.ok(singleWordOverlap.length < 2, '흔한 단어 1개 겹침만으로는 매칭 기준(2개 이상)에 못 미쳐야 함');
 });
 
 check('extractOwnProductName / extractCompetitorProductName: 템플릿 위치 기반 추출', () => {
