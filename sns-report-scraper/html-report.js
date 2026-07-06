@@ -25,15 +25,35 @@ function fieldIcon(f) {
 
 // PW vs BH 비교는 "부분 대 전체" 문제라 프로그레스 바(단일값 대 한계치)가 아니라
 // 막대 하나를 두 값의 비율로 나눠 채우는 분할 바가 맞음 — 2px 표면 간극으로 두 구간을 분리.
-function miniBar(pw, bh) {
+// 값 라벨은 막대 안이 아니라 막대 양 끝 바깥에 둠 — 비율이 크게 벌어지면(예: 355:1) 작은 쪽
+// 구간이 라벨을 담을 폭이 안 나오므로, "잘리는 라벨"보다 "끝에 고정된 라벨"이 항상 안전함.
+function metricBar(pw, bh, diffText) {
   const total = pw + bh;
   const title = `PW ${pw.toLocaleString()} · BH ${bh.toLocaleString()}`;
-  if (total <= 0) return `<div class="vsbar empty" title="${escapeHtml(title)}"></div>`;
-  const pwPct = (pw / total) * 100;
-  const bhPct = 100 - pwPct;
-  return `<div class="vsbar" title="${escapeHtml(title)}">
-    <div class="vsbar-pw" style="width:${pwPct}%"></div>
-    <div class="vsbar-bh" style="width:${bhPct}%"></div>
+  const pwPct = total > 0 ? (pw / total) * 100 : 0;
+  const track = total > 0
+    ? `<div class="metricbar-pw" style="width:${pwPct}%"></div><div class="metricbar-bh" style="width:${100 - pwPct}%"></div>`
+    : '';
+  return `<div class="metriccell" title="${escapeHtml(title)}">
+    <div class="metricbar">
+      <span class="metricbar-val pw">${pw.toLocaleString()}</span>
+      <div class="metricbar-track">${track}</div>
+      <span class="metricbar-val bh">${bh.toLocaleString()}</span>
+    </div>
+    <div class="metric-diff">${escapeHtml(diffText)}</div>
+  </div>`;
+}
+
+// 시각(PW/BH 게시 시각)은 합이 의미 없는 값(부분-전체 관계가 아님)이라 폭을 비율로 나누면
+// 값을 왜곡해서 보여주는 셈이 됨 — 그래서 절반씩 칩 2개로만 시각적 계열을 맞추고, 실제 시간
+// 차이는 막대 밑 캡션 텍스트로 정확히 표기.
+function timeCell(pwTime, bhTime, diffMinutes) {
+  return `<div class="metriccell">
+    <div class="timebar">
+      <span class="timebar-chip pw">${escapeHtml(pwTime)}</span>
+      <span class="timebar-chip bh">${escapeHtml(bhTime)}</span>
+    </div>
+    <div class="metric-diff">${diffMinutes}분 차이</div>
   </div>`;
 }
 
@@ -74,27 +94,20 @@ function renderPlatformSection(platformKey, data) {
     </div>`;
 
   const headerCells = ['순위', 'IP', '시리즈',
-    ...displayFields.flatMap(f => [`PW ${fieldIcon(f)}`, `BH ${fieldIcon(f)}`]),
-    'PW ⏰', 'BH ⏰',
-    ...displayFields.map(f => `${fieldIcon(f)}차이`),
-    '⏰차이', '결과', '게시물'];
+    ...displayFields.map(f => fieldIcon(f)),
+    '⏰', '결과', '게시물'];
 
   const rows = products.map((p, i) => {
     const rank = i + 1;
     const rankCell = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
     const embedRowId = `embed-${platformKey}-${i}`;
+    const verdictRowClass = { 경합: 'verdict-mid', 약세: 'verdict-low' }[p.verdict] || '';
     const cells = [
       `<td class="rank">${rankCell}</td>`,
       `<td class="name">${escapeHtml(p.ip || '(미분류)')}</td>`,
       `<td>${escapeHtml(p.line || '-')}</td>`,
-      ...displayFields.flatMap(f => [
-        `<td class="num pw">${p.own[`total_${f}`].toLocaleString()}</td>`,
-        `<td class="num bh">${p.competitor[`total_${f}`].toLocaleString()}</td>`,
-      ]),
-      `<td class="time">${escapeHtml(p.pwTime)}</td>`,
-      `<td class="time">${escapeHtml(p.bhTime)}</td>`,
-      ...displayFields.map(f => `<td class="diff">${miniBar(p.own[`total_${f}`], p.competitor[`total_${f}`])}<span class="diff-text">${escapeHtml(p.diffText[f])}</span></td>`),
-      `<td class="diff">${p.timeDiffMinutes}분</td>`,
+      ...displayFields.map(f => `<td class="metric">${metricBar(p.own[`total_${f}`], p.competitor[`total_${f}`], p.diffText[f])}</td>`),
+      `<td class="metric">${timeCell(p.pwTime, p.bhTime, p.timeDiffMinutes)}</td>`,
       `<td>${verdictBadge(p.verdict)}</td>`,
       `<td><button class="toggle-btn" onclick="toggleEmbeds('${embedRowId}','${platformKey}',this)">▶ 보기</button></td>`,
     ].join('');
@@ -111,7 +124,7 @@ function renderPlatformSection(platformKey, data) {
       </div>
     </td></tr>`;
 
-    return `<tr class="${rank <= 3 ? 'top3' : ''}">${cells}</tr>${embedRow}`;
+    return `<tr class="${verdictRowClass}">${cells}</tr>${embedRow}`;
   }).join('');
 
   // 번호(PW #1, BH #1...)를 붙여둠 — 수동 매칭 지시할 때 "PW 3번 BH 1번 매칭해줘"처럼
@@ -184,21 +197,27 @@ section.platform{margin-bottom:36px}
 .cards{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .card{background:#fff;border-radius:12px;padding:14px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08);flex:1;min-width:150px}
 .card .k{color:#6b7280;font-size:12px}.card .v{font-size:20px;font-weight:700;color:#3b5bdb;margin-top:2px}
-.card .s{color:#9099a6;font-size:11px;margin-top:2px}.card.pw .v{color:#e8590c}.card.bh .v{color:#c0504d}
+.card .s{color:#9099a6;font-size:11px;margin-top:2px}.card.pw .v{color:#1971c2}.card.bh .v{color:#c0504d}
 .table-wrap{overflow-x:auto;background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 table{width:100%;border-collapse:collapse;white-space:nowrap}
 th{background:#3b5bdb;color:#fff;font-size:12px;padding:10px 8px;position:sticky;top:0}
 td{padding:9px 8px;border-bottom:1px solid #eef0f4;font-size:13px;text-align:center;vertical-align:middle}
-tr.top3{background:#fffbeb}tr:hover{background:#f0f4ff}
+tr.verdict-mid{background:#fff9db}tr.verdict-low{background:#fff0f0}tr:hover{background:#f0f4ff}
 .rank{font-size:15px;font-weight:700;width:38px}
 td.name{text-align:left;font-weight:600}
-td.num.pw{color:#e8590c;font-weight:600}td.num.bh{color:#c0504d;font-weight:600}
-td.diff{color:#374151;font-size:12px;min-width:64px}td.time{color:#6b7280;font-size:12px}
-.vsbar{display:flex;width:100%;height:8px;border-radius:4px;overflow:hidden;background:#eef0f4;margin:0 auto 4px}
-.vsbar.empty{background:#eef0f4}
-.vsbar-pw{background:#e8590c;border-right:2px solid #fff}
-.vsbar-bh{background:#c0504d}
-.diff-text{font-size:11px}
+td.metric{min-width:170px}
+.metriccell{display:flex;flex-direction:column;align-items:center;gap:3px}
+.metricbar{display:flex;align-items:center;gap:6px;width:100%}
+.metricbar-val{font-size:12px;font-weight:700;white-space:nowrap}
+.metricbar-val.pw{color:#1971c2}.metricbar-val.bh{color:#c0504d}
+.metricbar-track{flex:1;display:flex;height:10px;border-radius:5px;overflow:hidden;background:#eef0f4;min-width:40px}
+.metricbar-pw{background:#1971c2;border-right:2px solid #fff}
+.metricbar-bh{background:#c0504d}
+.metric-diff{font-size:11px;color:#6b7280}
+.timebar{display:flex;gap:6px;width:100%;justify-content:center}
+.timebar-chip{flex:1;font-size:11px;padding:3px 6px;border-radius:6px;text-align:center;white-space:nowrap}
+.timebar-chip.pw{background:#e7f1fb;color:#1971c2}
+.timebar-chip.bh{background:#fbeceb;color:#c0504d}
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
 .badge.ok{background:#ebfbee;color:#2f9e44}.badge.mid{background:#fff4e6;color:#e8590c}.badge.low{background:#fff0f0;color:#c0504d}
 td.empty{color:#9099a6;padding:24px}
@@ -210,7 +229,7 @@ tr.embed-row td{white-space:normal;text-align:left}
 .embed-cols{display:flex;gap:20px;padding:12px 4px}
 .embed-col{flex:1;min-width:0;max-height:640px;overflow-y:auto}
 .embed-col h4{margin:0 0 8px;font-size:12px;padding-bottom:6px;border-bottom:2px solid #eef0f4}
-.embed-col h4.pw{color:#e8590c}.embed-col h4.bh{color:#c0504d}
+.embed-col h4.pw{color:#1971c2}.embed-col h4.bh{color:#c0504d}
 .embed-empty{color:#9099a6;font-size:12px}
 details.unmatched{margin-top:10px;background:#fff;border-radius:12px;padding:10px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 details.unmatched summary{cursor:pointer;color:#6b7280;font-size:13px}
