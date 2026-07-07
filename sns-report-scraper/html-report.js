@@ -46,27 +46,31 @@ function metricBar(pw, bh, diffText) {
 
 // 시각은 "PW 대비 BH가 얼마나 앞/뒤로 떨어져 있나"(기준선 대비 편차)라 부분-전체(분할 바) 문제가
 // 아니라 diverging 문제임 — PW 시각을 컬럼 중앙 기준선(0)으로 놓고, BH가 그보다 늦으면 오른쪽,
-// 빠르면 왼쪽으로 뻗는 막대(도트+선)로 표시. 두 값이 거의 동시인 대다수 행에서도 편차가 늘/줄어드는
-// 게 바로 보이게, 스케일은 4시간(240분) 고정 — 그보다 큰 이상치(예: 하루 이상 차이)는 막대를
-// 끝까지 채우고 점에 흰 테두리+살짝 큰 반경으로 "스케일 밖" 표시만 하고, 정확한 분 차이는 항상
-// 캡션 텍스트로 그대로 보여줌(막대가 잘려도 숫자는 안 잘림).
-const TIME_SCALE_CAP_MINUTES = 240;
+// 빠르면 왼쪽으로 뻗는 막대(도트+선)로 표시. 실제 데이터는 대다수가 10분 이내 차이라 스케일을
+// 10분으로 고정해서 그 안에서의 편차를 크게 벌려 보여주고, 228분/1855분 같은 말 안 되는
+// 이상치는 막대를 끝까지 채운 뒤 점 반경을 눈에 띄게 키워서 "스케일 밖"임을 표시(정확한 분
+// 차이를 숫자로 보여주는 대신, 점 크기 자체가 "정상 범위 벗어남" 신호). 원본 시각(날짜 없이
+// 시:분만)은 막대 밑에 PW/BH 순서로 표시 — 상대적 "먼저/늦음" 문구 대신 실제 값을 그대로 보여줌.
+const TIME_SCALE_CAP_MINUTES = 10;
+function timeOnly(kstTimeText) {
+  return kstTimeText.split(' ').pop(); // "7/1 12:20" -> "12:20"
+}
 function timeCell(pwTime, bhTime, diffSignedMinutes) {
   const abs = Math.abs(diffSignedMinutes);
-  const pct = Math.min(abs / TIME_SCALE_CAP_MINUTES, 1) * 50;
+  const pct = Math.min(abs / TIME_SCALE_CAP_MINUTES, 1) * 46;
   const clipped = abs > TIME_SCALE_CAP_MINUTES;
   const later = diffSignedMinutes > 0; // BH가 PW보다 늦게 올림
-  const label = abs === 0 ? '동시' : later ? `PW ${abs}분 먼저` : `BH ${abs}분 먼저`;
   const dotLeftPct = later ? 50 + pct : 50 - pct;
   const lineStyle = later ? `left:50%;width:${pct}%` : `right:50%;width:${pct}%`;
-  return `<div class="metriccell" title="PW ${escapeHtml(pwTime)} · BH ${escapeHtml(bhTime)}">
+  const diffLabel = abs === 0 ? '동시' : later ? `PW ${abs}분 먼저` : `BH ${abs}분 먼저`;
+  return `<div class="metriccell" title="${escapeHtml(diffLabel)} (${escapeHtml(pwTime)} · ${escapeHtml(bhTime)})">
     <div class="divbar">
       <div class="divbar-track"></div>
       <div class="divbar-baseline"></div>
       ${abs > 0 ? `<div class="divbar-line" style="${lineStyle}"></div>` : ''}
       <div class="divbar-dot${clipped ? ' clipped' : ''}" style="left:${dotLeftPct}%"></div>
     </div>
-    <div class="metric-diff">${label}</div>
+    <div class="time-labels"><span>${escapeHtml(timeOnly(pwTime))}</span><span>${escapeHtml(timeOnly(bhTime))}</span></div>
   </div>`;
 }
 
@@ -232,7 +236,8 @@ td.metric{min-width:170px}
 .divbar-baseline{position:absolute;top:2px;bottom:2px;left:50%;width:2px;background:#1971c2;transform:translateX(-1px)}
 .divbar-line{position:absolute;top:50%;height:2px;background:#c0504d;transform:translateY(-50%)}
 .divbar-dot{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;background:#c0504d;transform:translate(-50%,-50%);box-shadow:0 0 0 2px #fff}
-.divbar-dot.clipped{width:10px;height:10px;box-shadow:0 0 0 2px #fff,0 0 0 3px #c0504d}
+.divbar-dot.clipped{width:14px;height:14px;box-shadow:0 0 0 2px #fff,0 0 0 4px rgba(192,80,77,.35)}
+.time-labels{display:flex;justify-content:space-between;width:100%;font-size:11px;color:#6b7280;margin-top:4px;font-variant-numeric:tabular-nums}
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
 .badge.ok{background:#ebfbee;color:#2f9e44}.badge.mid{background:#fff4e6;color:#e8590c}.badge.low{background:#fff0f0;color:#c0504d}
 td.empty{color:#9099a6;padding:24px}
@@ -264,7 +269,8 @@ ${sections}
 ※ 상품명은 게시물 본문에서 자동 추출(당사: 첫 줄 / 경쟁사: 링크 줄 위) 후, 키워드 2개 이상 겹치는 게시물끼리 그룹화한 결과입니다.<br>
 ※ 표현이 서로 다르거나 상품명을 못 뽑은 게시물은 "매칭 안 됨" 목록에 별도로 있습니다 — 조용히 빠진 게 아닙니다.<br>
 ※ 결과(우세/경합/약세)는 표에 표시된 지표(리트윗+좋아요 또는 좋아요+댓글)가 둘 다 PW가 크면 우세, 둘 다 작으면 약세, 엇갈리면 경합입니다.<br>
-※ "게시물 보기"는 인터넷 연결된 브라우저에서 열어야 실제 카드로 보입니다 — 오프라인/차단 상태면 링크만 보임.
+※ "게시물 보기"는 인터넷 연결된 브라우저에서 열어야 실제 카드로 보입니다 — 오프라인/차단 상태면 링크만 보임.<br>
+※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선, 빨간 점이 그 대비 BH 위치(왼쪽=BH가 먼저, 오른쪽=BH가 늦음). 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(정확한 시:분은 막대 밑 숫자, 마우스 올리면 분 단위 차이도 보임).
 </div>
 </div>
 <script>
