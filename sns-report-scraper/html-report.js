@@ -69,10 +69,13 @@ function metricBar(pw, bh, diffText) {
 // 아니라 diverging 문제임 — PW 시각을 컬럼 중앙 기준선(0)으로 놓고, BH가 그보다 늦으면 오른쪽,
 // 빠르면 왼쪽으로 뻗는 막대(도트+선)로 표시. 실제 데이터는 대다수가 10분 이내 차이라 스케일을
 // 10분으로 고정해서 그 안에서의 편차를 크게 벌려 보여주고, 228분/1855분 같은 말 안 되는
-// 이상치는 막대를 끝까지 채운 뒤 점 반경을 눈에 띄게 키워서 "스케일 밖"임을 표시. 밑에는
-// "PW/BH 몇 분 먼저" 문구도, 실제 시:분도 없이 — 우리(PW) 기준 부호 있는 숫자 하나만 중앙에
-// 표기(+분=PW가 먼저=파란색, -분=BH가 먼저=빨간색). 실제 시:분은 툴팁에만 남김.
+// 이상치는 막대를 끝까지 채운 뒤 점 반경을 눈에 띄게 키워서 "스케일 밖"임을 표시. 밑에는 원본
+// 시:분을 양옆에 그대로 두고, 그 사이 중앙에 PW 기준 부호 있는 분 차이를 색으로 표기
+// (+분=PW가 먼저=파란색, -분=BH가 먼저=빨간색) — 원본 값과 계산된 차이를 둘 다 보여줌.
 const TIME_SCALE_CAP_MINUTES = 10;
+function timeOnly(kstTimeText) {
+  return kstTimeText.split(' ').pop(); // "7/1 12:20" -> "12:20"
+}
 function timeCell(pwTime, bhTime, diffSignedMinutes) {
   const abs = Math.abs(diffSignedMinutes);
   const pct = Math.min(abs / TIME_SCALE_CAP_MINUTES, 1) * 46;
@@ -89,7 +92,11 @@ function timeCell(pwTime, bhTime, diffSignedMinutes) {
       ${abs > 0 ? `<div class="divbar-line" style="${lineStyle}"></div>` : ''}
       <div class="divbar-dot${clipped ? ' clipped' : ''}" style="left:${dotLeftPct}%"></div>
     </div>
-    <div class="time-diff-num ${numClass}">${numText}</div>
+    <div class="time-row">
+      <span class="time-raw">${escapeHtml(timeOnly(pwTime))}</span>
+      <span class="time-diff-num ${numClass}">${numText}</span>
+      <span class="time-raw">${escapeHtml(timeOnly(bhTime))}</span>
+    </div>
   </div>`;
 }
 
@@ -120,13 +127,18 @@ function renderPlatformSection(platformKey, data) {
     bhTotals[f] = products.reduce((s, p) => s + p.competitor[`total_${f}`], 0);
   });
 
+  // 지표별 PW카드/BH카드/파이 3개를 한 그룹으로 묶어서 폭이 좁아 줄바꿈되더라도 그룹 전체가
+  // 통째로 다음 줄로 넘어가게 함 — 그룹 내부가 갈라지면 짝이 안 맞는 카드만 남아 유독
+  // 커 보이거나(flex 늘어남) 관계가 끊겨 보이는 문제가 있었음.
   const cards = `
     <div class="cards">
       <div class="card"><div class="k">매칭된 상품</div><div class="v">${products.length}개</div><div class="s">매칭 안 됨 PW ${ownUnmatched.length} · BH ${competitorUnmatched.length}</div></div>
       ${displayFields.map(f => `
-      <div class="card pw"><div class="k">PW 총 ${FIELD_LABELS[f] || f}</div><div class="v">${pwTotals[f].toLocaleString()}</div><div class="s">매칭 상품 기준</div></div>
-      <div class="card bh"><div class="k">BH 총 ${FIELD_LABELS[f] || f}</div><div class="v">${bhTotals[f].toLocaleString()}</div><div class="s">PW 대비 ${formatRatioCard(pwTotals[f], bhTotals[f])}</div></div>
-      ${pieCard(f, pwTotals[f], bhTotals[f])}
+      <div class="card-group">
+        <div class="card pw"><div class="k">PW 총 ${FIELD_LABELS[f] || f}</div><div class="v">${pwTotals[f].toLocaleString()}</div><div class="s">매칭 상품 기준</div></div>
+        <div class="card bh"><div class="k">BH 총 ${FIELD_LABELS[f] || f}</div><div class="v">${bhTotals[f].toLocaleString()}</div><div class="s">PW 대비 ${formatRatioCard(pwTotals[f], bhTotals[f])}</div></div>
+        ${pieCard(f, pwTotals[f], bhTotals[f])}
+      </div>
       `).join('')}
     </div>`;
 
@@ -232,7 +244,8 @@ section.platform{margin-bottom:36px}
 .toggle-all-btn{border:1px solid #d0d5e0;background:#fff;color:#3b5bdb;font-size:12px;padding:5px 12px;border-radius:8px;cursor:pointer}
 .toggle-all-btn:hover{background:#eef2ff}
 .cards{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
-.card{background:#fff;border-radius:12px;padding:14px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08);flex:1;min-width:150px}
+.card-group{display:flex;gap:12px;flex:none}
+.card{background:#fff;border-radius:12px;padding:14px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08);flex:0 1 190px;min-width:150px}
 .card .k{color:#6b7280;font-size:12px}.card .v{font-size:20px;font-weight:700;color:#3b5bdb;margin-top:2px}
 .card .s{color:#9099a6;font-size:11px;margin-top:2px}.card.pw .v{color:#1971c2}.card.bh .v{color:#c0504d}
 .card.piecard{flex:0 0 auto;min-width:auto}
@@ -262,7 +275,10 @@ td.metric{min-width:170px}
 .divbar-line{position:absolute;top:50%;height:2px;background:#c0504d;transform:translateY(-50%)}
 .divbar-dot{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;background:#c0504d;transform:translate(-50%,-50%);box-shadow:0 0 0 2px #fff}
 .divbar-dot.clipped{width:14px;height:14px;box-shadow:0 0 0 2px #fff,0 0 0 4px rgba(192,80,77,.35)}
-.time-diff-num{font-size:12px;font-weight:700;text-align:center;width:100%;margin-top:4px;font-variant-numeric:tabular-nums;color:#6b7280}
+.time-row{display:flex;align-items:baseline;width:100%;margin-top:4px;gap:6px}
+.time-raw{flex:1;font-size:11px;color:#6b7280;font-variant-numeric:tabular-nums}
+.time-raw:first-child{text-align:left}.time-raw:last-child{text-align:right}
+.time-diff-num{flex:none;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;color:#6b7280}
 .time-diff-num.pw{color:#1971c2}.time-diff-num.bh{color:#c0504d}
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
 .badge.ok{background:#ebfbee;color:#2f9e44}.badge.mid{background:#fff4e6;color:#e8590c}.badge.low{background:#fff0f0;color:#c0504d}
