@@ -565,7 +565,7 @@ function buildCopy(){
   const titleB = [series, prefix, (isLong?alias:'')].filter(Boolean).join(' ').trim();
   // 캐릭터 줄 (시리즈/접두어 없이)
   let prodLines=state.text.product.split('\n').map(s=>s.trim()).filter(Boolean);
-  if(h==='한정 재판매 결정') prodLines=prodLines.map(l=>l+'  【한정 재판매판】');
+  if(h==='한정 재판매 결정') prodLines=prodLines.map(l=>l+' 【한정 재판매판】');
   if(state.bullet) prodLines=prodLines.map(l=>'• '+l);
   const block=[titleB, prodLines.join('\n')].filter(Boolean).join('\n');   // 시리즈 줄 + 캐릭터들 = 한 단락
   const tag = s => '#'+s.replace(/[^\w가-힣ぁ-んァ-ヶ㐀-鿿]/g,''); // ☆×・공백 등 태그 깨는 기호 제거
