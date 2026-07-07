@@ -44,18 +44,22 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
         // 날짜만 보면 옛날 글처럼 보여서, 기간 시작일 판단 로직(아래)이 스크롤을 시작하기도
         // 전에 "범위 벗어남"으로 착각해 멈춰버림. 좋아요/RT수도 이 계정 자신의 성과가 아니라
         // 원본 게시물 것이라 집계에도 안 맞음 — 그래서 리트윗/고정 게시물은 통째로 제외.
+        //
+        // 단, 여기서 seenLinks에 추가하면 안 됨: 자사의 예전 주요 게시물을 "다시 리트윗"하면
+        // 피드 맨 위에 이 부스트된 카드로 먼저 마주치는데, 이때 링크를 seenLinks에 넣어버리면
+        // 스크롤이 내려가서 이 게시물의 원래(자연스러운, socialContext 없는) 위치에 도달했을 때도
+        // "이미 처리함"으로 오인해 두 번 다 놓쳐버림 — 실제로 이 버그로 매출 1위 상품의 원본
+        // 게시물이 통째로 누락된 사례를 발견함. seenLinks에 안 넣어도 이 카드는 스크롤 중
+        // 화면에 남아있는 동안 매 tick마다 다시 스킵될 뿐이라 안전함.
         const socialContext = article.querySelector('[data-testid="socialContext"]');
-        if (socialContext) {
-          window._seenLinks.add(link);
-          return;
-        }
+        if (socialContext) return;
 
         // 인용 트윗(quote tweet) 안에 인용된 원본 게시물이 똑같은 article[data-testid="tweet"]
         // 구조로 중첩 렌더링되는 경우가 있음 — querySelectorAll이 이 중첩 카드까지 별도
         // "게시물"로 잡아버리면, 인용된 옛날 글의 날짜가 그대로 들어와서 똑같이 날짜 판단
         // 로직을 오작동시킴. 최상위 피드 게시물이 아니라 카드 안에 중첩된 것이면 제외.
+        // (같은 이유로 여기도 seenLinks에는 추가하지 않음 — 위 socialContext 케이스와 동일)
         if (article.parentElement && article.parentElement.closest('article[data-testid="tweet"]')) {
-          window._seenLinks.add(link);
           return;
         }
 
