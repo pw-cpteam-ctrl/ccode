@@ -91,7 +91,7 @@
         <button class="btn2" id="genCopy">원고 생성 / 새로고침</button>
         <button class="btn2" id="doCopy">복사</button>
       </div>
-      <textarea id="t_copy" placeholder="‘원고 생성’을 누르면 위 텍스트값으로 캡션이 만들어집니다. 만든 뒤 자유롭게 수정하세요."></textarea>
+      <textarea id="t_copy" placeholder="'원고 생성'을 누르면 위 텍스트값으로 캡션이 만들어집니다. 만든 뒤 자유롭게 수정하세요."></textarea>
       <div class="ccount" id="copyCount">0 / 280 (한글 0/140)</div>
       <div class="slotbox">
         <div class="slotbox-h">↺ 이전 입력 (최근 5개 · 자동 저장 · 사진 포함)</div>
@@ -113,7 +113,10 @@
       <h2>2 · 원문 입력 (필수)</h2>
       <p class="note"><b>일본어 원문을 그대로 붙여넣고 [적용]</b>을 누르면 헤드라인·작품·라인·캐릭터·예약일을 자동 인식해 3번을 채웁니다. (전부 웹에서 처리 · 비용 0)<br>사전에 없는 새 작품/캐릭터만 3번에서 직접 입력하세요.</p>
       <div class="field"><textarea id="t_source" rows="8" placeholder="일본어 원문 그대로 붙여넣기. 예)&#10;◤彩色原型初公開！◢&#10;見上げる見守るフィギュア るかっぷ&#10;進撃の巨人&#10;アルミン・アルレルト&#10;エレン・イェーガー むむっとver.&#10;⏰予約開始は3月5日(木)"></textarea></div>
-      <button class="btn2" id="applySrc" style="width:100%">적용 → 3번 자동 채우기</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn2" id="applySrc" style="flex:1">적용 → 3번 자동 채우기</button>
+        <button class="btn2" id="aiParseSrc" style="flex:1;border-color:#7c5cbf;color:#7c5cbf">✦ AI로 파싱</button>
+      </div>
       <div class="note" id="srcStatus" style="margin-top:8px;margin-bottom:0"></div>
     </div>
 
@@ -562,7 +565,7 @@ function buildCopy(){
   const titleB = [series, prefix, (isLong?alias:'')].filter(Boolean).join(' ').trim();
   // 캐릭터 줄 (시리즈/접두어 없이)
   let prodLines=state.text.product.split('\n').map(s=>s.trim()).filter(Boolean);
-  if(h==='한정 재판매 결정') prodLines=prodLines.map(l=>l+' 【한정 재판매판】');
+  if(h==='한정 재판매 결정') prodLines=prodLines.map(l=>l+'  【한정 재판매판】');
   if(state.bullet) prodLines=prodLines.map(l=>'• '+l);
   const block=[titleB, prodLines.join('\n')].filter(Boolean).join('\n');   // 시리즈 줄 + 캐릭터들 = 한 단락
   const tag = s => '#'+s.replace(/[^\w가-힣ぁ-んァ-ヶ㐀-鿿]/g,''); // ☆×・공백 등 태그 깨는 기호 제거
@@ -620,6 +623,56 @@ document.getElementById('t_jp').addEventListener('input', e=>{ state.jp=e.target
 document.getElementById('t_saledate').addEventListener('input', e=>{ state.saleDate=e.target.value; });
 document.getElementById('t_source').addEventListener('input', ()=>runValidation());
 document.getElementById('applySrc').addEventListener('click', applySource);
+
+/* ── AI 파싱 ── */
+function applyParsed(data, originalTxt) {
+  const miss = [];
+  const head = data.headline || '';
+  const work = data.work || '';
+  const line = data.line || '';
+  const prod = (data.product || '').split('\n').map(s => s.trim()).filter(Boolean).join('\n');
+  const jp = data.jp || '';
+  const date = data.saleDate || '';
+
+  if (head) { if (!setSelect('t_headline', head)) miss.push('헤드라인'); else state.text.headline = head; } else miss.push('헤드라인');
+  { const wv = work || '[작품명]'; document.getElementById('t_work').value = wv; state.work = wv; if (!work) miss.push('작품'); }
+  if (line) { if (!setSelect('t_line', line)) miss.push('라인(' + line + ')'); else state.line = line; } else miss.push('라인');
+  document.getElementById('t_product').value = prod; state.text.product = prod;
+  document.getElementById('t_jp').value = jp; state.jp = jp;
+  document.getElementById('t_saledate').value = date; state.saleDate = date; state.saleDow = '목';
+  state.linePrefix = data.linePrefix || '';
+  appliedSource = originalTxt;
+  composeTitle(); updatePreview(); render(); runValidation();
+  pushSlot(snapshotWith(originalTxt));
+  renderSlots(); checkWorkSpacing();
+  const el = document.getElementById('srcStatus');
+  if (miss.length) { el.textContent = '✦ AI 파싱 완료 · 못 채운 항목: ' + miss.join(', ') + ' → 직접 입력'; el.style.color = '#b8860b'; }
+  else { el.textContent = '✦ AI 파싱 완료 — 3번에서 확인하세요.'; el.style.color = '#7c5cbf'; }
+}
+
+async function aiParse() {
+  const txt = document.getElementById('t_source').value.trim();
+  if (!txt) { alert('원문을 먼저 입력하세요.'); return; }
+  const btn = document.getElementById('aiParseSrc');
+  const el = document.getElementById('srcStatus');
+  btn.disabled = true; btn.textContent = '✦ 분석 중…';
+  el.textContent = 'AI가 원문을 분석 중입니다…'; el.style.color = 'var(--muted)';
+  try {
+    const res = await fetch('/api/parse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceText: txt }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || '서버 오류 (' + res.status + ')');
+    applyParsed(data, txt);
+  } catch (err) {
+    el.textContent = '✦ AI 파싱 실패: ' + err.message; el.style.color = 'var(--danger)';
+  } finally {
+    btn.disabled = false; btn.textContent = '✦ AI로 파싱';
+  }
+}
+document.getElementById('aiParseSrc').addEventListener('click', aiParse);
 document.getElementById('c_bullet').addEventListener('change', e=>{ state.bullet=e.target.checked; render(); });
 
 const z=document.getElementById('s_zoom'),op=document.getElementById('s_op'),bl=document.getElementById('s_blur');
