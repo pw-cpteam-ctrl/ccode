@@ -127,24 +127,25 @@ function renderPlatformSection(platformKey, data) {
     bhTotals[f] = products.reduce((s, p) => s + p.competitor[`total_${f}`], 0);
   });
 
-  // 지표별 PW카드/BH카드/파이 3개를 한 그룹으로 묶어서 폭이 좁아 줄바꿈되더라도 그룹 전체가
-  // 통째로 다음 줄로 넘어가게 함 — 그룹 내부가 갈라지면 짝이 안 맞는 카드만 남아 유독
-  // 커 보이거나(flex 늘어남) 관계가 끊겨 보이는 문제가 있었음.
+  // 큰 카드(매칭된 상품)를 좌측에 두고, 우측엔 지표별 PW/BH/파이 그룹을 세로로 쌓음 — 지표가
+  // 2개면 3칸+3칸으로 균형 잡힘(예전엔 큰카드+그룹1이 한 줄에 있어서 4칸/3칸으로 언밸런스했음).
   const cards = `
     <div class="cards">
-      <div class="card"><div class="k">매칭된 상품</div><div class="v">${products.length}개</div><div class="s">매칭 안 됨 PW ${ownUnmatched.length} · BH ${competitorUnmatched.length}</div></div>
-      ${displayFields.map(f => `
-      <div class="card-group">
-        <div class="card pw"><div class="k">PW 총 ${FIELD_LABELS[f] || f}</div><div class="v">${pwTotals[f].toLocaleString()}</div><div class="s">매칭 상품 기준</div></div>
-        <div class="card bh"><div class="k">BH 총 ${FIELD_LABELS[f] || f}</div><div class="v">${bhTotals[f].toLocaleString()}</div><div class="s">PW 대비 ${formatRatioCard(pwTotals[f], bhTotals[f])}</div></div>
-        ${pieCard(f, pwTotals[f], bhTotals[f])}
+      <div class="card card-hero"><div class="k">매칭된 상품</div><div class="v">${products.length}개</div><div class="s">매칭 안 됨 PW ${ownUnmatched.length} · BH ${competitorUnmatched.length}</div></div>
+      <div class="card-groups">
+        ${displayFields.map(f => `
+        <div class="card-group">
+          <div class="card pw"><div class="k">PW 총 ${FIELD_LABELS[f] || f}</div><div class="v">${pwTotals[f].toLocaleString()}</div><div class="s">매칭 상품 기준</div></div>
+          <div class="card bh"><div class="k">BH 총 ${FIELD_LABELS[f] || f}</div><div class="v">${bhTotals[f].toLocaleString()}</div><div class="s">PW 대비 ${formatRatioCard(pwTotals[f], bhTotals[f])}</div></div>
+          ${pieCard(f, pwTotals[f], bhTotals[f])}
+        </div>
+        `).join('')}
       </div>
-      `).join('')}
     </div>`;
 
   const headerCells = ['순위', 'IP', '시리즈',
-    ...displayFields.map(f => fieldIcon(f)),
-    '⏰', '결과', '게시물'];
+    ...displayFields.map(f => `${fieldIcon(f)} ${FIELD_LABELS[f] || f}`),
+    '⏰ 시각', '결과', '게시물'];
 
   const rows = products.map((p, i) => {
     const rank = i + 1;
@@ -153,7 +154,7 @@ function renderPlatformSection(platformKey, data) {
     const verdictRowClass = { 경합: 'verdict-mid', 약세: 'verdict-low' }[p.verdict] || '';
     const cells = [
       `<td class="rank">${rankCell}</td>`,
-      `<td class="name">${escapeHtml(p.ip || '(미분류)')}</td>`,
+      `<td class="name" title="${escapeHtml(p.ip || '(미분류)')}">${escapeHtml(p.ip || '(미분류)')}</td>`,
       `<td>${escapeHtml(p.line || '-')}</td>`,
       ...displayFields.map(f => `<td class="metric">${metricBar(p.own[`total_${f}`], p.competitor[`total_${f}`], p.diffText[f])}</td>`),
       `<td class="metric">${timeCell(p.pwTime, p.bhTime, p.timeDiffSignedMinutes)}</td>`,
@@ -201,6 +202,7 @@ function renderPlatformSection(platformKey, data) {
     ${cards}
     <div class="table-wrap">
       <table>
+        <colgroup>${headerCells.map((_, i) => i === 1 ? '<col style="width:130px">' : '<col>').join('')}</colgroup>
         <thead><tr>${headerCells.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
         <tbody>${rows || `<tr><td colspan="${headerCells.length}" class="empty">매칭된 상품 없음</td></tr>`}</tbody>
       </table>
@@ -244,7 +246,9 @@ section.platform{margin-bottom:36px}
 .toggle-all-btn{border:1px solid #d0d5e0;background:#fff;color:#3b5bdb;font-size:12px;padding:5px 12px;border-radius:8px;cursor:pointer}
 .toggle-all-btn:hover{background:#eef2ff}
 .cards{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
-.card-group{display:flex;gap:12px;flex:none}
+.card-hero{flex:0 0 200px;display:flex;flex-direction:column;justify-content:center}
+.card-groups{display:flex;flex-direction:column;gap:12px;flex:1;min-width:0}
+.card-group{display:flex;gap:12px;flex:none;flex-wrap:wrap}
 .card{background:#fff;border-radius:12px;padding:14px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08);flex:0 1 190px;min-width:150px}
 .card .k{color:#6b7280;font-size:12px}.card .v{font-size:20px;font-weight:700;color:#3b5bdb;margin-top:2px}
 .card .s{color:#9099a6;font-size:11px;margin-top:2px}.card.pw .v{color:#1971c2}.card.bh .v{color:#c0504d}
@@ -259,7 +263,7 @@ th{background:#3b5bdb;color:#fff;font-size:12px;padding:10px 8px;position:sticky
 td{padding:9px 8px;border-bottom:1px solid #eef0f4;font-size:13px;text-align:center;vertical-align:middle}
 tr.verdict-mid{background:#fff9db}tr.verdict-low{background:#fff0f0}tr:hover{background:#f0f4ff}
 .rank{font-size:15px;font-weight:700;width:38px}
-td.name{text-align:left;font-weight:600}
+td.name{text-align:left;font-weight:600;max-width:130px;overflow:hidden;text-overflow:ellipsis}
 td.metric{min-width:170px}
 .metriccell{display:flex;flex-direction:column;align-items:center;gap:3px}
 .metricbar{display:flex;align-items:center;gap:6px;width:100%}
