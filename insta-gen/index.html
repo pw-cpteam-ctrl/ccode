@@ -380,9 +380,9 @@ function parseJP(txt){
   //  ／ / 、 = 서로 다른 제품(줄 분리),  ＆ & = 한 제품 안의 여러 캐릭터(한 줄에 ' & '로 연결)
   const STRIP='\\s\\u3000|｜◇◤◢━╋◥◣＊*◆■□●○◯\\-–—=～~';
   const DECO=new RegExp('['+STRIP+']','g');
-  const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const esc=s=>s.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\$&');
   const CTX=['初公開','公開','決定','受付','開始','新作','登場','シリーズ','プロジェクト',
-             '최초공개','공개','결정','시작','신작','등장','시리즈','프로젝트','フィギュア'];
+             '최초공개','공개','결정','시작','신작','등장','시리즈','프로젝트','フィギュア','うしろ姿','原型'];
   const STRIPKW=[]; if(r.workRaw) STRIPKW.push(r.workRaw);
   if(r.headline) STRIPKW.push(r.headline);   // 감지된 헤드라인 전체 문구 ("재판매 결정"이 "매"로 남는 것 방지)
   if(r.line) STRIPKW.push(r.line);
