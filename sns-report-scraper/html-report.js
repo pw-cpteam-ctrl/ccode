@@ -19,6 +19,27 @@ function formatRatioCard(pwTotal, bhTotal) {
   return `${Math.round((pwTotal / bhTotal) * 100)}%`;
 }
 
+// 헤더 카드의 숫자(1,354/165)를 대체하는 게 아니라 그 옆에 병렬로 두는 원형(파이) 시각화 —
+// PW/BH 두 조각짜리 원이라 CSS conic-gradient로 충분(SVG 불필요). 색상은 표와 동일한
+// PW 파랑/BH 빨강 그대로 써서 식별 기준을 하나로 유지.
+function pieCard(field, pwTotal, bhTotal) {
+  const total = pwTotal + bhTotal;
+  const pwPct = total > 0 ? (pwTotal / total) * 100 : 50;
+  const pwShare = total > 0 ? Math.round((pwTotal / total) * 100) : 0;
+  const bhShare = 100 - pwShare;
+  return `
+      <div class="card piecard">
+        <div class="k">PW vs BH ${FIELD_LABELS[field] || field} 비율</div>
+        <div class="pie-row">
+          <div class="piechart" style="background:conic-gradient(#1971c2 0% ${pwPct}%, #c0504d ${pwPct}% 100%)"></div>
+          <div class="pie-legend">
+            <span class="pw">PW ${pwShare}%</span>
+            <span class="bh">BH ${bhShare}%</span>
+          </div>
+        </div>
+      </div>`;
+}
+
 function fieldIcon(f) {
   return FIELD_ICONS[f] || FIELD_LABELS[f] || f;
 }
@@ -48,29 +69,27 @@ function metricBar(pw, bh, diffText) {
 // 아니라 diverging 문제임 — PW 시각을 컬럼 중앙 기준선(0)으로 놓고, BH가 그보다 늦으면 오른쪽,
 // 빠르면 왼쪽으로 뻗는 막대(도트+선)로 표시. 실제 데이터는 대다수가 10분 이내 차이라 스케일을
 // 10분으로 고정해서 그 안에서의 편차를 크게 벌려 보여주고, 228분/1855분 같은 말 안 되는
-// 이상치는 막대를 끝까지 채운 뒤 점 반경을 눈에 띄게 키워서 "스케일 밖"임을 표시(정확한 분
-// 차이를 숫자로 보여주는 대신, 점 크기 자체가 "정상 범위 벗어남" 신호). 원본 시각(날짜 없이
-// 시:분만)은 막대 밑에 PW/BH 순서로 표시 — 상대적 "먼저/늦음" 문구 대신 실제 값을 그대로 보여줌.
+// 이상치는 막대를 끝까지 채운 뒤 점 반경을 눈에 띄게 키워서 "스케일 밖"임을 표시. 밑에는
+// "PW/BH 몇 분 먼저" 문구도, 실제 시:분도 없이 — 우리(PW) 기준 부호 있는 숫자 하나만 중앙에
+// 표기(+분=PW가 먼저=파란색, -분=BH가 먼저=빨간색). 실제 시:분은 툴팁에만 남김.
 const TIME_SCALE_CAP_MINUTES = 10;
-function timeOnly(kstTimeText) {
-  return kstTimeText.split(' ').pop(); // "7/1 12:20" -> "12:20"
-}
 function timeCell(pwTime, bhTime, diffSignedMinutes) {
   const abs = Math.abs(diffSignedMinutes);
   const pct = Math.min(abs / TIME_SCALE_CAP_MINUTES, 1) * 46;
   const clipped = abs > TIME_SCALE_CAP_MINUTES;
-  const later = diffSignedMinutes > 0; // BH가 PW보다 늦게 올림
+  const later = diffSignedMinutes > 0; // BH가 PW보다 늦게 올림 = PW 기준 +
   const dotLeftPct = later ? 50 + pct : 50 - pct;
   const lineStyle = later ? `left:50%;width:${pct}%` : `right:50%;width:${pct}%`;
-  const diffLabel = abs === 0 ? '동시' : later ? `PW ${abs}분 먼저` : `BH ${abs}분 먼저`;
-  return `<div class="metriccell" title="${escapeHtml(diffLabel)} (${escapeHtml(pwTime)} · ${escapeHtml(bhTime)})">
+  const numClass = diffSignedMinutes > 0 ? 'pw' : diffSignedMinutes < 0 ? 'bh' : '';
+  const numText = abs === 0 ? '0분' : `${diffSignedMinutes > 0 ? '+' : '−'}${abs}분`;
+  return `<div class="metriccell" title="PW ${escapeHtml(pwTime)} · BH ${escapeHtml(bhTime)}">
     <div class="divbar">
       <div class="divbar-track"></div>
       <div class="divbar-baseline"></div>
       ${abs > 0 ? `<div class="divbar-line" style="${lineStyle}"></div>` : ''}
       <div class="divbar-dot${clipped ? ' clipped' : ''}" style="left:${dotLeftPct}%"></div>
     </div>
-    <div class="time-labels"><span>${escapeHtml(timeOnly(pwTime))}</span><span>${escapeHtml(timeOnly(bhTime))}</span></div>
+    <div class="time-diff-num ${numClass}">${numText}</div>
   </div>`;
 }
 
@@ -107,6 +126,7 @@ function renderPlatformSection(platformKey, data) {
       ${displayFields.map(f => `
       <div class="card pw"><div class="k">PW 총 ${FIELD_LABELS[f] || f}</div><div class="v">${pwTotals[f].toLocaleString()}</div><div class="s">매칭 상품 기준</div></div>
       <div class="card bh"><div class="k">BH 총 ${FIELD_LABELS[f] || f}</div><div class="v">${bhTotals[f].toLocaleString()}</div><div class="s">PW 대비 ${formatRatioCard(pwTotals[f], bhTotals[f])}</div></div>
+      ${pieCard(f, pwTotals[f], bhTotals[f])}
       `).join('')}
     </div>`;
 
@@ -215,6 +235,11 @@ section.platform{margin-bottom:36px}
 .card{background:#fff;border-radius:12px;padding:14px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08);flex:1;min-width:150px}
 .card .k{color:#6b7280;font-size:12px}.card .v{font-size:20px;font-weight:700;color:#3b5bdb;margin-top:2px}
 .card .s{color:#9099a6;font-size:11px;margin-top:2px}.card.pw .v{color:#1971c2}.card.bh .v{color:#c0504d}
+.card.piecard{flex:0 0 auto;min-width:auto}
+.pie-row{display:flex;align-items:center;gap:10px;margin-top:4px}
+.piechart{width:44px;height:44px;border-radius:50%;flex:none;box-shadow:0 0 0 1px #eef0f4 inset}
+.pie-legend{display:flex;flex-direction:column;gap:2px;font-size:12px;font-weight:700}
+.pie-legend .pw{color:#1971c2}.pie-legend .bh{color:#c0504d}
 .table-wrap{overflow-x:auto;background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 table{width:100%;border-collapse:collapse;white-space:nowrap}
 th{background:#3b5bdb;color:#fff;font-size:12px;padding:10px 8px;position:sticky;top:0}
@@ -237,7 +262,8 @@ td.metric{min-width:170px}
 .divbar-line{position:absolute;top:50%;height:2px;background:#c0504d;transform:translateY(-50%)}
 .divbar-dot{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;background:#c0504d;transform:translate(-50%,-50%);box-shadow:0 0 0 2px #fff}
 .divbar-dot.clipped{width:14px;height:14px;box-shadow:0 0 0 2px #fff,0 0 0 4px rgba(192,80,77,.35)}
-.time-labels{display:flex;justify-content:space-between;width:100%;font-size:11px;color:#6b7280;margin-top:4px;font-variant-numeric:tabular-nums}
+.time-diff-num{font-size:12px;font-weight:700;text-align:center;width:100%;margin-top:4px;font-variant-numeric:tabular-nums;color:#6b7280}
+.time-diff-num.pw{color:#1971c2}.time-diff-num.bh{color:#c0504d}
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
 .badge.ok{background:#ebfbee;color:#2f9e44}.badge.mid{background:#fff4e6;color:#e8590c}.badge.low{background:#fff0f0;color:#c0504d}
 td.empty{color:#9099a6;padding:24px}
@@ -270,7 +296,7 @@ ${sections}
 ※ 표현이 서로 다르거나 상품명을 못 뽑은 게시물은 "매칭 안 됨" 목록에 별도로 있습니다 — 조용히 빠진 게 아닙니다.<br>
 ※ 결과(우세/경합/약세)는 표에 표시된 지표(리트윗+좋아요 또는 좋아요+댓글)가 둘 다 PW가 크면 우세, 둘 다 작으면 약세, 엇갈리면 경합입니다.<br>
 ※ "게시물 보기"는 인터넷 연결된 브라우저에서 열어야 실제 카드로 보입니다 — 오프라인/차단 상태면 링크만 보임.<br>
-※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선, 빨간 점이 그 대비 BH 위치(왼쪽=BH가 먼저, 오른쪽=BH가 늦음). 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(정확한 시:분은 막대 밑 숫자, 마우스 올리면 분 단위 차이도 보임).
+※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).
 </div>
 </div>
 <script>
