@@ -307,6 +307,12 @@ details.unmatched summary{cursor:pointer;color:#6b7280;font-size:13px}
 .unmatched-list a{color:#374151;text-decoration:none}.unmatched-list a:hover{text-decoration:underline}
 .unmatched-empty{color:#9099a6;font-size:12px}
 .foot{margin-top:16px;color:#6b7280;font-size:12px;line-height:1.6;background:#fff;border-radius:10px;padding:14px 16px}
+@media (max-width:860px){
+  .wrap{padding:20px 12px}
+  .cards{flex-direction:column}
+  .card-hero{width:100%}
+  .card-groups{width:100%}
+}
 </style></head><body><div class="wrap">
 <h1>📊 SNS 성과 비교 리포트</h1>
 <div class="sub">수집 기간: ${escapeHtml(report.startDate)} ~ ${escapeHtml(report.endDate)} · 생성: ${escapeHtml(report.generatedAt)} · <b>PW=자사, BH=경쟁사</b> · 랭킹: PW+BH 지표 합산순</div>
