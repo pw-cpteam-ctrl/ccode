@@ -273,6 +273,42 @@
   검증됨. 실제 수집 결과로 비교표가 잘 나오는지, 리트윗/고정 게시물 제외 후 지표가 말이
   되는지 최종 확인 필요 (`node run.js`, 매번 `startDate`/`endDate`만 그 달 기간에 맞게 수정)
 - [ ] 네이버 커머스API 신청 가능 여부 확인 (2단계, 후속)
+- [x] 네이버 커머스API센터 개발업체계정 신청이 "개발업체계정 권한을 보유하지 않은 회원" 에러로
+  막힘(통합매니저 계정으로 재시도해도 동일) — 리틀리처럼 커머스솔루션마켓 경유하는 방법도
+  검토했으나, 그건 여러 판매자가 설치하는 공개 솔루션을 만들어 심사받는 절차라 오히려 더 무거워
+  후보에서 제외. **API 승인 자체를 기다리지 않는 방향으로 전환**(아래 참고)
+
+## 네이버 재고/가격 — API 없이 공개 페이지에서 읽기 (`naver-stock.js`)
+- 배경: 커머스API센터 개발업체계정 신청이 막혀서 대안을 찾던 중, 사용자가 이미 쓰던 크롬 확장
+  "Naver Store Stock Overlay"(재고를 상품 이미지 위에 뱃지로 표시해주는 확장) 소스 코드를
+  직접 공유해줘서 분석함
+- **핵심 발견**: 이 확장은 숨겨진/사설 API를 호출하는 게 아니라, `smartstore.naver.com` /
+  `brand.naver.com` **공개 상품 페이지 자체에 이미 박혀있는 데이터**를 읽는 것뿐이었음:
+  1. 최초 페이지 로드 시 `<script>`에 `window.__PRELOADED_STATE__ = {...}` 형태로 재고/가격/
+     리뷰 등 상품 데이터 전체가 박혀있음(Next.js SSR 하이드레이션용, 원래 공개 정보)
+  2. SPA 네비게이션(예: search.shopping.naver.com) 시엔 `self.__next_f.push([n,"..."])`로
+     스트리밍되는 React Server Components flight 데이터 안에 같은 정보가 있음
+  3. 상품 목록 스크롤 시 fetch/XHR 응답도 같은 데이터를 담고 있음(확장은 fetch/XHR을 패치해서
+     가로챔)
+  → **로그인/세션/API 승인 전혀 필요 없음.** PW든 BH든 공개 상품 페이지만 열면 아무나 받는
+  데이터라 경쟁사 재고도 동일하게 조회 가능
+- [x] `naver-stock.js` 작성 — 확장의 추출 로직(상품ID/재고/품절/가격 키 휴리스틱, JS 객체
+  리터럴의 `undefined`/`NaN` 같은 비-JSON 토큰을 안전하게 치환하는 `sanitizeJsonLiteral`,
+  균형잡힌 중괄호 블록을 잘라내는 `extractAssignedJson`)을 그대로 Node로 이식.
+  `getProductStock(url)`: 상품/스토어 URL 하나로 재고·가격·이름을 반환. 로그인 세션 불필요라
+  `fetch()` GET 한 번으로 끝남(twitter.js/instagram.js처럼 Playwright 브라우저 자동화조차 불필요)
+- [x] `npm run verify`에 모킹 HTML(합성 `__PRELOADED_STATE__` + `__next_f` 조각, `undefined`
+  토큰 섞은 케이스 포함)로 추출 로직 검증 추가, 통과 확인
+- ⚠️ **실제 네트워크 검증은 이 샌드박스에서 불가**: `curl`로 `brand.naver.com/megahouse` 접속
+  시도했더니 네이버 엣지(`server: nfront`)가 이 환경 IP를 통째로 막아서 정적 429 에러 페이지만
+  돌아옴(헤더를 바꿔도 동일 — 데이터센터 IP 대역 자체를 차단하는 것으로 보임). twitter.js/
+  instagram.js와 같은 종류의 제약 — **사용자 로컬 컴퓨터에서 `node naver-stock.js <URL>`로
+  직접 테스트 필요**. 테스트 대상: `https://brand.naver.com/megahouse`,
+  `https://brand.naver.com/megahouse/products/13647054468`
+- 한계: 재고/가격/판매상태만 나오고 실제 매출액·주문건수는 안 나옴 — 정확한 매출은 여전히
+  커머스API/엑셀 내보내기가 필요함. 재고는 "현재 시점"만 조회되므로 기간별 판매량을 추정하려면
+  이 스크립트로 **주기적 스냅샷을 쌓아서 재고 감소량으로 역산**하는 방식을 검토 중(과거 소급 불가,
+  지금부터 쌓아야 함)
 
 ### 🟢 지금 가능한 부분 중 남은 것
 - [x] 결과 취합(비교표+비율 계산) 로직 — `aggregate.js` 완료
