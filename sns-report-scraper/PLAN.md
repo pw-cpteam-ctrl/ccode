@@ -295,15 +295,20 @@
 - [x] `naver-stock.js` 작성 — 확장의 추출 로직(상품ID/재고/품절/가격 키 휴리스틱, JS 객체
   리터럴의 `undefined`/`NaN` 같은 비-JSON 토큰을 안전하게 치환하는 `sanitizeJsonLiteral`,
   균형잡힌 중괄호 블록을 잘라내는 `extractAssignedJson`)을 그대로 Node로 이식.
-  `getProductStock(url)`: 상품/스토어 URL 하나로 재고·가격·이름을 반환. 로그인 세션 불필요라
-  `fetch()` GET 한 번으로 끝남(twitter.js/instagram.js처럼 Playwright 브라우저 자동화조차 불필요)
+  `getProductStock(url)`: 상품/스토어 URL 하나로 재고·가격·이름을 반환.
 - [x] `npm run verify`에 모킹 HTML(합성 `__PRELOADED_STATE__` + `__next_f` 조각, `undefined`
   토큰 섞은 케이스 포함)로 추출 로직 검증 추가, 통과 확인
-- ⚠️ **실제 네트워크 검증은 이 샌드박스에서 불가**: `curl`로 `brand.naver.com/megahouse` 접속
-  시도했더니 네이버 엣지(`server: nfront`)가 이 환경 IP를 통째로 막아서 정적 429 에러 페이지만
-  돌아옴(헤더를 바꿔도 동일 — 데이터센터 IP 대역 자체를 차단하는 것으로 보임). twitter.js/
-  instagram.js와 같은 종류의 제약 — **사용자 로컬 컴퓨터에서 `node naver-stock.js <URL>`로
-  직접 테스트 필요**. 테스트 대상: `https://brand.naver.com/megahouse`,
+- 1차 버전은 로그인 세션이 필요 없다는 점을 이용해 순수 `fetch()` GET으로 구현했었는데,
+  샌드박스에서 `curl`로 접속 시 네이버 엣지(`server: nfront`)가 정적 429 에러 페이지를 반환.
+  처음엔 "데이터센터 IP 차단"으로 추정했으나, **사용자가 본인 로컬(주거용 IP) 컴퓨터에서
+  `node naver-stock.js <URL>` 실행해봐도 똑같이 HTTP 429**가 나서 그 가설이 틀렸음을 확인 →
+  IP 평판이 아니라 **네이버 프론트가 TLS/브라우저 지문(fingerprint)으로 봇을 거르는 것**으로
+  판단(Node의 fetch/TLS 스택은 실제 크로미움과 지문이 달라서 걸림). twitter.js/instagram.js가
+  처음부터 Playwright로 간 것과 같은 이유 → **`naver-stock.js`도 순수 fetch 대신 Playwright
+  (실제 크로미움)로 전환**, 로그인 세션은 여전히 불필요(공개 페이지라 새 컨텍스트로 그냥 열면 됨)
+- ⚠️ 이 Playwright 버전도 **이 샌드박스에서 실제 네트워크 검증은 여전히 불가**(브라우저 자체가
+  네트워크 접속이 안 되는 환경 제약, twitter.js/instagram.js와 동일) — **사용자 로컬
+  컴퓨터에서 재테스트 필요**. 테스트 대상: `https://brand.naver.com/megahouse`,
   `https://brand.naver.com/megahouse/products/13647054468`
 - 한계: 재고/가격/판매상태만 나오고 실제 매출액·주문건수는 안 나옴 — 정확한 매출은 여전히
   커머스API/엑셀 내보내기가 필요함. 재고는 "현재 시점"만 조회되므로 기간별 판매량을 추정하려면

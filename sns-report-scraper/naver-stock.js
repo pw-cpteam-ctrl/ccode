@@ -338,21 +338,34 @@ function extractFromHtml(html) {
   return [...merged.values()];
 }
 
-const DEFAULT_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-  'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
-};
+// 실사용자가 확인해준 결과: 순수 fetch()로 요청하면 로컬(주거용 IP) 환경에서도 HTTP 429가
+// 남 — 즉 IP 평판 문제가 아니라 네이버 프론트(nfront)가 TLS/브라우저 지문(fingerprint)으로
+// 봇을 거르는 것으로 보임. Node의 fetch/TLS 스택은 실제 브라우저와 지문이 달라서 걸리는
+// 것으로 추정 — twitter.js/instagram.js가 처음에 Playwright(실제 크로미움)로 갔던 것과
+// 같은 이유로, 이 스크립트도 순수 HTTP 요청 대신 Playwright로 전환함(로그인 세션은 여전히
+// 필요 없음 — 공개 페이지라 새 컨텍스트로 그냥 열면 됨).
+const { chromium } = require('playwright');
 
-async function fetchProductPage(url) {
-  const res = await fetch(url, { headers: DEFAULT_HEADERS });
-  if (!res.ok) throw new Error(`HTTP ${res.status} (${url})`);
-  return res.text();
+async function fetchProductPage(url, { headless = false } = {}) {
+  const browser = await chromium.launch({ headless });
+  const context = await browser.newContext({ locale: 'ko-KR' });
+  const page = await context.newPage();
+  try {
+    const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    if (response && !response.ok()) {
+      throw new Error(`HTTP ${response.status()} (${url})`);
+    }
+    await page.waitForTimeout(1500); // 하이드레이션/flight 스트리밍이 끝날 시간을 좀 줌
+    return await page.content();
+  } finally {
+    await browser.close();
+  }
 }
 
 // 상품 페이지 하나에서 재고/가격 레코드를 가져옴. 목록/메인 페이지에도 그대로 쓸 수 있음
 // (여러 상품이 한 페이지에 있으면 배열로 여러 건 반환).
-async function getProductStock(url) {
-  const html = await fetchProductPage(url);
+async function getProductStock(url, opts) {
+  const html = await fetchProductPage(url, opts);
   return extractFromHtml(html);
 }
 
