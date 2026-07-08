@@ -39,6 +39,9 @@
   .check input { width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }
   .note { font-size: 12px; color: var(--muted); font-weight: 400; line-height: 1.5; margin-bottom: 10px; }
   .preview-line { font-size: 12px; color: var(--text); font-weight: 600; margin-top: 6px; background:#f6f2f4; border:1px solid var(--line); border-radius:7px; padding:6px 9px; }
+  .helpbox { font-size: 12px; color: var(--text); line-height: 1.6; margin-top: 10px; background:#f6f2f4; border:1px solid var(--line); border-radius:9px; padding:11px 13px; }
+  .helpbox b { font-weight: 700; }
+  .helpbox .tip { color: var(--muted); margin-top: 6px; }
 
   .slider, .stepper { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; }
   .slider:last-child, .stepper:last-child { margin-bottom: 0; }
@@ -95,7 +98,7 @@
       <div class="ccount" id="copyCount">0 / 280 (한글 0/140)</div>
       <div class="slotbox">
         <div class="slotbox-h">↺ 이전 입력 (최근 5개 · 자동 저장 · 사진 포함)</div>
-        <div class="slotbox-note">새 원문을 [적용]할 때마다 직전 작업이 슬롯에 남습니다. 누르면 그 내용으로 되돌립니다.</div>
+        <div class="slotbox-note">새 원문을 [무료로 채우기]/[AI로 채우기]로 채울 때마다 직전 작업이 슬롯에 남습니다. 누르면 그 내용으로 되돌립니다.</div>
         <div id="slots" class="slots"></div>
       </div>
     </div>
@@ -111,11 +114,17 @@
 
     <div class="card">
       <h2>2 · 원문 입력 (필수)</h2>
-      <p class="note"><b>일본어 원문을 그대로 붙여넣고 [적용]</b>을 누르면 헤드라인·작품·라인·캐릭터·예약일을 자동 인식해 3번을 채웁니다. (전부 웹에서 처리 · 비용 0)<br>사전에 없는 새 작품/캐릭터만 3번에서 직접 입력하세요.</p>
+      <p class="note">일본어 원문을 그대로 붙여넣고 아래 두 버튼 중 하나를 누르면 헤드라인·작품·라인·캐릭터·예약일을 자동 인식해 3번을 채웁니다.</p>
       <div class="field"><textarea id="t_source" rows="8" placeholder="일본어 원문 그대로 붙여넣기. 예)&#10;◤彩色原型初公開！◢&#10;見上げる見守るフィギュア るかっぷ&#10;進撃の巨人&#10;アルミン・アルレルト&#10;エレン・イェーガー むむっとver.&#10;⏰予約開始は3月5日(木)"></textarea></div>
       <div style="display:flex;gap:8px;">
-        <button class="btn2" id="applySrc" style="flex:1">적용 → 3번 자동 채우기</button>
-        <button class="btn2" id="aiParseSrc" style="flex:1;border-color:#7c5cbf;color:#7c5cbf">✦ AI로 파싱</button>
+        <button class="btn2" id="applySrc" style="flex:1">무료로 채우기</button>
+        <button class="btn2" id="aiParseSrc" style="flex:1;border-color:#7c5cbf;color:#7c5cbf">✦ AI로 채우기</button>
+      </div>
+      <div class="helpbox">
+        <div><b>두 버튼, 뭐가 다른가요?</b></div>
+        <div style="margin-top:8px;">🆓 <b>무료로 채우기</b> — 도구 안에 미리 저장된 사전(작품명·캐릭터명 목록)을 보고 알아서 채워줍니다. 인터넷이 안 되는 상황에서도 작동해요. 다만 사전에 없는 새로운 작품/캐릭터는 못 알아볼 수 있어요.</div>
+        <div style="margin-top:8px;">✦ <b>AI로 채우기</b> — Claude AI에게 물어봐서 채웁니다. 사전에 없는 새 작품/캐릭터도 알아볼 확률이 훨씬 높아요. 대신 누를 때마다 AI 사용료(토큰)가 조금씩 나갑니다. 한 번 누르는 비용 자체는 크지 않지만(버튼 1번당 몇 원 수준), 자주 누적해서 쓰면 요금이 꽤 나올 수 있어요.</div>
+        <div class="tip">💡 추천: 먼저 [무료로 채우기]를 눌러보고, 안 채워지거나 이상하면 [AI로 채우기]를 눌러보세요.</div>
       </div>
       <div class="note" id="srcStatus" style="margin-top:8px;margin-bottom:0"></div>
     </div>
@@ -217,6 +226,7 @@ const cv = document.getElementById('stage'), ctx = cv.getContext('2d');
 const W = 1080, H = 1350;
 const FRAME = { x: 110, y: 190, w: 860, h: 760, r: 36 }; // 프레임을 위로 올려 텍스트와 여백 확보
 const MAXW = 920;
+const TITLE_MIN_ONE_LINE = 60; // 한 줄로 욱여넣었을 때 이 크기 밑으로 줄어들면 답답해 보여서 두 줄로 분리
 
 const state = {
   img: null, imgData: '',
@@ -257,11 +267,28 @@ function render(){
   ctx.textAlign='center'; ctx.fillStyle='#fff'; ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=12; ctx.shadowOffsetY=2;
   fitText(state.text.headline,800,76,MAXW); ctx.fillText(state.text.headline,W/2,118);
   ctx.shadowBlur=8;
-  fitText(state.text.title,700,state.size.title,MAXW); ctx.fillText(state.text.title,W/2,1052);
+  let titleShift=0;
+  {
+    const tWork=state.work.trim(), tLine=state.line.trim(), tPrefix=(state.linePrefix||'').trim();
+    const tOneLine=[tWork,tLine,tPrefix].filter(Boolean).join(' ');
+    const s0=fitText(tOneLine,700,state.size.title,MAXW);
+    if(s0>=TITLE_MIN_ONE_LINE){
+      ctx.fillText(tOneLine,W/2,1052);
+    } else {
+      // 한 줄로는 답답해서 두 줄로: 1줄 작품명 / 2줄 시리즈+접두어. 폰트를 살짝 눌러서
+      // 사진 프레임(하단 y=950)과 겹치지 않게 하고, 제품명 블록 시작(base)도 그만큼 밀어준다.
+      const tLine2=[tLine,tPrefix].filter(Boolean).join(' ');
+      const s1=fitText(tWork,700,64,MAXW);
+      const s2=fitText(tLine2,700,64,MAXW);
+      const lh=Math.max(s1,s2)*1.1; titleShift=lh/2;
+      setFont(700,s1); ctx.fillText(tWork,W/2,1052-titleShift);
+      setFont(700,s2); ctx.fillText(tLine2,W/2,1052+titleShift);
+    }
+  }
 
   ctx.fillStyle='#efe8e2';
   const plines = state.text.product.split('\n').map(s=>s.trim()).filter(Boolean);
-  const lh = state.size.product*1.12, base = 1120;
+  const lh = state.size.product*1.12, base = 1120+titleShift;
   plines.forEach((ln,i)=>{ const t=(state.bullet?'• ':'')+ln; fitText(t,300,state.size.product,MAXW); ctx.fillText(t,W/2,base+i*lh); });
 
   ctx.shadowBlur=0; ctx.strokeStyle='rgba(255,255,255,.28)'; ctx.lineWidth=1;
@@ -468,7 +495,7 @@ function deleteSlot(i){ let a=loadSlots(); a.splice(i,1); saveSlots(a); renderSl
 function renderSlots(){
   const box=document.getElementById('slots'); if(!box) return;
   const a=loadSlots();
-  if(!a.length){ box.innerHTML='<div class="slot-empty">아직 저장된 입력이 없습니다. 원문을 [적용]하면 직전 작업이 여기에 쌓입니다.</div>'; return; }
+  if(!a.length){ box.innerHTML='<div class="slot-empty">아직 저장된 입력이 없습니다. 원문을 [무료로 채우기]/[AI로 채우기]로 채우면 직전 작업이 여기에 쌓입니다.</div>'; return; }
   box.innerHTML='';
   a.forEach((s,i)=>{
     const d=document.createElement('div'); d.className='slot';
@@ -507,7 +534,7 @@ function applySource(){
   if(!head&&!work&&!line&&!prod){ el.textContent = spcMsg || '⚠ 인식 실패 — 일본어 원문을 그대로 붙여넣어 보세요. 그래도 안 되면 3번 칸에 직접 입력하세요.'; el.style.color='var(--danger)'; return; }
   let msg='✓ 자동완성 완료 — 3번에서 확인하세요.', col='#2e7d52';
   if(spcMsg){ msg=spcMsg+' · 나머지는 자동완성됨'; col='var(--danger)'; }
-  if(warnRaw.length){ msg='✓ 일부 자동완성 · 못 읽은 이름: '+warnRaw.join(', ')+' → ✦ AI 파싱 버튼 사용 권장'; col='#b8860b'; }
+  if(warnRaw.length){ msg='✓ 일부 자동완성 · 못 읽은 이름: '+warnRaw.join(', ')+' → ✦ AI로 채우기 버튼 사용 권장'; col='#b8860b'; }
   else if(miss.length){ msg='✓ 일부 자동완성 · 못 채운 항목: '+miss.join(', ')+' → 3번에서 직접 입력'; col='#b8860b'; }
   if(approx.length){ msg+=' · ⚠음역(추정): '+approx.join(', ')+' (확인 필요)'; col='#b8860b'; }
   el.textContent=msg; el.style.color=col;
@@ -612,8 +639,8 @@ function applyParsed(data, originalTxt) {
   pushSlot(snapshotWith(originalTxt));
   renderSlots(); checkWorkSpacing();
   const el = document.getElementById('srcStatus');
-  if (miss.length) { el.textContent = '✦ AI 파싱 완료 · 못 채운 항목: ' + miss.join(', ') + ' → 직접 입력'; el.style.color = '#b8860b'; }
-  else { el.textContent = '✦ AI 파싱 완료 — 3번에서 확인하세요.'; el.style.color = '#7c5cbf'; }
+  if (miss.length) { el.textContent = '✦ AI로 채우기 완료 · 못 채운 항목: ' + miss.join(', ') + ' → 직접 입력'; el.style.color = '#b8860b'; }
+  else { el.textContent = '✦ AI로 채우기 완료 — 3번에서 확인하세요.'; el.style.color = '#7c5cbf'; }
 }
 
 async function aiParse() {
@@ -633,9 +660,9 @@ async function aiParse() {
     if (!res.ok) throw new Error(data.error || '서버 오류 (' + res.status + ')');
     applyParsed(data, txt);
   } catch (err) {
-    el.textContent = '✦ AI 파싱 실패: ' + err.message; el.style.color = 'var(--danger)';
+    el.textContent = '✦ AI로 채우기 실패: ' + err.message; el.style.color = 'var(--danger)';
   } finally {
-    btn.disabled = false; btn.textContent = '✦ AI로 파싱';
+    btn.disabled = false; btn.textContent = '✦ AI로 채우기';
   }
 }
 document.getElementById('aiParseSrc').addEventListener('click', aiParse);
