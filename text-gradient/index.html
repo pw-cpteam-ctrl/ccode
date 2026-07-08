@@ -42,7 +42,8 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 .viewBtn.on{background:var(--ui-accent);color:#fff;}
 #slotsRow{display:flex;flex-direction:row;flex-wrap:nowrap;gap:24px;overflow-x:auto;}
 #slotsRow.grid-mode{flex-wrap:wrap;overflow-x:visible;}
-.slot-wrap{display:flex;flex-direction:column;gap:6px;flex-shrink:0;}
+.slot-wrap{display:flex;flex-direction:column;gap:6px;flex-shrink:0;cursor:pointer;}
+.slot-wrap.cur .canvas-clip{outline:3px solid var(--ui-accent);outline-offset:2px;}
 .slot-num{font-size:12px;font-weight:700;color:var(--ui-sub);}
 .canvas-clip{
   position:relative; overflow:hidden; flex-shrink:0;
@@ -55,7 +56,7 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 }
 .badge{position:absolute; left:36px; background:rgba(0,0,0,.9); color:#fff; border-radius:999px; padding:8px 20px; font-weight:700; display:inline-block; max-width:calc(100% - 72px);}
 .title{position:absolute; left:36px; font-weight:900; color:#fff; max-width:calc(100% - 72px); text-shadow:0 2px 10px rgba(0,0,0,.85), 0 1px 4px rgba(0,0,0,.9);}
-.bullets{position:absolute; left:36px; color:#fff; font-weight:700; max-width:calc(100% - 72px); text-shadow:0 2px 10px rgba(0,0,0,.85), 0 1px 4px rgba(0,0,0,.9);}
+.bullets{position:absolute; left:36px; right:36px; color:#fff; font-weight:700; text-shadow:0 2px 10px rgba(0,0,0,.85), 0 1px 4px rgba(0,0,0,.9); display:grid; grid-template-columns:1fr 1fr; column-gap:24px;}
 .grad-overlay{position:absolute; left:0; right:0; bottom:0; pointer-events:none;}
 </style>
 </head>
@@ -85,9 +86,13 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
   <div class="field"><label>배지 문구</label><input type="text" id="inBadge" value="예약판매 기간 5% 할인 캠페인 중!"/></div>
   <div class="field"><label>타이틀 (좌)</label><input type="text" id="inTitleL" value="주술회전"/></div>
   <div class="field"><label>타이틀 (우)</label><input type="text" id="inTitleR" value="메가캣 프로젝트"/></div>
-  <div class="field"><label>불릿 리스트 (줄바꿈 구분)</label><textarea id="inBullets" rows="4">주술냥코 시부야 사변 (재판)
-유지/메구미/노바라
-고죠/나나미/스쿠나</textarea></div>
+  <div style="font-size:12px;color:var(--ui-sub);margin-bottom:4px;">불릿 리스트 — 좌/우 2열 입력(가로 1:1), 이미지에도 2열로 실시간 반영됨. 줄 앞에 "-"를 붙이면 그 줄만 • 불릿으로 표시, 없으면 일반 텍스트</div>
+  <div class="row2">
+    <div class="field"><label>좌열</label><textarea id="inBullets" rows="4">- 주술냥코 시부야 사변 (재판)
+- 유지/메구미/노바라
+- 고죠/나나미/스쿠나</textarea></div>
+    <div class="field"><label>우열</label><textarea id="inBulletsR" rows="4"></textarea></div>
+  </div>
 
   <div class="sec">배치 · 크기</div>
   <div style="font-size:12px;color:var(--ui-sub);margin-bottom:6px;">개별 조정 — 지금 보고 있는 슬롯에만 적용</div>
@@ -228,7 +233,7 @@ let folderPath = '';
 let titleFolderPath = '';
 
 function makeEmptySlot() {
-  return { badge:'', titleL:'', titleR:'', bullets:'', gradStart:40, gradWidth:60, gradOpacity:85, gradCompress:0, ...LAYOUT_DEFAULTS };
+  return { badge:'', titleL:'', titleR:'', bullets:'', bulletsR:'', gradStart:40, gradWidth:60, gradOpacity:85, gradCompress:0, ...LAYOUT_DEFAULTS };
 }
 function layoutVal(s, key) { return s[key] ?? LAYOUT_DEFAULTS[key]; } // 이전에 저장된 슬롯엔 이 필드들이 없을 수 있어 기본값으로 대체
 
@@ -344,7 +349,7 @@ function applyBulkMarkdown() {
     const bar = it.title.indexOf('|');
     const titleL = bar >= 0 ? it.title.slice(0, bar).trim() : it.title;
     const titleR = bar >= 0 ? it.title.slice(bar + 1).trim() : '';
-    return { badge: commonBadge, titleL, titleR, bullets: it.bullets.join('\n'),
+    return { badge: commonBadge, titleL, titleR, bullets: it.bullets.map(b => `- ${b}`).join('\n'), bulletsR: '',
       gradStart: g.gradStart, gradWidth: g.gradWidth, gradOpacity: g.gradOpacity, gradCompress: g.gradCompress ?? 0,
       badgeY: layoutVal(g,'badgeY'), badgeSize: layoutVal(g,'badgeSize'),
       titleY: layoutVal(g,'titleY'), titleSize: layoutVal(g,'titleSize'),
@@ -378,7 +383,7 @@ const ALL_LAYOUT_FIELDS = [
 function loadInputsFromCurSlot() {
   const s = slots[curSlot - 1];
   $('#inBadge').value = s.badge; $('#inTitleL').value = s.titleL; $('#inTitleR').value = s.titleR;
-  $('#inBullets').value = s.bullets;
+  $('#inBullets').value = s.bullets; $('#inBulletsR').value = s.bulletsR || '';
   $('#gradStart').value = s.gradStart; $('#gradWidth').value = s.gradWidth; $('#gradOpacity').value = s.gradOpacity;
   $('#gradCompress').value = s.gradCompress ?? 0;
   $('#badgeY').value = layoutVal(s,'badgeY'); $('#badgeSize').value = layoutVal(s,'badgeSize');
@@ -386,8 +391,12 @@ function loadInputsFromCurSlot() {
   $('#bulletsY').value = layoutVal(s,'bulletsY'); $('#bulletsSize').value = layoutVal(s,'bulletsSize');
   $('#titleTracking').value = layoutVal(s,'titleTracking'); $('#bulletsTracking').value = layoutVal(s,'bulletsTracking');
   ALL_LAYOUT_FIELDS.forEach(([id, key]) => { $('#'+id).value = layoutVal(s, key); }); // "전체 적용" 슬라이더도 현재 슬롯 값으로 시작점 맞춤
+  highlightCurSlot();
 }
-['inBadge','inTitleL','inTitleR','inBullets','gradStart','gradWidth','gradOpacity','gradCompress',
+function highlightCurSlot() {
+  document.querySelectorAll('.slot-wrap').forEach(w => w.classList.toggle('cur', w.id === 'slot'+curSlot));
+}
+['inBadge','inTitleL','inTitleR','inBullets','inBulletsR','gradStart','gradWidth','gradOpacity','gradCompress',
  'badgeY','badgeSize','titleY','titleSize','bulletsY','bulletsSize','titleTracking','bulletsTracking'].forEach(id => {
   $('#'+id).addEventListener('input', () => {
     syncInputsToState();   // ① 값 변경을 상태에 반영
@@ -398,7 +407,7 @@ function loadInputsFromCurSlot() {
 function syncInputsToState() {
   const s = slots[curSlot - 1];
   s.badge = $('#inBadge').value; s.titleL = $('#inTitleL').value; s.titleR = $('#inTitleR').value;
-  s.bullets = $('#inBullets').value;
+  s.bullets = $('#inBullets').value; s.bulletsR = $('#inBulletsR').value;
   s.gradStart = +$('#gradStart').value; s.gradWidth = +$('#gradWidth').value; s.gradOpacity = +$('#gradOpacity').value;
   s.gradCompress = +$('#gradCompress').value;
   s.badgeY = +$('#badgeY').value; s.badgeSize = +$('#badgeSize').value;
@@ -422,7 +431,7 @@ function renderAllSlots() {
   const row = $('#slotsRow'); row.innerHTML = '';
   slots.forEach((_, i) => {
     const pg = i + 1;
-    const wrap = document.createElement('div'); wrap.className = 'slot-wrap'; wrap.id = 'slot'+pg;
+    const wrap = document.createElement('div'); wrap.className = 'slot-wrap' + (pg === curSlot ? ' cur' : ''); wrap.id = 'slot'+pg;
     wrap.innerHTML = `<div class="slot-num">슬롯 ${pg}</div>
     <div class="canvas-clip"><div class="canvas" id="canvas${pg}">
       <div class="grad-overlay" id="grad${pg}"></div>
@@ -430,11 +439,22 @@ function renderAllSlots() {
       <div class="title" id="title${pg}"></div>
       <div class="bullets" id="bullets${pg}"></div>
     </div></div>`;
+    wrap.addEventListener('click', () => { // 미리보기 캔버스 클릭 → 그 슬롯 편집 패널로 전환
+      if (curSlot === pg) return;
+      curSlot = pg; renderTabs(); loadInputsFromCurSlot();
+    });
     row.appendChild(wrap);
   });
   slots.forEach((_, i) => renderSlotDom(i + 1));
 }
 function renderCurSlotDom() { renderSlotDom(curSlot); }
+/* 줄 앞에 하이픈(-) 등 마커가 있는 줄만 불릿(•)으로 표시, 없는 줄은 그대로 일반 텍스트로 표시 */
+function renderBulletLines(raw) {
+  return raw.split('\n').filter(Boolean).map(line => {
+    const m = line.match(/^\s*[-*•]\s*(.*)$/);
+    return m ? `• ${m[1]}` : line;
+  }).join('<br>');
+}
 function renderSlotDom(pg) {
   const s = slots[pg - 1];
   const badgeEl = $('#badge'+pg), titleEl = $('#title'+pg), bulletsEl = $('#bullets'+pg);
@@ -445,7 +465,7 @@ function renderSlotDom(pg) {
   titleEl.style.top = layoutVal(s,'titleY') + 'px';
   titleEl.style.fontSize = layoutVal(s,'titleSize') + 'px';
   titleEl.style.letterSpacing = (layoutVal(s,'titleTracking') / 1000) + 'em';
-  bulletsEl.innerHTML = s.bullets.split('\n').filter(Boolean).map(l => `• ${l}`).join('<br>');
+  bulletsEl.innerHTML = `<div>${renderBulletLines(s.bullets)}</div><div>${renderBulletLines(s.bulletsR || '')}</div>`;
   bulletsEl.style.top = layoutVal(s,'bulletsY') + 'px';
   bulletsEl.style.fontSize = layoutVal(s,'bulletsSize') + 'px';
   bulletsEl.style.letterSpacing = (layoutVal(s,'bulletsTracking') / 1000) + 'em';
