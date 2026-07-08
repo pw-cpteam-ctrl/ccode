@@ -311,6 +311,15 @@ function runValidation(){
 if (typeof DICT === 'undefined') {
   alert('dict.js 를 불러오지 못했습니다.\nindex.html 과 dict.js 를 같은 폴더에 두고 다시 열어주세요.');
 }
+
+// AI로 채우기를 쓸수록 자동으로 쌓이는 학습된 작품/캐릭터(learned-dict.json)를
+// 무료 사전에 병합. 파일이 없거나(아직 학습된 게 없음) 오프라인이면 조용히 무시 —
+// 이 경우도 dict.js만으로 기존처럼 정상 동작한다.
+fetch('learned-dict.json').then(r => r.ok ? r.json() : null).then(learned => {
+  if (!learned) return;
+  Object.assign(DICT.works, learned.works || {});
+  Object.assign(DICT.chars, learned.chars || {});
+}).catch(() => {});
 const z2h = s => s.replace(/[０-９]/g, d => '０１２３４５６７８９'.indexOf(d) + '');
 
 /* ── 띄어쓰기 검사: 정식 작품명(띄어쓰기 포함)을 붙여 쓰면 잡아낸다 ── */
