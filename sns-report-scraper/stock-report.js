@@ -47,12 +47,26 @@ function formatTakenAt(iso) {
   return `${kst.getUTCFullYear()}-${String(kst.getUTCMonth() + 1).padStart(2, '0')}-${String(kst.getUTCDate()).padStart(2, '0')} ${String(kst.getUTCHours()).padStart(2, '0')}:${String(kst.getUTCMinutes()).padStart(2, '0')}`;
 }
 
+function rankCell(rank) {
+  if (rank === 1) return '🥇';
+  if (rank === 2) return '🥈';
+  if (rank === 3) return '🥉';
+  return String(rank);
+}
+
+// 판매 추정치(재고 감소량) 기준 매출 순위 — SNS 비교표가 이미 실적순으로 줄 세워져 있는 것처럼
+// (순위 컬럼), 이 표에도 같은 방식으로 순위를 매겨서 "SNS에서 몇 위인 상품이 매출 순위로는
+// 몇 위인가"를 사람이 눈으로 대략 대조해볼 수 있게 함. 비교 대상(직전 스냅샷)이 없으면
+// 아직 판매 추정 자체가 불가능하므로 순위를 매기지 않음.
 function renderStoreTable(label, products, hasComparison) {
   const sorted = [...products].sort((a, b) => {
     if (hasComparison) return (b.stockDelta ?? -Infinity) - (a.stockDelta ?? -Infinity);
     return (b.stock ?? 0) - (a.stock ?? 0);
   });
 
+  // 비교 불가한(신규) 상품은 판매 추정치 자체가 없어서 순위에 넣으면 "몇 위"라는 숫자가
+  // 근거 없이 붙어버림 — stockDelta가 있는 행끼리만 순위를 매기고, 신규 상품은 "-"로 표시.
+  let rankCounter = 0;
   const rows = sorted.map(p => {
     const deltaCell = hasComparison
       ? (p.stockDelta === null
@@ -63,7 +77,9 @@ function renderStoreTable(label, products, hasComparison) {
             ? `<td class="sd-restock">+${Math.abs(p.stockDelta).toLocaleString()} (재입고/한도변경)</td>`
             : '<td class="sd-flat">변화 없음</td>')
       : '';
+    const rank = p.stockDelta === null ? null : ++rankCounter;
     return `<tr>
+      ${hasComparison ? `<td class="sd-rank">${rank === null ? '-' : rankCell(rank)}</td>` : ''}
       <td class="sd-name" title="${escapeHtml(p.name)}">${escapeHtml(p.name || '(이름 없음)')}</td>
       <td class="sd-num">${p.stock.toLocaleString()}</td>
       ${hasComparison ? `<td class="sd-num sd-prev">${p.prevStock === null ? '-' : p.prevStock.toLocaleString()}</td>` : ''}
@@ -72,18 +88,21 @@ function renderStoreTable(label, products, hasComparison) {
     </tr>`;
   }).join('');
 
+  const colCount = 3 + (hasComparison ? 3 : 0);
+
   return `
   <div class="stock-store">
     <h3>${escapeHtml(label)} (${products.length}개 상품)</h3>
     <div class="table-wrap">
       <table>
         <thead><tr>
+          ${hasComparison ? '<th>매출순위</th>' : ''}
           <th>상품명</th><th>현재 재고</th>
           ${hasComparison ? '<th>이전 재고</th>' : ''}
           ${hasComparison ? '<th>변화(추정 판매량)</th>' : ''}
           <th>가격</th>
         </tr></thead>
-        <tbody>${rows || '<tr><td colspan="5" class="empty">데이터 없음</td></tr>'}</tbody>
+        <tbody>${rows || `<tr><td colspan="${colCount}" class="empty">데이터 없음</td></tr>`}</tbody>
       </table>
     </div>
   </div>`;
@@ -119,6 +138,7 @@ const STOCK_SECTION_STYLE = `
 .stock-section{margin-top:8px}
 .stock-store{margin-bottom:20px}
 .stock-store h3{font-size:14px;margin:0 0 8px;color:#374151}
+.sd-rank{font-size:15px;font-weight:700;width:38px;text-align:center}
 .sd-name{text-align:left;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sd-num{text-align:right;font-variant-numeric:tabular-nums}
 .sd-prev{color:#9099a6}
