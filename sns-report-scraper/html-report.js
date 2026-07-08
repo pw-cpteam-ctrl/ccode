@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { formatTakenAt, rankMedal, rankStockProducts, findStockMatch } = require('./stock-report');
+const { formatTakenAt, rankMedal, rankStockProducts, findStockMatch, renderStockSectionHtml, STOCK_SECTION_STYLE } = require('./stock-report');
 
 const FIELD_LABELS = { likes: '좋아요', retweets: '리트윗', comments: '댓글' };
 const FIELD_ICONS = { likes: '♥️', retweets: '♻️', comments: '💬' };
@@ -345,6 +345,7 @@ details.unmatched summary{cursor:pointer;color:#6b7280;font-size:13px}
   .card-hero{width:100%}
   .card-groups{width:100%}
 }
+${STOCK_SECTION_STYLE}
 </style></head><body><div class="wrap">
 <h1>📊 SNS 성과 비교 리포트</h1>
 <div class="sub">수집 기간: ${escapeHtml(report.startDate)} ~ ${escapeHtml(report.endDate)} · 생성: ${escapeHtml(report.generatedAt)} · <b>PW=자사, BH=경쟁사</b> · 랭킹: PW+BH 지표 합산순</div>
@@ -356,6 +357,7 @@ ${sections}
 ※ "게시물 보기"는 인터넷 연결된 브라우저에서 열어야 실제 카드로 보입니다 — 오프라인/차단 상태면 링크만 보임.<br>
 ※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).${stockComparison ? '<br>※ 📦PW/BH 매출 칸(표 우측 끝, 가로 스크롤): 상품명으로 네이버 재고 데이터와 근사 매칭한 결과 — 메달+숫자는 그 스토어 안에서의 판매 추정 순위와 재고 감소량, "신규"는 아직 비교할 이전 스냅샷이 없는 경우, "-"는 매칭되는 재고 상품을 못 찾은 경우. 마우스 올리면 실제로 매칭된 재고 상품명이 보이니 매칭이 맞는지 확인해보세요.' : ''}
 </div>
+${renderStockSectionHtml(stockComparison)}
 </div>
 <script>
 function toggleEmbeds(rowId, platform, btn) {
