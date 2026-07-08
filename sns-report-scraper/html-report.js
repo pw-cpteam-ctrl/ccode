@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { renderStockSectionHtml, STOCK_SECTION_STYLE } = require('./stock-report');
+const { formatTakenAt, rankMedal, rankStockProducts, findStockMatch } = require('./stock-report');
 
 const FIELD_LABELS = { likes: '좋아요', retweets: '리트윗', comments: '댓글' };
 const FIELD_ICONS = { likes: '♥️', retweets: '♻️', comments: '💬' };
@@ -117,9 +117,28 @@ function embedBlockquote(platformKey, post) {
   return '';
 }
 
-function renderPlatformSection(platformKey, data) {
+// SNS 상품(ip/line) 하나에 매칭된 네이버 재고 항목을 표 우측 끝 컬럼 한 칸으로 렌더링.
+// 별도 섹션으로 안 빼고 같은 표 안(가로 스크롤로 보이는 우측)에 두는 게 목적 — 위아래로
+// 왔다갔다하며 대조하지 않아도 되게.
+function stockMatchCell(match) {
+  if (!match) return '<td class="metric sm-none">-</td>';
+  const title = escapeHtml(match.name || '');
+  if (match.stockDelta === null) return `<td class="metric sm-new" title="${title}">신규</td>`;
+  const deltaText = match.stockDelta > 0 ? `-${match.stockDelta.toLocaleString()}` : match.stockDelta < 0 ? `+${Math.abs(match.stockDelta).toLocaleString()}` : '0';
+  const rankPart = match.rank ? `${rankMedal(match.rank)} ` : '';
+  return `<td class="metric sm-match" title="${title}">${rankPart}(${deltaText})</td>`;
+}
+
+function renderPlatformSection(platformKey, data, stockComparison) {
   const { products, ownUnmatched, competitorUnmatched, displayFields } = data.productComparison;
   const title = PLATFORM_TITLES[platformKey] || platformKey;
+
+  // 재고 스냅샷이 있으면 store(PW/BH)별로 순위 매긴 목록을 미리 만들어두고, 상품 행마다
+  // ip/line으로 근사 매칭 — SNS 실적 순위표 우측에 매출순위 컬럼으로 붙임(별도 섹션 아님).
+  const hasStock = Boolean(stockComparison);
+  const stockHasComparison = hasStock && Boolean(stockComparison.previousTakenAt);
+  const pwStockRanked = hasStock ? rankStockProducts(stockComparison.stores.PW || [], stockHasComparison) : null;
+  const bhStockRanked = hasStock ? rankStockProducts(stockComparison.stores.BH || [], stockHasComparison) : null;
 
   const pwTotals = {};
   const bhTotals = {};
@@ -146,7 +165,8 @@ function renderPlatformSection(platformKey, data) {
 
   const headerCells = ['순위', 'IP', '시리즈',
     ...displayFields.map(f => `${fieldIcon(f)} ${FIELD_LABELS[f] || f}`),
-    '⏰ 시각', '결과', '게시물'];
+    '⏰ 시각', '결과', '게시물',
+    ...(hasStock ? ['📦PW 매출', '📦BH 매출'] : [])];
 
   const rows = products.map((p, i) => {
     const rank = i + 1;
@@ -161,6 +181,10 @@ function renderPlatformSection(platformKey, data) {
       `<td class="metric">${timeCell(p.pwTime, p.bhTime, p.timeDiffSignedMinutes)}</td>`,
       `<td>${verdictBadge(p.verdict)}</td>`,
       `<td><button class="toggle-btn" onclick="toggleEmbeds('${embedRowId}','${platformKey}',this)">▶ 보기</button></td>`,
+      ...(hasStock ? [
+        stockMatchCell(findStockMatch(p.ip, p.line, pwStockRanked)),
+        stockMatchCell(findStockMatch(p.ip, p.line, bhStockRanked)),
+      ] : []),
     ].join('');
 
     const embedCol = (label, cls, posts) => `
@@ -200,6 +224,7 @@ function renderPlatformSection(platformKey, data) {
         <button class="toggle-all-btn" onclick="toggleAllEmbeds('${platformKey}',false)">전체 접기</button>
       </div>
     </div>
+    ${hasStock ? `<div class="sub">📦 재고 매칭 기준 스냅샷: ${escapeHtml(formatTakenAt(stockComparison.latestTakenAt))} (KST)${stockHasComparison ? ` · 직전 스냅샷(${escapeHtml(formatTakenAt(stockComparison.previousTakenAt))}) 대비 변화량` : ' · 스냅샷이 1개뿐이라 변화량은 다음 수집부터 표시됨'} — 표 우측 끝(가로 스크롤) 참고</div>` : ''}
     ${cards}
     <div class="table-wrap">
       <table>
@@ -228,13 +253,13 @@ function renderPlatformSection(platformKey, data) {
  *
  * @param {object} report aggregate.js의 buildComparisonReport() 결과
  * @param {object|null} [stockComparison] stock-report.js의 buildStockComparison() 결과 —
- *   있으면 재고 스냅샷 섹션을 맨 아래(스크롤해야 보이는 위치)에 추가로 붙임. SNS 비교 화면
- *   자체엔 욱여넣지 않기로 한 방침(PLAN.md 참고)이라 별도 섹션으로만 존재.
+ *   있으면 각 상품 행 우측 끝에 매칭된 재고 매출순위 컬럼 2개(PW/BH)를 추가함. 별도 섹션으로
+ *   안 빼고 같은 표 안(가로 스크롤)에 두는 게 방침 — 위아래로 왔다갔다하며 대조하지 않게.
  * @returns {string} HTML 문서 전체
  */
 function buildHtmlReport(report, stockComparison = null) {
   const platformKeys = Object.keys(report.platforms);
-  const sections = platformKeys.map(key => renderPlatformSection(key, report.platforms[key])).join('\n');
+  const sections = platformKeys.map(key => renderPlatformSection(key, report.platforms[key], stockComparison)).join('\n');
   const needsTwitterWidget = platformKeys.includes('twitter');
   const needsInstagramWidget = platformKeys.includes('instagram');
 
@@ -288,6 +313,9 @@ td.metric{min-width:170px}
 .time-raw:first-child{text-align:left}.time-raw:last-child{text-align:right}
 .time-diff-num{flex:none;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;color:#6b7280}
 .time-diff-num.pw{color:#1971c2}.time-diff-num.bh{color:#c0504d}
+td.sm-match{color:#2f9e44;font-weight:700;font-size:12px;font-variant-numeric:tabular-nums}
+td.sm-new{color:#9099a6;font-size:12px}
+td.sm-none{color:#c9ced8;font-size:12px}
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
 .badge.ok{background:#ebfbee;color:#2f9e44}.badge.mid{background:#fff4e6;color:#e8590c}.badge.low{background:#fff0f0;color:#c0504d}
 td.empty{color:#9099a6;padding:24px}
@@ -317,7 +345,6 @@ details.unmatched summary{cursor:pointer;color:#6b7280;font-size:13px}
   .card-hero{width:100%}
   .card-groups{width:100%}
 }
-${STOCK_SECTION_STYLE}
 </style></head><body><div class="wrap">
 <h1>📊 SNS 성과 비교 리포트</h1>
 <div class="sub">수집 기간: ${escapeHtml(report.startDate)} ~ ${escapeHtml(report.endDate)} · 생성: ${escapeHtml(report.generatedAt)} · <b>PW=자사, BH=경쟁사</b> · 랭킹: PW+BH 지표 합산순</div>
@@ -327,9 +354,8 @@ ${sections}
 ※ 표현이 서로 다르거나 상품명을 못 뽑은 게시물은 "매칭 안 됨" 목록에 별도로 있습니다 — 조용히 빠진 게 아닙니다.<br>
 ※ 결과(우세/경합/약세)는 표에 표시된 지표(리트윗+좋아요 또는 좋아요+댓글)가 둘 다 PW가 크면 우세, 둘 다 작으면 약세, 엇갈리면 경합입니다.<br>
 ※ "게시물 보기"는 인터넷 연결된 브라우저에서 열어야 실제 카드로 보입니다 — 오프라인/차단 상태면 링크만 보임.<br>
-※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).
+※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).${stockComparison ? '<br>※ 📦PW/BH 매출 칸(표 우측 끝, 가로 스크롤): 상품명으로 네이버 재고 데이터와 근사 매칭한 결과 — 메달+숫자는 그 스토어 안에서의 판매 추정 순위와 재고 감소량, "신규"는 아직 비교할 이전 스냅샷이 없는 경우, "-"는 매칭되는 재고 상품을 못 찾은 경우. 마우스 올리면 실제로 매칭된 재고 상품명이 보이니 매칭이 맞는지 확인해보세요.' : ''}
 </div>
-${renderStockSectionHtml(stockComparison)}
 </div>
 <script>
 function toggleEmbeds(rowId, platform, btn) {
