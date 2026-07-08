@@ -17,6 +17,8 @@ const { collectInstagram } = require('./instagram');
 const { buildComparisonReport } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
 const { saveHtmlReport } = require('./html-report');
+const { buildStockComparison } = require('./stock-report');
+const { HISTORY_PATH: STOCK_HISTORY_PATH } = require('./naver-stock-snapshot');
 
 const CONFIG = {
   startDate: '2026-07-01',
@@ -88,7 +90,12 @@ async function main() {
   const sheetName = await saveReportToExcel(report, CONFIG.outputPath);
   console.log(`✅ 엑셀 저장 완료: ${CONFIG.outputPath} (시트: ${sheetName})`);
 
-  saveHtmlReport(report, CONFIG.htmlOutputPath);
+  const stockHistory = fs.existsSync(STOCK_HISTORY_PATH)
+    ? JSON.parse(fs.readFileSync(STOCK_HISTORY_PATH, 'utf-8'))
+    : null;
+  const stockComparison = stockHistory ? buildStockComparison(stockHistory) : null;
+
+  saveHtmlReport(report, CONFIG.htmlOutputPath, stockComparison);
   console.log(`✅ HTML 저장 완료: ${CONFIG.htmlOutputPath} (브라우저로 열어서 확인)`);
 }
 

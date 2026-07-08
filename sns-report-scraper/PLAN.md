@@ -306,14 +306,38 @@
   판단(Node의 fetch/TLS 스택은 실제 크로미움과 지문이 달라서 걸림). twitter.js/instagram.js가
   처음부터 Playwright로 간 것과 같은 이유 → **`naver-stock.js`도 순수 fetch 대신 Playwright
   (실제 크로미움)로 전환**, 로그인 세션은 여전히 불필요(공개 페이지라 새 컨텍스트로 그냥 열면 됨)
-- ⚠️ 이 Playwright 버전도 **이 샌드박스에서 실제 네트워크 검증은 여전히 불가**(브라우저 자체가
-  네트워크 접속이 안 되는 환경 제약, twitter.js/instagram.js와 동일) — **사용자 로컬
-  컴퓨터에서 재테스트 필요**. 테스트 대상: `https://brand.naver.com/megahouse`,
-  `https://brand.naver.com/megahouse/products/13647054468`
+- **✅ 사용자 로컬 컴퓨터에서 실제 검증 성공** — `node naver-stock.js <상품 URL>` 1건 성공,
+  `node naver-stock.js https://brand.naver.com/megahouse/` (메인 페이지)로 **81개 상품 재고/
+  가격을 한 번에 수집** 성공. 로그인 세션 전혀 없이, 스토어 URL 하나로 전체 카탈로그가 다 나옴
+- 실제 데이터 확인해보니 사용자가 짚어준 대로: 재고 숫자가 9000~10000대에 몰린 상품들은
+  예약판매 중이라 판매자가 임의로 걸어둔 한도(예: 10000개)에서 줄어든 만큼이 실제 예약
+  판매량이고, 82/24/15/6처럼 낮은 숫자는 이미 발매(입고)된 상품의 진짜 물리 재고임
+  (메가하우스는 피규어 브랜드라 예약→발매까지 6개월~1년 걸려서 이 두 단계가 공존함)
 - 한계: 재고/가격/판매상태만 나오고 실제 매출액·주문건수는 안 나옴 — 정확한 매출은 여전히
   커머스API/엑셀 내보내기가 필요함. 재고는 "현재 시점"만 조회되므로 기간별 판매량을 추정하려면
-  이 스크립트로 **주기적 스냅샷을 쌓아서 재고 감소량으로 역산**하는 방식을 검토 중(과거 소급 불가,
-  지금부터 쌓아야 함)
+  주기적 스냅샷을 쌓아서 재고 감소량으로 역산해야 함(과거 소급 불가)
+
+### 재고 스냅샷 저장/비교/리포트 반영
+- 스냅샷 주기: 스케줄 자동화 아님, **사용자가 원할 때마다 수동 실행**(기존 "매달 직접 실행"
+  방침과 동일선상) — 자동화가 필요해지면 나중에 별도로 요청하기로 함
+- [x] `naver-stock-snapshot.js` 작성 — `naver-stock.js`로 지금 재고를 긁어서
+  `reports/_stock-history.json`에 스냅샷 한 건 append(누적, 덮어쓰기 아님). PW는
+  `https://brand.naver.com/megahouse`로 채워짐. **BH URL은 아직 비어있음 — 사용자가 공유해주면
+  채워넣기로 함**(현재는 URL 없는 스토어는 경고 로그만 찍고 건너뜀, 죽지 않음)
+- [x] `stock-report.js` 작성 — 스냅샷 히스토리를 최신 vs 직전 스냅샷으로 비교해서
+  `buildStockComparison()`이 store(PW/BH)별 상품 재고 변화량(`stockDelta`, 양수=판매 추정/
+  음수=재입고 또는 한도 재설정)을 계산, `renderStockSectionHtml()`이 HTML 섹션으로 렌더링.
+  스냅샷이 1개뿐이면 비교 없이 현재값만 보여줌(다음 수집부터 비교 시작)
+- [x] SNS 비교 화면엔 욱여넣지 않고(방침 유지), `html-report.js`의 `buildHtmlReport(report,
+  stockComparison)`가 기존 SNS 섹션들 다음(`.foot` 아래) **"📦 재고 스냅샷" 섹션을 문서 맨
+  아래에 추가로 붙임** — 같은 페이지 안에서 스크롤해야 보이는 위치. 히스토리 파일이 없으면
+  `renderStockSectionHtml(null)`이 빈 문자열을 반환해서 섹션 자체가 생략됨(기존 리포트에
+  영향 없음)
+- [x] `run.js`/`rebuild-report.js` 둘 다 `reports/_stock-history.json`이 있으면 자동으로
+  읽어서 붙이도록 연결
+- [x] `npm run verify`에 스냅샷 1개/2개 케이스(판매 추정·신규 상품·렌더링) 모킹 테스트 추가,
+  통과 확인 + 가짜 히스토리로 실제 HTML 생성해서 Playwright 스크린샷으로 레이아웃 확인(정렬,
+  색상, 판매추정/재입고 라벨 다 정상)
 
 ### 🟢 지금 가능한 부분 중 남은 것
 - [x] 결과 취합(비교표+비율 계산) 로직 — `aggregate.js` 완료

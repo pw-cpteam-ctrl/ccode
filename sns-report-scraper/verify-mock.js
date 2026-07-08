@@ -9,6 +9,7 @@ const path = require('path');
 const { parseCount, buildComparisonReport, buildProductComparison, extractOwnProductName, extractCompetitorProductName, extractKeywords, formatKstTime } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
 const { extractFromHtml, sanitizeJsonLiteral, extractAssignedJson } = require('./naver-stock');
+const { buildStockComparison, renderStockSectionHtml } = require('./stock-report');
 
 function check(label, fn) {
   try {
@@ -244,6 +245,47 @@ check('naver-stock: sanitizeJsonLiteral/extractAssignedJson 유틸 단위 검증
     '{"a":null,"b":null,"c":"undefined 문자열은 유지"}');
   assert.strictEqual(extractAssignedJson('window.__X__ = {"a":1};', '__X__'), '{"a":1}');
   assert.strictEqual(extractAssignedJson('no marker here', '__X__'), '');
+});
+
+check('stock-report: 스냅샷 1개뿐일 땐 비교 없이 현재값만, 2개면 변화량(판매 추정) 계산', () => {
+  const oneSnapshot = {
+    snapshots: [
+      { takenAt: '2026-07-01T00:00:00.000Z', stores: { PW: [{ productId: 'A', name: '상품A', price: 10000, stock: 9999 }] } },
+    ],
+  };
+  const onlyOne = buildStockComparison(oneSnapshot);
+  assert.strictEqual(onlyOne.previousTakenAt, null, '스냅샷이 1개면 비교 대상이 없어야 함');
+  assert.strictEqual(onlyOne.stores.PW[0].stockDelta, null);
+
+  const twoSnapshots = {
+    snapshots: [
+      { takenAt: '2026-07-01T00:00:00.000Z', stores: { PW: [{ productId: 'A', name: '상품A', price: 10000, stock: 9999 }] } },
+      {
+        takenAt: '2026-07-02T00:00:00.000Z',
+        stores: {
+          PW: [
+            { productId: 'A', name: '상품A', price: 10000, stock: 9486 }, // 재고 감소 = 판매 추정
+            { productId: 'B', name: '신상품B', price: 5000, stock: 100 }, // 첫 등장(비교 불가)
+          ],
+        },
+      },
+    ],
+  };
+  const compared = buildStockComparison(twoSnapshots);
+  assert.ok(compared.previousTakenAt, '스냅샷이 2개면 직전 스냅샷과 비교해야 함');
+  const a = compared.stores.PW.find(p => p.productId === 'A');
+  const b = compared.stores.PW.find(p => p.productId === 'B');
+  assert.strictEqual(a.stockDelta, 513, '9999 - 9486 = 513개 판매 추정');
+  assert.strictEqual(b.stockDelta, null, '이전 스냅샷에 없던 신규 상품은 비교 불가(null)');
+
+  // 렌더링이 죽지 않고 상품명/변화량을 실제로 담는지도 확인
+  const html = renderStockSectionHtml(compared);
+  assert.ok(html.includes('상품A'));
+  assert.ok(html.includes('-513'));
+});
+
+check('stock-report: 히스토리가 없으면(null) 섹션을 아예 안 그림', () => {
+  assert.strictEqual(renderStockSectionHtml(null), '');
 });
 
 // ── 3. 엑셀 저장: 히스토리 누적(기존 시트 보존) + 재실행 시 이름 충돌 처리 확인 ──

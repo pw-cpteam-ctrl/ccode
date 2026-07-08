@@ -12,6 +12,8 @@ const fs = require('fs');
 const { buildComparisonReport } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
 const { saveHtmlReport } = require('./html-report');
+const { buildStockComparison } = require('./stock-report');
+const { HISTORY_PATH: STOCK_HISTORY_PATH } = require('./naver-stock-snapshot');
 
 const CACHE_PATH = './reports/_last-collection.json';
 const OUTPUT_PATH = './reports/sns-report.xlsx';
@@ -42,7 +44,14 @@ async function main() {
   const sheetName = await saveReportToExcel(report, OUTPUT_PATH);
   console.log(`✅ 엑셀 저장 완료: ${OUTPUT_PATH} (시트: ${sheetName})`);
 
-  saveHtmlReport(report, HTML_OUTPUT_PATH);
+  // 재고 스냅샷 히스토리가 있으면(naver-stock-snapshot.js로 쌓은 것) HTML 맨 아래에 붙임 —
+  // 없으면 조용히 건너뜀(선택 기능이라 없어도 리포트 생성엔 지장 없음).
+  const stockHistory = fs.existsSync(STOCK_HISTORY_PATH)
+    ? JSON.parse(fs.readFileSync(STOCK_HISTORY_PATH, 'utf-8'))
+    : null;
+  const stockComparison = stockHistory ? buildStockComparison(stockHistory) : null;
+
+  saveHtmlReport(report, HTML_OUTPUT_PATH, stockComparison);
   console.log(`✅ HTML 저장 완료: ${HTML_OUTPUT_PATH} (브라우저로 열어서 확인)`);
 }
 
