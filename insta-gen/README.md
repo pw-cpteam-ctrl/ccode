@@ -46,9 +46,15 @@
 그 다음부터는 [무료로 채우기]도 그 작품/캐릭터를 알아본다. `dict.js`(사람이 직접 관리하는
 사전)는 건드리지 않고, 별도 파일에서 자동으로 채워지는 구조라 안전하다.
 
-- 원문 로그: `logs/YYYY-MM-DD.jsonl`
-- 등장 횟수 집계: `learned-counts.json`
-- 2회 이상 등장해 실제로 반영된 사전: `learned-dict.json` (index.html이 로드 시 fetch해서 병합)
+- 원문 로그: `insta-gen/logs/YYYY-MM-DD.jsonl`
+- 등장 횟수 집계: `insta-gen/learned-counts.json`
+- 2회 이상 등장해 실제로 반영된 사전: `insta-gen/learned-dict.json`
+
+이 데이터들은 **`main`이 아니라 `insta-gen-data`라는 별도 브랜치**에 커밋된다. `main`에
+커밋하면 Vercel이 그때마다(AI로 채우기를 쓸 때마다) 사이트를 재배포해서 빌드 시간을
+낭비하기 때문 — `insta-gen-data`는 Vercel 배포 대상이 아니라 아무리 커밋해도 재배포를
+안 일으킨다. `api/learned-dict.js`가 이 브랜치의 `learned-dict.json`을 대신 읽어서
+index.html에 돌려주고, index.html은 그걸 fetch해서 무료 사전에 병합한다.
 
 이 기능을 켜려면 Vercel의 insta-gen 프로젝트에 아래 환경변수를 추가해야 한다
 (`ANTHROPIC_API_KEY`와 별개). 없으면 학습 저장만 조용히 스킵되고, AI 파싱 자체는 그대로 동작한다.
@@ -59,11 +65,7 @@
 | `GITHUB_TOKEN` | 이 저장소에 `contents: write` 권한이 있는 PAT |
 | `GITHUB_OWNER` | 저장소 소유자 (예: `pw-cpteam-ctrl`) |
 | `GITHUB_REPO` | 저장소 이름 (예: `ccode`) |
-| `GITHUB_BRANCH` | 커밋할 브랜치 (기본값 `main`) |
-
-> 참고: [AI로 채우기]를 누를 때마다 위 데이터 파일들이 `main`에 커밋되므로, 그때마다
-> Vercel이 사이트를 다시 빌드할 수 있다. 트래픽이 많아지면 데이터 커밋과 배포를
-> 분리하는 걸 고려할 것.
+| `GITHUB_BRANCH` | **`insta-gen-data`** (데이터 전용 브랜치, `main` 아님) |
 
 ## 사용법
 
