@@ -18,10 +18,9 @@ const { getProductStock } = require('./naver-stock');
 
 const HISTORY_PATH = path.join(__dirname, 'reports', '_stock-history.json');
 
-// TODO: BH 스토어 공개 URL 확정되면 채워넣기 (brand.naver.com 또는 smartstore.naver.com 링크)
 const STORES = [
   { label: 'PW', url: 'https://brand.naver.com/megahouse' },
-  { label: 'BH', url: '' },
+  { label: 'BH', url: 'https://brand.naver.com/megahousemall' },
 ];
 
 async function captureSnapshot() {

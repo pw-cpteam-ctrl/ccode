@@ -322,8 +322,8 @@
   방침과 동일선상) — 자동화가 필요해지면 나중에 별도로 요청하기로 함
 - [x] `naver-stock-snapshot.js` 작성 — `naver-stock.js`로 지금 재고를 긁어서
   `reports/_stock-history.json`에 스냅샷 한 건 append(누적, 덮어쓰기 아님). PW는
-  `https://brand.naver.com/megahouse`로 채워짐. **BH URL은 아직 비어있음 — 사용자가 공유해주면
-  채워넣기로 함**(현재는 URL 없는 스토어는 경고 로그만 찍고 건너뜀, 죽지 않음)
+  `https://brand.naver.com/megahouse`, BH는 `https://brand.naver.com/megahousemall`로 채워짐
+  (URL 없는 스토어는 경고 로그만 찍고 건너뛰도록 짜뒀는데 이제 둘 다 채워져서 안 씀)
 - [x] `stock-report.js` 작성 — 스냅샷 히스토리를 최신 vs 직전 스냅샷으로 비교해서
   `buildStockComparison()`이 store(PW/BH)별 상품 재고 변화량(`stockDelta`, 양수=판매 추정/
   음수=재입고 또는 한도 재설정)을 계산, `renderStockSectionHtml()`이 HTML 섹션으로 렌더링.
