@@ -32,17 +32,30 @@ const RESULT_SCHEMA = {
   additionalProperties: false,
 };
 
-function buildPrompt({ expectedCount, ipDictHint, tagWhitelist }) {
+function buildPrompt({ expectedCount, ipDictHint, tagWhitelist, layout }) {
   const dictLines = Object.entries(ipDictHint || {})
     .slice(0, 60)
     .map(([k, v]) => `- ${k} → ${v}`)
     .join('\n');
   const whitelist = (tagWhitelist && tagWhitelist.length ? tagWhitelist : ['룩업', '테노히라', '메가캣']).join(', ');
 
+  // textStrip: 사진은 빼고 상품명/가격 텍스트 영역만 잘라 세로로 이어붙인 이미지(빨간 테두리 +
+  // #1,#2... 번호로 구분됨). 한 번에 너무 많은 항목을 통째로 보내면 항목당 인식 정확도가
+  // 급격히 떨어져서(실사용 중 25개 중 4개만 인식되는 문제 발견) 5~6개 단위로 나눠 보낸다.
+  const layoutInstruction = layout === 'textStrip'
+    ? [
+      `이미지는 상품 텍스트(상품명/가격 등) 영역만 잘라서 위에서 아래로 이어붙인 것이다.`,
+      `각 항목은 빨간 테두리로 구분되어 있고 왼쪽 위에 #1, #2... 번호가 붙어 있다.`,
+      `정확히 ${expectedCount}개의 번호가 있으니, 그 번호 순서대로 정확히 ${expectedCount}개 항목을 출력해라.`,
+    ]
+    : [
+      `이미지는 5열 그리드이고, 위에서 아래로 행 순서, 각 행에서는 왼쪽에서 오른쪽 열 순서로 정확히 ${expectedCount}개의 상품 칸이 있다.`,
+      `반드시 ${expectedCount}개 항목을 그 순서 그대로 출력해라 (칸이 비어있어도 빈 항목으로 채워서 개수를 맞출 것).`,
+    ];
+
   return [
     '너는 피규어/굿즈 입고안내 스크린샷에서 상품 정보를 읽어내는 파서야.',
-    `이미지는 5열 그리드이고, 위에서 아래로 행 순서, 각 행에서는 왼쪽에서 오른쪽 열 순서로 정확히 ${expectedCount}개의 상품 칸이 있다.`,
-    `반드시 ${expectedCount}개 항목을 그 순서 그대로 출력해라 (칸이 비어있어도 빈 항목으로 채워서 개수를 맞출 것).`,
+    ...layoutInstruction,
     '',
     '## IP명 판단 규칙',
     '- 상품명 전체가 아니라 IP명(원작명)만 뽑아라. 구구절절한 설명/버전 텍스트는 제거.',
@@ -74,7 +87,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { imageBase64, mediaType, expectedCount, ipDictHint, tagWhitelist } = req.body || {};
+  const { imageBase64, mediaType, expectedCount, ipDictHint, tagWhitelist, layout } = req.body || {};
   if (!imageBase64 || !expectedCount) {
     res.status(400).json({ error: 'imageBase64와 expectedCount가 필요합니다.' });
     return;
@@ -96,7 +109,7 @@ export default async function handler(req, res) {
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/png', data: imageBase64 } },
-            { type: 'text', text: buildPrompt({ expectedCount, ipDictHint, tagWhitelist }) },
+            { type: 'text', text: buildPrompt({ expectedCount, ipDictHint, tagWhitelist, layout }) },
           ],
         }],
       }),
