@@ -59,6 +59,10 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 .title{position:absolute; left:36px; font-weight:900; color:#fff; max-width:calc(100% - 72px); text-shadow:0 2px 10px rgba(0,0,0,.85), 0 1px 4px rgba(0,0,0,.9);}
 .bullets{position:absolute; left:36px; right:36px; color:#fff; font-weight:700; text-shadow:0 2px 10px rgba(0,0,0,.85), 0 1px 4px rgba(0,0,0,.9); display:grid; grid-template-columns:1fr; column-gap:24px;}
 .grad-overlay{position:absolute; left:0; right:0; bottom:0; pointer-events:none;}
+.bullets-resizer{position:absolute; top:0; width:16px; margin-left:-8px; cursor:ew-resize; z-index:5; display:none;}
+.bullets-resizer::before{content:''; position:absolute; left:50%; top:0; bottom:0; width:2px; margin-left:-1px; background:rgba(255,255,255,.6);}
+.bullets-resizer .grip{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:12px; height:22px; border-radius:6px; background:var(--ui-accent); border:1px solid rgba(255,255,255,.85);}
+.bullets-resizer:hover .grip, .bullets-resizer.dragging .grip{background:#0d3a8f;}
 </style>
 </head>
 <body>
@@ -456,16 +460,54 @@ function renderAllSlots() {
       <div class="badge" id="badge${pg}"></div>
       <div class="title" id="title${pg}"></div>
       <div class="bullets" id="bullets${pg}"></div>
-    </div></div>`;
+    </div><div class="bullets-resizer" id="bulletsResizer${pg}"><div class="grip"></div></div></div>`;
     wrap.addEventListener('click', () => { // 미리보기 캔버스 클릭 → 그 슬롯 편집 패널로 전환
       if (curSlot === pg) return;
       curSlot = pg; renderTabs(); loadInputsFromCurSlot();
     });
     row.appendChild(wrap);
+    attachBulletsResizerDrag(pg);
   });
   slots.forEach((_, i) => renderSlotDom(i + 1));
 }
 function renderCurSlotDom() { renderSlotDom(curSlot); }
+/* 미리보기의 좌/우 불릿 사이 구분선을 드래그하면 그 슬롯의 2열 폭 비율이 실시간으로 바뀐다 */
+function attachBulletsResizerDrag(pg) {
+  const resizer = document.getElementById('bulletsResizer'+pg);
+  resizer.addEventListener('click', e => e.stopPropagation()); // 드래그(=클릭)로 슬롯 전환이 같이 발동되지 않도록
+  resizer.addEventListener('mousedown', e => {
+    e.preventDefault(); e.stopPropagation();
+    resizer.classList.add('dragging');
+    const bulletsEl = document.getElementById('bullets'+pg);
+    const onMove = ev => {
+      const rect = bulletsEl.getBoundingClientRect();
+      const ratio = Math.max(20, Math.min(80, Math.round(((ev.clientX - rect.left) / rect.width) * 100)));
+      slots[pg-1].bulletsColRatio = ratio;
+      renderSlotDom(pg);
+      if (pg === curSlot) $('#inBulletsColRatio').value = ratio;
+    };
+    const onUp = () => {
+      resizer.classList.remove('dragging');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      persistState();
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+function positionBulletsResizer(pg) {
+  const resizer = document.getElementById('bulletsResizer'+pg);
+  const s = slots[pg-1];
+  if (!s.bulletsTwoCol) { resizer.style.display = 'none'; return; }
+  const bulletsEl = document.getElementById('bullets'+pg);
+  const bRect = bulletsEl.getBoundingClientRect();
+  const cRect = resizer.parentElement.getBoundingClientRect();
+  resizer.style.display = 'block';
+  resizer.style.left = (bRect.left - cRect.left + bRect.width * ((s.bulletsColRatio ?? 50) / 100)) + 'px';
+  resizer.style.top = (bRect.top - cRect.top) + 'px';
+  resizer.style.height = bRect.height + 'px';
+}
 /* 줄 앞에 하이픈(-) 등 마커가 있는 줄만 불릿(•)으로 표시, 없는 줄은 그대로 일반 텍스트로 표시 */
 function renderBulletLines(raw) {
   return raw.split('\n').filter(Boolean).map(line => {
@@ -492,6 +534,7 @@ function renderSlotDom(pg) {
   bulletsEl.style.fontSize = layoutVal(s,'bulletsSize') + 'px';
   bulletsEl.style.letterSpacing = (layoutVal(s,'bulletsTracking') / 1000) + 'em';
   applyGrad($('#grad'+pg), s.gradStart, s.gradWidth, s.gradOpacity, s.gradCompress ?? 0);
+  positionBulletsResizer(pg);
 }
 function applyGrad(el, s, w, oRaw, c) {
   const o = Math.min(1, oRaw / 100);
