@@ -18,12 +18,15 @@ const { getProductStock } = require('./naver-stock');
 
 const HISTORY_PATH = path.join(__dirname, 'reports', '_stock-history.json');
 
+// 스토어 메인 페이지는 지난 달 이전 상품까지 다 끌려와서, 이번 달(7월) 상품만 모아둔 카테고리
+// 페이지 URL로 교체 — PW/BH 둘 다 네이버에 월별 카테고리를 따로 만들어두는 방식이라 이걸 쓰면
+// "이번 달 판매데이터"만 정확히 잡힘. 다음 달부터는 그 달 카테고리 URL로 매번 갱신해줘야 함.
 const STORES = [
-  { label: 'PW', url: 'https://brand.naver.com/megahouse' },
-  // BH는 스토어 자체에 로그인 게이트가 걸려있어서 일반 URL로는 못 봄. 파워링크 광고가
-  // 연결하는 랜딩 링크(mkt.shopping.naver.com/link/...)로 들어가면 로그인 없이 통과됨 —
-  // 이건 광고 클릭마다 발급되는 1회성 토큰이 아니라 광고주가 등록한 고정 랜딩 링크라 안정적.
-  { label: 'BH', url: 'https://mkt.shopping.naver.com/link/681dc55ab84505306af8828b' },
+  { label: 'PW', url: 'https://brand.naver.com/megahouse/category/a1b6775bba66406296df046187baf675?st=POPULAR&dt=IMAGE&page=1&size=80' },
+  // BH는 스토어 메인 페이지 자체엔 로그인 게이트가 걸려있어서(위 커밋 히스토리 참고) 파워링크
+  // 랜딩 링크로 우회했었는데, 카테고리 페이지는 게이트 없이 되는지 아직 실사용 검증 전 —
+  // 안 되면 예전처럼 파워링크 우회가 필요할 수 있음.
+  { label: 'BH', url: 'https://smartstore.naver.com/megahousemall/category/1422883dc67d4ac7add2b41009c62d39?st=TOTALSALE&dt=IMAGE&page=1&size=80' },
 ];
 
 async function captureSnapshot() {
