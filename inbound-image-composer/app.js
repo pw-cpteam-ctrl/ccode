@@ -162,6 +162,7 @@ function renderSourceList() {
         <div class="row">
           <button class="btn" data-action="redetect" data-id="${src.id}">다시 검출</button>
           <button class="btn primary" data-action="confirm" data-id="${src.id}" ${src.confirmed ? 'disabled' : ''}>${src.confirmed ? '크롭 완료됨' : '확인 및 크롭'}</button>
+          <button class="btn" data-action="ai-fill" data-id="${src.id}" ${src.confirmed ? '' : 'disabled'} title="claude-haiku-4-5로 사진 속 텍스트를 읽어 표를 채웁니다 (유료 API 호출, 장당 약 1센트 수준). 결과는 항상 확인 대상으로만 표시됩니다.">🤖 AI로 채우기</button>
         </div>
       </div>
       <canvas class="overlay" data-canvas="${src.id}"></canvas>
@@ -200,19 +201,71 @@ function confirmSourceCrop(srcId) {
     state.headers.push({ id: uid('hdr'), label: `소스 ${state.headers.length + 1} 헤더`, canvas: headerCanvas });
   }
 
+  src.itemStartIndex = state.items.length; // AI 채우기 결과를 이 소스가 만든 항목에만 매핑하기 위한 범위
   rows.forEach((y) => {
     cols.forEach((x) => {
       const photoId = `p${state.nextPhotoNum++}`;
       state.photos[photoId] = GridDetect.cropCell(src.img, x, y, cardW, cardH);
       state.items.push({
         id: uid('item'), photoId, ip: '', tag: '', price: '', ship: '무료배송',
-        subGrade: 'other', pushToEnd: false,
+        subGrade: 'other', pushToEnd: false, aiUncertain: false,
       });
     });
   });
+  src.itemCount = state.items.length - src.itemStartIndex;
 
   src.confirmed = true;
   renderSourceList();
+}
+
+// ---------- AI로 자동 채우기 (선택, 유료 — claude-haiku-4-5 vision) ----------
+// 대화형 AI로 하던 것과 같은 경험: 이미지를 통째로 보내서 IP명/가격/태그/배송비를 채운다.
+// business-rules.md 원칙대로, 결과는 절대 그대로 확정되지 않고 항상 "확인 필요" 상태로만
+// 표에 반영된다(uncertain 플래그 → ⚠ 배지). 백엔드가 없으면 친절한 안내만 뜨고 끝난다.
+async function aiFillSource(srcId) {
+  const src = state.sources.find((s) => s.id === srcId);
+  if (!src || !src.confirmed) return;
+
+  const btn = document.querySelector(`button[data-action="ai-fill"][data-id="${srcId}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = '인식 중...'; }
+
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = src.img.width; canvas.height = src.img.height;
+    canvas.getContext('2d').drawImage(src.img, 0, 0);
+    const dataUrl = canvas.toDataURL('image/png');
+    const imageBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+
+    const r = await fetch('/api/parse-image', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageBase64, mediaType: 'image/png', expectedCount: src.itemCount,
+        ipDictHint: state.dict.ipNameMap, tagWhitelist: tagWhitelistForActiveStore(),
+      }),
+      signal: AbortSignal.timeout(60000),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'AI 인식 실패');
+
+    let uncertainCount = 0;
+    data.items.slice(0, src.itemCount).forEach((result, i) => {
+      const item = state.items[src.itemStartIndex + i];
+      if (!item) return;
+      item.ip = result.ip || '';
+      item.price = result.price || '';
+      item.ship = result.ship || '무료배송';
+      item.tag = result.tag || '';
+      item.aiUncertain = !!result.uncertain || !item.ip;
+      if (item.aiUncertain) uncertainCount++;
+    });
+
+    renderDataTable();
+    alert(`AI가 ${src.itemCount}개 항목을 채웠습니다.\n확인이 필요한 항목: ${uncertainCount}개 (⚠ 표시된 곳을 확인하세요)`);
+  } catch (e) {
+    alert(`AI로 채우기 실패: ${e.message}\n(백엔드가 배포되어 있지 않다면 정상입니다 — 수동으로 입력해주세요)`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🤖 AI로 채우기'; }
+  }
 }
 
 // ============================================================
@@ -257,7 +310,7 @@ function renderDataTable() {
       .join('');
     tr.innerHTML = `
       <td class="thumb"></td>
-      <td><input class="ip-input" value="${item.ip}" /> <div class="suggest-slot">${ipDictSuggestionHtml(item.ip)}</div></td>
+      <td><input class="ip-input" value="${item.ip}" /> <div class="suggest-slot">${item.aiUncertain ? '<span class="warn-badge">⚠ AI 추정 - 확인 필요</span> ' : ''}${ipDictSuggestionHtml(item.ip)}</div></td>
       <td><select class="tag-select">${tagOptions}</select></td>
       <td><input class="price-input" value="${item.price}" placeholder="44,400원" /></td>
       <td><input class="ship-input" value="${item.ship}" placeholder="무료배송 / 3,000원" /></td>
@@ -274,7 +327,7 @@ function renderDataTable() {
     tr.querySelector('.thumb').appendChild(scaledThumb(state.photos[item.photoId]));
     tbody.appendChild(tr);
 
-    tr.querySelector('.ip-input').addEventListener('change', (e) => { item.ip = e.target.value.trim(); renderDataTable(); });
+    tr.querySelector('.ip-input').addEventListener('change', (e) => { item.ip = e.target.value.trim(); item.aiUncertain = false; renderDataTable(); });
     tr.querySelector('.tag-select').addEventListener('change', (e) => { item.tag = e.target.value; });
     tr.querySelector('.price-input').addEventListener('change', (e) => { item.price = e.target.value.trim(); });
     tr.querySelector('.ship-input').addEventListener('change', (e) => { item.ship = e.target.value.trim(); });
@@ -316,7 +369,7 @@ function renderPreviewGrid(containerId, items, opts) {
       ${checkboxHtml}
       <button class="edit-btn" data-edit="${item.id}">✎</button>
       <div class="thumb-slot"></div>
-      <div class="ip">${item.ip || '<span style=\"color:#c0c4cc\">IP명 없음</span>'}${item.tag ? `<span class="tag">${item.tag}</span>` : ''}</div>
+      <div class="ip">${item.aiUncertain ? '⚠ ' : ''}${item.ip || '<span style=\"color:#c0c4cc\">IP명 없음</span>'}${item.tag ? `<span class="tag">${item.tag}</span>` : ''}</div>
       <div class="price">${item.price || ''}</div>
       <div class="ship">${item.ship || ''}</div>
     `;
@@ -416,6 +469,7 @@ document.addEventListener('DOMContentLoaded', () => {
     item.ship = shipMode === 'custom' ? document.getElementById('editShipCustom').value.trim() : shipMode;
     item.subGrade = document.getElementById('editSubGrade').value;
     item.pushToEnd = document.getElementById('editPushEnd').checked;
+    item.aiUncertain = false; // 사람이 직접 확인/수정했으므로 확인필요 배지 해제
     document.getElementById('itemDialog').close();
     renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
     renderPreviewGrid('sortPreviewGrid', state.items, { draggable: true, selectable: false });
@@ -744,6 +798,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const src = state.sources.find((s) => s.id === btn.dataset.id);
     if (btn.dataset.action === 'redetect') { src.grid = GridDetect.detectGrid(src.img); renderSourceList(); }
     if (btn.dataset.action === 'confirm') confirmSourceCrop(src.id);
+    if (btn.dataset.action === 'ai-fill') aiFillSource(src.id);
   });
 
   document.getElementById('toStep2Btn').addEventListener('click', () => goToStep(2));
