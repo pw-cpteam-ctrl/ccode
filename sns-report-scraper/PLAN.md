@@ -430,6 +430,21 @@
   (진짜 신규 상품 표시는 store 자체는 비교 가능한데 그 상품만 직전에 없었던 경우에만 사용)
 - [x] `npm run verify`에 이 시나리오(직전 스냅샷에서 한 store만 0건) 회귀 테스트 추가
 
+### HTML 리포트 파일명에 생성 시각 추가 + 예전 파일 old/로 자동 이동
+- `reports/sns-report.html`이 매번 같은 이름으로 덮어써지던 걸, 사용자가 "파일명에 현재시각
+  추가하고, 새로 뽑으면 이전 건 old 폴더로 자동 이동"해달라고 요청
+- 엑셀(`sns-report.xlsx`)은 이미 재실행해도 같은 파일 안에 시트를 쌓아서 히스토리를 관리하는
+  기존 기능(테스트로 보장됨)이 있어서, 이것까지 타임스탬프 파일명으로 바꾸면 "한 파일에 시트
+  누적" 방식이 무의미해짐 — 범위를 확인한 후 **HTML만 적용, 엑셀은 그대로 유지**로 결정
+- [x] `report-archive.js` 신설 — `archiveAndGetPath(dir, baseName, ext)`: dir 안의
+  `baseName*.ext` 패턴 파일(예전 고정이름 `sns-report.html` + 예전 타임스탬프 파일 전부)을
+  `dir/old/`로 옮기고, 이번에 쓸 `sns-report_YYYYMMDD_HHMM.html`(KST, 콜론 없음 — Windows
+  파일명 제약) 경로를 반환
+- [x] `run.js`/`rebuild-report.js`가 HTML 저장 직전에 이 함수를 호출해서 경로를 받아 쓰도록 수정
+- [x] `npm run verify`에 회귀 테스트 추가(고정이름+타임스탬프 파일 둘 다 old/로 이동되는지,
+  엑셀 파일은 안 건드리는지) + 실제 캐시로 `node rebuild-report.js` 돌려서 old/ 폴더 생성과
+  파일 이동까지 실제로 확인
+
 ### 🟢 지금 가능한 부분 중 남은 것
 - [x] 결과 취합(비교표+비율 계산) 로직 — `aggregate.js` 완료
 - [x] 엑셀 자동저장(히스토리 누적) — `excel.js` 완료
