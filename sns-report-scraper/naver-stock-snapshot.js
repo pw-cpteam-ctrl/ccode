@@ -23,15 +23,11 @@ const HISTORY_PATH = path.join(__dirname, 'reports', '_stock-history.json');
 // "이번 달 판매데이터"만 정확히 잡힘. 다음 달부터는 그 달 카테고리 URL로 매번 갱신해줘야 함.
 const STORES = [
   { label: 'PW', url: 'https://brand.naver.com/megahouse/category/a1b6775bba66406296df046187baf675?st=POPULAR&dt=IMAGE&page=1&size=80' },
-  // BH는 카테고리 페이지도 스토어 메인과 똑같이 로그인 게이트에 걸림(0건 수집으로 확인됨).
-  // 예전에 메인 페이지 우회용으로 찾은 파워링크 랜딩 링크(warmupUrl)를 먼저 방문해서 게이트를
-  // 풀어주는 세션을 만든 다음, 같은 브라우저 컨텍스트 안에서 진짜 카테고리 페이지(url)로
-  // 이동하는 방식으로 재시도 — 게이트가 스토어 단위로 걸리는 거라면 이걸로 통과될 것으로 예상.
-  {
-    label: 'BH',
-    warmupUrl: 'https://mkt.shopping.naver.com/link/681dc55ab84505306af8828b',
-    url: 'https://smartstore.naver.com/megahousemall/category/1422883dc67d4ac7add2b41009c62d39?st=TOTALSALE&dt=IMAGE&page=1&size=80',
-  },
+  // BH는 원래 카테고리 URL(smartstore.naver.com/.../category/...)로 직접 들어가면 로그인
+  // 게이트에 걸림(warmupUrl+referer로도 못 뚫음). 사용자가 "경쟁사 신제품 카테고리로 가는
+  // 링크"로 찾아준 m.site.naver.com 단축링크로 교체해서 재시도 — 이게 게이트 자체를 우회하는
+  // 건지, 이 링크도 결국 같은 카테고리로 리다이렉트되는 건지는 실행해봐야 확인됨.
+  { label: 'BH', url: 'https://m.site.naver.com/1X24n' },
 ];
 
 async function captureSnapshot() {
