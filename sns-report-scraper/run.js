@@ -19,14 +19,16 @@ const { saveReportToExcel } = require('./excel');
 const { saveHtmlReport } = require('./html-report');
 const { buildStockComparison } = require('./stock-report');
 const { HISTORY_PATH: STOCK_HISTORY_PATH } = require('./naver-stock-snapshot');
+const { archiveAndGetPath } = require('./report-archive');
 
 const CONFIG = {
   startDate: '2026-07-01',
   endDate: '2026-07-02',
   outputPath: './reports/sns-report.xlsx',
-  // 히스토리 누적 없이 매번 최신 결과로 덮어씀 — 브라우저로 열어서 보기 좋게 확인하는 용도.
-  // 과거 데이터 보존은 엑셀(outputPath)이 담당.
-  htmlOutputPath: './reports/sns-report.html',
+  // HTML은 매번 새로 만들 때 파일명에 생성 시각을 붙이고, 예전 파일은 reports/old/로 자동
+  // 이동함(report-archive.js) — 과거 데이터 보존은 엑셀(outputPath, 시트 누적)이 따로 담당.
+  htmlOutputDir: './reports',
+  htmlOutputBaseName: 'sns-report',
   // 수집한 원본 게시물을 여기에 캐시해둠 — 리포트 포맷만 고칠 땐 재수집(몇 분) 없이
   // rebuild-report.js로 이 캐시만 다시 읽어서 몇 초 안에 엑셀만 새로 뽑을 수 있음.
   cachePath: './reports/_last-collection.json',
@@ -95,8 +97,9 @@ async function main() {
     : null;
   const stockComparison = stockHistory ? buildStockComparison(stockHistory) : null;
 
-  saveHtmlReport(report, CONFIG.htmlOutputPath, stockComparison);
-  console.log(`✅ HTML 저장 완료: ${CONFIG.htmlOutputPath} (브라우저로 열어서 확인)`);
+  const htmlOutputPath = archiveAndGetPath(CONFIG.htmlOutputDir, CONFIG.htmlOutputBaseName, 'html');
+  saveHtmlReport(report, htmlOutputPath, stockComparison);
+  console.log(`✅ HTML 저장 완료: ${htmlOutputPath} (브라우저로 열어서 확인, 이전 파일은 reports/old/로 이동됨)`);
 }
 
 main().catch(err => {

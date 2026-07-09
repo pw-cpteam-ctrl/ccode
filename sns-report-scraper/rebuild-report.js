@@ -14,10 +14,12 @@ const { saveReportToExcel } = require('./excel');
 const { saveHtmlReport } = require('./html-report');
 const { buildStockComparison } = require('./stock-report');
 const { HISTORY_PATH: STOCK_HISTORY_PATH } = require('./naver-stock-snapshot');
+const { archiveAndGetPath } = require('./report-archive');
 
 const CACHE_PATH = './reports/_last-collection.json';
 const OUTPUT_PATH = './reports/sns-report.xlsx';
-const HTML_OUTPUT_PATH = './reports/sns-report.html';
+const HTML_OUTPUT_DIR = './reports';
+const HTML_OUTPUT_BASE_NAME = 'sns-report';
 const MANUAL_MATCHES_PATH = './manual-matches.json';
 
 async function main() {
@@ -51,8 +53,9 @@ async function main() {
     : null;
   const stockComparison = stockHistory ? buildStockComparison(stockHistory) : null;
 
-  saveHtmlReport(report, HTML_OUTPUT_PATH, stockComparison);
-  console.log(`✅ HTML 저장 완료: ${HTML_OUTPUT_PATH} (브라우저로 열어서 확인)`);
+  const htmlOutputPath = archiveAndGetPath(HTML_OUTPUT_DIR, HTML_OUTPUT_BASE_NAME, 'html');
+  saveHtmlReport(report, htmlOutputPath, stockComparison);
+  console.log(`✅ HTML 저장 완료: ${htmlOutputPath} (브라우저로 열어서 확인, 이전 파일은 reports/old/로 이동됨)`);
 }
 
 main().catch(err => {
