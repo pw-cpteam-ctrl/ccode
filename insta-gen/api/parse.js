@@ -158,16 +158,12 @@ export default async function handler(req, res) {
       repo: process.env.GITHUB_REPO,
       branch: process.env.GITHUB_BRANCH || 'main',
     };
-    let _learnDebug = { configured: !!(gh.token && gh.owner && gh.repo) };
     if (gh.token && gh.owner && gh.repo) {
-      try { await recordLearning(parsed, sourceText.trim(), gh); _learnDebug.ok = true; }
-      catch (learnErr) {
-        console.error('학습 기록 실패(파싱 결과엔 영향 없음):', learnErr.message);
-        _learnDebug.ok = false; _learnDebug.error = learnErr.message;
-      }
+      try { await recordLearning(parsed, sourceText.trim(), gh); }
+      catch (learnErr) { console.error('학습 기록 실패(파싱 결과엔 영향 없음):', learnErr.message); }
     }
 
-    res.status(200).json({ ...parsed, _learnDebug }); // TODO: 진단 끝나면 _learnDebug 제거
+    res.status(200).json(parsed);
   } catch (err) {
     res.status(502).json({ error: `AI 파싱 실패: ${err.message}` });
   }
