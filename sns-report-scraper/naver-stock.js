@@ -346,11 +346,19 @@ function extractFromHtml(html) {
 // 필요 없음 — 공개 페이지라 새 컨텍스트로 그냥 열면 됨).
 const { chromium } = require('playwright');
 
-async function fetchProductPage(url, { headless = false } = {}) {
+// warmupUrl: BH처럼 스토어 자체에 로그인 게이트가 걸려있는 경우, 게이트를 통과시켜주는 링크
+// (파워링크 랜딩 링크 등)를 먼저 방문해서 그 세션/쿠키 상태를 만든 다음, 같은 브라우저
+// 컨텍스트 안에서 진짜 원하는 페이지(url)로 이동 — 스토어 메인 페이지뿐 아니라 카테고리
+// 페이지 등 게이트가 걸린 다른 하위 페이지에도 이 세션이 그대로 적용되는지 확인하려는 용도.
+async function fetchProductPage(url, { headless = false, warmupUrl = null } = {}) {
   const browser = await chromium.launch({ headless });
   const context = await browser.newContext({ locale: 'ko-KR' });
   const page = await context.newPage();
   try {
+    if (warmupUrl) {
+      await page.goto(warmupUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(1000);
+    }
     const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     if (response && !response.ok()) {
       throw new Error(`HTTP ${response.status()} (${url})`);
