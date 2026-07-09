@@ -9,6 +9,11 @@
  * "내 계정으로 로그인한 상태에서 경쟁사의 공개 게시물을 조회"하는 방식이라서 정상임.
  *
  * 매번 돌릴 때 startDate/endDate만 그 달 리포트 기간에 맞게 바꿔주면 됨.
+ *
+ * 사용법: node run.js           — 트위터+인스타 둘 다 수집(기본)
+ *        node run.js twitter    — 트위터만 수집
+ *        node run.js instagram  — 인스타만 수집(세션 막 갱신했을 때 등)
+ * 한쪽만 수집해도 캐시(cachePath)에 남아있던 다른 플랫폼 데이터는 보존됨(안 지워짐).
  */
 const fs = require('fs');
 const path = require('path');
@@ -63,8 +68,28 @@ async function collectAll(accounts) {
 }
 
 async function main() {
-  const own = await collectAll(CONFIG.own);
-  const competitors = await collectAll(CONFIG.competitors);
+  const platformFilter = process.argv[2];
+  if (platformFilter && !['twitter', 'instagram'].includes(platformFilter)) {
+    console.error('❌ 사용법: node run.js [twitter|instagram] (안 주면 둘 다 수집)');
+    process.exit(1);
+  }
+
+  const ownToCollect = platformFilter ? CONFIG.own.filter(a => a.platform === platformFilter) : CONFIG.own;
+  const competitorsToCollect = platformFilter ? CONFIG.competitors.filter(a => a.platform === platformFilter) : CONFIG.competitors;
+
+  const ownFresh = await collectAll(ownToCollect);
+  const competitorsFresh = await collectAll(competitorsToCollect);
+
+  // 특정 플랫폼만 다시 수집했으면, 캐시에 남아있던 다른 플랫폼 데이터는 그대로 보존 —
+  // 안 그러면 예전에 수집해둔 트위터/인스타 데이터가 통째로 사라짐(데이터 손실 방지 우선).
+  const prevCache = fs.existsSync(CONFIG.cachePath) ? JSON.parse(fs.readFileSync(CONFIG.cachePath, 'utf-8')) : null;
+  const mergeWithCache = (fresh, prevList) => {
+    if (!platformFilter) return fresh;
+    const kept = (prevList || []).filter(c => c.platform !== platformFilter);
+    return [...kept, ...fresh];
+  };
+  const own = mergeWithCache(ownFresh, prevCache?.own);
+  const competitors = mergeWithCache(competitorsFresh, prevCache?.competitors);
 
   // 원본 게시물 캐시 저장 — 재수집 없이 rebuild-report.js로 리포트만 다시 만들 수 있게
   fs.mkdirSync(path.dirname(CONFIG.cachePath), { recursive: true });
