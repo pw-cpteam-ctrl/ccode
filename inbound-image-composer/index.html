@@ -52,12 +52,16 @@
   .source-status { font-size: 12px; color: var(--muted); margin: 8px 0; }
   .source-status.confirmed { color: var(--ok); font-weight: 700; }
 
-  table.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  table.data-table th, table.data-table td { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: left; vertical-align: middle; }
-  table.data-table td.thumb img, table.data-table td.thumb canvas { width: 48px; height: 48px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); }
-  table.data-table input, table.data-table select { font-size: 13px; padding: 5px 6px; border: 1px solid var(--line2); border-radius: 5px; width: 100%; }
-  .warn-badge { color: #b06a00; background: #fff3d6; border-radius: 4px; padding: 2px 6px; font-size: 11px; white-space: nowrap; }
+  .step2-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .step2-card { display: flex; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fff; }
+  .step2-card .thumb img, .step2-card .thumb canvas { width: 56px; height: 56px; object-fit: cover; border-radius: 5px; border: 1px solid var(--line); flex: none; }
+  .step2-card .fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .step2-card .fields-row { display: flex; gap: 6px; }
+  .step2-card .fields-row > * { flex: 1; min-width: 0; }
+  .step2-card input, .step2-card select { font-size: 13px; padding: 5px 6px; border: 1px solid var(--line2); border-radius: 5px; width: 100%; }
+  .warn-badge { color: #b06a00; background: #fff3d6; border-radius: 4px; padding: 2px 6px; font-size: 11px; white-space: nowrap; display: inline-block; }
   .dict-suggest { font-size: 11px; color: var(--accent); }
+  @media (max-width: 720px) { .step2-grid { grid-template-columns: 1fr; } }
 
   .preview-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
   .pcard { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: #fff; cursor: grab; position: relative; }
@@ -134,12 +138,7 @@
         <label style="font-size:13px;">스토어 프로필</label>
         <select id="storeSelectStep2"></select>
       </div>
-      <table class="data-table">
-        <thead>
-          <tr><th>사진</th><th>IP명</th><th>라인업 태그</th><th>가격</th><th>배송비</th><th>등급(수동)</th></tr>
-        </thead>
-        <tbody id="dataTableBody"></tbody>
-      </table>
+      <div class="step2-grid" id="dataTableBody"></div>
     </div>
     <div class="footer-nav">
       <button class="btn" id="backTo1Btn">← 이전</button>

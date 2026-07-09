@@ -251,7 +251,8 @@ async function aiFillSource(srcId) {
     data.items.slice(0, src.itemCount).forEach((result, i) => {
       const item = state.items[src.itemStartIndex + i];
       if (!item) return;
-      item.ip = result.ip || '';
+      // 모델이 그래도 ip를 비워서 주면 rawText로 대체 — 빈 칸보다는 "확인해서 고칠 글자"가 있는 게 낫다.
+      item.ip = result.ip || result.rawText || '';
       item.price = result.price || '';
       item.ship = result.ship || '무료배송';
       item.tag = result.tag || '';
@@ -299,40 +300,47 @@ function ipDictSuggestionHtml(ip) {
   return '';
 }
 
+// 배송비는 이 화면(2단계)에서는 편집하지 않는다 — 대부분 무료배송으로 고정이라 편집란이
+// 오히려 목록을 길게 만들어 가독성을 해쳤음. 값 자체는 item.ship에 그대로 남아있고
+// (기본 "무료배송"), 예외적으로 바꿔야 하면 3단계 카드의 "✎ 수정" 다이얼로그에서 가능하다.
 function renderDataTable() {
-  const tbody = document.getElementById('dataTableBody');
-  tbody.innerHTML = '';
+  const grid = document.getElementById('dataTableBody');
+  grid.innerHTML = '';
   state.items.forEach((item) => {
-    const tr = document.createElement('tr');
-    tr.dataset.id = item.id;
+    const card = document.createElement('div');
+    card.className = 'step2-card';
+    card.dataset.id = item.id;
     const tagOptions = ['<option value="">(없음)</option>']
       .concat(tagWhitelistForActiveStore().map((t) => `<option value="${t}" ${item.tag === t ? 'selected' : ''}>${t}</option>`))
       .join('');
-    tr.innerHTML = `
-      <td class="thumb"></td>
-      <td><input class="ip-input" value="${item.ip}" /> <div class="suggest-slot">${item.aiUncertain ? '<span class="warn-badge">⚠ AI 추정 - 확인 필요</span> ' : ''}${ipDictSuggestionHtml(item.ip)}</div></td>
-      <td><select class="tag-select">${tagOptions}</select></td>
-      <td><input class="price-input" value="${item.price}" placeholder="44,400원" /></td>
-      <td><input class="ship-input" value="${item.ship}" placeholder="무료배송 / 3,000원" /></td>
-      <td>
-        <select class="subgrade-select">
-          <option value="other" ${item.subGrade === 'other' ? 'selected' : ''}>기타</option>
-          <option value="B_male" ${item.subGrade === 'B_male' ? 'selected' : ''}>B급 남성향</option>
-          <option value="B_female" ${item.subGrade === 'B_female' ? 'selected' : ''}>B급 여성향</option>
-          <option value="C_male" ${item.subGrade === 'C_male' ? 'selected' : ''}>C급 남성향</option>
-          <option value="C_female" ${item.subGrade === 'C_female' ? 'selected' : ''}>C급 여성향</option>
-        </select>
-      </td>
+    card.innerHTML = `
+      <div class="thumb"></div>
+      <div class="fields">
+        <div class="fields-row">
+          <input class="ip-input" value="${item.ip}" placeholder="IP명" />
+          <select class="tag-select">${tagOptions}</select>
+        </div>
+        <div class="suggest-slot">${item.aiUncertain ? '<span class="warn-badge">⚠ AI 추정 - 확인 필요</span> ' : ''}${ipDictSuggestionHtml(item.ip)}</div>
+        <div class="fields-row">
+          <input class="price-input" value="${item.price}" placeholder="가격 (예: 44,400원)" />
+          <select class="subgrade-select">
+            <option value="other" ${item.subGrade === 'other' ? 'selected' : ''}>기타</option>
+            <option value="B_male" ${item.subGrade === 'B_male' ? 'selected' : ''}>B급 남성향</option>
+            <option value="B_female" ${item.subGrade === 'B_female' ? 'selected' : ''}>B급 여성향</option>
+            <option value="C_male" ${item.subGrade === 'C_male' ? 'selected' : ''}>C급 남성향</option>
+            <option value="C_female" ${item.subGrade === 'C_female' ? 'selected' : ''}>C급 여성향</option>
+          </select>
+        </div>
+      </div>
     `;
-    tr.querySelector('.thumb').appendChild(scaledThumb(state.photos[item.photoId]));
-    tbody.appendChild(tr);
+    card.querySelector('.thumb').appendChild(scaledThumb(state.photos[item.photoId]));
+    grid.appendChild(card);
 
-    tr.querySelector('.ip-input').addEventListener('change', (e) => { item.ip = e.target.value.trim(); item.aiUncertain = false; renderDataTable(); });
-    tr.querySelector('.tag-select').addEventListener('change', (e) => { item.tag = e.target.value; });
-    tr.querySelector('.price-input').addEventListener('change', (e) => { item.price = e.target.value.trim(); });
-    tr.querySelector('.ship-input').addEventListener('change', (e) => { item.ship = e.target.value.trim(); });
-    tr.querySelector('.subgrade-select').addEventListener('change', (e) => { item.subGrade = e.target.value; });
-    const suggestBtn = tr.querySelector('[data-apply-suggest]');
+    card.querySelector('.ip-input').addEventListener('change', (e) => { item.ip = e.target.value.trim(); item.aiUncertain = false; renderDataTable(); });
+    card.querySelector('.tag-select').addEventListener('change', (e) => { item.tag = e.target.value; });
+    card.querySelector('.price-input').addEventListener('change', (e) => { item.price = e.target.value.trim(); });
+    card.querySelector('.subgrade-select').addEventListener('change', (e) => { item.subGrade = e.target.value; });
+    const suggestBtn = card.querySelector('[data-apply-suggest]');
     if (suggestBtn) suggestBtn.addEventListener('click', () => {
       item.ip = state.dict.ipNameMap[item.ip];
       renderDataTable();
