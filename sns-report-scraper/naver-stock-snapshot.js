@@ -20,7 +20,10 @@ const HISTORY_PATH = path.join(__dirname, 'reports', '_stock-history.json');
 
 const STORES = [
   { label: 'PW', url: 'https://brand.naver.com/megahouse' },
-  { label: 'BH', url: 'https://smartstore.naver.com/megahousemall' },
+  // BH는 스토어 자체에 로그인 게이트가 걸려있어서 일반 URL로는 못 봄. 파워링크 광고가
+  // 연결하는 랜딩 링크(mkt.shopping.naver.com/link/...)로 들어가면 로그인 없이 통과됨 —
+  // 이건 광고 클릭마다 발급되는 1회성 토큰이 아니라 광고주가 등록한 고정 랜딩 링크라 안정적.
+  { label: 'BH', url: 'https://mkt.shopping.naver.com/link/681dc55ab84505306af8828b' },
 ];
 
 async function captureSnapshot() {
