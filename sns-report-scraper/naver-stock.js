@@ -388,18 +388,18 @@ function withPageParam(urlStr, pageNum) {
   return parsed.toString();
 }
 
-// 목록 페이지가 한 페이지에 다 안 들어오고 여러 페이지로 나뉜 경우(예: 모바일 단축링크는
-// 40개씩만 보여주는데 카테고리 상품이 40개보다 많은 경우) 이어서 다음 페이지들도 훑어서
-// 합쳐줌. entryUrl 방문 후 도착한 실제 URL에 page= 파라미터가 있으면 그 값을 2, 3, ...으로
-// 바꿔가며 같은 브라우저 컨텍스트(같은 세션) 안에서 이어서 방문 — 매 페이지 이전 페이지를
-// referer로 넘겨서 "그 페이지에서 다음 페이지로 넘어간" 것처럼 보이게 함. 새로 나온 상품이
-// 하나도 없는 페이지를 만나면 마지막 페이지로 판단하고 멈춤. page= 파라미터 자체가 없는
-// URL(단일 페이지 구조)이면 1페이지만 보고 끝냄 — 안전하게 동작.
-async function getProductStockAllPages(entryUrl, { headless = false, maxPages = 10 } = {}) {
+// 목록 페이지가 한 번에 다 안 들어오고 40개씩만 나오는 경우(모바일 단축링크로 들어간 카테고리
+// 등) 이어서 더 가져오는 두 가지 방식을 순서대로 시도:
+//   1) URL에 page= 파라미터가 있으면 2, 3...으로 늘려가며 이동(데스크톱형 페이지네이션)
+//   2) 그래도 안 늘어나면(모바일 무한스크롤형) 페이지를 실제로 스크롤해서 새 상품이 로드되길
+//      기다림 — twitter.js/instagram.js가 피드를 스크롤하는 것과 같은 방식
+// 새로 나온 상품이 연속으로 없으면(stableRounds) 다 모았다고 판단하고 멈춤.
+async function getProductStockAllPages(entryUrl, { headless = false, maxPages = 10, maxScrolls = 15, stableRounds = 2 } = {}) {
   const browser = await chromium.launch({ headless });
   const context = await browser.newContext({ locale: 'ko-KR' });
   const page = await context.newPage();
   const merged = new Map();
+  const addRecords = records => records.forEach(r => { if (r.productId) merged.set(r.productId, r); });
 
   try {
     const firstResponse = await page.goto(entryUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -407,28 +407,35 @@ async function getProductStockAllPages(entryUrl, { headless = false, maxPages = 
       throw new Error(`HTTP ${firstResponse.status()} (${entryUrl})`);
     }
     await page.waitForTimeout(1500);
-    extractFromHtml(await page.content()).forEach(r => { if (r.productId) merged.set(r.productId, r); });
+    addRecords(extractFromHtml(await page.content()));
 
     let currentUrl = page.url();
-    if (!/[?&]page=\d+/.test(currentUrl)) return [...merged.values()];
-
-    for (let pageNum = 2; pageNum <= maxPages; pageNum += 1) {
-      const nextUrl = withPageParam(currentUrl, pageNum);
-      let response;
-      try {
-        response = await page.goto(nextUrl, { waitUntil: 'domcontentloaded', timeout: 30000, referer: currentUrl });
-      } catch (error) {
-        break; // 다음 페이지 이동 실패(범위 밖 등) — 여기까지 모은 걸로 마무리
+    if (/[?&]page=\d+/.test(currentUrl)) {
+      for (let pageNum = 2; pageNum <= maxPages; pageNum += 1) {
+        const beforeSize = merged.size;
+        const nextUrl = withPageParam(currentUrl, pageNum);
+        let response;
+        try {
+          response = await page.goto(nextUrl, { waitUntil: 'domcontentloaded', timeout: 30000, referer: currentUrl });
+        } catch (error) {
+          break; // 다음 페이지 이동 실패(범위 밖 등) — 여기까지 모은 걸로 마무리
+        }
+        if (!response || !response.ok()) break;
+        await page.waitForTimeout(1200);
+        addRecords(extractFromHtml(await page.content()));
+        if (merged.size === beforeSize) break; // 새 상품이 없으면 마지막 페이지를 지나친 것으로 판단
+        currentUrl = nextUrl;
       }
-      if (!response || !response.ok()) break;
-      await page.waitForTimeout(1200);
+    }
 
-      const pageRecords = extractFromHtml(await page.content());
-      const freshRecords = pageRecords.filter(r => r.productId && !merged.has(r.productId));
-      if (freshRecords.length === 0) break; // 새 상품이 없으면 마지막 페이지를 지나친 것으로 판단
-
-      freshRecords.forEach(r => merged.set(r.productId, r));
-      currentUrl = nextUrl;
+    // page= 방식으로 못 늘렸으면(모바일 무한스크롤형일 가능성) 스크롤해서 더 로드되는지 시도
+    let stableCount = 0;
+    for (let i = 0; i < maxScrolls && stableCount < stableRounds; i += 1) {
+      const beforeSize = merged.size;
+      await page.mouse.wheel(0, 6000);
+      await page.waitForTimeout(1000);
+      addRecords(extractFromHtml(await page.content()));
+      stableCount = merged.size === beforeSize ? stableCount + 1 : 0;
     }
   } finally {
     await browser.close();
