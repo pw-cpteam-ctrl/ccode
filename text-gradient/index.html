@@ -20,6 +20,10 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Mal
 .field input,.field textarea{width:100%;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:7px 10px;font-size:14.5px;font-family:inherit;color:var(--ui-text);}
 .field textarea#inBulkMd{font-family:'SFMono-Regular',Consolas,monospace;font-size:13px;white-space:pre;}
 .row2{display:flex;gap:7px;}.row2 .field{flex:1;min-width:0;}
+.col-divider{flex:0 0 10px;align-self:stretch;margin:0 -1px;border-radius:4px;background:var(--ui-border);cursor:col-resize;position:relative;}
+.col-divider::after{content:'⋮';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:11px;color:var(--ui-sub);line-height:1;}
+.col-divider:hover,.col-divider.dragging{background:var(--ui-accent);}
+.col-divider:hover::after,.col-divider.dragging::after{color:#fff;}
 .row3{display:flex;gap:6px;}.row3 .field-col{flex:1;min-width:0;}
 .col-title{font-size:12px;font-weight:700;color:var(--ui-sub);text-align:center;margin-bottom:4px;}
 .sec{font-size:15px;font-weight:800;color:var(--ui-text);margin:16px 0 9px;padding-bottom:6px;border-bottom:2px solid var(--ui-border);}
@@ -95,13 +99,14 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
   <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ui-sub);margin-bottom:6px;cursor:pointer;">
     <input type="checkbox" id="inBulletsTwoCol"/> 2열 사용 (체크하면 좌/우로 나눠 입력, 이미지도 2열로 표시)
   </label>
-  <div class="row2">
-    <div class="field"><label>좌열</label><textarea id="inBullets" rows="4">- 주술냥코 시부야 사변 (재판)
+  <div class="row2" id="bulletsColRow" style="align-items:stretch;">
+    <div class="field" id="inBulletsField"><label>좌열</label><textarea id="inBullets" rows="4">- 주술냥코 시부야 사변 (재판)
 - 유지/메구미/노바라
 - 고죠/나나미/스쿠나</textarea></div>
+    <div class="col-divider" id="inBulletsColDivider" style="display:none;"></div>
     <div class="field" id="inBulletsRField"><label>우열</label><textarea id="inBulletsR" rows="4"></textarea></div>
   </div>
-  <div class="field" id="inBulletsColRatioField"><label>2열 폭 비율 (좌:우)</label><input type="range" id="inBulletsColRatio" min="20" max="80" value="50"/></div>
+  <div class="field" id="inBulletsColRatioField"><label>2열 폭 비율 (좌:우) — 위 입력창 사이 손잡이를 드래그해도 조절됨</label><input type="range" id="inBulletsColRatio" min="20" max="80" value="50"/></div>
 
   <div class="sec">배치 · 크기</div>
   <div class="subsec">개별 조정 — 지금 보고 있는 슬롯에만 적용</div>
@@ -396,7 +401,9 @@ function loadInputsFromCurSlot() {
   $('#inBulletsTwoCol').checked = !!s.bulletsTwoCol;
   $('#inBulletsColRatio').value = s.bulletsColRatio ?? 50;
   $('#inBulletsRField').style.display = s.bulletsTwoCol ? '' : 'none';
+  $('#inBulletsColDivider').style.display = s.bulletsTwoCol ? '' : 'none';
   $('#inBulletsColRatioField').style.display = s.bulletsTwoCol ? '' : 'none';
+  applyBulletsColRatioLayout(s.bulletsColRatio ?? 50);
   $('#gradStart').value = s.gradStart; $('#gradWidth').value = s.gradWidth; $('#gradOpacity').value = s.gradOpacity;
   $('#gradCompress').value = s.gradCompress ?? 0;
   $('#badgeY').value = layoutVal(s,'badgeY'); $('#badgeSize').value = layoutVal(s,'badgeSize');
@@ -409,6 +416,34 @@ function loadInputsFromCurSlot() {
 function highlightCurSlot() {
   document.querySelectorAll('.slot-wrap').forEach(w => w.classList.toggle('cur', w.id === 'slot'+curSlot));
 }
+/* 좌열/우열 입력창의 가로 폭도 2열 폭 비율에 맞춰 나눈다 (미리보기 이미지와 동일한 값 공유) */
+function applyBulletsColRatioLayout(ratio) {
+  $('#inBulletsField').style.flex = ratio + ' 1 0%';
+  $('#inBulletsRField').style.flex = (100 - ratio) + ' 1 0%';
+}
+/* 좌열/우열 입력창 사이 손잡이를 드래그하면 그 자리에서 폭 비율이 바뀌고, 미리보기 이미지에도 실시간 반영된다 */
+$('#inBulletsColDivider').addEventListener('mousedown', e => {
+  e.preventDefault();
+  const divider = $('#inBulletsColDivider');
+  divider.classList.add('dragging');
+  const row = $('#bulletsColRow');
+  const onMove = ev => {
+    const rect = row.getBoundingClientRect();
+    const ratio = Math.max(20, Math.min(80, Math.round(((ev.clientX - rect.left) / rect.width) * 100)));
+    $('#inBulletsColRatio').value = ratio;
+    applyBulletsColRatioLayout(ratio);
+    slots[curSlot - 1].bulletsColRatio = ratio;
+    renderCurSlotDom();
+  };
+  const onUp = () => {
+    divider.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    persistState();
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+});
 ['inBadge','inTitleL','inTitleR','inBullets','inBulletsR','inBulletsColRatio','gradStart','gradWidth','gradOpacity','gradCompress',
  'badgeY','badgeSize','titleY','titleSize','bulletsY','bulletsSize','titleTracking','bulletsTracking'].forEach(id => {
   $('#'+id).addEventListener('input', () => {
@@ -417,10 +452,13 @@ function highlightCurSlot() {
     persistState();        // ③ 저장
   });
 });
+$('#inBulletsColRatio').addEventListener('input', () => applyBulletsColRatioLayout(+$('#inBulletsColRatio').value));
 $('#inBulletsTwoCol').addEventListener('input', () => {
   syncInputsToState();
-  $('#inBulletsRField').style.display = $('#inBulletsTwoCol').checked ? '' : 'none';
-  $('#inBulletsColRatioField').style.display = $('#inBulletsTwoCol').checked ? '' : 'none';
+  const on = $('#inBulletsTwoCol').checked;
+  $('#inBulletsRField').style.display = on ? '' : 'none';
+  $('#inBulletsColDivider').style.display = on ? '' : 'none';
+  $('#inBulletsColRatioField').style.display = on ? '' : 'none';
   renderCurSlotDom();
   persistState();
 });
@@ -484,7 +522,7 @@ function attachBulletsResizerDrag(pg) {
       const ratio = Math.max(20, Math.min(80, Math.round(((ev.clientX - rect.left) / rect.width) * 100)));
       slots[pg-1].bulletsColRatio = ratio;
       renderSlotDom(pg);
-      if (pg === curSlot) $('#inBulletsColRatio').value = ratio;
+      if (pg === curSlot) { $('#inBulletsColRatio').value = ratio; applyBulletsColRatioLayout(ratio); }
     };
     const onUp = () => {
       resizer.classList.remove('dragging');
