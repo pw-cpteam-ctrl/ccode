@@ -120,9 +120,12 @@ function embedBlockquote(platformKey, post) {
 // SNS 상품(ip/line) 하나에 매칭된 네이버 재고 항목을 표 우측 끝 컬럼 한 칸으로 렌더링.
 // 별도 섹션으로 안 빼고 같은 표 안(가로 스크롤로 보이는 우측)에 두는 게 목적 — 위아래로
 // 왔다갔다하며 대조하지 않아도 되게.
-function stockMatchCell(match) {
+// hasComparison: 이 store가 직전 스냅샷이랑 비교 가능한 상태인지 — false면 직전 데이터
+// 자체가 없었던 것(수집 실패 등)이라 "신규"라고 하면 안 되고, 그냥 현재 재고만 보여줘야 함.
+function stockMatchCell(match, hasComparison) {
   if (!match) return '<td class="metric sm-none">-</td>';
   const title = escapeHtml(match.name || '');
+  if (!hasComparison) return `<td class="metric sm-first" title="${title}">${match.stock.toLocaleString()}개</td>`;
   if (match.stockDelta === null) return `<td class="metric sm-new" title="${title}">신규</td>`;
   const deltaText = match.stockDelta > 0 ? `-${match.stockDelta.toLocaleString()}` : match.stockDelta < 0 ? `+${Math.abs(match.stockDelta).toLocaleString()}` : '0';
   const rankPart = match.rank ? `${rankMedal(match.rank)} ` : '';
@@ -136,9 +139,12 @@ function renderPlatformSection(platformKey, data, stockComparison) {
   // 재고 스냅샷이 있으면 store(PW/BH)별로 순위 매긴 목록을 미리 만들어두고, 상품 행마다
   // ip/line으로 근사 매칭 — SNS 실적 순위표 우측에 매출순위 컬럼으로 붙임(별도 섹션 아님).
   const hasStock = Boolean(stockComparison);
-  const stockHasComparison = hasStock && Boolean(stockComparison.previousTakenAt);
-  const pwStockRanked = hasStock ? rankStockProducts(stockComparison.stores.PW || [], stockHasComparison) : null;
-  const bhStockRanked = hasStock ? rankStockProducts(stockComparison.stores.BH || [], stockHasComparison) : null;
+  // store별로 비교 가능 여부가 다를 수 있음(예: BH만 직전 수집이 실패했던 경우) — 전체
+  // previousTakenAt이 아니라 store별 storeComparable을 따로 봐야 "신규" 오표시를 막을 수 있음.
+  const pwHasComparison = hasStock && Boolean(stockComparison.storeComparable?.PW);
+  const bhHasComparison = hasStock && Boolean(stockComparison.storeComparable?.BH);
+  const pwStockRanked = hasStock ? rankStockProducts(stockComparison.stores.PW || [], pwHasComparison) : null;
+  const bhStockRanked = hasStock ? rankStockProducts(stockComparison.stores.BH || [], bhHasComparison) : null;
 
   const pwTotals = {};
   const bhTotals = {};
@@ -182,8 +188,8 @@ function renderPlatformSection(platformKey, data, stockComparison) {
       `<td>${verdictBadge(p.verdict)}</td>`,
       `<td><button class="toggle-btn" onclick="toggleEmbeds('${embedRowId}','${platformKey}',this)">▶ 보기</button></td>`,
       ...(hasStock ? [
-        stockMatchCell(findStockMatch(p.ip, p.line, pwStockRanked)),
-        stockMatchCell(findStockMatch(p.ip, p.line, bhStockRanked)),
+        stockMatchCell(findStockMatch(p.ip, p.line, pwStockRanked), pwHasComparison),
+        stockMatchCell(findStockMatch(p.ip, p.line, bhStockRanked), bhHasComparison),
       ] : []),
     ].join('');
 
@@ -224,7 +230,7 @@ function renderPlatformSection(platformKey, data, stockComparison) {
         <button class="toggle-all-btn" onclick="toggleAllEmbeds('${platformKey}',false)">전체 접기</button>
       </div>
     </div>
-    ${hasStock ? `<div class="sub">📦 재고 매칭 기준 스냅샷: ${escapeHtml(formatTakenAt(stockComparison.latestTakenAt))} (KST)${stockHasComparison ? ` · 직전 스냅샷(${escapeHtml(formatTakenAt(stockComparison.previousTakenAt))}) 대비 변화량` : ' · 스냅샷이 1개뿐이라 변화량은 다음 수집부터 표시됨'} — 표 우측 끝(가로 스크롤) 참고</div>` : ''}
+    ${hasStock ? `<div class="sub">📦 재고 매칭 기준 스냅샷: ${escapeHtml(formatTakenAt(stockComparison.latestTakenAt))} (KST) · PW ${pwHasComparison ? '변화량 표시' : '이번이 첫 유효 수집이라 현재 재고만 표시'} · BH ${bhHasComparison ? '변화량 표시' : '이번이 첫 유효 수집이라 현재 재고만 표시'} — 표 우측 끝(가로 스크롤) 참고</div>` : ''}
     ${cards}
     <div class="table-wrap">
       <table>
@@ -316,6 +322,7 @@ td.metric{min-width:170px}
 td.sm-match{color:#2f9e44;font-weight:700;font-size:12px;font-variant-numeric:tabular-nums}
 td.sm-new{color:#9099a6;font-size:12px}
 td.sm-none{color:#c9ced8;font-size:12px}
+td.sm-first{color:#495057;font-size:12px;font-variant-numeric:tabular-nums}
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
 .badge.ok{background:#ebfbee;color:#2f9e44}.badge.mid{background:#fff4e6;color:#e8590c}.badge.low{background:#fff0f0;color:#c0504d}
 td.empty{color:#9099a6;padding:24px}
@@ -355,7 +362,7 @@ ${sections}
 ※ 표현이 서로 다르거나 상품명을 못 뽑은 게시물은 "매칭 안 됨" 목록에 별도로 있습니다 — 조용히 빠진 게 아닙니다.<br>
 ※ 결과(우세/경합/약세)는 표에 표시된 지표(리트윗+좋아요 또는 좋아요+댓글)가 둘 다 PW가 크면 우세, 둘 다 작으면 약세, 엇갈리면 경합입니다.<br>
 ※ "게시물 보기"는 인터넷 연결된 브라우저에서 열어야 실제 카드로 보입니다 — 오프라인/차단 상태면 링크만 보임.<br>
-※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).${stockComparison ? '<br>※ 📦PW/BH 매출 칸(표 우측 끝, 가로 스크롤): 상품명으로 네이버 재고 데이터와 근사 매칭한 결과 — 메달+숫자는 그 스토어 안에서의 판매 추정 순위와 재고 감소량, "신규"는 아직 비교할 이전 스냅샷이 없는 경우, "-"는 매칭되는 재고 상품을 못 찾은 경우. 마우스 올리면 실제로 매칭된 재고 상품명이 보이니 매칭이 맞는지 확인해보세요.' : ''}
+※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).${stockComparison ? '<br>※ 📦PW/BH 매출 칸(표 우측 끝, 가로 스크롤): 상품명으로 네이버 재고 데이터와 근사 매칭한 결과 — 메달+숫자는 그 스토어 안에서의 판매 추정 순위와 재고 감소량, 숫자만 있는 건 그 store의 첫 유효 수집이라 비교 대상이 없어 현재 재고만 표시, "신규"는 그 store는 비교 가능한데 이 상품만 이전 스냅샷에 없던 경우, "-"는 매칭되는 재고 상품을 못 찾은 경우. 마우스 올리면 실제로 매칭된 재고 상품명이 보이니 매칭이 맞는지 확인해보세요.' : ''}
 </div>
 ${renderStockSectionHtml(stockComparison)}
 </div>

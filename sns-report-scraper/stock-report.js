@@ -16,6 +16,11 @@ function escapeHtml(s) {
 
 // 히스토리(naver-stock-snapshot.js가 저장한 { snapshots: [...] })를 받아서, 최신 스냅샷과
 // 직전 스냅샷을 store(PW/BH)별로 비교한 구조로 정리. 스냅샷이 1개뿐이면 비교 없이 현재값만.
+//
+// store별로 "비교 가능 여부(storeComparable)"를 따로 둠 — 직전 스냅샷이 전체적으로 존재해도,
+// 그 시점에 특정 store만 수집 실패(0건)했을 수 있음(예: 로그인 게이트 걸려서 BH만 0건이었던
+// 적이 있었음). 그 경우 그 store의 모든 상품이 "신규"로 보이는 건 잘못된 표시임 — 진짜 신규
+// 상품이 아니라 직전 데이터 자체가 없었던 것이므로, 이번이 그 store의 "첫 유효 수집"으로 취급.
 function buildStockComparison(history) {
   const snapshots = history?.snapshots || [];
   if (snapshots.length === 0) return null;
@@ -25,9 +30,12 @@ function buildStockComparison(history) {
   const storeLabels = Object.keys(latest.stores || {});
 
   const stores = {};
+  const storeComparable = {};
   for (const label of storeLabels) {
     const latestRecords = latest.stores[label] || [];
     const prevRecords = previous ? (previous.stores[label] || []) : [];
+    const prevHasData = prevRecords.length > 0;
+    storeComparable[label] = prevHasData;
     const prevByProductId = new Map(prevRecords.map(r => [r.productId, r]));
 
     const products = latestRecords.map(r => {
@@ -41,7 +49,7 @@ function buildStockComparison(history) {
     stores[label] = products;
   }
 
-  return { latestTakenAt: latest.takenAt, previousTakenAt: previous ? previous.takenAt : null, snapshotCount: snapshots.length, stores };
+  return { latestTakenAt: latest.takenAt, previousTakenAt: previous ? previous.takenAt : null, snapshotCount: snapshots.length, stores, storeComparable };
 }
 
 function formatTakenAt(iso) {
@@ -152,7 +160,7 @@ function renderStockSectionHtml(comparison) {
       ${hasComparison ? ` · 직전 수집: ${escapeHtml(formatTakenAt(comparison.previousTakenAt))} 대비 변화량 표시` : ' · 스냅샷이 아직 1개뿐이라 변화량은 다음 수집부터 나옵니다'}
       · 누적 스냅샷 ${comparison.snapshotCount}개
     </div>
-    ${storeLabels.map(label => renderStoreTable(label, comparison.stores[label], hasComparison)).join('')}
+    ${storeLabels.map(label => renderStoreTable(label, comparison.stores[label], comparison.storeComparable[label])).join('')}
     <div class="foot">
       ※ 재고는 "현재 시점" 값만 조회 가능해서(과거 소급 불가) <code>naver-stock-snapshot.js</code>를
       실행할 때마다 쌓인 스냅샷끼리 비교한 것입니다.<br>
