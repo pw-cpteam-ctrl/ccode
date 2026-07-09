@@ -344,7 +344,7 @@ function extractFromHtml(html) {
 // 것으로 추정 — twitter.js/instagram.js가 처음에 Playwright(실제 크로미움)로 갔던 것과
 // 같은 이유로, 이 스크립트도 순수 HTTP 요청 대신 Playwright로 전환함(로그인 세션은 여전히
 // 필요 없음 — 공개 페이지라 새 컨텍스트로 그냥 열면 됨).
-const { chromium } = require('playwright');
+const { chromium, devices } = require('playwright');
 
 // warmupUrl: BH처럼 스토어 자체에 로그인 게이트가 걸려있는 경우, 게이트를 통과시켜주는 링크
 // (파워링크 랜딩 링크 등)를 먼저 방문한 다음, 같은 브라우저 컨텍스트 안에서 진짜 원하는
@@ -389,14 +389,17 @@ function withPageParam(urlStr, pageNum) {
 }
 
 // 목록 페이지가 한 번에 다 안 들어오고 40개씩만 나오는 경우(모바일 단축링크로 들어간 카테고리
-// 등) 이어서 더 가져오는 두 가지 방식을 순서대로 시도:
-//   1) URL에 page= 파라미터가 있으면 2, 3...으로 늘려가며 이동(데스크톱형 페이지네이션)
-//   2) 그래도 안 늘어나면(모바일 무한스크롤형) 페이지를 실제로 스크롤해서 새 상품이 로드되길
-//      기다림 — twitter.js/instagram.js가 피드를 스크롤하는 것과 같은 방식
+// 등) 이어서 더 가져오는 세 가지 방식을 순서대로 시도:
+//   1) URL에 page= 파라미터가 있으면 2, 3...으로 늘려가며 이동(데스크톱형 페이지네이션) — 실사용
+//      검증 결과 효과 없었음(그대로 40건)
+//   2) 데스크톱 뷰포트로 스크롤 — 이것도 효과 없었음(그대로 40건). m.site.naver.com은 모바일
+//      전용 URL인데 기본 컨텍스트는 데스크톱 뷰포트라, 모바일 전용 지연로딩 스크립트가
+//      뷰포트/터치 조건을 만족 못 해서 아예 안 걸렸을 가능성이 있음
+//   3) 그래서 실제 모바일 기기 에뮬레이션(뷰포트+UA+터치)으로 다시 열어서 스크롤 재시도
 // 새로 나온 상품이 연속으로 없으면(stableRounds) 다 모았다고 판단하고 멈춤.
-async function getProductStockAllPages(entryUrl, { headless = false, maxPages = 10, maxScrolls = 15, stableRounds = 2 } = {}) {
+async function getProductStockAllPages(entryUrl, { headless = false, maxPages = 10, maxScrolls = 15, stableRounds = 2, mobile = false } = {}) {
   const browser = await chromium.launch({ headless });
-  const context = await browser.newContext({ locale: 'ko-KR' });
+  const context = await browser.newContext(mobile ? { ...devices['iPhone 13'], locale: 'ko-KR' } : { locale: 'ko-KR' });
   const page = await context.newPage();
   const merged = new Map();
   const addRecords = records => records.forEach(r => { if (r.productId) merged.set(r.productId, r); });

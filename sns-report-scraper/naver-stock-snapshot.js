@@ -27,7 +27,9 @@ const STORES = [
   // 게이트에 걸림(warmupUrl+referer로도 못 뚫음). 사용자가 찾아준 m.site.naver.com 단축링크로
   // 는 게이트 없이 통과되는데, 모바일 페이지라 40개씩만 나와서(카테고리 상품이 40개보다 많음)
   // paginate:true로 다음 페이지까지 이어서 수집하게 함.
-  { label: 'BH', url: 'https://m.site.naver.com/1X24n', paginate: true },
+  // mobile:true — m.site.naver.com은 모바일 전용 URL인데 기본 컨텍스트가 데스크톱 뷰포트라
+  // 지연로딩(스크롤)이 안 걸렸을 수 있어서, 실제 모바일 기기 에뮬레이션으로 다시 시도.
+  { label: 'BH', url: 'https://m.site.naver.com/1X24n', paginate: true, mobile: true },
 ];
 
 async function captureSnapshot() {
@@ -41,7 +43,7 @@ async function captureSnapshot() {
   for (const store of activeStores) {
     console.log(`📸 ${store.label} (${store.url}) 재고 수집 중...`);
     const fetchFn = store.paginate ? getProductStockAllPages : getProductStock;
-    const records = await fetchFn(store.url, { warmupUrl: store.warmupUrl });
+    const records = await fetchFn(store.url, { warmupUrl: store.warmupUrl, mobile: store.mobile });
     snapshot.stores[store.label] = records;
     console.log(`  → ${records.length}건 수집`);
   }
