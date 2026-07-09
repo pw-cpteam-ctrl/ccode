@@ -121,6 +121,12 @@ const GENERIC_KEYWORDS = [
   '구경', '클릭', '링크', '프로필', '알림', '세컨드', '재판', '리뉴얼', '복간', '한정판', '개시',
   '시작', '기간', '예정', '상품', '제품', '품절', '가격', '박스', '단품', '특전', '일반품',
   '버전', 'Ver',
+  // "컬렉션"(Collection)은 실제로는 특정 라인 브랜드명이 아니라 그냥 "~모음/시리즈"라는 뜻의
+  // 흔한 일반 단어인데, KNOWN_PRODUCT_LINES에 있으면 detectProductLine이 이걸 GEM/G.M.G/룩업
+  // 같은 진짜 구분되는 라인 이름과 똑같이 취급해버려서, 경쟁사가 "G.M.G 컬렉션"이라고 쓰면
+  // (G.M.G보다 먼저 걸려서) line="컬렉션"으로 잘못 잡히고 당사(line="G.M.G" 또는 null)와
+  // 라인이 다르다고 판단해 매칭이 막히는 문제가 있었음 → 일반 단어로 재분류.
+  '컬렉션', 'Collection',
   // 팔로우 유도 등 반복 상용구(여러 프랜차이즈 게시물에 그대로 재사용돼서 매칭 오염됨)
   '팔로우하고', '기다리는', '굿즈의', '후속', '가장', '빠르게', '받아보세요',
   // 인스타 "구매는 프로필 링크를 참고해 주세요!" 등 반복 CTA 문구
@@ -175,15 +181,18 @@ const PRODUCT_TABLE_FIELD_ORDER = {
 // 알려진 메가하우스 상품 라인명 — 본문에서 이 중 하나를 찾으면 "시리즈"로 분리하고
 // 나머지를 "IP"(캐릭터/작품명)로 봄. 지금까지 실제로 나온 것들만 채워뒀으니, 새로운
 // 라인명이 나오면 계속 추가해야 함(예: 여기 없는 라인명은 시리즈 칸이 빈 채로 나감).
+// "컬렉션"/"Collection"은 여기 없음 — 특정 라인 브랜드명이 아니라 일반 단어라 GENERIC_KEYWORDS로
+// 옮김(위 참고). 여기 있으면 GEM/G.M.G 같은 진짜 라인명보다 먼저 매칭돼서 오탐이 났었음.
 const KNOWN_PRODUCT_LINES = [
-  '룩업', 'Look Up', 'GEM', 'G.E.M', '메가캣', 'MegaCat', '테노히라', '컬렉션', 'Collection',
-  'GGG', 'G.M.G', 'GMG', '쁘띠라마', 'INSIDE FANTASY', '스케일', 'POP', 'P.O.P',
+  '룩업', 'Look Up', 'GEM', 'G.E.M', '메가캣', 'MegaCat', '테노히라',
+  'GGG', 'G.M.G', 'GMG', '쁘띠라마', 'INSIDE FANTASY', '인사이드 판타지', '스케일', 'POP', 'P.O.P',
 ];
 
 // 같은 상품 라인을 자사/경쟁사가 다른 말로 부르는 경우 — 매칭 시엔 같은 걸로 취급.
 // 예: 당사는 "원피스 스케일 피규어"(스케일)라고 쓰고 경쟁사는 "P.O.P 시리즈"(POP)라고 씀 —
 // 둘 다 같은 라인인데 문자열이 달라서 자동으로 분리돼버렸던 걸 여기서 통일.
-const LINE_ALIASES = { '스케일': 'POP', 'P.O.P': 'POP', 'Look Up': '룩업', 'MegaCat': '메가캣', 'Collection': '컬렉션', 'G.E.M': 'GEM', 'GMG': 'G.M.G' };
+// "인사이드 판타지"(당사는 영문 "INSIDE FANTASY"로 씀)도 같은 이유로 추가.
+const LINE_ALIASES = { '스케일': 'POP', 'P.O.P': 'POP', 'Look Up': '룩업', 'MegaCat': '메가캣', 'G.E.M': 'GEM', 'GMG': 'G.M.G', '인사이드 판타지': 'INSIDE FANTASY' };
 function canonicalLine(rawLine) {
   return rawLine ? (LINE_ALIASES[rawLine] || rawLine) : null;
 }

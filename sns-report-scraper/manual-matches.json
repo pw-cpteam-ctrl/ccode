@@ -1,4 +1,15 @@
 {
-  "twitter": [],
+  "twitter": [
+    {
+      "pw": ["https://x.com/MegahouseStore/status/2072594336399884347"],
+      "bh": ["https://x.com/Megahouse_BH/status/2072594436786401651"],
+      "label": "팩맨 INSIDE FANTASY"
+    },
+    {
+      "pw": ["https://x.com/MegahouseStore/status/2072594855021396437"],
+      "bh": ["https://x.com/Megahouse_BH/status/2072593099357057116"],
+      "label": "페르소나5 게임 캐릭터즈 컬렉션 DX 아르센"
+    }
+  ],
   "instagram": []
 }
