@@ -222,46 +222,109 @@ function confirmSourceCrop(srcId) {
 // 대화형 AI로 하던 것과 같은 경험: 이미지를 통째로 보내서 IP명/가격/태그/배송비를 채운다.
 // business-rules.md 원칙대로, 결과는 절대 그대로 확정되지 않고 항상 "확인 필요" 상태로만
 // 표에 반영된다(uncertain 플래그 → ⚠ 배지). 백엔드가 없으면 친절한 안내만 뜨고 끝난다.
+const AI_BATCH_SIZE = 6; // 한 번에 너무 많은 항목을 보내면 항목당 해상도/주의력이 부족해져 인식률이 급격히 떨어짐
+const AI_TEXT_STRIP_SCALE = 2; // 원본 텍스트가 워낙 작아서(칸 폭 176px) 2배로 키워서 보냄
+
+// 각 행의 "텍스트 영역"(사진 아래 ~ 다음 행 사진 시작 전) 높이를 계산.
+// grid-detect가 잡아주는 건 사진 높이(cardH)뿐이라, 그 아래 상품명/가격 텍스트 줄은 직접 계산해야 한다.
+function computeRowTextBottoms(src) {
+  const { rows, cardH } = src.grid;
+  return rows.map((y, i) => (i + 1 < rows.length ? rows[i + 1] : Math.min(src.img.height, y + cardH + 130)));
+}
+
+// itemIndexInSource(그 소스 안에서 0부터 시작하는 인덱스)에 해당하는 칸의 "텍스트만" 크롭.
+// 사진은 빼고 이 부분만 보내야 AI가 쓸 수 있는 해상도를 전부 글자에 쓸 수 있다.
+function cropItemTextRegion(src, itemIndexInSource) {
+  const { cols, rows, cardW, cardH } = src.grid;
+  const rowTextBottoms = computeRowTextBottoms(src);
+  const ri = Math.floor(itemIndexInSource / cols.length);
+  const ci = itemIndexInSource % cols.length;
+  const x = cols[ci];
+  const yTop = rows[ri] + cardH;
+  const height = Math.max(20, Math.min(160, rowTextBottoms[ri] - yTop));
+  return GridDetect.cropCell(src.img, x, yTop, cardW, height);
+}
+
+// batch에 속한 항목들의 텍스트 크롭을 세로로 이어붙인 "글자만 큼직하게" 이미지를 만든다.
+// 사진 없이 텍스트만, 2배 확대, 항목 사이 구분선 — AI가 25개를 한꺼번에 보는 대신 6개만 집중해서 보게 함.
+function buildTextStripImage(src, itemIndices) {
+  const crops = itemIndices.map((idx) => cropItemTextRegion(src, idx));
+  const scale = AI_TEXT_STRIP_SCALE;
+  const gap = 6;
+  const width = Math.max(...crops.map((c) => c.width)) * scale;
+  const height = crops.reduce((sum, c) => sum + c.height * scale + gap, gap);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height);
+  ctx.imageSmoothingEnabled = false; // 확대해도 흐려지지 않게 (원래도 저해상도 텍스트라 흐림 처리는 오히려 해로움)
+
+  let y = gap;
+  crops.forEach((crop, i) => {
+    const h = crop.height * scale;
+    ctx.drawImage(crop, 0, y, crop.width * scale, h);
+    ctx.strokeStyle = '#ff3b30';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, y, crop.width * scale, h);
+    ctx.fillStyle = '#ff3b30';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillText(`#${i + 1}`, 4, y - 2 < 14 ? y + 14 : y - 2);
+    y += h + gap;
+  });
+  return canvas;
+}
+
+function chunkArray(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 async function aiFillSource(srcId) {
   const src = state.sources.find((s) => s.id === srcId);
   if (!src || !src.confirmed) return;
 
   const btn = document.querySelector(`button[data-action="ai-fill"][data-id="${srcId}"]`);
-  if (btn) { btn.disabled = true; btn.textContent = '인식 중...'; }
+  const itemIndices = Array.from({ length: src.itemCount }, (_, i) => i);
+  const batches = chunkArray(itemIndices, AI_BATCH_SIZE);
+  let uncertainCount = 0;
+  let filledCount = 0;
 
   try {
-    const canvas = document.createElement('canvas');
-    canvas.width = src.img.width; canvas.height = src.img.height;
-    canvas.getContext('2d').drawImage(src.img, 0, 0);
-    const dataUrl = canvas.toDataURL('image/png');
-    const imageBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+    for (let b = 0; b < batches.length; b++) {
+      if (btn) { btn.disabled = true; btn.textContent = `인식 중... (${b + 1}/${batches.length})`; }
+      const batch = batches[b];
+      const stripCanvas = buildTextStripImage(src, batch);
+      const dataUrl = stripCanvas.toDataURL('image/png');
+      const imageBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
 
-    const r = await fetch('/api/parse-image', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        imageBase64, mediaType: 'image/png', expectedCount: src.itemCount,
-        ipDictHint: state.dict.ipNameMap, tagWhitelist: tagWhitelistForActiveStore(),
-      }),
-      signal: AbortSignal.timeout(60000),
-    });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || 'AI 인식 실패');
+      const r = await fetch('/api/parse-image', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64, mediaType: 'image/png', expectedCount: batch.length, layout: 'textStrip',
+          ipDictHint: state.dict.ipNameMap, tagWhitelist: tagWhitelistForActiveStore(),
+        }),
+        signal: AbortSignal.timeout(60000),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'AI 인식 실패');
 
-    let uncertainCount = 0;
-    data.items.slice(0, src.itemCount).forEach((result, i) => {
-      const item = state.items[src.itemStartIndex + i];
-      if (!item) return;
-      // 모델이 그래도 ip를 비워서 주면 rawText로 대체 — 빈 칸보다는 "확인해서 고칠 글자"가 있는 게 낫다.
-      item.ip = result.ip || result.rawText || '';
-      item.price = result.price || '';
-      item.ship = result.ship || '무료배송';
-      item.tag = result.tag || '';
-      item.aiUncertain = !!result.uncertain || !item.ip;
-      if (item.aiUncertain) uncertainCount++;
-    });
-
-    renderDataTable();
-    alert(`AI가 ${src.itemCount}개 항목을 채웠습니다.\n확인이 필요한 항목: ${uncertainCount}개 (⚠ 표시된 곳을 확인하세요)`);
+      data.items.slice(0, batch.length).forEach((result, j) => {
+        const item = state.items[src.itemStartIndex + batch[j]];
+        if (!item) return;
+        // 모델이 그래도 ip를 비워서 주면 rawText로 대체 — 빈 칸보다는 "확인해서 고칠 글자"가 있는 게 낫다.
+        item.ip = result.ip || result.rawText || '';
+        item.price = result.price || '';
+        item.ship = result.ship || '무료배송';
+        item.tag = result.tag || '';
+        item.aiUncertain = !!result.uncertain || !item.ip;
+        if (item.aiUncertain) uncertainCount++;
+        filledCount++;
+      });
+      renderDataTable();
+    }
+    alert(`AI가 ${filledCount}개 항목을 채웠습니다.\n확인이 필요한 항목: ${uncertainCount}개 (⚠ 표시된 곳을 확인하세요)`);
   } catch (e) {
     alert(`AI로 채우기 실패: ${e.message}\n(백엔드가 배포되어 있지 않다면 정상입니다 — 수동으로 입력해주세요)`);
   } finally {
