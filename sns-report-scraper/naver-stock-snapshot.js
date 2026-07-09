@@ -20,7 +20,7 @@ const HISTORY_PATH = path.join(__dirname, 'reports', '_stock-history.json');
 
 const STORES = [
   { label: 'PW', url: 'https://brand.naver.com/megahouse' },
-  { label: 'BH', url: 'https://brand.naver.com/megahousemall' },
+  { label: 'BH', url: 'https://smartstore.naver.com/megahousemall' },
 ];
 
 async function captureSnapshot() {
