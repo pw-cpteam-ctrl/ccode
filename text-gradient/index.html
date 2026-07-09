@@ -52,7 +52,10 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 #slotsRow.grid-mode{flex-wrap:wrap;overflow-x:visible;}
 .slot-wrap{display:flex;flex-direction:column;gap:6px;flex-shrink:0;cursor:pointer;}
 .slot-wrap.cur .canvas-clip{outline:3px solid var(--ui-accent);outline-offset:2px;}
+.slot-num-row{display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .slot-num{font-size:12px;font-weight:700;color:var(--ui-sub);}
+.slot-dl-btn{padding:3px 8px;font-size:11px;font-weight:700;border-radius:5px;background:var(--ui-card);color:var(--ui-accent);border:1px solid var(--ui-border);cursor:pointer;}
+.slot-dl-btn:hover{background:var(--ui-accent);color:#fff;}
 .canvas-clip{
   position:relative; overflow:hidden; flex-shrink:0;
   width:calc(var(--poster-w) * var(--preview-scale)); height:calc(var(--poster-h) * var(--preview-scale));
@@ -491,7 +494,7 @@ function renderAllSlots() {
   slots.forEach((_, i) => {
     const pg = i + 1;
     const wrap = document.createElement('div'); wrap.className = 'slot-wrap' + (pg === curSlot ? ' cur' : ''); wrap.id = 'slot'+pg;
-    wrap.innerHTML = `<div class="slot-num">슬롯 ${pg}</div>
+    wrap.innerHTML = `<div class="slot-num-row"><span class="slot-num">슬롯 ${pg}</span><button class="slot-dl-btn" title="이 슬롯만 PNG로 다운로드">⬇ 다운로드</button></div>
     <div class="canvas-clip"><div class="canvas" id="canvas${pg}">
       <div class="grad-overlay" id="grad${pg}"></div>
       <div class="badge" id="badge${pg}"></div>
@@ -501,6 +504,10 @@ function renderAllSlots() {
     wrap.addEventListener('click', () => { // 미리보기 캔버스 클릭 → 그 슬롯 편집 패널로 전환
       if (curSlot === pg) return;
       curSlot = pg; renderTabs(); loadInputsFromCurSlot();
+    });
+    wrap.querySelector('.slot-dl-btn').addEventListener('click', e => {
+      e.stopPropagation(); // 다운로드 클릭이 슬롯 전환으로 이어지지 않도록
+      downloadPng(pg);
     });
     row.appendChild(wrap);
   });
@@ -550,14 +557,15 @@ function applyGrad(el, s, w, oRaw, c) {
 }
 
 /* ── PNG 내보내기 (투명 배경, 항상 1080×1350 원본 크기) ── */
-async function downloadPng() {
+async function downloadPng(pg) {
+  pg = pg || curSlot; // 슬롯 카드의 개별 다운로드 버튼은 pg를 넘기고, 패널 버튼은 현재 슬롯을 그대로 다운로드
   if (typeof htmlToImage === 'undefined') { alert('라이브러리 로드 실패 (인터넷 연결을 확인해주세요)'); return; }
-  const el = document.getElementById('canvas' + curSlot);
+  const el = document.getElementById('canvas' + pg);
   const prevTransform = el.style.transform;
   el.style.transform = 'none'; // 화면 미리보기용 축소를 잠깐 해제하고 원본 크기로 캡처
   try {
     const dataUrl = await htmlToImage.toPng(el, { pixelRatio:1, width:1080, height:1350, cacheBust:true, backgroundColor:null });
-    const a = document.createElement('a'); a.download = `slot${curSlot}.png`; a.href = dataUrl; a.click();
+    const a = document.createElement('a'); a.download = `slot${pg}.png`; a.href = dataUrl; a.click();
   } finally {
     el.style.transform = prevTransform;
   }
