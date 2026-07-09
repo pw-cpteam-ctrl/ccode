@@ -347,19 +347,24 @@ function extractFromHtml(html) {
 const { chromium } = require('playwright');
 
 // warmupUrl: BH처럼 스토어 자체에 로그인 게이트가 걸려있는 경우, 게이트를 통과시켜주는 링크
-// (파워링크 랜딩 링크 등)를 먼저 방문해서 그 세션/쿠키 상태를 만든 다음, 같은 브라우저
-// 컨텍스트 안에서 진짜 원하는 페이지(url)로 이동 — 스토어 메인 페이지뿐 아니라 카테고리
-// 페이지 등 게이트가 걸린 다른 하위 페이지에도 이 세션이 그대로 적용되는지 확인하려는 용도.
+// (파워링크 랜딩 링크 등)를 먼저 방문한 다음, 같은 브라우저 컨텍스트 안에서 진짜 원하는
+// 페이지(url)로 이동. 1차 시도(쿠키/세션만 믿고 그냥 goto)는 실패했음 — 카테고리 페이지도
+// 여전히 0건이었음. 추정 원인: page.goto()는 기본적으로 Referer 헤더를 안 보내서, 게이트가
+// "스토어 안에서 자연스럽게 이동해왔는지"를 Referer로 판단한다면 세션이 아니라 이 부분에서
+// 걸리는 것 — 그래서 워밍업 후 도착한 페이지의 실제 URL을 Referer로 명시해서 "그 페이지에서
+// 링크 클릭해서 넘어온 것"처럼 보이게 함.
 async function fetchProductPage(url, { headless = false, warmupUrl = null } = {}) {
   const browser = await chromium.launch({ headless });
   const context = await browser.newContext({ locale: 'ko-KR' });
   const page = await context.newPage();
   try {
+    let referer;
     if (warmupUrl) {
       await page.goto(warmupUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(1000);
+      referer = page.url(); // 랜딩 링크가 리다이렉트된 실제 도착 URL(스토어 페이지)
     }
-    const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000, referer });
     if (response && !response.ok()) {
       throw new Error(`HTTP ${response.status()} (${url})`);
     }
