@@ -58,7 +58,7 @@
   .source-status { font-size: 12px; color: var(--muted); margin: 8px 0; }
   .source-status.confirmed { color: var(--ok); font-weight: 700; }
 
-  .step2-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .step2-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .step2-card { display: flex; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fff; }
   .step2-card .thumb img, .step2-card .thumb canvas { width: 56px; height: 56px; object-fit: cover; border-radius: 5px; border: 1px solid var(--line); flex: none; }
   .step2-card .fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
@@ -68,12 +68,11 @@
   .step2-card input, .step2-card select { font-size: 13px; padding: 5px 6px; border: 1px solid var(--line2); border-radius: 5px; width: 100%; }
   .warn-badge { color: #b06a00; background: #fff3d6; border-radius: 4px; padding: 2px 6px; font-size: 11px; white-space: nowrap; display: inline-block; }
   .dict-suggest { font-size: 11px; color: var(--accent); }
-  @media (max-width: 720px) { .step2-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) { .step2-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px) { .step2-grid { grid-template-columns: 1fr; } }
 
-  .preview-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
-  @media (max-width: 1024px) { .preview-grid { grid-template-columns: repeat(4, 1fr); gap: 10px; } }
-  @media (max-width: 768px) { .preview-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; } }
-  @media (max-width: 480px) { .preview-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; } }
+  .preview-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  @media (max-width: 480px) { .preview-grid { gap: 8px; } }
   .pcard { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: #fff; cursor: grab; position: relative; min-height: 120px; }
   .pcard.dragover { outline: 2px dashed var(--accent); }
   .pcard .del-check { position: absolute; top: 6px; left: 6px; z-index: 2; width: 18px; height: 18px; }
