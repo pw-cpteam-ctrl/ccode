@@ -19,7 +19,9 @@
     position: sticky; top: 0; z-index: 20;
   }
   header.app-bar h1 { font-size: 17px; margin: 0; }
-  .steps { display: flex; gap: 6px; }
+  @media (max-width: 768px) { header.app-bar { padding: 12px 16px; flex-direction: column; gap: 10px; } header.app-bar h1 { font-size: 15px; } }
+  @media (max-width: 480px) { header.app-bar { flex-direction: column; gap: 8px; } header.app-bar h1 { font-size: 14px; } }
+  .steps { display: flex; gap: 6px; flex-wrap: wrap; }
   .steps .dot {
     display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px;
     font-size: 12px; color: var(--muted); background: #eef0f3; border: 1px solid transparent;
@@ -28,6 +30,8 @@
   .steps .dot.done { color: var(--ok); }
   button.link-btn { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 13px; text-decoration: underline; padding: 0; }
   main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+  @media (max-width: 768px) { main { padding: 16px; } }
+  @media (max-width: 480px) { main { padding: 12px; } }
   .step { display: none; }
   .step.active { display: block; }
   .card-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
@@ -35,7 +39,7 @@
   p.hint { color: var(--muted); font-size: 13px; margin: 0 0 14px; line-height: 1.5; }
   .btn {
     border: 1px solid var(--line2); background: #fff; border-radius: 7px; padding: 9px 16px;
-    cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text);
+    cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); min-height: 40px;
   }
   .btn:hover { background: #f7f8fa; }
   .btn:disabled { opacity: .4; cursor: not-allowed; }
@@ -43,9 +47,11 @@
   .btn.primary:hover { background: #1f68e6; }
   .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
   .btn.ghost { background: none; border-color: transparent; color: var(--muted); }
+  @media (max-width: 480px) { .btn { padding: 10px 12px; font-size: 12px; } }
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .row.between { justify-content: space-between; }
-  .footer-nav { display: flex; justify-content: space-between; margin-top: 18px; }
+  .footer-nav { display: flex; justify-content: space-between; margin-top: 18px; gap: 10px; }
+  @media (max-width: 480px) { .footer-nav { flex-direction: column; } .footer-nav button { width: 100%; } }
 
   .source-block { border: 1px dashed var(--line2); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
   .source-block canvas.overlay { max-width: 100%; border: 1px solid var(--line); border-radius: 6px; }
@@ -56,6 +62,7 @@
   .step2-card { display: flex; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fff; }
   .step2-card .thumb img, .step2-card .thumb canvas { width: 56px; height: 56px; object-fit: cover; border-radius: 5px; border: 1px solid var(--line); flex: none; }
   .step2-card .fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  @media (max-width: 480px) { .step2-card { flex-direction: column; gap: 8px; } .step2-card .thumb { align-self: flex-start; } }
   .step2-card .fields-row { display: flex; gap: 6px; }
   .step2-card .fields-row > * { flex: 1; min-width: 0; }
   .step2-card input, .step2-card select { font-size: 13px; padding: 5px 6px; border: 1px solid var(--line2); border-radius: 5px; width: 100%; }
@@ -64,10 +71,14 @@
   @media (max-width: 720px) { .step2-grid { grid-template-columns: 1fr; } }
 
   .preview-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
-  .pcard { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: #fff; cursor: grab; position: relative; }
+  @media (max-width: 1024px) { .preview-grid { grid-template-columns: repeat(4, 1fr); gap: 10px; } }
+  @media (max-width: 768px) { .preview-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; } }
+  @media (max-width: 480px) { .preview-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; } }
+  .pcard { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: #fff; cursor: grab; position: relative; min-height: 120px; }
   .pcard.dragover { outline: 2px dashed var(--accent); }
-  .pcard .del-check { position: absolute; top: 6px; left: 6px; z-index: 2; }
+  .pcard .del-check { position: absolute; top: 6px; left: 6px; z-index: 2; width: 18px; height: 18px; }
   .pcard canvas, .pcard img.pthumb { width: 100%; aspect-ratio: 1/1; object-fit: cover; border-radius: 5px; display: block; }
+  @media (max-width: 480px) { .pcard { min-height: 100px; } .pcard .edit-btn { font-size: 10px; padding: 4px 6px; } }
   .pcard .ip { font-weight: 800; font-size: 13px; margin-top: 6px; color: var(--text); }
   .pcard .tag { display: inline-block; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 5px; margin-left: 4px; }
   .pcard .price { font-size: 11px; color: #3b3b3b; margin-top: 2px; }
@@ -78,8 +89,9 @@
   .del-list li { color: var(--danger); padding: 3px 0; }
   .summary-box { background: #f7f8fa; border-radius: 8px; padding: 12px 14px; font-size: 13px; margin: 12px 0; }
 
-  dialog { border: none; border-radius: 10px; padding: 0; width: 480px; max-width: 92vw; }
+  dialog { border: none; border-radius: 10px; padding: 0; width: 480px; max-width: 92vw; max-height: 85vh; overflow-y: auto; }
   dialog::backdrop { background: rgba(0,0,0,.35); }
+  @media (max-width: 480px) { dialog { width: 95vw; margin: auto; } }
   .dialog-body { padding: 20px; }
   .dialog-body h3 { margin-top: 0; }
   .field { margin-bottom: 12px; }
@@ -91,10 +103,12 @@
   .dict-editor-tab { display: none; max-height: 320px; overflow: auto; }
   .dict-editor-tab.active { display: block; }
   .dict-row { display: flex; gap: 6px; margin-bottom: 6px; }
-  .dict-row input { flex: 1; padding: 5px 6px; border: 1px solid var(--line2); border-radius: 5px; font-size: 12px; }
+  .dict-row input { flex: 1; padding: 5px 6px; border: 1px solid var(--line2); border-radius: 5px; font-size: 12px; min-height: 32px; }
+  @media (max-width: 480px) { .dict-editor-tab { max-height: 40vh; } }
 
   .page-thumb { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fff; margin-bottom: 14px; }
-  .page-thumb img { width: 260px; display: block; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 8px; }
+  .page-thumb img { width: 260px; display: block; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 8px; max-width: 100%; height: auto; }
+  @media (max-width: 480px) { .page-thumb { padding: 8px; } .page-thumb img { width: 100%; } }
 </style>
 </head>
 <body>
