@@ -1,3 +1,35 @@
+/**
+ * POST /api/parse-image
+ *
+ * Claude Vision(claude-haiku-4-5)을 이용한 이미지 기반 상품정보 자동 인식
+ *
+ * 기본 원칙:
+ * - 원본 그리드 스크린샷에서 상품명/가격/배송비 텍스트를 OCR하여 구조화된 JSON 반환
+ * - "이미지 넣으면 자동으로 표가 채워지는" UX 제공 (대화형 AI와 동일)
+ * - business-rules.md 준수: IP명 판단이 애매하면 uncertain=true, 절대 자동 확정 금지
+ * - 프론트엔드는 결과를 항상 "⚠ 확인 필요" 배지로만 표시
+ *
+ * 성능 최적화 (배치 방식):
+ * - 한 번에 모든 항목을 보내면 인식 정확도가 급격히 저하 (25개 중 4개만 인식 실제 사례)
+ * - 따라서 프론트에서 5~6개 단위로 나눠서 여러 번 호출 → 각 배치별 인식 정확도 개선
+ * - 이미지 레이아웃이 textStrip(텍스트만 수직 이어붙임)일 때 특히 효과적
+ *
+ * 배포 선택사항:
+ * - 백엔드가 없으면(파일 더블클릭으로 열었을 때) 도구는 수동 입력만으로 정상 동작
+ * - 호출은 사용자가 "AI로 채우기" 버튼 클릭시만 발생 (자동 호출 없음)
+ * - API 비용(claude-haiku-4-5 저렴 모델)은 사용한 만큼만 발생
+ *
+ * 요청 파라미터:
+ * - imageBase64: 이미지 base64 인코딩
+ * - mediaType: 이미지 MIME 타입 (기본값 image/png)
+ * - expectedCount: 이 배치의 상품 개수 (AI가 정확히 이 개수를 반환하도록 지시)
+ * - ipDictHint: {원문→정규화명} 매핑 사전 (최대 60개, AI 판단 지원용)
+ * - tagWhitelist: 허용된 라인업 태그 목록
+ * - layout: 이미지 레이아웃 타입 (기본 그리드 또는 textStrip)
+ *
+ * 응답: { items: [{rawText, ip, price, ship, tag, uncertain}], usage }
+ */
+
 // POST /api/parse-image — 원본 그리드 스크린샷을 Claude Vision(claude-haiku-4-5)에게 보내
 // 각 칸의 상품명 텍스트를 읽고 IP명/가격/태그/배송비를 구조화된 JSON으로 뽑아온다.
 // 지금까지 대화형 AI로 하던 "이미지 넣으면 자동으로 표가 채워지는" 경험을 그대로 재현하되,
@@ -8,6 +40,9 @@
 // 선택 사항이다. 호출은 사용자가 "AI로 채우기" 버튼을 누를 때만 발생하므로(자동 호출 없음)
 // 비용은 누른 만큼만 발생한다.
 
+// Claude가 반드시 따라야 할 응답 구조. JSON Schema를 통해 구조 강제 → 파싱 안정성 확보
+// 각 필드의 의미: rawText(원본), ip(정규화된 IP명), price(가격 문자열),
+// ship(배송비), tag(라인업 분류), uncertain(확신도 플래그)
 const RESULT_SCHEMA = {
   type: 'object',
   properties: {
@@ -32,6 +67,11 @@ const RESULT_SCHEMA = {
   additionalProperties: false,
 };
 
+// 프롬프트 엔지니어링: Claude Vision에게 정확한 인식을 유도하기 위한 상세 지시
+// - 이미지 형식 설명 (textStrip vs 그리드): 레이아웃 인식 오류 방지
+// - IP명 판단 규칙: 사전 활용 → 새로운 항목은 uncertain 표시
+// - 배송비/태그 규칙: 화이트리스트 기반, 불확실하면 빈 값
+// - expectedCount 강제: AI가 정확히 N개 항목을 반환하도록
 function buildPrompt({ expectedCount, ipDictHint, tagWhitelist, layout }) {
   const dictLines = Object.entries(ipDictHint || {})
     .slice(0, 60)
@@ -75,6 +115,21 @@ function buildPrompt({ expectedCount, ipDictHint, tagWhitelist, layout }) {
   ].join('\n');
 }
 
+/**
+ * Vercel 서버리스 함수: 이미지 인식 요청 처리
+ *
+ * 요청 흐름:
+ * 1. 환경변수 검증: ANTHROPIC_API_KEY 필수
+ * 2. 파라미터 검증: imageBase64, expectedCount
+ * 3. 프롬프트 생성: buildPrompt()로 상세 지시 작성
+ * 4. Claude API 호출: vision + JSON Schema 포맷 강제
+ * 5. 응답 파싱 및 검증: textBlock 추출 → JSON 파싱
+ * 6. 결과 반환: items[] + usage 정보
+ *
+ * 에러 처리:
+ * - 프론트가 캐치: "백엔드 없음 → 수동 입력 진행" 안내로 변환
+ * - 따라서 이 함수는 에러시 명확한 메시지만 반환하면 됨
+ */
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'POST 요청만 지원합니다.' });
