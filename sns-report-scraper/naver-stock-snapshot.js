@@ -24,12 +24,11 @@ const HISTORY_PATH = path.join(__dirname, 'reports', '_stock-history.json');
 const STORES = [
   { label: 'PW', url: 'https://brand.naver.com/megahouse/category/a1b6775bba66406296df046187baf675?st=POPULAR&dt=IMAGE&page=1&size=80' },
   // BH는 원래 카테고리 URL(smartstore.naver.com/.../category/...)로 직접 들어가면 로그인
-  // 게이트에 걸림(warmupUrl+referer로도 못 뚫음). 사용자가 찾아준 m.site.naver.com 단축링크로
-  // 는 게이트 없이 통과되는데, 모바일 페이지라 40개씩만 나와서(카테고리 상품이 40개보다 많음)
-  // paginate:true로 다음 페이지까지 이어서 수집하게 함.
-  // mobile:true — m.site.naver.com은 모바일 전용 URL인데 기본 컨텍스트가 데스크톱 뷰포트라
-  // 지연로딩(스크롤)이 안 걸렸을 수 있어서, 실제 모바일 기기 에뮬레이션으로 다시 시도.
-  { label: 'BH', url: 'https://m.site.naver.com/1X24n', paginate: true, mobile: true },
+  // 게이트에 걸림(warmupUrl+referer로도 못 뚫음). m.site.naver.com 단축링크는 게이트 없이
+  // 통과되는데 40개짜리 고정 목록이고(스크롤 안 됨, 무한스크롤 아님), 대신 번호 페이지네이션
+  // (1,2,3...)이 있는 걸로 확인됨 — mobile:true(기기 에뮬레이션)는 오히려 접속을 막아버려서
+  // 원상복구. 2페이지 URL 패턴 확인 후 정확한 방식으로 다시 고칠 예정.
+  { label: 'BH', url: 'https://m.site.naver.com/1X24n', paginate: true },
 ];
 
 async function captureSnapshot() {
