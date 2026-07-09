@@ -291,8 +291,12 @@ function earliestDatetime(posts) {
  * @param {Array<{pw:string[], bh:string[], label?:string}>} [manualMatches] 수동 매칭 목록
  *   (manual-matches.json) — 여기 지정된 게시물은 자동 매칭보다 먼저 확정되고, 자동 매칭
  *   대상 풀에서 빠짐
+ * @param {{pw?:string[], bh?:string[]}} [ignorePosts] 상품이 아닌 공지/이벤트/쿠폰 게시물
+ *   (ignore-posts.json) — 계정 총계(팔로워/전체 게시물 지표)에는 그대로 포함되지만, "매칭 안
+ *   됨" 목록에는 안 보이게 걸러냄. 조용히 사라지는 게 아니라 "상품이 아니라서 일부러 뺐다"는
+ *   걸 명시적으로 관리하는 목록이라는 점이 manualMatches와 다름.
  */
-function buildProductComparison(ownPosts, competitorPosts, fields, textField, displayFields, manualMatches = []) {
+function buildProductComparison(ownPosts, competitorPosts, fields, textField, displayFields, manualMatches = [], ignorePosts = {}) {
   const linkField = textField === 'text' ? 'link' : 'url';
   const { manualProducts, remainingOwn, remainingCompetitor } = extractManualMatches(
     ownPosts, competitorPosts, manualMatches, linkField, fields, displayFields
@@ -358,8 +362,10 @@ function buildProductComparison(ownPosts, competitorPosts, fields, textField, di
   const impact = p => displayFields.reduce((sum, f) => sum + p.own[`total_${f}`] + p.competitor[`total_${f}`], 0);
   products.sort((a, b) => impact(b) - impact(a));
 
-  const ownUnmatched = ownPosts.filter(p => !matchedPosts.has(p));
-  const competitorUnmatched = competitorPosts.filter(p => !matchedPosts.has(p));
+  const ignoredOwnLinks = new Set(ignorePosts.pw || []);
+  const ignoredCompetitorLinks = new Set(ignorePosts.bh || []);
+  const ownUnmatched = ownPosts.filter(p => !matchedPosts.has(p) && !ignoredOwnLinks.has(p[linkField]));
+  const competitorUnmatched = competitorPosts.filter(p => !matchedPosts.has(p) && !ignoredCompetitorLinks.has(p[linkField]));
 
   return { products, ownUnmatched, competitorUnmatched, displayFields };
 }
@@ -443,9 +449,11 @@ function extractManualMatches(ownPosts, competitorPosts, manualMatches, linkFiel
  * @param {object} [input.manualMatches] 플랫폼별 수동 매칭 목록 (예: { twitter: [...], instagram: [...] })
  *   — manual-matches.json 내용을 그대로 넘기면 됨. 파일 읽기는 이 함수를 호출하는 쪽(run.js 등)
  *   책임이고, aggregate.js는 순수 함수로 유지.
+ * @param {object} [input.ignorePosts] 플랫폼별 "상품 아닌 공지/이벤트" 게시물 목록 (예:
+ *   { twitter: {pw:[], bh:[...]}, instagram: {...} }) — ignore-posts.json 내용을 그대로 넘기면 됨.
  * @returns {object} platform별 비교표 + 비율
  */
-function buildComparisonReport({ startDate, endDate, own, competitors, manualMatches = {} }) {
+function buildComparisonReport({ startDate, endDate, own, competitors, manualMatches = {}, ignorePosts = {} }) {
   const platforms = {};
 
   const allCollections = [...own, ...competitors];
@@ -517,7 +525,8 @@ function buildComparisonReport({ startDate, endDate, own, competitors, manualMat
     const competitorPosts = competitors.filter(c => c.platform === platform).flatMap(c => c.posts);
     const displayFields = PRODUCT_TABLE_FIELD_ORDER[platform] || fields;
     const productComparison = buildProductComparison(
-      ownPosts, competitorPosts, fields, PLATFORM_TEXT_FIELD[platform], displayFields, manualMatches[platform] || []
+      ownPosts, competitorPosts, fields, PLATFORM_TEXT_FIELD[platform], displayFields,
+      manualMatches[platform] || [], ignorePosts[platform] || {}
     );
 
     platforms[platform] = {

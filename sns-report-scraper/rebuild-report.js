@@ -21,6 +21,7 @@ const OUTPUT_PATH = './reports/sns-report.xlsx';
 const HTML_OUTPUT_DIR = './reports';
 const HTML_OUTPUT_BASE_NAME = 'sns-report';
 const MANUAL_MATCHES_PATH = './manual-matches.json';
+const IGNORE_POSTS_PATH = './ignore-posts.json';
 
 async function main() {
   if (!fs.existsSync(CACHE_PATH)) {
@@ -34,6 +35,9 @@ async function main() {
   const manualMatches = fs.existsSync(MANUAL_MATCHES_PATH)
     ? JSON.parse(fs.readFileSync(MANUAL_MATCHES_PATH, 'utf-8'))
     : {};
+  const ignorePosts = fs.existsSync(IGNORE_POSTS_PATH)
+    ? JSON.parse(fs.readFileSync(IGNORE_POSTS_PATH, 'utf-8'))
+    : {};
 
   const report = buildComparisonReport({
     startDate: cached.startDate,
@@ -41,6 +45,7 @@ async function main() {
     own: cached.own,
     competitors: cached.competitors,
     manualMatches,
+    ignorePosts,
   });
 
   const sheetName = await saveReportToExcel(report, OUTPUT_PATH);

@@ -40,6 +40,9 @@ const CONFIG = {
   // 자동 매칭이 놓친 게시물을 수동으로 짝지어주는 목록. "매칭 안 됨" 목록에서 번호(PW #n,
   // BH #n)로 지정해서 { pw: [링크], bh: [링크], label: "표시할 이름" } 형태로 추가하면 됨.
   manualMatchesPath: './manual-matches.json',
+  // 상품이 아닌 공지/이벤트/쿠폰 게시물 — "매칭 안 됨" 목록에 안 보이게 걸러내지만, 계정
+  // 총계(팔로워/게시물 지표)에는 그대로 포함됨. { twitter: {pw:[], bh:[링크,...]}, ... } 형태.
+  ignorePostsPath: './ignore-posts.json',
 
   own: [
     { platform: 'twitter', account: 'megahousestore', sessionFile: './x-session.json' },
@@ -105,6 +108,9 @@ async function main() {
   const manualMatches = fs.existsSync(CONFIG.manualMatchesPath)
     ? JSON.parse(fs.readFileSync(CONFIG.manualMatchesPath, 'utf-8'))
     : {};
+  const ignorePosts = fs.existsSync(CONFIG.ignorePostsPath)
+    ? JSON.parse(fs.readFileSync(CONFIG.ignorePostsPath, 'utf-8'))
+    : {};
 
   const report = buildComparisonReport({
     startDate: CONFIG.startDate,
@@ -112,6 +118,7 @@ async function main() {
     own,
     competitors,
     manualMatches,
+    ignorePosts,
   });
 
   const sheetName = await saveReportToExcel(report, CONFIG.outputPath);
