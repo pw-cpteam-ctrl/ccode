@@ -129,7 +129,9 @@ function stockMatchCell(match) {
   const delta = isEstimated ? match.estimatedDelta : match.stockDelta;
   if (delta === null || delta === undefined) return `<td class="metric sm-none" title="${escapeHtml(match.name || '')}">-</td>`;
   const deltaText = delta > 0 ? `-${delta.toLocaleString()}` : delta < 0 ? `+${Math.abs(delta).toLocaleString()}` : '0';
-  const rankPart = match.rank ? `${rankMedal(match.rank)} ` : '';
+  // 1~3위는 메달 이모지라 순위인 게 바로 보이는데, 4위부터는 그냥 숫자만 나와서 변화량이랑
+  // 헷갈릴 수 있음("14 (-386 추정)"이 순위 14인지 다른 숫자인지 안 보임) — "위" 붙여서 명시.
+  const rankPart = match.rank ? `${match.rank <= 3 ? rankMedal(match.rank) : `${match.rank}위`} ` : '';
   const cls = isEstimated ? 'sm-estimate' : 'sm-match';
   const tooltip = isEstimated
     ? `${match.name || ''} · 초기 판매한도 약 ${match.estimatedCap != null ? match.estimatedCap.toLocaleString() : '?'}개로 가정해 역산한 추정치(실제 이전 데이터 없음)`
