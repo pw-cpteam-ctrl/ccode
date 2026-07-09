@@ -38,8 +38,14 @@ async function main() {
     process.exit(1);
   }
 
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch({ headless: false, args: ['--disable-blink-features=AutomationControlled'] });
   const context = await browser.newContext();
+  // navigator.webdriver를 숨김 — 로그인 자체는 사람이 직접 하지만, 브라우저가 Playwright로
+  // 뜬 것 자체를 자동화로 감지하면 이 세션에 처음부터 "의심스러운 기기" 낙인이 찍혀서 나중에
+  // twitter.js/instagram.js에서 정상 쿠키인데도 재로그인을 요구하는 원인이 될 수 있음.
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  });
   const page = await context.newPage();
   await page.goto(config.url);
 

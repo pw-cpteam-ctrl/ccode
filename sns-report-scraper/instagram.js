@@ -13,8 +13,13 @@ const { chromium } = require('playwright');
  * @param {boolean} [opts.headless] 기본 false
  */
 async function collectInstagram({ account, sessionFile, startDate, endDate, headless = false }) {
-  const browser = await chromium.launch({ headless });
+  const browser = await chromium.launch({ headless, args: ['--disable-blink-features=AutomationControlled'] });
   const context = await browser.newContext({ storageState: sessionFile });
+  // Playwright 기본 브라우저는 navigator.webdriver가 true라 자동화 탐지에 걸리기 쉬움 —
+  // 인스타(메타)가 이걸 근거로 세션이 정상인데도 재로그인을 요구하는 경우가 있어서 숨김.
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  });
   const page = await context.newPage();
   const startTime = new Date();
 
