@@ -120,23 +120,25 @@ function embedBlockquote(platformKey, post) {
 // SNS 상품(ip/line) 하나에 매칭된 네이버 재고 항목을 표 우측 끝 컬럼 한 칸으로 렌더링.
 // 별도 섹션으로 안 빼고 같은 표 안(가로 스크롤로 보이는 우측)에 두는 게 목적 — 위아래로
 // 왔다갔다하며 대조하지 않아도 되게.
-// 실제 이전 스냅샷과 비교한 delta가 있으면 그걸, 없으면 초기 판매한도 추정치 기반 delta로
-// 대체 표시(stock-report.js estimateInitialCap) — 표시 형태(순위+변화량)는 항상 통일하고,
-// 추정치인 경우만 "추정" 표시 + 툴팁으로 구분.
+// "직전 스냅샷 대비 변화량"이 아니라 **총 판매 추정치**(totalSold, stock-report.js) — 사용자
+// 피드백: "몇 개 팔렸는지 추이 변화가 궁금한 게 아니라 언제 리포트를 내든 현시점 몇 개
+// 팔렸는지가 궁금하다"는 것이 명확해져서, 스냅샷 주기에 흔들리지 않는 안정적인 값으로 바꿈.
 function stockMatchCell(match) {
   if (!match) return '<td class="metric sm-none">-</td>';
-  const isEstimated = match.stockDelta === null;
-  const delta = isEstimated ? match.estimatedDelta : match.stockDelta;
-  if (delta === null || delta === undefined) return `<td class="metric sm-none" title="${escapeHtml(match.name || '')}">-</td>`;
-  const deltaText = delta > 0 ? `-${delta.toLocaleString()}` : delta < 0 ? `+${Math.abs(delta).toLocaleString()}` : '0';
-  // 1~3위는 메달 이모지라 순위인 게 바로 보이는데, 4위부터는 그냥 숫자만 나와서 변화량이랑
-  // 헷갈릴 수 있음("14 (-386 추정)"이 순위 14인지 다른 숫자인지 안 보임) — "위" 붙여서 명시.
+  if (match.totalSold === null || match.totalSold === undefined) {
+    return `<td class="metric sm-none" title="${escapeHtml(match.name || '')}">-</td>`;
+  }
+  const soldText = match.totalSold > 0 ? `${match.totalSold.toLocaleString()}개`
+    : match.totalSold < 0 ? `재입고+${Math.abs(match.totalSold).toLocaleString()}`
+      : '0개';
+  // 1~3위는 메달 이모지라 순위인 게 바로 보이는데, 4위부터는 그냥 숫자만 나와서 판매량이랑
+  // 헷갈릴 수 있음 — "위" 붙여서 명시.
   const rankPart = match.rank ? `${match.rank <= 3 ? rankMedal(match.rank) : `${match.rank}위`} ` : '';
-  const cls = isEstimated ? 'sm-estimate' : 'sm-match';
-  const tooltip = isEstimated
+  const cls = match.totalSoldIsEstimated ? 'sm-estimate' : 'sm-match';
+  const tooltip = match.totalSoldIsEstimated
     ? `${match.name || ''} · 초기 판매한도 약 ${match.estimatedCap != null ? match.estimatedCap.toLocaleString() : '?'}개로 가정해 역산한 추정치(실제 이전 데이터 없음)`
     : (match.name || '');
-  return `<td class="metric ${cls}" title="${escapeHtml(tooltip)}">${rankPart}(${deltaText}${isEstimated ? ' 추정' : ''})</td>`;
+  return `<td class="metric ${cls}" title="${escapeHtml(tooltip)}">${rankPart}${soldText}${match.totalSoldIsEstimated ? '*' : ''}</td>`;
 }
 
 function renderPlatformSection(platformKey, data, stockComparison) {
@@ -146,11 +148,6 @@ function renderPlatformSection(platformKey, data, stockComparison) {
   // 재고 스냅샷이 있으면 store(PW/BH)별로 순위 매긴 목록을 미리 만들어두고, 상품 행마다
   // ip/line으로 근사 매칭 — SNS 실적 순위표 우측에 매출순위 컬럼으로 붙임(별도 섹션 아님).
   const hasStock = Boolean(stockComparison);
-  // store별로 비교 가능 여부가 다를 수 있음(예: BH만 직전 수집이 실패했던 경우) — 안내 문구용.
-  // 실제 순위/표시는 stock-report.js의 rankStockProducts/stockMatchCell이 상품별로 실제
-  // delta 유무에 따라 자동으로 추정치 대체 여부를 판단하므로 여기선 안 넘겨도 됨.
-  const pwHasComparison = hasStock && Boolean(stockComparison.storeComparable?.PW);
-  const bhHasComparison = hasStock && Boolean(stockComparison.storeComparable?.BH);
   const pwStockRanked = hasStock ? rankStockProducts(stockComparison.stores.PW || []) : null;
   const bhStockRanked = hasStock ? rankStockProducts(stockComparison.stores.BH || []) : null;
 
@@ -238,7 +235,7 @@ function renderPlatformSection(platformKey, data, stockComparison) {
         <button class="toggle-all-btn" onclick="toggleAllEmbeds('${platformKey}',false)">전체 접기</button>
       </div>
     </div>
-    ${hasStock ? `<div class="sub">📦 재고 매칭 기준 스냅샷: ${escapeHtml(formatTakenAt(stockComparison.latestTakenAt))} (KST) · PW ${pwHasComparison ? '실제 변화량' : '초기 한도 추정치'} · BH ${bhHasComparison ? '실제 변화량' : '초기 한도 추정치'} — 표 우측 끝(가로 스크롤) 참고</div>` : ''}
+    ${hasStock ? `<div class="sub">📦 재고 매칭 기준 스냅샷: ${escapeHtml(formatTakenAt(stockComparison.latestTakenAt))} (KST) · 각 상품 최초 관측 시점 대비 총 판매추정치(*는 초기 한도 추정) — 표 우측 끝(가로 스크롤) 참고</div>` : ''}
     ${cards}
     <div class="table-wrap">
       <table>
@@ -327,6 +324,11 @@ td.metric{min-width:170px}
 .time-raw:first-child{text-align:left}.time-raw:last-child{text-align:right}
 .time-diff-num{flex:none;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;color:#6b7280}
 .time-diff-num.pw{color:#1971c2}.time-diff-num.bh{color:#c0504d}
+/* 매출 매칭 칸은 "3위 200개" 정도의 짧은 텍스트만 들어가서, 다른 지표 칸(min-width:170px,
+   분할바/diverging바용)만큼 넓을 필요가 없음 — 두 클래스 조합(.metric.sm-*)으로 명시해서
+   기본 .metric{min-width:170px}보다 우선 적용, 표 전체 폭을 줄여서 가로 스크롤 없이도
+   들어갈 수 있게 함. */
+td.metric.sm-match, td.metric.sm-estimate, td.metric.sm-none{min-width:64px}
 td.sm-match{color:#2f9e44;font-weight:700;font-size:12px;font-variant-numeric:tabular-nums}
 td.sm-estimate{color:#2f9e44;font-weight:700;font-size:12px;font-variant-numeric:tabular-nums;border-bottom:1px dotted #2f9e44}
 td.sm-none{color:#c9ced8;font-size:12px}
@@ -369,7 +371,7 @@ ${sections}
 ※ 표현이 서로 다르거나 상품명을 못 뽑은 게시물은 "매칭 안 됨" 목록에 별도로 있습니다 — 조용히 빠진 게 아닙니다.<br>
 ※ 결과(우세/경합/약세)는 표에 표시된 지표(리트윗+좋아요 또는 좋아요+댓글)가 둘 다 PW가 크면 우세, 둘 다 작으면 약세, 엇갈리면 경합입니다.<br>
 ※ "게시물 보기"는 인터넷 연결된 브라우저에서 열어야 실제 카드로 보입니다 — 오프라인/차단 상태면 링크만 보임.<br>
-※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).${stockComparison ? '<br>※ 📦PW/BH 매출 칸(표 우측 끝, 가로 스크롤): 상품명으로 네이버 재고 데이터와 근사 매칭한 결과 — 메달+숫자는 그 스토어 안에서의 판매 추정 순위와 변화량. 밑줄 점선으로 표시되고 "추정"이 붙은 건 실제 이전 스냅샷이 없어서 현재 재고를 가장 가까운 1000단위로 올려 초기 판매한도였다고 가정하고 역산한 값(다음 스냅샷부터 진짜 비교값으로 바뀜), "-"는 매칭되는 재고 상품을 못 찾은 경우. 마우스 올리면 실제로 매칭된 재고 상품명이 보이니 매칭이 맞는지 확인해보세요.' : ''}
+※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).${stockComparison ? '<br>※ 📦PW/BH 매출 칸(표 우측 끝, 가로 스크롤): 상품명으로 네이버 재고 데이터와 근사 매칭한 결과 — 메달+숫자는 그 스토어 안에서의 총 판매추정 순위와 개수(이 상품을 처음 관측한 시점 대비, 리포트를 언제 뽑든 안정적인 값). 밑줄 점선으로 표시되고 뒤에 "*"가 붙은 건 이번에 처음 관측돼서 비교할 과거 데이터가 없어 현재 재고를 가장 가까운 1000단위로 올려 초기 판매한도였다고 가정하고 역산한 값(다음 스냅샷부터 실제 관측 기반 값으로 바뀜), "-"는 매칭되는 재고 상품을 못 찾은 경우. 마우스 올리면 실제로 매칭된 재고 상품명이 보이니 매칭이 맞는지 확인해보세요.' : ''}
 </div>
 ${renderStockSectionHtml(stockComparison)}
 </div>
