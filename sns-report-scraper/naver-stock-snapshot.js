@@ -23,12 +23,17 @@ const HISTORY_PATH = path.join(__dirname, 'reports', '_stock-history.json');
 // "이번 달 판매데이터"만 정확히 잡힘. 다음 달부터는 그 달 카테고리 URL로 매번 갱신해줘야 함.
 const STORES = [
   { label: 'PW', url: 'https://brand.naver.com/megahouse/category/a1b6775bba66406296df046187baf675?st=POPULAR&dt=IMAGE&page=1&size=80' },
-  // BH는 원래 카테고리 URL(smartstore.naver.com/.../category/...)로 직접 들어가면 로그인
-  // 게이트에 걸림(warmupUrl+referer로도 못 뚫음). m.site.naver.com 단축링크는 게이트 없이
-  // 통과되는데 40개짜리 고정 목록이고(스크롤 안 됨, 무한스크롤 아님), 대신 번호 페이지네이션
-  // (1,2,3...)이 있는 걸로 확인됨 — mobile:true(기기 에뮬레이션)는 오히려 접속을 막아버려서
-  // 원상복구. 2페이지 URL 패턴 확인 후 정확한 방식으로 다시 고칠 예정.
-  { label: 'BH', url: 'https://m.site.naver.com/1X24n', paginate: true },
+  // BH는 카테고리 URL로 직접 들어가면 로그인 게이트에 걸림. m.site.naver.com 단축링크로 먼저
+  // 들어가면 게이트 없이 통과되는데 40개짜리 1페이지만 보여줌 — 사용자가 실제로 "2" 페이지
+  // 링크를 클릭해서 확인해준 진짜 URL 패턴(st=TOTALSALE&dt=IMAGE&page=N&size=40)을 그대로
+  // 써서 이어지는 페이지들을 가져옴(entryUrl로 게이트를 먼저 통과시킨 다음, 그 세션 안에서
+  // 이 패턴으로 이동).
+  {
+    label: 'BH',
+    url: 'https://m.site.naver.com/1X24n',
+    paginate: true,
+    pageUrl: n => `https://smartstore.naver.com/megahousemall/category/1422883dc67d4ac7add2b41009c62d39?st=TOTALSALE&dt=IMAGE&page=${n}&size=40`,
+  },
 ];
 
 async function captureSnapshot() {
@@ -42,7 +47,7 @@ async function captureSnapshot() {
   for (const store of activeStores) {
     console.log(`📸 ${store.label} (${store.url}) 재고 수집 중...`);
     const fetchFn = store.paginate ? getProductStockAllPages : getProductStock;
-    const records = await fetchFn(store.url, { warmupUrl: store.warmupUrl, mobile: store.mobile });
+    const records = await fetchFn(store.url, { warmupUrl: store.warmupUrl, mobile: store.mobile, pageUrl: store.pageUrl });
     snapshot.stores[store.label] = records;
     console.log(`  → ${records.length}건 수집`);
   }

@@ -388,16 +388,15 @@ function withPageParam(urlStr, pageNum) {
   return parsed.toString();
 }
 
-// 목록 페이지가 한 번에 다 안 들어오고 40개씩만 나오는 경우(모바일 단축링크로 들어간 카테고리
-// 등) 이어서 더 가져오는 세 가지 방식을 순서대로 시도:
-//   1) URL에 page= 파라미터가 있으면 2, 3...으로 늘려가며 이동(데스크톱형 페이지네이션) — 실사용
-//      검증 결과 효과 없었음(그대로 40건)
-//   2) 데스크톱 뷰포트로 스크롤 — 이것도 효과 없었음(그대로 40건). m.site.naver.com은 모바일
-//      전용 URL인데 기본 컨텍스트는 데스크톱 뷰포트라, 모바일 전용 지연로딩 스크립트가
-//      뷰포트/터치 조건을 만족 못 해서 아예 안 걸렸을 가능성이 있음
-//   3) 그래서 실제 모바일 기기 에뮬레이션(뷰포트+UA+터치)으로 다시 열어서 스크롤 재시도
-// 새로 나온 상품이 연속으로 없으면(stableRounds) 다 모았다고 판단하고 멈춤.
-async function getProductStockAllPages(entryUrl, { headless = false, maxPages = 10, maxScrolls = 15, stableRounds = 2, mobile = false } = {}) {
+// 목록 페이지가 40개씩만 나오고 번호 페이지네이션(1,2,3...)으로 더 볼 수 있는 경우, 이어서
+// 다음 페이지들도 훑어서 합쳐줌. pageUrl(pageNum)을 명시하면 그 함수로 각 페이지 URL을 직접
+// 만들어서 이동(실제 사이트에서 "2" 링크를 확인해서 얻은 정확한 URL 패턴을 그대로 쓸 수 있음 —
+// URL을 추론하는 것보다 신뢰도 높음). pageUrl을 안 주면 entryUrl 방문 후 도착한 URL에서
+// page= 값을 2,3...으로 바꿔가며 추론 시도. 매 페이지 이전 URL을 referer로 넘겨서 "그 페이지
+// 안에서 다음 페이지로 넘어간" 것처럼 보이게 함(로그인 게이트가 이렇게 자연스럽게 이어진
+// 이동만 통과시키는 것으로 보임 — entryUrl 자체가 게이트를 우회하는 링크였음). 새로 나온
+// 상품이 없는 페이지를 만나면 마지막 페이지로 판단하고 멈춤.
+async function getProductStockAllPages(entryUrl, { headless = false, maxPages = 10, mobile = false, pageUrl = null } = {}) {
   const browser = await chromium.launch({ headless });
   const context = await browser.newContext(mobile ? { ...devices['iPhone 13'], locale: 'ko-KR' } : { locale: 'ko-KR' });
   const page = await context.newPage();
@@ -413,10 +412,11 @@ async function getProductStockAllPages(entryUrl, { headless = false, maxPages = 
     addRecords(extractFromHtml(await page.content()));
 
     let currentUrl = page.url();
-    if (/[?&]page=\d+/.test(currentUrl)) {
+    const canPaginate = Boolean(pageUrl) || /[?&]page=\d+/.test(currentUrl);
+    if (canPaginate) {
       for (let pageNum = 2; pageNum <= maxPages; pageNum += 1) {
         const beforeSize = merged.size;
-        const nextUrl = withPageParam(currentUrl, pageNum);
+        const nextUrl = pageUrl ? pageUrl(pageNum) : withPageParam(currentUrl, pageNum);
         let response;
         try {
           response = await page.goto(nextUrl, { waitUntil: 'domcontentloaded', timeout: 30000, referer: currentUrl });
@@ -429,16 +429,6 @@ async function getProductStockAllPages(entryUrl, { headless = false, maxPages = 
         if (merged.size === beforeSize) break; // 새 상품이 없으면 마지막 페이지를 지나친 것으로 판단
         currentUrl = nextUrl;
       }
-    }
-
-    // page= 방식으로 못 늘렸으면(모바일 무한스크롤형일 가능성) 스크롤해서 더 로드되는지 시도
-    let stableCount = 0;
-    for (let i = 0; i < maxScrolls && stableCount < stableRounds; i += 1) {
-      const beforeSize = merged.size;
-      await page.mouse.wheel(0, 6000);
-      await page.waitForTimeout(1000);
-      addRecords(extractFromHtml(await page.content()));
-      stableCount = merged.size === beforeSize ? stableCount + 1 : 0;
     }
   } finally {
     await browser.close();
