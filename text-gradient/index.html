@@ -23,6 +23,7 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Mal
 .row3{display:flex;gap:6px;}.row3 .field-col{flex:1;min-width:0;}
 .col-title{font-size:12px;font-weight:700;color:var(--ui-sub);text-align:center;margin-bottom:4px;}
 .sec{font-size:15px;font-weight:800;color:var(--ui-text);margin:16px 0 9px;padding-bottom:6px;border-bottom:2px solid var(--ui-border);}
+.subsec{font-size:12.5px;font-weight:800;color:var(--ui-accent);margin:10px 0 6px;padding:4px 9px;background:rgba(20,82,192,.08);border-left:3px solid var(--ui-accent);border-radius:4px;}
 .panel code{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:4px;padding:1px 5px;font-size:11.5px;}
 .actions{position:sticky;bottom:0;padding-top:10px;margin-top:12px;background:linear-gradient(transparent,var(--ui-panel) 35%);display:flex;gap:7px;}
 button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;border:1px solid var(--ui-border);font-family:inherit;background:var(--ui-accent);color:#fff;}
@@ -96,9 +97,10 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 - 고죠/나나미/스쿠나</textarea></div>
     <div class="field" id="inBulletsRField"><label>우열</label><textarea id="inBulletsR" rows="4"></textarea></div>
   </div>
+  <div class="field" id="inBulletsColRatioField"><label>2열 폭 비율 (좌:우)</label><input type="range" id="inBulletsColRatio" min="20" max="80" value="50"/></div>
 
   <div class="sec">배치 · 크기</div>
-  <div style="font-size:12px;color:var(--ui-sub);margin-bottom:6px;">개별 조정 — 지금 보고 있는 슬롯에만 적용</div>
+  <div class="subsec">개별 조정 — 지금 보고 있는 슬롯에만 적용</div>
   <div class="row3">
     <div class="field-col">
       <div class="col-title">배지</div>
@@ -121,7 +123,7 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
     <div class="field"><label>불릿 자간</label><input type="range" id="bulletsTracking" min="-100" max="100" value="-50"/></div>
   </div>
 
-  <div style="font-size:12px;color:var(--ui-sub);margin:12px 0 6px;">전체 적용 — 슬라이더를 움직이면 모든 슬롯에 한번에 반영</div>
+  <div class="subsec" style="margin-top:14px;">전체 적용 — 슬라이더를 움직이면 모든 슬롯에 한번에 반영</div>
   <div class="row3">
     <div class="field-col">
       <div class="col-title">배지</div>
@@ -236,7 +238,7 @@ let folderPath = '';
 let titleFolderPath = '';
 
 function makeEmptySlot() {
-  return { badge:'', titleL:'', titleR:'', bullets:'', bulletsR:'', bulletsTwoCol:false, gradStart:40, gradWidth:60, gradOpacity:85, gradCompress:0, ...LAYOUT_DEFAULTS };
+  return { badge:'', titleL:'', titleR:'', bullets:'', bulletsR:'', bulletsTwoCol:false, bulletsColRatio:50, gradStart:40, gradWidth:60, gradOpacity:85, gradCompress:0, ...LAYOUT_DEFAULTS };
 }
 function layoutVal(s, key) { return s[key] ?? LAYOUT_DEFAULTS[key]; } // 이전에 저장된 슬롯엔 이 필드들이 없을 수 있어 기본값으로 대체
 
@@ -352,7 +354,7 @@ function applyBulkMarkdown() {
     const bar = it.title.indexOf('|');
     const titleL = bar >= 0 ? it.title.slice(0, bar).trim() : it.title;
     const titleR = bar >= 0 ? it.title.slice(bar + 1).trim() : '';
-    return { badge: commonBadge, titleL, titleR, bullets: it.bullets.map(b => `- ${b}`).join('\n'), bulletsR: '', bulletsTwoCol: false,
+    return { badge: commonBadge, titleL, titleR, bullets: it.bullets.map(b => `- ${b}`).join('\n'), bulletsR: '', bulletsTwoCol: false, bulletsColRatio: 50,
       gradStart: g.gradStart, gradWidth: g.gradWidth, gradOpacity: g.gradOpacity, gradCompress: g.gradCompress ?? 0,
       badgeY: layoutVal(g,'badgeY'), badgeSize: layoutVal(g,'badgeSize'),
       titleY: layoutVal(g,'titleY'), titleSize: layoutVal(g,'titleSize'),
@@ -388,7 +390,9 @@ function loadInputsFromCurSlot() {
   $('#inBadge').value = s.badge; $('#inTitleL').value = s.titleL; $('#inTitleR').value = s.titleR;
   $('#inBullets').value = s.bullets; $('#inBulletsR').value = s.bulletsR || '';
   $('#inBulletsTwoCol').checked = !!s.bulletsTwoCol;
+  $('#inBulletsColRatio').value = s.bulletsColRatio ?? 50;
   $('#inBulletsRField').style.display = s.bulletsTwoCol ? '' : 'none';
+  $('#inBulletsColRatioField').style.display = s.bulletsTwoCol ? '' : 'none';
   $('#gradStart').value = s.gradStart; $('#gradWidth').value = s.gradWidth; $('#gradOpacity').value = s.gradOpacity;
   $('#gradCompress').value = s.gradCompress ?? 0;
   $('#badgeY').value = layoutVal(s,'badgeY'); $('#badgeSize').value = layoutVal(s,'badgeSize');
@@ -401,7 +405,7 @@ function loadInputsFromCurSlot() {
 function highlightCurSlot() {
   document.querySelectorAll('.slot-wrap').forEach(w => w.classList.toggle('cur', w.id === 'slot'+curSlot));
 }
-['inBadge','inTitleL','inTitleR','inBullets','inBulletsR','gradStart','gradWidth','gradOpacity','gradCompress',
+['inBadge','inTitleL','inTitleR','inBullets','inBulletsR','inBulletsColRatio','gradStart','gradWidth','gradOpacity','gradCompress',
  'badgeY','badgeSize','titleY','titleSize','bulletsY','bulletsSize','titleTracking','bulletsTracking'].forEach(id => {
   $('#'+id).addEventListener('input', () => {
     syncInputsToState();   // ① 값 변경을 상태에 반영
@@ -412,6 +416,7 @@ function highlightCurSlot() {
 $('#inBulletsTwoCol').addEventListener('input', () => {
   syncInputsToState();
   $('#inBulletsRField').style.display = $('#inBulletsTwoCol').checked ? '' : 'none';
+  $('#inBulletsColRatioField').style.display = $('#inBulletsTwoCol').checked ? '' : 'none';
   renderCurSlotDom();
   persistState();
 });
@@ -420,6 +425,7 @@ function syncInputsToState() {
   s.badge = $('#inBadge').value; s.titleL = $('#inTitleL').value; s.titleR = $('#inTitleR').value;
   s.bullets = $('#inBullets').value; s.bulletsR = $('#inBulletsR').value;
   s.bulletsTwoCol = $('#inBulletsTwoCol').checked;
+  s.bulletsColRatio = +$('#inBulletsColRatio').value;
   s.gradStart = +$('#gradStart').value; s.gradWidth = +$('#gradWidth').value; s.gradOpacity = +$('#gradOpacity').value;
   s.gradCompress = +$('#gradCompress').value;
   s.badgeY = +$('#badgeY').value; s.badgeSize = +$('#badgeSize').value;
@@ -477,7 +483,8 @@ function renderSlotDom(pg) {
   titleEl.style.top = layoutVal(s,'titleY') + 'px';
   titleEl.style.fontSize = layoutVal(s,'titleSize') + 'px';
   titleEl.style.letterSpacing = (layoutVal(s,'titleTracking') / 1000) + 'em';
-  bulletsEl.style.gridTemplateColumns = s.bulletsTwoCol ? '1fr 1fr' : '1fr';
+  const colRatio = s.bulletsColRatio ?? 50;
+  bulletsEl.style.gridTemplateColumns = s.bulletsTwoCol ? `${colRatio}fr ${100 - colRatio}fr` : '1fr';
   bulletsEl.innerHTML = s.bulletsTwoCol
     ? `<div>${renderBulletLines(s.bullets)}</div><div>${renderBulletLines(s.bulletsR || '')}</div>`
     : `<div>${renderBulletLines(s.bullets)}</div>`;
