@@ -78,7 +78,11 @@ async function recordLearning(parsed, sourceText, gh) {
   if (parsed.workJp && parsed.work) candidates.push({ kind: 'works', jp: parsed.workJp.trim(), kr: parsed.work.trim() });
   const prodLines = (parsed.product || '').split('\n').map(s => s.trim()).filter(Boolean);
   const prodJpLines = (parsed.productJp || '').split('\n').map(s => s.trim()).filter(Boolean);
-  prodLines.forEach((kr, i) => { const jp = prodJpLines[i]; if (jp) candidates.push({ kind: 'chars', jp, kr }); });
+  // product/productJp 줄 수가 다르면 인덱스로 짝지었을 때 엉뚱한 이름끼리 매칭될 수 있어
+  // 캐릭터 학습은 건너뛴다(작품명은 1:1이라 이 문제가 없어 그대로 진행).
+  if (prodLines.length === prodJpLines.length) {
+    prodLines.forEach((kr, i) => { const jp = prodJpLines[i]; if (jp) candidates.push({ kind: 'chars', jp, kr }); });
+  }
   if (!candidates.length) return;
 
   const promoted = { works: {}, chars: {} };
