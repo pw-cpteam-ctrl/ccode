@@ -508,12 +508,16 @@ function syncInputsToState() {
   s.bulletsYOffset = +$('#bulletsY').value; s.bulletsSize = +$('#bulletsSize').value;
   s.titleTracking = +$('#titleTracking').value; s.subtitleTracking = +$('#subtitleTracking').value; s.bulletsTracking = +$('#bulletsTracking').value;
 }
-/* "전체 적용" 슬라이더: 개별 슬롯 상태(badgeY 등)는 그대로 두고 모든 슬롯에 같은 값을 일괄 반영 */
+/* "전체 적용" 슬라이더: 개별 슬롯 상태(badgeYOffset 등)는 그대로 두고 모든 슬롯에 같은 값을 일괄 반영 */
+function individualIdFor(allId) { // 'allBadgeY' → 'badgeY' (state 필드명과 DOM id가 항상 같지는 않아서 id 자체에서 유도)
+  const rest = allId.slice(3);
+  return rest.charAt(0).toLowerCase() + rest.slice(1);
+}
 ALL_LAYOUT_FIELDS.forEach(([id, key]) => {
   $('#'+id).addEventListener('input', () => {
     const val = +$('#'+id).value;
     slots.forEach(s => { s[key] = val; });
-    $('#'+key).value = val; // 현재 슬롯의 개별 슬라이더도 동기화
+    $('#'+individualIdFor(id)).value = val; // 현재 슬롯의 개별 슬라이더도 동기화
     renderAllSlots();
     persistState();
   });
