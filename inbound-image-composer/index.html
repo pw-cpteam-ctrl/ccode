@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>입고안내 이미지 자동 제작 툴</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Paperlogy:wght@500;700;800&display=swap" />
+<style>
+  :root {
+    --bg: #f3f4f6; --panel: #fff; --line: #e3e5ea; --line2: #d2d6dd;
+    --accent: #2f7bff; --text: #1b1b1f; --muted: #6b7280; --danger: #d83a52;
+    --ok: #1a9e63;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Paperlogy", "Apple SD Gothic Neo", sans-serif; background: var(--bg); color: var(--text); }
+  header.app-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 20;
+  }
+  header.app-bar h1 { font-size: 17px; margin: 0; }
+  .steps { display: flex; gap: 6px; }
+  .steps .dot {
+    display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px;
+    font-size: 12px; color: var(--muted); background: #eef0f3; border: 1px solid transparent;
+  }
+  .steps .dot.active { background: #e8f0ff; color: var(--accent); border-color: #bcd6ff; font-weight: 700; }
+  .steps .dot.done { color: var(--ok); }
+  button.link-btn { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 13px; text-decoration: underline; padding: 0; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+  .step { display: none; }
+  .step.active { display: block; }
+  .card-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+  h2 { font-size: 18px; margin: 0 0 4px; }
+  p.hint { color: var(--muted); font-size: 13px; margin: 0 0 14px; line-height: 1.5; }
+  .btn {
+    border: 1px solid var(--line2); background: #fff; border-radius: 7px; padding: 9px 16px;
+    cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text);
+  }
+  .btn:hover { background: #f7f8fa; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #1f68e6; }
+  .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .btn.ghost { background: none; border-color: transparent; color: var(--muted); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .row.between { justify-content: space-between; }
+  .footer-nav { display: flex; justify-content: space-between; margin-top: 18px; }
+
+  .source-block { border: 1px dashed var(--line2); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+  .source-block canvas.overlay { max-width: 100%; border: 1px solid var(--line); border-radius: 6px; }
+  .source-status { font-size: 12px; color: var(--muted); margin: 8px 0; }
+  .source-status.confirmed { color: var(--ok); font-weight: 700; }
+
+  table.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.data-table th, table.data-table td { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: left; vertical-align: middle; }
+  table.data-table td.thumb img, table.data-table td.thumb canvas { width: 48px; height: 48px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); }
+  table.data-table input, table.data-table select { font-size: 13px; padding: 5px 6px; border: 1px solid var(--line2); border-radius: 5px; width: 100%; }
+  .warn-badge { color: #b06a00; background: #fff3d6; border-radius: 4px; padding: 2px 6px; font-size: 11px; white-space: nowrap; }
+  .dict-suggest { font-size: 11px; color: var(--accent); }
+
+  .preview-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .pcard { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: #fff; cursor: grab; position: relative; }
+  .pcard.dragover { outline: 2px dashed var(--accent); }
+  .pcard .del-check { position: absolute; top: 6px; left: 6px; z-index: 2; }
+  .pcard canvas, .pcard img.pthumb { width: 100%; aspect-ratio: 1/1; object-fit: cover; border-radius: 5px; display: block; }
+  .pcard .ip { font-weight: 800; font-size: 13px; margin-top: 6px; color: var(--text); }
+  .pcard .tag { display: inline-block; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 5px; margin-left: 4px; }
+  .pcard .price { font-size: 11px; color: #3b3b3b; margin-top: 2px; }
+  .pcard .ship { font-size: 10px; color: #9aa0a8; }
+  .pcard .edit-btn { position: absolute; top: 6px; right: 6px; background: rgba(255,255,255,.9); border: 1px solid var(--line2); border-radius: 5px; font-size: 11px; cursor: pointer; }
+
+  .del-list { list-style: none; padding: 0; margin: 0 0 12px; font-size: 13px; }
+  .del-list li { color: var(--danger); padding: 3px 0; }
+  .summary-box { background: #f7f8fa; border-radius: 8px; padding: 12px 14px; font-size: 13px; margin: 12px 0; }
+
+  dialog { border: none; border-radius: 10px; padding: 0; width: 480px; max-width: 92vw; }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  .dialog-body { padding: 20px; }
+  .dialog-body h3 { margin-top: 0; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .field input, .field select { width: 100%; padding: 7px 8px; border: 1px solid var(--line2); border-radius: 6px; font-size: 13px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+  .tabs button { flex: 1; padding: 8px; border: none; background: none; cursor: pointer; font-size: 12px; color: var(--muted); border-bottom: 2px solid transparent; }
+  .tabs button.active { color: var(--accent); border-color: var(--accent); font-weight: 700; }
+  .dict-editor-tab { display: none; max-height: 320px; overflow: auto; }
+  .dict-editor-tab.active { display: block; }
+  .dict-row { display: flex; gap: 6px; margin-bottom: 6px; }
+  .dict-row input { flex: 1; padding: 5px 6px; border: 1px solid var(--line2); border-radius: 5px; font-size: 12px; }
+
+  .page-thumb { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fff; margin-bottom: 14px; }
+  .page-thumb img { width: 260px; display: block; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<header class="app-bar">
+  <h1>입고안내 이미지 자동 제작 툴</h1>
+  <div class="steps" id="stepIndicator"></div>
+  <button class="link-btn" id="openDictBtn">⚙ 사전 관리</button>
+</header>
+
+<main>
+
+  <!-- STEP 1 : 업로드 & 그리드 검출 -->
+  <section class="step" id="step-1">
+    <div class="card-panel">
+      <h2>1단계 · 업로드 &amp; 그리드 검출</h2>
+      <p class="hint">원본 입고안내 스크린샷 1~3장을 업로드하세요 (보통 1000px 폭, 5열 그리드).
+        그리드는 이미지마다 픽셀 스캔으로 매번 새로 검출하며, 아래 빨간 사각형으로 검출 결과를
+        직접 눈으로 확인한 뒤에만 크롭을 확정할 수 있습니다.</p>
+      <input type="file" id="fileInput" accept="image/*" multiple />
+      <div id="sourceList"></div>
+    </div>
+    <div class="footer-nav">
+      <span></span>
+      <button class="btn primary" id="toStep2Btn" disabled>다음: 표 정리 →</button>
+    </div>
+  </section>
+
+  <!-- STEP 2 : 표 정리 -->
+  <section class="step" id="step-2">
+    <div class="card-panel">
+      <h2>2단계 · 표 정리</h2>
+      <p class="hint">상품명을 그대로 두지 않고 IP명만 추출해 확정합니다. IP명이 사전에 없으면
+        ⚠ 표시가 뜹니다 — 자동으로 추측 확정하지 말고 직접 확인 후 입력하세요.
+        <button class="link-btn" data-open-dict="ip">IP명 사전 열기</button>
+      </p>
+      <div class="row" style="margin-bottom:10px;">
+        <label style="font-size:13px;">스토어 프로필</label>
+        <select id="storeSelectStep2"></select>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr><th>사진</th><th>IP명</th><th>라인업 태그</th><th>가격</th><th>배송비</th><th>등급(수동)</th></tr>
+        </thead>
+        <tbody id="dataTableBody"></tbody>
+      </table>
+    </div>
+    <div class="footer-nav">
+      <button class="btn" id="backTo1Btn">← 이전</button>
+      <button class="btn primary" id="toStep3Btn">다음: 전체 미리보기 →</button>
+    </div>
+  </section>
+
+  <!-- STEP 3 : 전체 미리보기 (분할 전) -->
+  <section class="step" id="step-3">
+    <div class="card-panel">
+      <h2>3단계 · 전체 미리보기 (분할 전, 1장)</h2>
+      <p class="hint">5열 그리드를 유지한 채 세로로 이어지는 긴 미리보기입니다.
+        카드를 드래그해서 순서를 바꾸거나, 카드를 클릭해 내용을 수정하세요.
+        <strong>이 단계를 건너뛰고 최종 분할로 가지 않습니다.</strong></p>
+      <div class="row between" style="margin-bottom:12px;">
+        <div class="row">
+          <button class="btn" id="selectDeleteBtn">선택 삭제 진행 →</button>
+          <span id="selectedCount" style="font-size:12px;color:var(--muted);"></span>
+        </div>
+        <div id="splitPreviewText" style="font-size:12px;color:var(--muted);"></div>
+      </div>
+      <div class="preview-grid" id="previewGrid"></div>
+    </div>
+    <div class="footer-nav">
+      <button class="btn" id="backTo2Btn">← 이전 (표 정리)</button>
+      <button class="btn primary" id="toStep5Btn">다음: 순서 정렬 →</button>
+    </div>
+  </section>
+
+  <!-- STEP 4 : 삭제 확인 -->
+  <section class="step" id="step-4">
+    <div class="card-panel">
+      <h2>4단계 · 삭제 확인 (누락 방지)</h2>
+      <p class="hint">아래 목록이 삭제하려는 항목과 정확히 일치하는지 확인한 뒤에만 반영됩니다.</p>
+      <div>삭제 대상:</div>
+      <ul class="del-list" id="deleteList"></ul>
+      <div class="summary-box" id="deleteSummary"></div>
+    </div>
+    <div class="footer-nav">
+      <button class="btn" id="cancelDeleteBtn">취소</button>
+      <button class="btn danger" id="confirmDeleteBtn">이대로 삭제 진행</button>
+    </div>
+  </section>
+
+  <!-- STEP 5 : 순서 정렬 -->
+  <section class="step" id="step-5">
+    <div class="card-panel">
+      <h2>5단계 · 순서 정렬</h2>
+      <p class="hint">정렬 기준: ① IP 등급(S/A급 → B/C급 성향별 → 기타) → ② 스토어 성향 우선순위 →
+        ③ 분위기 클러스터. 등급표/클러스터는
+        <button class="link-btn" data-open-dict="grade">사전 관리에서 편집</button>할 수 있습니다.
+        자동 정렬 후에도 카드를 드래그해서 미세 조정할 수 있고, "순서 확정"을 눌러야 6단계로 진행됩니다.</p>
+      <div class="row" style="margin-bottom:12px;">
+        <label style="font-size:13px;">스토어 프로필 (성향 우선순위)</label>
+        <select id="storeSelectStep5"></select>
+        <button class="btn primary" id="autoSortBtn">자동 정렬 적용</button>
+      </div>
+      <div class="preview-grid" id="sortPreviewGrid"></div>
+    </div>
+    <div class="footer-nav">
+      <button class="btn" id="backTo3Btn">← 미리보기로 돌아가서 수동 조정</button>
+      <button class="btn primary" id="confirmOrderBtn">순서 확정하고 다음 단계 →</button>
+    </div>
+  </section>
+
+  <!-- STEP 6 : 최종 분할 & 내보내기 -->
+  <section class="step" id="step-6">
+    <div class="card-panel">
+      <h2>6단계 · 최종 분할 &amp; 내보내기</h2>
+      <div id="step6Guard" class="hint"></div>
+      <div id="step6Body" style="display:none;">
+        <div class="row" style="margin-bottom:14px;">
+          <label style="font-size:13px;">헤더 이미지</label>
+          <select id="headerSelect"></select>
+          <button class="btn primary" id="generatePagesBtn">페이지 생성 (JPEG q0.94)</button>
+          <button class="btn" id="downloadAllBtn" disabled>전체 다운로드</button>
+        </div>
+        <div class="summary-box" id="finalSummary"></div>
+        <div id="pagesContainer"></div>
+      </div>
+    </div>
+    <div class="footer-nav">
+      <button class="btn" id="backTo5Btn">← 순서 정렬로</button>
+      <span></span>
+    </div>
+  </section>
+
+</main>
+
+<!-- 아이템 편집 다이얼로그 -->
+<dialog id="itemDialog">
+  <div class="dialog-body">
+    <h3>항목 수정</h3>
+    <div class="field"><label>IP명</label><input id="editIp" list="ipNameDatalist" /></div>
+    <datalist id="ipNameDatalist"></datalist>
+    <div class="field"><label>라인업 태그</label><select id="editTag"></select></div>
+    <div class="field" id="editVtuberField" style="display:none;"><label>VTuber 소속 (예: 홀로라이브)</label><input id="editVtuberAffil" /></div>
+    <div class="field"><label>가격</label><input id="editPrice" placeholder="44,400원" /></div>
+    <div class="field">
+      <label>배송비</label>
+      <select id="editShipMode"><option value="무료배송">무료배송</option><option value="3,000원">3,000원</option><option value="custom">직접입력</option></select>
+      <input id="editShipCustom" placeholder="예: 5,000원" style="margin-top:6px;display:none;" />
+    </div>
+    <div class="field"><label>등급 (S/A급은 사전에서 자동 판별, 그 외 수동 분류)</label>
+      <select id="editSubGrade">
+        <option value="other">기타(등급 외)</option>
+        <option value="B_male">B급 남성향</option>
+        <option value="B_female">B급 여성향</option>
+        <option value="C_male">C급 남성향</option>
+        <option value="C_female">C급 여성향</option>
+      </select>
+    </div>
+    <div class="field"><label><input type="checkbox" id="editPushEnd" style="width:auto;" /> 비인기 저가 굿즈 — 맨 뒤로 밀기</label></div>
+    <div class="row between">
+      <button class="btn ghost" id="cancelItemDialog">취소</button>
+      <button class="btn primary" id="saveItemDialog">적용</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- 사전 관리 다이얼로그 -->
+<dialog id="dictDialog">
+  <div class="dialog-body">
+    <h3>사전 관리</h3>
+    <div class="tabs">
+      <button data-tab="ip" class="active">IP명 사전</button>
+      <button data-tab="grade">등급표</button>
+      <button data-tab="cluster">분위기 클러스터</button>
+      <button data-tab="store">스토어 프로필</button>
+    </div>
+
+    <div class="dict-editor-tab active" id="tab-ip">
+      <div id="ipDictRows"></div>
+      <button class="btn" id="addIpRowBtn">+ 행 추가</button>
+      <div class="row between" style="margin-top:12px;">
+        <span style="font-size:11px;color:var(--muted);">계속 늘어나는 데이터 — GitHub에 저장해야 팀 공유됩니다.</span>
+        <button class="btn primary" id="saveIpDictBtn">GitHub에 저장</button>
+      </div>
+    </div>
+
+    <div class="dict-editor-tab" id="tab-grade">
+      <div class="field"><label>S급 (쉼표 구분)</label><input id="gradeSInput" /></div>
+      <div class="field"><label>A급 (쉼표 구분)</label><input id="gradeAInput" /></div>
+      <p style="font-size:11px;color:var(--muted);">B급 이하는 이 표에 저장하지 않습니다 — 항목별 "등급(수동)" 필드로 그때그때 분류하세요.</p>
+      <button class="btn primary" id="saveGradeBtn">GitHub에 저장</button>
+    </div>
+
+    <div class="dict-editor-tab" id="tab-cluster">
+      <div id="clusterRows"></div>
+      <button class="btn" id="addClusterBtn">+ 클러스터 추가</button>
+      <button class="btn primary" id="saveClusterBtn" style="margin-top:12px;">GitHub에 저장</button>
+    </div>
+
+    <div class="dict-editor-tab" id="tab-store">
+      <div id="storeRows"></div>
+      <button class="btn primary" id="saveStoreBtn" style="margin-top:12px;">GitHub에 저장</button>
+    </div>
+
+    <div class="row between" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px;">
+      <button class="btn ghost" id="closeDictDialog">닫기</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="lib/seed-data.js"></script>
+<script src="lib/grid-detect.js"></script>
+<script src="lib/render-page.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
