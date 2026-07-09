@@ -281,6 +281,18 @@ function chunkArray(arr, size) {
   return out;
 }
 
+// AI가 돌려준 moodCluster명을 사전(state.dict.moodClusters)에 실제로 반영한다.
+// 확신 있는(uncertain=false) IP만 클러스터에 편입시킨다 — 애매한 추정으로 사전을
+// 오염시키면 5단계 자동 정렬이 계속 잘못된 기준으로 돌아가게 된다.
+function applyAiClusterResult(item, moodClusterName) {
+  if (!moodClusterName || !item.ip || item.aiUncertain) return false;
+  const cluster = state.dict.moodClusters.find((c) => c.name === moodClusterName);
+  if (!cluster) return false;
+  if (cluster.members.includes(item.ip)) return false;
+  cluster.members.push(item.ip);
+  return true;
+}
+
 async function aiFillSource(srcId) {
   const src = state.sources.find((s) => s.id === srcId);
   if (!src || !src.confirmed) return;
@@ -290,6 +302,7 @@ async function aiFillSource(srcId) {
   const batches = chunkArray(itemIndices, AI_BATCH_SIZE);
   let uncertainCount = 0;
   let filledCount = 0;
+  let clusteredCount = 0;
 
   try {
     for (let b = 0; b < batches.length; b++) {
@@ -304,6 +317,7 @@ async function aiFillSource(srcId) {
         body: JSON.stringify({
           imageBase64, mediaType: 'image/png', expectedCount: batch.length, layout: 'textStrip',
           ipDictHint: state.dict.ipNameMap, tagWhitelist: tagWhitelistForActiveStore(),
+          moodClusters: state.dict.moodClusters,
         }),
         signal: AbortSignal.timeout(60000),
       });
@@ -320,11 +334,13 @@ async function aiFillSource(srcId) {
         item.tag = result.tag || '';
         item.aiUncertain = !!result.uncertain || !item.ip;
         if (item.aiUncertain) uncertainCount++;
+        if (applyAiClusterResult(item, result.moodCluster)) clusteredCount++;
         filledCount++;
       });
       renderDataTable();
     }
-    alert(`AI가 ${filledCount}개 항목을 채웠습니다.\n확인이 필요한 항목: ${uncertainCount}개 (⚠ 표시된 곳을 확인하세요)`);
+    if (clusteredCount) saveDictLocal('moodClusters', state.dict.moodClusters);
+    alert(`AI가 ${filledCount}개 항목을 채웠습니다.\n확인이 필요한 항목: ${uncertainCount}개 (⚠ 표시된 곳을 확인하세요)\n분위기 클러스터에 새로 편입된 IP: ${clusteredCount}개`);
   } catch (e) {
     alert(`AI로 채우기 실패: ${e.message}\n(백엔드가 배포되어 있지 않다면 정상입니다 — 수동으로 입력해주세요)`);
   } finally {
