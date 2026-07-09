@@ -34,6 +34,20 @@ function splitSummaryText(items) {
 }
 
 // ---------- 사전 로드/병합 ----------
+// 기본 운영 방식: 백엔드(Vercel/GitHub) 없이 index.html만 열어도 완전히 동작한다.
+// 사전 편집 내용은 이 브라우저(localStorage)에 저장되고, 그게 항상 우선한다.
+// GitHub 공유는 팀원끼리 사전을 맞추고 싶을 때만 쓰는 "선택 기능"이고, 배포/환경변수를
+// 설정하지 않았다면 관련 fetch는 그냥 조용히 실패하고 무시된다(비용도 전혀 들지 않음).
+const DICT_LS_KEY = 'inbound-image-composer-dict-v1';
+function loadLocalDict() {
+  try { return JSON.parse(localStorage.getItem(DICT_LS_KEY) || '{}'); } catch (e) { return {}; }
+}
+function saveLocalDict(partial) {
+  const current = loadLocalDict();
+  const merged = { ...current, ...partial };
+  localStorage.setItem(DICT_LS_KEY, JSON.stringify(merged));
+}
+
 async function loadDict() {
   const seed = {
     ipNameMap: { ...window.SEED_IP_NAME_MAP },
@@ -41,42 +55,51 @@ async function loadDict() {
     moodClusters: window.SEED_MOOD_CLUSTERS.map((c) => ({ ...c, members: [...c.members] })),
     storeProfiles: JSON.parse(JSON.stringify(window.SEED_STORE_PROFILES)),
   };
+
+  let server = {};
   try {
-    const r = await fetch('/api/load-dict');
-    const server = await r.json();
-    state.dict = {
-      ipNameMap: { ...seed.ipNameMap, ...(server.ipNameMap || {}) },
-      gradeTable: {
-        S: (server.gradeTable && server.gradeTable.S && server.gradeTable.S.length) ? server.gradeTable.S : seed.gradeTable.S,
-        A: (server.gradeTable && server.gradeTable.A && server.gradeTable.A.length) ? server.gradeTable.A : seed.gradeTable.A,
-      },
-      moodClusters: (server.moodClusters && server.moodClusters.length) ? server.moodClusters : seed.moodClusters,
-      storeProfiles: Object.keys(server.storeProfiles || {}).length ? server.storeProfiles : seed.storeProfiles,
-    };
-  } catch (e) {
-    state.dict = seed; // 서버를 못 읽어도 시드값으로 정상 동작
-  }
+    // 백엔드가 배포되어 있지 않으면(파일 더블클릭으로 열었을 때 등) 이 요청은 그냥 실패한다 —
+    // 그래도 화면은 seed값 + 로컬 저장값만으로 정상 동작해야 하므로 짧은 타임아웃만 두고 무시한다.
+    const r = await fetch('/api/load-dict', { signal: AbortSignal.timeout(1500) });
+    server = await r.json();
+  } catch (e) { /* 백엔드 없음 — 무시 */ }
+
+  const local = loadLocalDict();
+
+  state.dict = {
+    ipNameMap: { ...seed.ipNameMap, ...(server.ipNameMap || {}), ...(local.ipNameMap || {}) },
+    gradeTable: local.gradeTable || (server.gradeTable && server.gradeTable.S && server.gradeTable.S.length ? server.gradeTable : seed.gradeTable),
+    moodClusters: local.moodClusters || (server.moodClusters && server.moodClusters.length ? server.moodClusters : seed.moodClusters),
+    storeProfiles: local.storeProfiles || (Object.keys(server.storeProfiles || {}).length ? server.storeProfiles : seed.storeProfiles),
+  };
   if (!state.dict.storeProfiles[state.activeStore]) {
     state.activeStore = Object.keys(state.dict.storeProfiles)[0];
   }
 }
 
-async function saveDictSection(section, value, label) {
-  const ok = window.confirm(`"${label}" 내용을 GitHub에 저장하시겠습니까?\n팀 전체가 공유하는 데이터이므로 신중하게 확인하세요.`);
-  if (!ok) return false;
+// 이 브라우저에 즉시 저장 (백엔드 불필요, 확인창 없음 — 언제든 되돌릴 수 있는 로컬 편집이라서).
+function saveDictLocal(section, value) {
+  state.dict[section] = value;
+  saveLocalDict({ [section]: value });
+}
+
+// 선택 기능: 배포된 백엔드가 있을 때만 팀 공유용으로 GitHub에도 커밋한다.
+// 백엔드가 없으면 실패하는 게 당연하므로, 그 경우엔 "이 브라우저에는 이미 저장됐다"고
+// 안내하고 에러처럼 취급하지 않는다.
+async function shareDictToGithub(section, value, label) {
+  const ok = window.confirm(`"${label}" 내용을 GitHub(팀 공유용)에도 올리시겠습니까?\n백엔드가 배포되어 있지 않다면 이 브라우저 저장만 유지됩니다.`);
+  if (!ok) return;
   try {
     const r = await fetch('/api/save-dict', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ section, value }),
+      signal: AbortSignal.timeout(5000),
     });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || '저장 실패');
-    state.dict[section] = value;
-    alert('저장되었습니다.');
-    return true;
+    alert('GitHub에도 저장되었습니다 (팀원들도 공유받습니다).');
   } catch (e) {
-    alert(`저장 실패: ${e.message}`);
-    return false;
+    alert('GitHub 공유는 실패했지만, 이 브라우저에는 이미 저장되어 있어 계속 쓸 수 있습니다.\n(백엔드를 배포하지 않았다면 정상입니다)');
   }
 }
 
@@ -629,34 +652,31 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('addIpRowBtn').addEventListener('click', () => addIpDictRow());
   document.getElementById('addClusterBtn').addEventListener('click', () => addClusterRow());
 
-  document.getElementById('saveIpDictBtn').addEventListener('click', async () => {
+  // 각 탭의 입력 폼을 현재 값(section value)으로 읽어오는 헬퍼 — 로컬저장/GitHub공유 둘 다 이걸 재사용한다.
+  function readIpDictValue() {
     const value = {};
     document.querySelectorAll('#ipDictRows .dict-row').forEach((row) => {
       const k = row.querySelector('.k').value.trim();
       const v = row.querySelector('.v').value.trim();
       if (k && v) value[k] = v;
     });
-    await saveDictSection('ipNameMap', value, `IP명 사전 (${Object.keys(value).length}건)`);
-    renderDataTable();
-  });
-
-  document.getElementById('saveGradeBtn').addEventListener('click', async () => {
+    return value;
+  }
+  function readGradeValue() {
     const S = document.getElementById('gradeSInput').value.split(',').map((s) => s.trim()).filter(Boolean);
     const A = document.getElementById('gradeAInput').value.split(',').map((s) => s.trim()).filter(Boolean);
-    await saveDictSection('gradeTable', { S, A }, `등급표 (S ${S.length}건 / A ${A.length}건)`);
-  });
-
-  document.getElementById('saveClusterBtn').addEventListener('click', async () => {
+    return { S, A };
+  }
+  function readClusterValue() {
     const value = [];
     document.querySelectorAll('#clusterRows .dict-row').forEach((row) => {
       const name = row.querySelector('.cname').value.trim();
       const members = row.querySelector('.cmembers').value.split(',').map((s) => s.trim()).filter(Boolean);
       if (name) value.push({ name, members });
     });
-    await saveDictSection('moodClusters', value, `분위기 클러스터 (${value.length}개)`);
-  });
-
-  document.getElementById('saveStoreBtn').addEventListener('click', async () => {
+    return value;
+  }
+  function readStoreValue() {
     const value = { ...state.dict.storeProfiles };
     document.querySelectorAll('#storeRows .dict-row').forEach((row) => {
       const key = row.dataset.key;
@@ -666,8 +686,46 @@ document.addEventListener('DOMContentLoaded', () => {
         tagWhitelist: row.querySelector('.tag-whitelist').value.split(',').map((s) => s.trim()).filter(Boolean),
       };
     });
-    await saveDictSection('storeProfiles', value, '스토어 프로필');
+    return value;
+  }
+
+  document.getElementById('saveIpDictBtn').addEventListener('click', () => {
+    saveDictLocal('ipNameMap', readIpDictValue());
+    renderDataTable();
+  });
+  document.getElementById('shareIpDictBtn').addEventListener('click', () => {
+    const value = readIpDictValue();
+    saveDictLocal('ipNameMap', value);
+    shareDictToGithub('ipNameMap', value, `IP명 사전 (${Object.keys(value).length}건)`);
+  });
+
+  document.getElementById('saveGradeBtn').addEventListener('click', () => {
+    saveDictLocal('gradeTable', readGradeValue());
+  });
+  document.getElementById('shareGradeBtn').addEventListener('click', () => {
+    const value = readGradeValue();
+    saveDictLocal('gradeTable', value);
+    shareDictToGithub('gradeTable', value, `등급표 (S ${value.S.length}건 / A ${value.A.length}건)`);
+  });
+
+  document.getElementById('saveClusterBtn').addEventListener('click', () => {
+    saveDictLocal('moodClusters', readClusterValue());
+  });
+  document.getElementById('shareClusterBtn').addEventListener('click', () => {
+    const value = readClusterValue();
+    saveDictLocal('moodClusters', value);
+    shareDictToGithub('moodClusters', value, `분위기 클러스터 (${value.length}개)`);
+  });
+
+  document.getElementById('saveStoreBtn').addEventListener('click', () => {
+    saveDictLocal('storeProfiles', readStoreValue());
     populateStoreSelects();
+  });
+  document.getElementById('shareStoreBtn').addEventListener('click', () => {
+    const value = readStoreValue();
+    saveDictLocal('storeProfiles', value);
+    populateStoreSelects();
+    shareDictToGithub('storeProfiles', value, '스토어 프로필');
   });
 });
 

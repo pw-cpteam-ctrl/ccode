@@ -268,12 +268,18 @@
       <button data-tab="store">스토어 프로필</button>
     </div>
 
+    <p style="font-size:11px;color:var(--muted);margin:0 0 10px;">
+      "이 브라우저에 저장"만 눌러도 충분합니다 — 백엔드 없이 바로 반영되고, 새로고침해도
+      안 날아갑니다. "GitHub에도 공유"는 팀원과 사전을 맞추고 싶을 때만 쓰는 선택 기능이고
+      배포된 백엔드가 없으면 아무 비용도 들지 않고 조용히 스킵됩니다.
+    </p>
+
     <div class="dict-editor-tab active" id="tab-ip">
       <div id="ipDictRows"></div>
       <button class="btn" id="addIpRowBtn">+ 행 추가</button>
       <div class="row between" style="margin-top:12px;">
-        <span style="font-size:11px;color:var(--muted);">계속 늘어나는 데이터 — GitHub에 저장해야 팀 공유됩니다.</span>
-        <button class="btn primary" id="saveIpDictBtn">GitHub에 저장</button>
+        <button class="btn primary" id="saveIpDictBtn">이 브라우저에 저장</button>
+        <button class="link-btn" id="shareIpDictBtn">☁ GitHub에도 공유 (선택)</button>
       </div>
     </div>
 
@@ -281,18 +287,27 @@
       <div class="field"><label>S급 (쉼표 구분)</label><input id="gradeSInput" /></div>
       <div class="field"><label>A급 (쉼표 구분)</label><input id="gradeAInput" /></div>
       <p style="font-size:11px;color:var(--muted);">B급 이하는 이 표에 저장하지 않습니다 — 항목별 "등급(수동)" 필드로 그때그때 분류하세요.</p>
-      <button class="btn primary" id="saveGradeBtn">GitHub에 저장</button>
+      <div class="row between">
+        <button class="btn primary" id="saveGradeBtn">이 브라우저에 저장</button>
+        <button class="link-btn" id="shareGradeBtn">☁ GitHub에도 공유 (선택)</button>
+      </div>
     </div>
 
     <div class="dict-editor-tab" id="tab-cluster">
       <div id="clusterRows"></div>
       <button class="btn" id="addClusterBtn">+ 클러스터 추가</button>
-      <button class="btn primary" id="saveClusterBtn" style="margin-top:12px;">GitHub에 저장</button>
+      <div class="row between" style="margin-top:12px;">
+        <button class="btn primary" id="saveClusterBtn">이 브라우저에 저장</button>
+        <button class="link-btn" id="shareClusterBtn">☁ GitHub에도 공유 (선택)</button>
+      </div>
     </div>
 
     <div class="dict-editor-tab" id="tab-store">
       <div id="storeRows"></div>
-      <button class="btn primary" id="saveStoreBtn" style="margin-top:12px;">GitHub에 저장</button>
+      <div class="row between" style="margin-top:12px;">
+        <button class="btn primary" id="saveStoreBtn">이 브라우저에 저장</button>
+        <button class="link-btn" id="shareStoreBtn">☁ GitHub에도 공유 (선택)</button>
+      </div>
     </div>
 
     <div class="row between" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px;">
