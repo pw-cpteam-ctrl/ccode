@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { parseCount, buildComparisonReport, buildProductComparison, extractOwnProductName, extractCompetitorProductName, extractKeywords, formatKstTime } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
-const { extractFromHtml, sanitizeJsonLiteral, extractAssignedJson } = require('./naver-stock');
+const { extractFromHtml, sanitizeJsonLiteral, extractAssignedJson, withPageParam } = require('./naver-stock');
 const { buildStockComparison, rankStockProducts, findStockMatch, renderStockSectionHtml } = require('./stock-report');
 const { buildHtmlReport } = require('./html-report');
 const { archiveAndGetPath } = require('./report-archive');
@@ -247,6 +247,17 @@ check('naver-stock: sanitizeJsonLiteral/extractAssignedJson 유틸 단위 검증
     '{"a":null,"b":null,"c":"undefined 문자열은 유지"}');
   assert.strictEqual(extractAssignedJson('window.__X__ = {"a":1};', '__X__'), '{"a":1}');
   assert.strictEqual(extractAssignedJson('no marker here', '__X__'), '');
+});
+
+check('naver-stock: withPageParam — 다음 페이지 URL을 만들 때 다른 쿼리 파라미터는 그대로 유지', () => {
+  assert.strictEqual(
+    withPageParam('https://m.smartstore.naver.com/mall/category/1?st=TOTALSALE&page=1&size=40', 2),
+    'https://m.smartstore.naver.com/mall/category/1?st=TOTALSALE&page=2&size=40'
+  );
+  assert.strictEqual(
+    withPageParam('https://example.com/list?page=1', 3),
+    'https://example.com/list?page=3'
+  );
 });
 
 check('stock-report: 스냅샷 1개뿐일 땐 비교 없이 현재값만, 2개면 변화량(판매 추정) 계산', () => {

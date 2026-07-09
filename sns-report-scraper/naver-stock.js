@@ -382,14 +382,71 @@ async function getProductStock(url, opts) {
   return extractFromHtml(html);
 }
 
+function withPageParam(urlStr, pageNum) {
+  const parsed = new URL(urlStr);
+  parsed.searchParams.set('page', String(pageNum));
+  return parsed.toString();
+}
+
+// 목록 페이지가 한 페이지에 다 안 들어오고 여러 페이지로 나뉜 경우(예: 모바일 단축링크는
+// 40개씩만 보여주는데 카테고리 상품이 40개보다 많은 경우) 이어서 다음 페이지들도 훑어서
+// 합쳐줌. entryUrl 방문 후 도착한 실제 URL에 page= 파라미터가 있으면 그 값을 2, 3, ...으로
+// 바꿔가며 같은 브라우저 컨텍스트(같은 세션) 안에서 이어서 방문 — 매 페이지 이전 페이지를
+// referer로 넘겨서 "그 페이지에서 다음 페이지로 넘어간" 것처럼 보이게 함. 새로 나온 상품이
+// 하나도 없는 페이지를 만나면 마지막 페이지로 판단하고 멈춤. page= 파라미터 자체가 없는
+// URL(단일 페이지 구조)이면 1페이지만 보고 끝냄 — 안전하게 동작.
+async function getProductStockAllPages(entryUrl, { headless = false, maxPages = 10 } = {}) {
+  const browser = await chromium.launch({ headless });
+  const context = await browser.newContext({ locale: 'ko-KR' });
+  const page = await context.newPage();
+  const merged = new Map();
+
+  try {
+    const firstResponse = await page.goto(entryUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    if (firstResponse && !firstResponse.ok()) {
+      throw new Error(`HTTP ${firstResponse.status()} (${entryUrl})`);
+    }
+    await page.waitForTimeout(1500);
+    extractFromHtml(await page.content()).forEach(r => { if (r.productId) merged.set(r.productId, r); });
+
+    let currentUrl = page.url();
+    if (!/[?&]page=\d+/.test(currentUrl)) return [...merged.values()];
+
+    for (let pageNum = 2; pageNum <= maxPages; pageNum += 1) {
+      const nextUrl = withPageParam(currentUrl, pageNum);
+      let response;
+      try {
+        response = await page.goto(nextUrl, { waitUntil: 'domcontentloaded', timeout: 30000, referer: currentUrl });
+      } catch (error) {
+        break; // 다음 페이지 이동 실패(범위 밖 등) — 여기까지 모은 걸로 마무리
+      }
+      if (!response || !response.ok()) break;
+      await page.waitForTimeout(1200);
+
+      const pageRecords = extractFromHtml(await page.content());
+      const freshRecords = pageRecords.filter(r => r.productId && !merged.has(r.productId));
+      if (freshRecords.length === 0) break; // 새 상품이 없으면 마지막 페이지를 지나친 것으로 판단
+
+      freshRecords.forEach(r => merged.set(r.productId, r));
+      currentUrl = nextUrl;
+    }
+  } finally {
+    await browser.close();
+  }
+
+  return [...merged.values()];
+}
+
 module.exports = {
   getProductStock,
+  getProductStockAllPages,
   fetchProductPage,
   extractFromHtml,
   extractStockRecords,
   sanitizeJsonLiteral,
   extractAssignedJson,
   reconstructNextFlight,
+  withPageParam,
 };
 
 // CLI로 바로 테스트: node naver-stock.js <상품 또는 스토어 URL>

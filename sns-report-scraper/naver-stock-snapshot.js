@@ -14,7 +14,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { getProductStock } = require('./naver-stock');
+const { getProductStock, getProductStockAllPages } = require('./naver-stock');
 
 const HISTORY_PATH = path.join(__dirname, 'reports', '_stock-history.json');
 
@@ -24,10 +24,10 @@ const HISTORY_PATH = path.join(__dirname, 'reports', '_stock-history.json');
 const STORES = [
   { label: 'PW', url: 'https://brand.naver.com/megahouse/category/a1b6775bba66406296df046187baf675?st=POPULAR&dt=IMAGE&page=1&size=80' },
   // BH는 원래 카테고리 URL(smartstore.naver.com/.../category/...)로 직접 들어가면 로그인
-  // 게이트에 걸림(warmupUrl+referer로도 못 뚫음). 사용자가 "경쟁사 신제품 카테고리로 가는
-  // 링크"로 찾아준 m.site.naver.com 단축링크로 교체해서 재시도 — 이게 게이트 자체를 우회하는
-  // 건지, 이 링크도 결국 같은 카테고리로 리다이렉트되는 건지는 실행해봐야 확인됨.
-  { label: 'BH', url: 'https://m.site.naver.com/1X24n' },
+  // 게이트에 걸림(warmupUrl+referer로도 못 뚫음). 사용자가 찾아준 m.site.naver.com 단축링크로
+  // 는 게이트 없이 통과되는데, 모바일 페이지라 40개씩만 나와서(카테고리 상품이 40개보다 많음)
+  // paginate:true로 다음 페이지까지 이어서 수집하게 함.
+  { label: 'BH', url: 'https://m.site.naver.com/1X24n', paginate: true },
 ];
 
 async function captureSnapshot() {
@@ -40,7 +40,8 @@ async function captureSnapshot() {
 
   for (const store of activeStores) {
     console.log(`📸 ${store.label} (${store.url}) 재고 수집 중...`);
-    const records = await getProductStock(store.url, { warmupUrl: store.warmupUrl });
+    const fetchFn = store.paginate ? getProductStockAllPages : getProductStock;
+    const records = await fetchFn(store.url, { warmupUrl: store.warmupUrl });
     snapshot.stores[store.label] = records;
     console.log(`  → ${records.length}건 수집`);
   }
