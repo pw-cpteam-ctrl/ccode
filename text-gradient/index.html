@@ -114,25 +114,26 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 
   <div class="sec">배치 · 크기</div>
   <div class="subsec">개별 조정 — 지금 보고 있는 슬롯에만 적용</div>
+  <div class="field"><label>하단 기준선(Y) — 텍스트 블록 전체가 이 지점에 하단 정렬되고, 내용이 길수록 위로 늘어난다</label><input type="range" id="bottomAnchorY" min="200" max="1350" value="1250"/></div>
   <div class="row3">
     <div class="field-col">
       <div class="col-title">배지</div>
-      <div class="field"><label>위치(Y)</label><input type="range" id="badgeY" min="0" max="1350" value="900"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="badgeY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="badgeSize" min="10" max="60" value="20"/></div>
     </div>
     <div class="field-col">
       <div class="col-title">타이틀</div>
-      <div class="field"><label>위치(Y)</label><input type="range" id="titleY" min="0" max="1350" value="970"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="titleY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="titleSize" min="20" max="140" value="64"/></div>
     </div>
     <div class="field-col">
       <div class="col-title">서브타이틀</div>
-      <div class="field"><label>위치(Y)</label><input type="range" id="subtitleY" min="0" max="1350" value="1050"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="subtitleY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="subtitleSize" min="14" max="100" value="34"/></div>
     </div>
     <div class="field-col">
       <div class="col-title">불릿</div>
-      <div class="field"><label>위치(Y)</label><input type="range" id="bulletsY" min="0" max="1350" value="1140"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="bulletsY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="bulletsSize" min="14" max="60" value="28"/></div>
     </div>
   </div>
@@ -143,25 +144,26 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
   </div>
 
   <div class="subsec" style="margin-top:14px;">전체 적용 — 슬라이더를 움직이면 모든 슬롯에 한번에 반영</div>
+  <div class="field"><label>하단 기준선(Y)</label><input type="range" id="allBottomAnchorY" min="200" max="1350" value="1250"/></div>
   <div class="row3">
     <div class="field-col">
       <div class="col-title">배지</div>
-      <div class="field"><label>위치(Y)</label><input type="range" id="allBadgeY" min="0" max="1350" value="900"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="allBadgeY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="allBadgeSize" min="10" max="60" value="20"/></div>
     </div>
     <div class="field-col">
       <div class="col-title">타이틀</div>
-      <div class="field"><label>위치(Y)</label><input type="range" id="allTitleY" min="0" max="1350" value="970"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="allTitleY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="allTitleSize" min="20" max="140" value="64"/></div>
     </div>
     <div class="field-col">
       <div class="col-title">서브타이틀</div>
-      <div class="field"><label>위치(Y)</label><input type="range" id="allSubtitleY" min="0" max="1350" value="1050"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="allSubtitleY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="allSubtitleSize" min="14" max="100" value="34"/></div>
     </div>
     <div class="field-col">
       <div class="col-title">불릿</div>
-      <div class="field"><label>위치(Y)</label><input type="range" id="allBulletsY" min="0" max="1350" value="1140"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="allBulletsY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="allBulletsSize" min="14" max="60" value="28"/></div>
     </div>
   </div>
@@ -254,7 +256,12 @@ function persistState() {
 
 /* ── 상태: 슬롯 배열 (개수 제한 없음) ── */
 const BULK_WARN_THRESHOLD = 100; // 이 이상을 한 번에 만들려고 하면 확인창만 띄움 (하드 제한 아님)
-const LAYOUT_DEFAULTS = { badgeY:900, badgeSize:20, titleY:970, titleSize:64, subtitleY:1050, subtitleSize:34, bulletsY:1140, bulletsSize:28, titleTracking:-50, subtitleTracking:-50, bulletsTracking:-50 };
+/* badgeY/titleY/subtitleY/bulletsY는 예전엔 캔버스 절대 Y좌표였으나, 하단 기준 자동 정렬 도입 후
+   "자동 계산된 위치에서 위/아래로 미세조정하는 오프셋"으로 의미가 바뀌었다(기본 0). 옛 슬롯에 저장된
+   절대좌표 값(900, 970 등)은 오프셋으로는 말이 안 되므로 아예 별도 필드(badgeYOffset 등)로 옮겨서,
+   기존 슬롯도 자동으로 오프셋 0(=순수 자동 위치)부터 시작하게 한다. */
+const LAYOUT_DEFAULTS = { badgeYOffset:0, badgeSize:20, titleYOffset:0, titleSize:64, subtitleYOffset:0, subtitleSize:34, bulletsYOffset:0, bulletsSize:28, bottomAnchorY:1250, titleTracking:-50, subtitleTracking:-50, bulletsTracking:-50 };
+const STACK_GAP = 16; // 하단 기준 자동 정렬에서 요소들 사이에 두는 고정 간격(px, 캔버스 원본 기준)
 let slots = [ makeEmptySlot() ];
 let curSlot = 1;
 let viewMode = 'grid'; // 'row' | 'grid' — 기본값은 창 너비에 따라 열 개수가 자동으로 바뀌는 바둑판
@@ -381,10 +388,11 @@ function applyBulkMarkdown() {
     const titleR = bar >= 0 ? it.title.slice(bar + 1).trim() : '';
     return { badge: commonBadge, titleL, titleR, subtitle: '', bullets: it.bullets.map(b => `- ${b}`).join('\n'), bulletsR: '', bulletsTwoCol: false, bulletsColRatio: 50,
       gradStart: g.gradStart, gradWidth: g.gradWidth, gradOpacity: g.gradOpacity, gradCompress: g.gradCompress ?? 0,
-      badgeY: layoutVal(g,'badgeY'), badgeSize: layoutVal(g,'badgeSize'),
-      titleY: layoutVal(g,'titleY'), titleSize: layoutVal(g,'titleSize'),
-      subtitleY: layoutVal(g,'subtitleY'), subtitleSize: layoutVal(g,'subtitleSize'),
-      bulletsY: layoutVal(g,'bulletsY'), bulletsSize: layoutVal(g,'bulletsSize'),
+      bottomAnchorY: layoutVal(g,'bottomAnchorY'),
+      badgeYOffset: layoutVal(g,'badgeYOffset'), badgeSize: layoutVal(g,'badgeSize'),
+      titleYOffset: layoutVal(g,'titleYOffset'), titleSize: layoutVal(g,'titleSize'),
+      subtitleYOffset: layoutVal(g,'subtitleYOffset'), subtitleSize: layoutVal(g,'subtitleSize'),
+      bulletsYOffset: layoutVal(g,'bulletsYOffset'), bulletsSize: layoutVal(g,'bulletsSize'),
       titleTracking: layoutVal(g,'titleTracking'), subtitleTracking: layoutVal(g,'subtitleTracking'), bulletsTracking: layoutVal(g,'bulletsTracking') };
   });
   curSlot = 1;
@@ -406,10 +414,11 @@ function applyViewMode() {
 
 /* ── 입력 → 상태 반영(화면+저장) ── */
 const ALL_LAYOUT_FIELDS = [
-  ['allBadgeY','badgeY'], ['allBadgeSize','badgeSize'],
-  ['allTitleY','titleY'], ['allTitleSize','titleSize'],
-  ['allSubtitleY','subtitleY'], ['allSubtitleSize','subtitleSize'],
-  ['allBulletsY','bulletsY'], ['allBulletsSize','bulletsSize'],
+  ['allBottomAnchorY','bottomAnchorY'],
+  ['allBadgeY','badgeYOffset'], ['allBadgeSize','badgeSize'],
+  ['allTitleY','titleYOffset'], ['allTitleSize','titleSize'],
+  ['allSubtitleY','subtitleYOffset'], ['allSubtitleSize','subtitleSize'],
+  ['allBulletsY','bulletsYOffset'], ['allBulletsSize','bulletsSize'],
   ['allTitleTracking','titleTracking'], ['allSubtitleTracking','subtitleTracking'], ['allBulletsTracking','bulletsTracking'],
 ];
 function loadInputsFromCurSlot() {
@@ -425,10 +434,11 @@ function loadInputsFromCurSlot() {
   applyBulletsColRatioLayout(s.bulletsColRatio ?? 50);
   $('#gradStart').value = s.gradStart; $('#gradWidth').value = s.gradWidth; $('#gradOpacity').value = s.gradOpacity;
   $('#gradCompress').value = s.gradCompress ?? 0;
-  $('#badgeY').value = layoutVal(s,'badgeY'); $('#badgeSize').value = layoutVal(s,'badgeSize');
-  $('#titleY').value = layoutVal(s,'titleY'); $('#titleSize').value = layoutVal(s,'titleSize');
-  $('#subtitleY').value = layoutVal(s,'subtitleY'); $('#subtitleSize').value = layoutVal(s,'subtitleSize');
-  $('#bulletsY').value = layoutVal(s,'bulletsY'); $('#bulletsSize').value = layoutVal(s,'bulletsSize');
+  $('#bottomAnchorY').value = layoutVal(s,'bottomAnchorY');
+  $('#badgeY').value = layoutVal(s,'badgeYOffset'); $('#badgeSize').value = layoutVal(s,'badgeSize');
+  $('#titleY').value = layoutVal(s,'titleYOffset'); $('#titleSize').value = layoutVal(s,'titleSize');
+  $('#subtitleY').value = layoutVal(s,'subtitleYOffset'); $('#subtitleSize').value = layoutVal(s,'subtitleSize');
+  $('#bulletsY').value = layoutVal(s,'bulletsYOffset'); $('#bulletsSize').value = layoutVal(s,'bulletsSize');
   $('#titleTracking').value = layoutVal(s,'titleTracking'); $('#subtitleTracking').value = layoutVal(s,'subtitleTracking'); $('#bulletsTracking').value = layoutVal(s,'bulletsTracking');
   ALL_LAYOUT_FIELDS.forEach(([id, key]) => { $('#'+id).value = layoutVal(s, key); }); // "전체 적용" 슬라이더도 현재 슬롯 값으로 시작점 맞춤
   highlightCurSlot();
@@ -465,7 +475,7 @@ $('#inBulletsColDivider').addEventListener('mousedown', e => {
   document.addEventListener('mouseup', onUp);
 });
 ['inBadge','inTitleL','inTitleR','inSubtitle','inBullets','inBulletsR','inBulletsColRatio','gradStart','gradWidth','gradOpacity','gradCompress',
- 'badgeY','badgeSize','titleY','titleSize','subtitleY','subtitleSize','bulletsY','bulletsSize','titleTracking','subtitleTracking','bulletsTracking'].forEach(id => {
+ 'bottomAnchorY','badgeY','badgeSize','titleY','titleSize','subtitleY','subtitleSize','bulletsY','bulletsSize','titleTracking','subtitleTracking','bulletsTracking'].forEach(id => {
   $('#'+id).addEventListener('input', () => {
     syncInputsToState();   // ① 값 변경을 상태에 반영
     renderCurSlotDom();    // ② 화면 반영
@@ -491,10 +501,11 @@ function syncInputsToState() {
   s.bulletsColRatio = +$('#inBulletsColRatio').value;
   s.gradStart = +$('#gradStart').value; s.gradWidth = +$('#gradWidth').value; s.gradOpacity = +$('#gradOpacity').value;
   s.gradCompress = +$('#gradCompress').value;
-  s.badgeY = +$('#badgeY').value; s.badgeSize = +$('#badgeSize').value;
-  s.titleY = +$('#titleY').value; s.titleSize = +$('#titleSize').value;
-  s.subtitleY = +$('#subtitleY').value; s.subtitleSize = +$('#subtitleSize').value;
-  s.bulletsY = +$('#bulletsY').value; s.bulletsSize = +$('#bulletsSize').value;
+  s.bottomAnchorY = +$('#bottomAnchorY').value;
+  s.badgeYOffset = +$('#badgeY').value; s.badgeSize = +$('#badgeSize').value;
+  s.titleYOffset = +$('#titleY').value; s.titleSize = +$('#titleSize').value;
+  s.subtitleYOffset = +$('#subtitleY').value; s.subtitleSize = +$('#subtitleSize').value;
+  s.bulletsYOffset = +$('#bulletsY').value; s.bulletsSize = +$('#bulletsSize').value;
   s.titleTracking = +$('#titleTracking').value; s.subtitleTracking = +$('#subtitleTracking').value; s.bulletsTracking = +$('#bulletsTracking').value;
 }
 /* "전체 적용" 슬라이더: 개별 슬롯 상태(badgeY 등)는 그대로 두고 모든 슬롯에 같은 값을 일괄 반영 */
@@ -542,18 +553,16 @@ function renderBulletLines(raw) {
     return m ? `• ${m[1]}` : line;
   }).join('<br>');
 }
+const PREVIEW_SCALE = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--preview-scale')) || 0.3;
 function renderSlotDom(pg) {
   const s = slots[pg - 1];
   const badgeEl = $('#badge'+pg), titleEl = $('#title'+pg), subtitleEl = $('#subtitle'+pg), bulletsEl = $('#bullets'+pg);
   badgeEl.textContent = s.badge;
-  badgeEl.style.top = layoutVal(s,'badgeY') + 'px';
   badgeEl.style.fontSize = layoutVal(s,'badgeSize') + 'px';
   titleEl.textContent = s.titleL + (s.titleR ? ' | ' + s.titleR : '');
-  titleEl.style.top = layoutVal(s,'titleY') + 'px';
   titleEl.style.fontSize = layoutVal(s,'titleSize') + 'px';
   titleEl.style.letterSpacing = (layoutVal(s,'titleTracking') / 1000) + 'em';
   subtitleEl.textContent = s.subtitle || '';
-  subtitleEl.style.top = layoutVal(s,'subtitleY') + 'px';
   subtitleEl.style.fontSize = layoutVal(s,'subtitleSize') + 'px';
   subtitleEl.style.letterSpacing = (layoutVal(s,'subtitleTracking') / 1000) + 'em';
   const colRatio = s.bulletsColRatio ?? 50;
@@ -561,10 +570,29 @@ function renderSlotDom(pg) {
   bulletsEl.innerHTML = s.bulletsTwoCol
     ? `<div>${renderBulletLines(s.bullets)}</div><div>${renderBulletLines(s.bulletsR || '')}</div>`
     : `<div>${renderBulletLines(s.bullets)}</div>`;
-  bulletsEl.style.top = layoutVal(s,'bulletsY') + 'px';
   bulletsEl.style.fontSize = layoutVal(s,'bulletsSize') + 'px';
   bulletsEl.style.letterSpacing = (layoutVal(s,'bulletsTracking') / 1000) + 'em';
+  layoutBottomAnchoredStack(s, { badgeEl, titleEl, subtitleEl, bulletsEl });
   applyGrad($('#grad'+pg), s.gradStart, s.gradWidth, s.gradOpacity, s.gradCompress ?? 0);
+}
+/* 하단 기준 자동 정렬: bottomAnchorY를 바닥으로 두고 불릿→서브타이틀→타이틀→배지 순으로 아래에서
+   위로 쌓아 올린다. 내용이 없는 요소는 건너뛰어 빈 칸을 남기지 않고, 내용이 길어 줄바꿈되면
+   그만큼 위 요소들이 자동으로 밀려 올라간다. 각 요소의 "위치 오프셋" 슬라이더는 이 자동 위치에서
+   위/아래로 미세조정하는 값이다. */
+function layoutBottomAnchoredStack(s, els) {
+  const stack = [
+    { el: els.bulletsEl, has: !!(s.bullets && s.bullets.trim()) || !!(s.bulletsTwoCol && s.bulletsR && s.bulletsR.trim()), offset: layoutVal(s,'bulletsYOffset') },
+    { el: els.subtitleEl, has: !!(s.subtitle && s.subtitle.trim()), offset: layoutVal(s,'subtitleYOffset') },
+    { el: els.titleEl, has: !!((s.titleL && s.titleL.trim()) || (s.titleR && s.titleR.trim())), offset: layoutVal(s,'titleYOffset') },
+    { el: els.badgeEl, has: !!(s.badge && s.badge.trim()), offset: layoutVal(s,'badgeYOffset') },
+  ];
+  let cursorBottom = layoutVal(s,'bottomAnchorY');
+  stack.forEach(item => {
+    if (!item.has) return;
+    const rawHeight = item.el.getBoundingClientRect().height / PREVIEW_SCALE;
+    item.el.style.top = (cursorBottom - rawHeight + item.offset) + 'px';
+    cursorBottom -= rawHeight + STACK_GAP;
+  });
 }
 function applyGrad(el, s, w, oRaw, c) {
   const o = Math.min(1, oRaw / 100);
