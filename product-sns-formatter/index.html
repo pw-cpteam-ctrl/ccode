@@ -160,7 +160,10 @@ async function runFormat() {
     }).catch(() => {});
   } catch (err) {
     $('#formatStatus').textContent = '';
-    $('#formatWarn').textContent = `변환에 실패했어요: ${err.message}\n\nANTHROPIC_API_KEY 등록 + Vercel 배포가 끝나야 정상 동작합니다. 자세한 내용은 PLAN.md / README.md 참고.`;
+    const hint = /ANTHROPIC_API_KEY/i.test(err.message)
+      ? '\n\nVercel 프로젝트 환경변수에 ANTHROPIC_API_KEY를 등록해주세요. 자세한 내용은 PLAN.md / README.md 참고.'
+      : '';
+    $('#formatWarn').textContent = `변환에 실패했어요: ${err.message}${hint}`;
     $('#formatWarn').style.display = 'block';
   }
 }
