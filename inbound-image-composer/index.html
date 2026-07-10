@@ -71,7 +71,7 @@
   @media (max-width: 900px) { .step2-grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 480px) { .step2-grid { grid-template-columns: 1fr; } }
 
-  .preview-pages { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .preview-pages { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; position: relative; }
   @media (max-width: 900px) { .preview-pages { grid-template-columns: 1fr; } }
   .preview-page-box { border: 1px solid var(--line2); border-radius: 8px; padding: 10px; background: #fafafa; }
   .preview-page-box.empty { background: transparent; border-style: dashed; }
@@ -80,8 +80,11 @@
   @media (max-width: 480px) { .preview-grid { grid-template-columns: repeat(3, 1fr); gap: 4px; } }
   .pcard { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: #fff; cursor: grab; position: relative; min-height: 120px; }
   .pcard.dragover { outline: 2px dashed var(--accent); }
+  .pcard.group-selected { outline: 2px solid var(--accent); background: #eef4ff; }
   .pcard .del-check { position: absolute; top: 6px; left: 6px; z-index: 2; width: 18px; height: 18px; }
   .pcard canvas, .pcard img.pthumb { width: 100%; aspect-ratio: 1/1; object-fit: cover; border-radius: 5px; display: block; }
+  .marquee-box { position: absolute; border: 1px dashed var(--accent); background: rgba(47,123,255,.1); pointer-events: none; z-index: 5; }
+  .undo-banner { display: flex; align-items: center; gap: 10px; background: #fff3d6; border: 1px solid #f0c869; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; }
   @media (max-width: 480px) { .pcard { min-height: 100px; } .pcard .edit-btn { font-size: 10px; padding: 4px 6px; } }
   .pcard .ip { font-weight: 800; font-size: 13px; margin-top: 6px; color: var(--text); }
   .pcard .tag { display: inline-block; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 5px; margin-left: 4px; }
@@ -169,46 +172,37 @@
     <div class="card-panel">
       <h2>3단계 · 전체 미리보기 (분할 전, 1장)</h2>
       <p class="hint">5열 그리드를 유지한 채 세로로 이어지는 긴 미리보기입니다.
-        카드를 드래그해서 순서를 바꾸거나, 카드를 클릭해 내용을 수정하세요.
+        카드를 드래그해서 순서를 바꾸거나, 카드를 클릭해 내용을 수정하세요. 빈 배경을 드래그하면
+        여러 카드를 한 번에 선택해 묶어서 이동할 수 있습니다.
         <strong>이 단계를 건너뛰고 최종 분할로 가지 않습니다.</strong></p>
       <div class="row between" style="margin-bottom:12px;">
         <div class="row">
-          <button class="btn" id="selectDeleteBtn">선택 삭제 진행 →</button>
+          <button class="btn danger" id="selectDeleteBtn">선택 삭제</button>
           <span id="selectedCount" style="font-size:12px;color:var(--muted);"></span>
         </div>
         <div id="splitPreviewText" style="font-size:12px;color:var(--muted);"></div>
+      </div>
+      <div class="undo-banner" id="undoBanner" style="display:none;">
+        <span id="undoBannerText"></span>
+        <button class="btn" id="undoDeleteBtn">실행취소</button>
       </div>
       <div class="preview-pages" id="previewGrid"></div>
     </div>
     <div class="footer-nav">
       <button class="btn" id="backTo2Btn">← 이전 (표 정리)</button>
-      <button class="btn primary" id="toStep5Btn">다음: 순서 정렬 →</button>
+      <button class="btn primary" id="toStep4Btn">다음: 순서 정렬 →</button>
     </div>
   </section>
 
-  <!-- STEP 4 : 삭제 확인 -->
+  <!-- STEP 4 : 순서 정렬 -->
   <section class="step" id="step-4">
     <div class="card-panel">
-      <h2>4단계 · 삭제 확인 (누락 방지)</h2>
-      <p class="hint">아래 목록이 삭제하려는 항목과 정확히 일치하는지 확인한 뒤에만 반영됩니다.</p>
-      <div>삭제 대상:</div>
-      <ul class="del-list" id="deleteList"></ul>
-      <div class="summary-box" id="deleteSummary"></div>
-    </div>
-    <div class="footer-nav">
-      <button class="btn" id="cancelDeleteBtn">취소</button>
-      <button class="btn danger" id="confirmDeleteBtn">이대로 삭제 진행</button>
-    </div>
-  </section>
-
-  <!-- STEP 5 : 순서 정렬 -->
-  <section class="step" id="step-5">
-    <div class="card-panel">
-      <h2>5단계 · 순서 정렬</h2>
+      <h2>4단계 · 순서 정렬</h2>
       <p class="hint">정렬 기준: ① IP 등급(S/A급 → B/C급 성향별 → 기타) → ② 스토어 성향 우선순위 →
         ③ 분위기 클러스터. 등급표/클러스터는
         <button class="link-btn" data-open-dict="grade">사전 관리에서 편집</button>할 수 있습니다.
-        자동 정렬 후에도 카드를 드래그해서 미세 조정할 수 있고, "순서 확정"을 눌러야 6단계로 진행됩니다.</p>
+        자동 정렬 후에도 카드를 드래그해서 미세 조정할 수 있고(빈 배경 드래그로 여러 개 묶어서 이동 가능),
+        "순서 확정"을 눌러야 5단계로 진행됩니다.</p>
       <div class="row" style="margin-bottom:12px;">
         <label style="font-size:13px;">스토어 프로필 (성향 우선순위)</label>
         <select id="storeSelectStep5"></select>
@@ -222,12 +216,12 @@
     </div>
   </section>
 
-  <!-- STEP 6 : 최종 분할 & 내보내기 -->
-  <section class="step" id="step-6">
+  <!-- STEP 5 : 최종 분할 & 내보내기 -->
+  <section class="step" id="step-5">
     <div class="card-panel">
-      <h2>6단계 · 최종 분할 &amp; 내보내기</h2>
-      <div id="step6Guard" class="hint"></div>
-      <div id="step6Body" style="display:none;">
+      <h2>5단계 · 최종 분할 &amp; 내보내기</h2>
+      <div id="step5Guard" class="hint"></div>
+      <div id="step5Body" style="display:none;">
         <div class="row" style="margin-bottom:14px;">
           <label style="font-size:13px;">헤더 이미지</label>
           <select id="headerSelect"></select>
@@ -239,7 +233,7 @@
       </div>
     </div>
     <div class="footer-nav">
-      <button class="btn" id="backTo5Btn">← 순서 정렬로</button>
+      <button class="btn" id="backTo4Btn">← 순서 정렬로</button>
       <span></span>
     </div>
   </section>

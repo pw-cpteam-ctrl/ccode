@@ -1,11 +1,13 @@
 // ============================================================
 // 입고안내 이미지 자동 제작 툴 — 메인 앱 로직
-// 6단계 플로우(업로드/그리드검출 → 표정리 → 전체미리보기 → 삭제확인 → 순서정렬 →
+// 5단계 플로우(업로드/그리드검출 → 표정리 → 전체미리보기 → 순서정렬 →
 // 최종크롭/내보내기)를 화면 전환으로 명확히 분리한다. 절대 중간 단계를 건너뛰고
 // 최종 렌더로 가지 않는다 (PLAN 문서의 "실패 사례" 참고).
+// 삭제는 예전엔 "체크박스 선택 → 확인 화면 → 확정" 별도 단계였지만, 확인 화면이
+// 오히려 번거롭다는 피드백에 따라 즉시 삭제 + 실행취소(undo)로 단순화했다.
 // ============================================================
 
-const STEP_LABELS = ['업로드/검출', '표 정리', '전체 미리보기', '삭제 확인', '순서 정렬', '최종 내보내기'];
+const STEP_LABELS = ['업로드/검출', '표 정리', '전체 미리보기', '순서 정렬', '최종 내보내기'];
 
 const state = {
   step: 1,
@@ -18,6 +20,7 @@ const state = {
   dict: { ipNameMap: {}, gradeTable: { S: [], A: [] }, moodClusters: [], storeProfiles: {} },
   activeStore: 'goodsmile',
   pendingDeleteIds: [],
+  lastDeletedBatch: null, // [{ item, index }] — 실행취소용, 가장 최근 삭제 1건만 기억
   orderConfirmed: false,
   finalPages: null, // array of { items, canvas }
 };
@@ -115,15 +118,16 @@ function renderStepIndicator() {
 
 function goToStep(n) {
   if (n === 2 && Object.keys(state.photos).length === 0) return;
-  if (n === 6 && !state.orderConfirmed) { showStep6Guard(); }
+  if (n === 5 && !state.orderConfirmed) { showStep5Guard(); }
+  if (n !== 3) hideUndoBanner(); // 실행취소는 3단계 컨텍스트에서만 의미가 있음
   state.step = n;
   document.querySelectorAll('.step').forEach((s) => s.classList.remove('active'));
   document.getElementById(`step-${n}`).classList.add('active');
   renderStepIndicator();
   if (n === 2) renderDataTable();
   if (n === 3) renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
-  if (n === 5) renderPreviewGrid('sortPreviewGrid', state.items, { draggable: true, selectable: false });
-  if (n === 6) renderStep6();
+  if (n === 4) renderPreviewGrid('sortPreviewGrid', state.items, { draggable: true, selectable: false });
+  if (n === 5) renderStep5();
 }
 
 // ============================================================
@@ -435,14 +439,96 @@ function scaledThumb(canvas) {
 }
 
 // ============================================================
-// STEP 3 / 5 — 전체 미리보기 (공용 렌더)
+// STEP 3 / 4 — 전체 미리보기 (공용 렌더)
 // ============================================================
-let dragFromIndex = null;
+let dragFromItemId = null;
+let dragGroupIds = null; // 드래그 시작한 카드가 그룹 선택에 포함돼 있으면 함께 옮길 id 목록
+// 빈 배경을 마우스로 드래그해서 여러 카드를 한 번에 선택하는 용도 — 체크박스(삭제용
+// pendingDeleteIds)와는 별개의 개념이라 컨테이너별로 따로 관리한다.
+let groupSelectedIds = new Set();
 
 // 5열 x 5줄 = 25개 단위로 박스(페이지)를 나눈다. 박스는 항상 2열로 나란히 배치되고,
 // 홀수 개(마지막 박스가 짝이 없을 때)면 빈 박스를 하나 더 붙여 짝을 맞춘다 — 그래야
 // 마지막 박스 하나만 있을 때 카드가 컨테이너 폭 전체로 늘어나 커지는 걸 막을 수 있다.
 const PREVIEW_PAGE_GROUP_SIZE = 25;
+
+// 선택된 항목들(movingIds)을 원래 상대 순서를 유지한 채 targetItemId 위치로 통째로 옮긴다.
+// 인덱스가 아니라 id 기준으로 계산해서, 몇 개를 옮기든(그룹이든 단일이든) 항상 정확하다.
+function moveItemsBeforeTarget(movingIds, targetItemId) {
+  const idSet = new Set(movingIds);
+  if (idSet.has(targetItemId)) return; // 자기 자신 위에 드롭하면 아무 일도 안 함
+  const movingItems = state.items.filter((it) => idSet.has(it.id));
+  const remaining = state.items.filter((it) => !idSet.has(it.id));
+  const targetPos = remaining.findIndex((it) => it.id === targetItemId);
+  const insertAt = targetPos === -1 ? remaining.length : targetPos;
+  remaining.splice(insertAt, 0, ...movingItems);
+  state.items = remaining;
+}
+
+// 카드가 없는 빈 배경을 클릭+드래그하면 사각형 선택 영역을 그려서, 겹치는 카드들을
+// group-selected 상태로 표시한다. 이후 그 중 하나를 드래그하면 선택된 카드 전체가
+// 순서를 유지한 채 함께 이동한다 (체크박스 선택과는 별개 — 삭제용이 아니라 이동 전용).
+function attachMarqueeSelection(container) {
+  // container(#previewGrid/#sortPreviewGrid)는 매 렌더마다 innerHTML만 비워지고 같은 DOM
+  // 노드가 재사용되므로, 리스너를 매번 새로 붙이면 렌더될 때마다 계속 누적된다 — 한 번만 붙인다.
+  if (container.dataset.marqueeAttached) return;
+  container.dataset.marqueeAttached = '1';
+  let marqueeEl = null;
+  let startX = 0;
+  let startY = 0;
+  let active = false;
+
+  function rectFrom(curX, curY) {
+    return {
+      x1: Math.min(startX, curX), x2: Math.max(startX, curX),
+      y1: Math.min(startY, curY), y2: Math.max(startY, curY),
+    };
+  }
+
+  function updateMarqueeEl(box) {
+    const containerRect = container.getBoundingClientRect();
+    marqueeEl.style.left = `${box.x1 - containerRect.left + container.scrollLeft}px`;
+    marqueeEl.style.top = `${box.y1 - containerRect.top + container.scrollTop}px`;
+    marqueeEl.style.width = `${box.x2 - box.x1}px`;
+    marqueeEl.style.height = `${box.y2 - box.y1}px`;
+  }
+
+  function highlightIntersecting(box) {
+    container.querySelectorAll('.pcard').forEach((card) => {
+      const r = card.getBoundingClientRect();
+      const intersects = !(r.right < box.x1 || r.left > box.x2 || r.bottom < box.y1 || r.top > box.y2);
+      card.classList.toggle('group-selected', intersects);
+    });
+  }
+
+  container.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || e.target.closest('.pcard')) return; // 카드 위에서 시작하면 기존 드래그 이동 우선
+    active = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    marqueeEl = document.createElement('div');
+    marqueeEl.className = 'marquee-box';
+    container.appendChild(marqueeEl);
+    updateMarqueeEl(rectFrom(startX, startY));
+    e.preventDefault();
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!active || !marqueeEl) return;
+    const box = rectFrom(e.clientX, e.clientY);
+    updateMarqueeEl(box);
+    highlightIntersecting(box);
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!active) return;
+    active = false;
+    if (marqueeEl) { marqueeEl.remove(); marqueeEl = null; }
+    groupSelectedIds = new Set(
+      Array.from(container.querySelectorAll('.pcard.group-selected')).map((c) => c.dataset.itemId)
+    );
+  });
+}
 
 function renderPreviewGrid(containerId, items, opts) {
   const container = document.getElementById(containerId);
@@ -460,12 +546,11 @@ function renderPreviewGrid(containerId, items, opts) {
     pageBox.appendChild(grid);
     container.appendChild(pageBox);
 
-    pageItems.forEach((item, localIdx) => {
-      const idx = pageIdx * PREVIEW_PAGE_GROUP_SIZE + localIdx; // state.items 기준 전체 인덱스 유지
+    pageItems.forEach((item) => {
       const card = document.createElement('div');
-      card.className = 'pcard';
+      card.className = `pcard${groupSelectedIds.has(item.id) ? ' group-selected' : ''}`;
       card.draggable = !!opts.draggable;
-      card.dataset.index = idx;
+      card.dataset.itemId = item.id;
 
       const checkboxHtml = opts.selectable
         ? `<input type="checkbox" class="del-check" data-id="${item.id}" ${state.pendingDeleteIds.includes(item.id) ? 'checked' : ''} />`
@@ -493,16 +578,21 @@ function renderPreviewGrid(containerId, items, opts) {
       }
 
       if (opts.draggable) {
-        card.addEventListener('dragstart', () => { dragFromIndex = idx; });
+        card.addEventListener('dragstart', () => {
+          dragFromItemId = item.id;
+          // 드래그 시작한 카드가 2개 이상짜리 그룹 선택에 포함돼 있으면 그룹 전체를 옮긴다.
+          dragGroupIds = (groupSelectedIds.has(item.id) && groupSelectedIds.size > 1)
+            ? Array.from(groupSelectedIds) : [item.id];
+        });
         card.addEventListener('dragover', (e) => { e.preventDefault(); card.classList.add('dragover'); });
         card.addEventListener('dragleave', () => card.classList.remove('dragover'));
         card.addEventListener('drop', (e) => {
           e.preventDefault();
           card.classList.remove('dragover');
-          if (dragFromIndex === null || dragFromIndex === idx) return;
-          const [moved] = state.items.splice(dragFromIndex, 1);
-          state.items.splice(idx, 0, moved);
-          dragFromIndex = null;
+          if (dragFromItemId === null) return;
+          moveItemsBeforeTarget(dragGroupIds || [dragFromItemId], item.id);
+          dragFromItemId = null;
+          dragGroupIds = null;
           renderPreviewGrid(containerId, state.items, opts);
           updateSplitPreviewText();
         });
@@ -510,6 +600,7 @@ function renderPreviewGrid(containerId, items, opts) {
     });
   });
 
+  attachMarqueeSelection(container);
   if (containerId === 'previewGrid') updateSplitPreviewText();
 }
 
@@ -585,34 +676,52 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ============================================================
-// STEP 4 — 삭제 확인 (체크박스 선택 → 명시적 확인 → 반영, 2단계)
+// STEP 3 — 삭제 (즉시 반영 + 실행취소)
 // ============================================================
-function goToDeleteConfirm() {
+// 예전엔 "체크박스 선택 → 확인 화면 → 확정"의 별도 단계였지만, 확인 화면을 매번
+// 거치는 게 번거롭다는 피드백에 따라 바로 삭제하고 실행취소로 되돌릴 수 있게 바꿨다.
+// 되돌리기는 가장 최근 삭제 1건만 지원한다 (여러 번 삭제하면 이전 실행취소는 사라짐).
+function deleteSelectedItems() {
   if (!state.pendingDeleteIds.length) { alert('삭제할 항목을 먼저 선택하세요.'); return; }
-  const list = document.getElementById('deleteList');
-  list.innerHTML = state.pendingDeleteIds.map((id) => {
-    const idx = state.items.findIndex((i) => i.id === id);
-    const item = state.items[idx];
-    return `<li>❌ #${idx + 1} ${item.ip || '(IP명 없음)'} ${item.price || ''}</li>`;
-  }).join('');
-  const remaining = state.items.filter((i) => !state.pendingDeleteIds.includes(i.id));
-  document.getElementById('deleteSummary').textContent = splitSummaryText(remaining);
-  goToStep(4);
+  const idSet = new Set(state.pendingDeleteIds);
+  const removed = [];
+  state.items.forEach((item, index) => { if (idSet.has(item.id)) removed.push({ item, index }); });
+  state.items = state.items.filter((item) => !idSet.has(item.id));
+  state.pendingDeleteIds = [];
+  state.lastDeletedBatch = removed;
+  state.orderConfirmed = false;
+  renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
+  showUndoBanner(removed.length);
 }
 
-function confirmDelete() {
-  state.items = state.items.filter((i) => !state.pendingDeleteIds.includes(i.id));
-  state.pendingDeleteIds = [];
-  state.orderConfirmed = false;
-  goToStep(3);
+// 삭제 당시 기록해둔 원래 인덱스(index) 그대로 다시 끼워 넣어 원본 배치를 복원한다.
+function undoDelete() {
+  if (!state.lastDeletedBatch || !state.lastDeletedBatch.length) return;
+  const removedByIndex = new Map(state.lastDeletedBatch.map((e) => [e.index, e.item]));
+  const totalLength = state.items.length + state.lastDeletedBatch.length;
+  const restored = [];
+  let ri = 0;
+  for (let i = 0; i < totalLength; i++) {
+    restored.push(removedByIndex.has(i) ? removedByIndex.get(i) : state.items[ri++]);
+  }
+  state.items = restored;
+  state.lastDeletedBatch = null;
+  renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
+  hideUndoBanner();
 }
-function cancelDelete() {
-  state.pendingDeleteIds = [];
-  goToStep(3);
+
+function showUndoBanner(count) {
+  document.getElementById('undoBannerText').textContent = `${count}개 삭제됨`;
+  document.getElementById('undoBanner').style.display = 'flex';
+}
+function hideUndoBanner() {
+  state.lastDeletedBatch = null;
+  const banner = document.getElementById('undoBanner');
+  if (banner) banner.style.display = 'none';
 }
 
 // ============================================================
-// STEP 5 — 자동 정렬
+// STEP 4 — 자동 정렬
 // ============================================================
 function effectiveGrade(item) {
   if (state.dict.gradeTable.S.includes(item.ip) || state.dict.gradeTable.A.includes(item.ip)) return 'S_A';
@@ -657,17 +766,17 @@ function autoSortItems() {
 }
 
 // ============================================================
-// STEP 6 — 최종 분할 & 내보내기
+// STEP 5 — 최종 분할 & 내보내기
 // ============================================================
-function showStep6Guard() {
-  document.getElementById('step6Guard').textContent = '먼저 5단계에서 "순서 확정하고 다음 단계 →"를 눌러야 합니다.';
-  document.getElementById('step6Guard').style.display = 'block';
-  document.getElementById('step6Body').style.display = 'none';
+function showStep5Guard() {
+  document.getElementById('step5Guard').textContent = '먼저 4단계에서 "순서 확정하고 다음 단계 →"를 눌러야 합니다.';
+  document.getElementById('step5Guard').style.display = 'block';
+  document.getElementById('step5Body').style.display = 'none';
 }
-function renderStep6() {
-  if (!state.orderConfirmed) { showStep6Guard(); return; }
-  document.getElementById('step6Guard').style.display = 'none';
-  document.getElementById('step6Body').style.display = 'block';
+function renderStep5() {
+  if (!state.orderConfirmed) { showStep5Guard(); return; }
+  document.getElementById('step5Guard').style.display = 'none';
+  document.getElementById('step5Body').style.display = 'block';
   const headerSelect = document.getElementById('headerSelect');
   headerSelect.innerHTML = state.headers.map((h) => `<option value="${h.id}">${h.label}</option>`).join('');
   document.getElementById('finalSummary').textContent = splitSummaryText(state.items);
@@ -912,18 +1021,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('backTo1Btn').addEventListener('click', () => goToStep(1));
   document.getElementById('toStep3Btn').addEventListener('click', () => goToStep(3));
   document.getElementById('backTo2Btn').addEventListener('click', () => goToStep(2));
-  document.getElementById('toStep5Btn').addEventListener('click', () => goToStep(5));
+  document.getElementById('toStep4Btn').addEventListener('click', () => goToStep(4));
   document.getElementById('backTo3Btn').addEventListener('click', () => goToStep(3));
-  document.getElementById('backTo5Btn').addEventListener('click', () => goToStep(5));
+  document.getElementById('backTo4Btn').addEventListener('click', () => goToStep(4));
 
-  document.getElementById('selectDeleteBtn').addEventListener('click', goToDeleteConfirm);
-  document.getElementById('confirmDeleteBtn').addEventListener('click', confirmDelete);
-  document.getElementById('cancelDeleteBtn').addEventListener('click', cancelDelete);
+  document.getElementById('selectDeleteBtn').addEventListener('click', deleteSelectedItems);
+  document.getElementById('undoDeleteBtn').addEventListener('click', undoDelete);
 
   document.getElementById('storeSelectStep2').addEventListener('change', (e) => { state.activeStore = e.target.value; renderDataTable(); });
   document.getElementById('storeSelectStep5').addEventListener('change', (e) => { state.activeStore = e.target.value; });
   document.getElementById('autoSortBtn').addEventListener('click', autoSortItems);
-  document.getElementById('confirmOrderBtn').addEventListener('click', () => { state.orderConfirmed = true; goToStep(6); });
+  document.getElementById('confirmOrderBtn').addEventListener('click', () => { state.orderConfirmed = true; goToStep(5); });
 
   document.getElementById('generatePagesBtn').addEventListener('click', generatePages);
   document.getElementById('downloadAllBtn').addEventListener('click', downloadAllPages);
