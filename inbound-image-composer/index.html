@@ -103,7 +103,7 @@
   .dialog-body h3 { margin-top: 0; }
   .field { margin-bottom: 12px; }
   .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-  .field input, .field select { width: 100%; padding: 7px 8px; border: 1px solid var(--line2); border-radius: 6px; font-size: 13px; }
+  .field input, .field select, .field textarea { width: 100%; padding: 7px 8px; border: 1px solid var(--line2); border-radius: 6px; font-size: 13px; font-family: inherit; resize: vertical; }
   .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
   .tabs button { flex: 1; padding: 8px; border: none; background: none; cursor: pointer; font-size: 12px; color: var(--muted); border-bottom: 2px solid transparent; }
   .tabs button.active { color: var(--accent); border-color: var(--accent); font-weight: 700; }
@@ -280,6 +280,7 @@
       <button data-tab="grade">등급표</button>
       <button data-tab="cluster">분위기 클러스터</button>
       <button data-tab="store">스토어 프로필</button>
+      <button data-tab="lineNames">상품 라인명</button>
     </div>
 
     <p style="font-size:11px;color:var(--muted);margin:0 0 10px;">
@@ -321,6 +322,19 @@
       <div class="row between" style="margin-top:12px;">
         <button class="btn primary" id="saveStoreBtn">이 브라우저에 저장</button>
         <button class="link-btn" id="shareStoreBtn">☁ GitHub에도 공유 (선택)</button>
+      </div>
+    </div>
+
+    <div class="dict-editor-tab" id="tab-lineNames">
+      <p style="font-size:11px;color:var(--muted);">
+        "넨도로이드", "팝업퍼레이드"처럼 IP명이 아니라 상품 라인명인 단어 목록입니다.
+        AI로 채우기가 이 단어들을 IP명으로 착각하지 않도록 걸러줍니다. 새 상품 라인이
+        나오면 여기에 추가하세요.
+      </p>
+      <div class="field"><label>상품 라인명 (쉼표 구분)</label><textarea id="lineNamesInput" rows="6"></textarea></div>
+      <div class="row between">
+        <button class="btn primary" id="saveLineNamesBtn">이 브라우저에 저장</button>
+        <button class="link-btn" id="shareLineNamesBtn">☁ GitHub에도 공유 (선택)</button>
       </div>
     </div>
 

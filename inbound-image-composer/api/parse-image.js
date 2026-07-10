@@ -29,6 +29,7 @@
  * - tagWhitelist: 허용된 라인업 태그 목록
  * - moodClusters: [{name, members}] 분위기 클러스터 사전 (신규 IP를 어느 클러스터에 넣을지 판단용)
  * - layout: 이미지 레이아웃 타입 (기본 그리드 또는 cardStrip)
+ * - productLineNames: IP명이 아닌 "상품 라인명" 목록 (넨도로이드/피그마 등, 오인식 방지용)
  *
  * 응답: { items: [{rawText, ip, price, ship, tag, moodCluster, uncertain}], usage }
  */
@@ -66,12 +67,18 @@ const RESULT_SCHEMA = {
 // - IP명 판단 규칙: 사전 활용 → 새로운 항목은 uncertain 표시
 // - 배송비/태그 규칙: 화이트리스트 기반, 불확실하면 빈 값
 // - expectedCount 강제: AI가 정확히 N개 항목을 반환하도록
-function buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, layout }) {
+function buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, layout, productLineNames }) {
   const dictLines = Object.entries(ipDictHint || {})
     .slice(0, 60)
     .map(([k, v]) => `- ${k} → ${v}`)
     .join('\n');
   const whitelist = (tagWhitelist && tagWhitelist.length ? tagWhitelist : ['룩업', '테노히라', '메가캣']).join(', ');
+  // "⚙ 사전 관리 → 상품 라인명" 탭에서 사용자가 계속 늘려나가는 목록. 프론트가 안 보내면
+  // (배포 전 구버전 등) 기본값으로 최소한의 대표 단어만 사용한다.
+  const lineNames = (productLineNames && productLineNames.length
+    ? productLineNames
+    : ['넨도로이드', '피그마', '팝업퍼레이드', '블라인드박스']
+  ).join(', ');
 
   // 클러스터별 기존 소속 IP 목록을 예시로 주고, 새 IP가 어느 클러스터와 "분위기"가
   // 비슷한지 판단하게 한다. 목록이 없으면 클러스터 판단 자체를 건너뛴다.
@@ -107,11 +114,7 @@ function buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, la
     '- 규칙 1: "|"(또는 유사 구분자 ㅣ, /) 뒤에 오는 텍스트가 작품명/소속그룹이면 그걸 ip로 써라.',
     '  앞부분(상품 라인명+캐릭터명)은 절대 ip로 쓰지 마라 (예: "팝업퍼레이드SP 키류인 사츠키 | 킬라킬"이면 ip는 "킬라킬").',
     '- 규칙 2: 아래 단어들은 "상품 라인명"이지 IP명이 아니다. 상품명 맨 앞에 있어도 무시해라:',
-    '  넨도로이드, 넨도로이드 돌, 피그마, 팝업퍼레이드, 팝업퍼레이드SP, 스케일 피규어, 프라모델,',
-    '  굿스마일아츠상하이, 시크릿 굿스마일, 헬로 굿스마일, 허기 굿스마일, DMM택토리, 쿠리탕,',
-    '  쵸코링, 블라인드박스, 트레이딩 피규어, 프라이즈 피규어, 컬러즈, One Seventh(1/7),',
-    '  Phat!컴퍼니, 모데로이드, 조코푸니, System서비스, GEM, 룩업, 테노히라, 메가캣, 하이퍼바디,',
-    '  크로니클, 아카타입, 유니온크리에이티브, 루크레아.',
+    `  ${lineNames}.`,
     '- 규칙 3: "|"가 없으면 캐릭터명으로 작품을 역으로 판단해라 (예: "넨도로이드 에반게리온 초호기"면',
     '  ip는 "에반게리온"). 아래 사전에 없는 캐릭터고 확신이 안 서면 규칙 4를 따른다.',
     '- 규칙 4: 확실하지 않으면 절대 지어내지 마라. 글자가 흐리거나 잘려서 확신이 안 서면, 있는 그대로',
@@ -168,7 +171,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { imageBase64, mediaType, expectedCount, ipDictHint, tagWhitelist, moodClusters, layout } = req.body || {};
+  const { imageBase64, mediaType, expectedCount, ipDictHint, tagWhitelist, moodClusters, layout, productLineNames } = req.body || {};
   if (!imageBase64 || !expectedCount) {
     res.status(400).json({ error: 'imageBase64와 expectedCount가 필요합니다.' });
     return;
@@ -190,7 +193,7 @@ export default async function handler(req, res) {
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/png', data: imageBase64 } },
-            { type: 'text', text: buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, layout }) },
+            { type: 'text', text: buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, layout, productLineNames }) },
           ],
         }],
       }),

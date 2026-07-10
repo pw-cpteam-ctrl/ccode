@@ -8,7 +8,7 @@
 // Vercel 배포 대상이 아니라서 재배포를 안 일으킨다. (insta-gen과 동일 패턴)
 
 const API_BASE = 'https://api.github.com';
-const EMPTY = { ipNameMap: {}, gradeTable: { S: [], A: [] }, moodClusters: [], storeProfiles: {} };
+const EMPTY = { ipNameMap: {}, gradeTable: { S: [], A: [] }, moodClusters: [], storeProfiles: {}, productLineNames: [] };
 
 export default async function handler(req, res) {
   const token = process.env.GITHUB_TOKEN;
