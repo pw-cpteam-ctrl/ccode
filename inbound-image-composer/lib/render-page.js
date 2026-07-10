@@ -123,7 +123,7 @@ function drawCard(ctx, item, cx, cy) {
     ctx.font = `700 ${tagSize}px ${FONT}`;
     reserve = ctx.measureText(tag).width + 14;
   }
-  const fs = fitFont(ctx, ip || '', photo - 2 - reserve, ipSize, 13);
+  const fs = fitFont(ctx, ip || '', photo - 2 - reserve, ipSize, 15);
   ctx.fillStyle = '#1b1b1f';
   ctx.font = `800 ${fs}px ${FONT}`;
   ctx.fillText(ip || '', cx + 2, ipY);
