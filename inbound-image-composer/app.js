@@ -223,14 +223,17 @@ function confirmSourceCrop(srcId) {
 }
 
 // ---------- AI로 자동 채우기 (선택, 유료 — claude-sonnet-5 vision) ----------
-// 대화형 AI로 하던 것과 같은 경험: 이미지를 통째로 보내서 IP명/가격/태그/배송비를 채운다.
-// business-rules.md 원칙대로, 결과는 절대 그대로 확정되지 않고 항상 "확인 필요" 상태로만
-// 표에 반영된다(uncertain 플래그 → ⚠ 배지). 백엔드가 없으면 친절한 안내만 뜨고 끝난다.
-// 사진을 함께 보내면서 항목당 이미지 높이가 커져, 배치를 6개씩 묶으면 전체 스트립이
-// 너무 길어져 Vision API가 자동 축소할 위험이 있다(축소되면 방금 추가한 사진 해상도
-// 이득이 상쇄됨). 그래서 배치 크기를 3으로 줄여 스트립 전체 높이를 적당히 유지한다.
-const AI_BATCH_SIZE = 3;
-const AI_TEXT_STRIP_SCALE = 2; // 원본 텍스트가 워낙 작아서(칸 폭 176px) 2배로 키워서 보냄
+// 대화형 AI로 하던 것과 같은 경험: 원본 레이아웃을 그대로(항목별로 오려서 재조합하지
+// 않고) 몇 줄씩만 통째로 잘라서 보낸다. business-rules.md 원칙대로, 결과는 절대 그대로
+// 확정되지 않고 항상 "확인 필요" 상태로만 표에 반영된다(uncertain 플래그 → ⚠ 배지).
+// 백엔드가 없으면 친절한 안내만 뜨고 끝난다.
+//
+// 예전엔 항목 하나씩 오려서 세로로 재조합했는데, 좌표 계산이 조금만 어긋나도 엉뚱한
+// 크롭이 만들어져 가격은 맞는데 IP명은 완전히 다른 상품 이름이 나오는 등 재조합 자체가
+// 오류의 원인이었다. 원본 이미지를 자르지 않고 "N개 행" 단위로 통째로 잘라서 보내면
+// 이런 재조합 버그가 생길 여지가 없다 — 채팅으로 원본 스크린샷을 그대로 보여줬을 때
+// 인식률이 훨씬 좋았던 것과 같은 원리(레이아웃을 안 건드리는 게 핵심).
+const AI_ROWS_PER_BATCH = 1; // 한 번에 1개 행(보통 5개 항목)만 보냄 — 너무 많으면 인식률 급락
 
 // 각 행의 "텍스트 영역"(사진 아래 ~ 다음 행 사진 시작 전) 높이를 계산.
 // grid-detect가 잡아주는 건 사진 높이(cardH)뿐이라, 그 아래 상품명/가격 텍스트 줄은 직접 계산해야 한다.
@@ -244,50 +247,32 @@ function computeRowTextBottoms(src) {
   return rows.map((y, i) => (i + 1 < rows.length ? rows[i + 1] : Math.min(src.img.height, y + cardH + medianGap)));
 }
 
-// itemIndexInSource(그 소스 안에서 0부터 시작하는 인덱스)에 해당하는 칸을 "사진 + 텍스트"
-// 통째로 크롭한다. 예전엔 사진을 빼고 텍스트만 보냈는데, 텍스트가 흐리거나 잘려 있을 때
-// AI가 사진을 보고 캐릭터/작품을 유추할 단서가 전혀 없어 엉뚱한 텍스트를 만들어내는
-// 문제가 있었다 — 사람이 글자가 흐려도 사진 보고 맞추는 것과 같은 단서를 AI에게도 준다.
-// 높이에 상한을 두지 않는다 — 예전엔 160px로 강제 제한했는데, 별점/예약마감일/여러 줄
-// 상품명이 섞인 실제 스토어 페이지에서는 텍스트가 160px를 넘어가면서 잘려 AI가 잘린
-// 글자를 억지로 읽으려다 엉뚱한 텍스트를 만들어내는 문제가 있었다.
-function cropItemCardRegion(src, itemIndexInSource) {
+// rowIndices(연속된 행 번호들)에 해당하는 영역을 원본 이미지에서 폭 전체를 그대로 통째로
+// 크롭한다 — 항목 단위로 오려서 재조합하지 않으므로 좌표 계산이 틀려서 엉뚱한 항목이
+// 뒤섞이는 문제 자체가 생기지 않는다. 순서 혼동을 막기 위해 각 칸 위치에 #1,#2... 번호만
+// 덧그린다(레이아웃 자체는 원본 그대로 유지).
+function cropRowsRegion(src, rowIndices) {
   const { cols, rows, cardW } = src.grid;
   const rowTextBottoms = computeRowTextBottoms(src);
-  const ri = Math.floor(itemIndexInSource / cols.length);
-  const ci = itemIndexInSource % cols.length;
-  const x = cols[ci];
-  const yTop = rows[ri];
-  const height = Math.max(20, rowTextBottoms[ri] - yTop);
-  return GridDetect.cropCell(src.img, x, yTop, cardW, height);
-}
+  const yTop = rows[rowIndices[0]];
+  const yBottom = rowTextBottoms[rowIndices[rowIndices.length - 1]];
+  const height = Math.max(20, yBottom - yTop);
+  const canvas = GridDetect.cropCell(src.img, 0, yTop, src.img.width, height);
 
-// batch에 속한 항목들의 "사진+텍스트" 크롭을 세로로 이어붙인 이미지를 만든다.
-// 2배 확대, 항목 사이 구분선 — AI가 25개를 한꺼번에 보는 대신 3개만 집중해서 보게 함.
-function buildTextStripImage(src, itemIndices) {
-  const crops = itemIndices.map((idx) => cropItemCardRegion(src, idx));
-  const scale = AI_TEXT_STRIP_SCALE;
-  const gap = 6;
-  const width = Math.max(...crops.map((c) => c.width)) * scale;
-  const height = crops.reduce((sum, c) => sum + c.height * scale + gap, gap);
-
-  const canvas = document.createElement('canvas');
-  canvas.width = width; canvas.height = height;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height);
-  ctx.imageSmoothingEnabled = false; // 확대해도 흐려지지 않게 (원래도 저해상도 텍스트라 흐림 처리는 오히려 해로움)
-
-  let y = gap;
-  crops.forEach((crop, i) => {
-    const h = crop.height * scale;
-    ctx.drawImage(crop, 0, y, crop.width * scale, h);
-    ctx.strokeStyle = '#ff3b30';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(0, y, crop.width * scale, h);
-    ctx.fillStyle = '#ff3b30';
-    ctx.font = 'bold 16px sans-serif';
-    ctx.fillText(`#${i + 1}`, 4, y - 2 < 14 ? y + 14 : y - 2);
-    y += h + gap;
+  ctx.strokeStyle = '#ff3b30';
+  ctx.lineWidth = 2;
+  ctx.fillStyle = '#ff3b30';
+  ctx.font = 'bold 18px sans-serif';
+  let n = 1;
+  rowIndices.forEach((ri) => {
+    const rowTop = rows[ri] - yTop;
+    const rowBottom = rowTextBottoms[ri] - yTop;
+    cols.forEach((cx) => {
+      ctx.strokeRect(cx, rowTop, cardW, rowBottom - rowTop);
+      ctx.fillText(`#${n}`, cx + 4, rowTop + 18 < rowBottom ? rowTop + 18 : rowTop + 14);
+      n++;
+    });
   });
   return canvas;
 }
@@ -315,24 +300,35 @@ async function aiFillSource(srcId) {
   if (!src || !src.confirmed) return;
 
   const btn = document.querySelector(`button[data-action="ai-fill"][data-id="${srcId}"]`);
-  const itemIndices = Array.from({ length: src.itemCount }, (_, i) => i);
-  const batches = chunkArray(itemIndices, AI_BATCH_SIZE);
+  const { rows, cols } = src.grid;
+  const rowIndicesAll = Array.from({ length: rows.length }, (_, i) => i);
+  const rowBatches = chunkArray(rowIndicesAll, AI_ROWS_PER_BATCH);
   let uncertainCount = 0;
   let filledCount = 0;
   let clusteredCount = 0;
 
   try {
-    for (let b = 0; b < batches.length; b++) {
-      if (btn) { btn.disabled = true; btn.textContent = `인식 중... (${b + 1}/${batches.length})`; }
-      const batch = batches[b];
-      const stripCanvas = buildTextStripImage(src, batch);
+    for (let b = 0; b < rowBatches.length; b++) {
+      if (btn) { btn.disabled = true; btn.textContent = `인식 중... (${b + 1}/${rowBatches.length})`; }
+      const rowBatch = rowBatches[b];
+      // 이 배치에 실제로 존재하는 항목 인덱스(마지막 행은 칸 수보다 항목이 적을 수 있음)
+      const itemIndicesInBatch = [];
+      rowBatch.forEach((ri) => {
+        for (let ci = 0; ci < cols.length; ci++) {
+          const idx = ri * cols.length + ci;
+          if (idx < src.itemCount) itemIndicesInBatch.push(idx);
+        }
+      });
+      if (!itemIndicesInBatch.length) continue;
+
+      const stripCanvas = cropRowsRegion(src, rowBatch);
       const dataUrl = stripCanvas.toDataURL('image/png');
       const imageBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
 
       const r = await fetch('/api/parse-image', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageBase64, mediaType: 'image/png', expectedCount: batch.length, layout: 'cardStrip',
+          imageBase64, mediaType: 'image/png', expectedCount: itemIndicesInBatch.length, layout: 'cardStrip',
           ipDictHint: state.dict.ipNameMap, tagWhitelist: tagWhitelistForActiveStore(),
           moodClusters: state.dict.moodClusters,
         }),
@@ -341,8 +337,8 @@ async function aiFillSource(srcId) {
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'AI 인식 실패');
 
-      data.items.slice(0, batch.length).forEach((result, j) => {
-        const item = state.items[src.itemStartIndex + batch[j]];
+      data.items.slice(0, itemIndicesInBatch.length).forEach((result, j) => {
+        const item = state.items[src.itemStartIndex + itemIndicesInBatch[j]];
         if (!item) return;
         // 모델이 그래도 ip를 비워서 주면 rawText로 대체 — 빈 칸보다는 "확인해서 고칠 글자"가 있는 게 낫다.
         item.ip = result.ip || result.rawText || '';
