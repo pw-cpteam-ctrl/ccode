@@ -1,7 +1,7 @@
 /**
  * POST /api/parse-image
  *
- * Claude Vision(claude-haiku-4-5)을 이용한 이미지 기반 상품정보 자동 인식
+ * Claude Vision(claude-sonnet-5)을 이용한 이미지 기반 상품정보 자동 인식
  *
  * 기본 원칙:
  * - 원본 그리드 스크린샷에서 상품명/가격/배송비 텍스트를 OCR하여 구조화된 JSON 반환
@@ -19,7 +19,7 @@
  * 배포 선택사항:
  * - 백엔드가 없으면(파일 더블클릭으로 열었을 때) 도구는 수동 입력만으로 정상 동작
  * - 호출은 사용자가 "AI로 채우기" 버튼 클릭시만 발생 (자동 호출 없음)
- * - API 비용(claude-haiku-4-5 저렴 모델)은 사용한 만큼만 발생
+ * - API 비용(claude-sonnet-5, haiku 대비 2배 단가지만 인식 정확도 개선)은 사용한 만큼만 발생
  *
  * 요청 파라미터:
  * - imageBase64: 이미지 base64 인코딩
@@ -167,7 +167,7 @@ export default async function handler(req, res) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5',
+        model: 'claude-sonnet-5',
         max_tokens: 4096,
         output_config: { format: { type: 'json_schema', schema: RESULT_SCHEMA } },
         messages: [{

@@ -166,7 +166,7 @@ function renderSourceList() {
         <div class="row">
           <button class="btn" data-action="redetect" data-id="${src.id}">다시 검출</button>
           <button class="btn primary" data-action="confirm" data-id="${src.id}" ${src.confirmed ? 'disabled' : ''}>${src.confirmed ? '크롭 완료됨' : '확인 및 크롭'}</button>
-          <button class="btn" data-action="ai-fill" data-id="${src.id}" ${src.confirmed ? '' : 'disabled'} title="claude-haiku-4-5로 사진 속 텍스트를 읽어 표를 채웁니다 (유료 API 호출, 장당 약 1센트 수준). 결과는 항상 확인 대상으로만 표시됩니다.">🤖 AI로 채우기</button>
+          <button class="btn" data-action="ai-fill" data-id="${src.id}" ${src.confirmed ? '' : 'disabled'} title="claude-sonnet-5로 사진과 텍스트를 함께 보고 표를 채웁니다 (유료 API 호출, 장당 약 2~4센트 수준). 결과는 항상 확인 대상으로만 표시됩니다.">🤖 AI로 채우기</button>
         </div>
       </div>
       <canvas class="overlay" data-canvas="${src.id}"></canvas>
@@ -222,7 +222,7 @@ function confirmSourceCrop(srcId) {
   renderSourceList();
 }
 
-// ---------- AI로 자동 채우기 (선택, 유료 — claude-haiku-4-5 vision) ----------
+// ---------- AI로 자동 채우기 (선택, 유료 — claude-sonnet-5 vision) ----------
 // 대화형 AI로 하던 것과 같은 경험: 이미지를 통째로 보내서 IP명/가격/태그/배송비를 채운다.
 // business-rules.md 원칙대로, 결과는 절대 그대로 확정되지 않고 항상 "확인 필요" 상태로만
 // 표에 반영된다(uncertain 플래그 → ⚠ 배지). 백엔드가 없으면 친절한 안내만 뜨고 끝난다.
