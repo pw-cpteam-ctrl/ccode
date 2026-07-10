@@ -246,17 +246,23 @@ function buildIntegratedStockRows(comparison) {
 }
 
 // "513개 (점유율 54%)"처럼 총 판매추정치와 양사 합산 기준 점유율을 한 칸에 표시.
-function totalSoldWithShareText(mine, other) {
+// 총판매추정 개수만 — 점유율은 보기 불편하다는 피드백으로 별도 컬럼(shareText)으로 분리.
+function totalSoldWithShareText(mine) {
   if (!mine || typeof mine.totalSold !== 'number') return '-';
   const mark = mine.totalSoldIsEstimated ? '*' : '';
-  const countText = mine.totalSold > 0 ? `${mine.totalSold.toLocaleString()}개`
-    : mine.totalSold < 0 ? `재입고+${Math.abs(mine.totalSold).toLocaleString()}개`
-      : '0개';
-  const a = Math.max(mine.totalSold, 0);
-  const b = Math.max(other && typeof other.totalSold === 'number' ? other.totalSold : 0, 0);
+  if (mine.totalSold > 0) return `${mine.totalSold.toLocaleString()}개${mark}`;
+  if (mine.totalSold < 0) return `재입고+${Math.abs(mine.totalSold).toLocaleString()}개${mark}`;
+  return `0개${mark}`;
+}
+
+// "72% : 28%"처럼 양사 합산 기준 점유율만 담당하는 전용 컬럼.
+function shareText(pw, bh) {
+  const a = Math.max(pw && typeof pw.totalSold === 'number' ? pw.totalSold : 0, 0);
+  const b = Math.max(bh && typeof bh.totalSold === 'number' ? bh.totalSold : 0, 0);
   const sum = a + b;
-  const sharePct = sum > 0 ? Math.round((a / sum) * 100) : null;
-  return sharePct !== null ? `${countText}${mark} (점유율 ${sharePct}%)` : `${countText}${mark}`;
+  if (sum <= 0) return '-';
+  const pwPct = Math.round((a / sum) * 100);
+  return `${pwPct}% : ${100 - pwPct}%`;
 }
 
 // "직전/전전 스냅샷 대비" 칸 — PW/BH 둘 다 값이 없으면(스냅샷이 그만큼 안 쌓였으면) 공란.
@@ -269,13 +275,14 @@ function deltaPairText(pwDelta, bhDelta) {
   return `PW ${one(pwDelta)} · BH ${one(bhDelta)}`;
 }
 
-// 매칭된 상품 하나의 PW/BH 재고 추이 — 꺾은선 2개(PW 파랑/BH 빨강). PW/BH는 서로 다른
-// 상품(초기 판매한도 자체가 다름)이라 원본 재고 수량을 그대로 한 축에 겹치면, 한쪽이
-// 훨씬 크면(예: PW 9999 vs BH 470) 작은 쪽이 축에 짓눌려 변화가 없는 것처럼(거의 일자로)
-// 보이는 문제가 있었음 — 그렇다고 각자 축을 따로 주면 이중축 문제가 생기므로, 대신 "최초
-// 관측 시점 = 100"으로 지수화해서 두 상품 다 "자기 자신의 시작점 대비 몇 %인지"를 같은
-// 축에서 비교(다이버징 바에서 쓴 것과 같은 원칙 — 실측값 대신 공통 기준으로 정규화).
-// 원래 재고 수량은 각 점의 툴팁에서 확인 가능. 토글을 열 때만 계산해서 보여주면 되므로
+// 매칭된 상품 하나의 PW/BH "총판매추정" 추이 — 꺾은선 2개(PW 파랑/BH 빨강). 처음엔
+// 원본 재고 수량을 그렸는데, 재고는 초기 판매한도(큰 고정값)에서 조금씩 줄어드는
+// 구조라 그 큰 고정값이 축을 지배해버려서 실제 변화폭이 작아 보이는 문제가 있었음
+// (지수화로 스케일을 맞춰봤지만, 사용자 피드백: "그냥 총판매추정 개수로 그리면 되지
+// 굳이 지수화할 필요 없다"). 총판매추정(estimateInitialCap - 재고)은 그 자체가 이미
+// "변화량 누적치"라 축이 큰 고정값에 짓눌리지 않고 자연스럽게 우상향하는 선이 됨 —
+// PW/BH 규모가 달라도(996개 vs 386개) 각자 축 상에서 증가 추세가 그대로 드러남.
+// 실제 재고 수량은 각 점의 툴팁에서 확인 가능. 토글을 열 때만 계산해서 보여주면 되므로
 // 매번 새로 그림 — 시점이 1~2개뿐이면 사실상 점 1~2개라 "추이"라 부르기 애매해서(표와
 // 다를 게 없음) 그래프 대신 안내 문구로 대체, 3개부터 그래프로 그림.
 function stockTrendChart(pwSeries, bhSeries, pwName, bhName) {
@@ -284,27 +291,27 @@ function stockTrendChart(pwSeries, bhSeries, pwName, bhName) {
     return `<div class="trend-empty">스냅샷이 더 쌓이면 추이 그래프가 여기 표시됩니다(현재 ${allDates.length}개 시점).</div>`;
   }
 
-  // 최초 관측값 기준 지수(100=시작점). 시작 재고가 0이면 나눗셈이 안 되니 그 시리즈는
-  // 지수화를 건너뛰고 0으로 고정(재입고 전까지는 계속 0%).
-  function indexed(series) {
-    const base = series[0]?.stock;
-    return series.map(p => ({ takenAt: p.takenAt, stock: p.stock, index: base > 0 ? (p.stock / base) * 100 : 0 }));
+  // 각 시점의 재고를 그 시점 기준 총판매추정치(estimateInitialCap 역산)로 환산.
+  function toSoldSeries(series) {
+    return series.map(p => ({ takenAt: p.takenAt, stock: p.stock, totalSold: estimateInitialCap(p.stock) - p.stock }));
   }
-  const pwIdx = indexed(pwSeries);
-  const bhIdx = indexed(bhSeries);
+  const pwSold = toSoldSeries(pwSeries);
+  const bhSold = toSoldSeries(bhSeries);
 
-  const w = Math.max(520, allDates.length * 90);
-  const h = 220;
-  const ml = 60, mr = 20, mt = 16, mb = 40;
+  const w = Math.max(560, allDates.length * 100);
+  const h = 230;
+  const ml = 60, mr = 20, mt = 16, mb = 50;
   const chartW = w - ml - mr, chartH = h - mt - mb;
-  const maxIndex = Math.max(120, ...pwIdx.map(p => p.index), ...bhIdx.map(p => p.index)) * 1.05;
+  const maxSold = Math.max(1, ...pwSold.map(p => p.totalSold), ...bhSold.map(p => p.totalSold)) * 1.15;
+  const minSold = Math.min(0, ...pwSold.map(p => p.totalSold), ...bhSold.map(p => p.totalSold));
+  const range = (maxSold - minSold) || 1;
 
   const x = i => ml + (allDates.length > 1 ? (i / (allDates.length - 1)) * chartW : chartW / 2);
-  const y = v => mt + chartH - (v / maxIndex) * chartH;
+  const y = v => mt + chartH - ((v - minSold) / range) * chartH;
 
   function linePath(series) {
     const points = allDates
-      .map((d, i) => { const rec = series.find(p => p.takenAt === d); return rec ? { i, v: rec.index } : null; })
+      .map((d, i) => { const rec = series.find(p => p.takenAt === d); return rec ? { i, v: rec.totalSold } : null; })
       .filter(Boolean);
     return points.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${x(p.i)},${y(p.v)}`).join(' ');
   }
@@ -312,40 +319,44 @@ function stockTrendChart(pwSeries, bhSeries, pwName, bhName) {
     return allDates.map((d, i) => {
       const rec = series.find(p => p.takenAt === d);
       if (!rec) return '';
-      return `<circle cx="${x(i)}" cy="${y(rec.index)}" r="3.5" fill="#fff" stroke="${color}" stroke-width="2"><title>${escapeHtml(formatTakenAt(d))} · ${rec.stock.toLocaleString()}개 (지수 ${Math.round(rec.index)})</title></circle>`;
+      return `<circle cx="${x(i)}" cy="${y(rec.totalSold)}" r="3.5" fill="#fff" stroke="${color}" stroke-width="2"><title>${escapeHtml(formatTakenAt(d))} · ${rec.totalSold.toLocaleString()}개 판매추정(재고 ${rec.stock.toLocaleString()}개)</title></circle>`;
     }).join('');
   }
 
   const gridLines = [];
   const ticks = 4;
   for (let i = 0; i <= ticks; i++) {
-    const v = (maxIndex / ticks) * i;
-    const yy = mt + chartH - (v / maxIndex) * chartH;
+    const v = minSold + (range / ticks) * i;
+    const yy = y(v);
     gridLines.push(`<line x1="${ml}" y1="${yy}" x2="${w - mr}" y2="${yy}" stroke="#e9ecef" stroke-width="1"/>`);
-    gridLines.push(`<text x="${ml - 8}" y="${yy + 3}" font-size="10" fill="#6b7280" text-anchor="end">${Math.round(v)}</text>`);
+    gridLines.push(`<text x="${ml - 8}" y="${yy + 3}" font-size="10" fill="#6b7280" text-anchor="end">${Math.round(v).toLocaleString()}</text>`);
   }
-  // 100(시작점) 기준선 — 점선으로 "여기서부터 변화"를 명확히
-  const baselineY = y(100);
-  gridLines.push(`<line x1="${ml}" y1="${baselineY}" x2="${w - mr}" y2="${baselineY}" stroke="#adb5bd" stroke-width="1" stroke-dasharray="3,3"/>`);
-  const xLabels = allDates.map((d, i) => `<text x="${x(i)}" y="${h - 10}" font-size="10" fill="#6b7280" text-anchor="middle">${escapeHtml(formatTakenAt(d).slice(5, 10))}</text>`).join('');
+  // 같은 날짜에 스냅샷을 여러 번 찍을 수도 있어서(하루에 여러 번 실행) 날짜만 보여주면
+  // 라벨이 죄다 "07-09"로 겹쳐 보임 — 날짜/시각을 2줄로 나눠서 구분되게 표시.
+  const xLabels = allDates.map((d, i) => {
+    const [datePart, timePart] = formatTakenAt(d).split(' ');
+    return `<text x="${x(i)}" y="${h - 24}" font-size="10" fill="#6b7280" text-anchor="middle">${escapeHtml(datePart.slice(5))}</text>` +
+      `<text x="${x(i)}" y="${h - 10}" font-size="10" fill="#6b7280" text-anchor="middle">${escapeHtml(timePart)}</text>`;
+  }).join('');
 
   const svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${gridLines.join('')}
-    <path d="${linePath(pwIdx)}" fill="none" stroke="#1971c2" stroke-width="2"/>
-    <path d="${linePath(bhIdx)}" fill="none" stroke="#c0504d" stroke-width="2"/>
-    ${dots(pwIdx, '#1971c2')}${dots(bhIdx, '#c0504d')}${xLabels}
+    <path d="${linePath(pwSold)}" fill="none" stroke="#1971c2" stroke-width="2"/>
+    <path d="${linePath(bhSold)}" fill="none" stroke="#c0504d" stroke-width="2"/>
+    ${dots(pwSold, '#1971c2')}${dots(bhSold, '#c0504d')}${xLabels}
   </svg>`;
 
   return `<div class="trend-wrap">
     <div class="trend-legend"><span class="pw">● PW ${escapeHtml(pwName)}</span><span class="bh">● BH ${escapeHtml(bhName)}</span></div>
-    <div class="trend-sub">재고 지수(최초 관측 시점=100, 값이 클수록 재고가 늘어난 것) · 실제 재고 수량은 점에 마우스를 올리면 확인 가능</div>
+    <div class="trend-sub">총판매추정(개) 추이 · 실제 재고 수량은 점에 마우스를 올리면 확인 가능</div>
     <div class="trend-scroll">${svg}</div>
   </div>`;
 }
 
 function renderIntegratedRow(row, index) {
   const rowId = `stock-trend-${index}`;
-  const pwText = totalSoldWithShareText(row.pw, row.bh);
-  const bhText = totalSoldWithShareText(row.bh, row.pw);
+  const pwText = totalSoldWithShareText(row.pw);
+  const bhText = totalSoldWithShareText(row.bh);
+  const shareTextValue = shareText(row.pw, row.bh);
   const delta1Text = deltaPairText(row.pw.stockDelta, row.bh.stockDelta);
   const delta2Text = deltaPairText(row.pwDelta2, row.bhDelta2);
   const chart = stockTrendChart(row.pwSeries, row.bhSeries, row.pw.name, row.bh.name);
@@ -353,11 +364,12 @@ function renderIntegratedRow(row, index) {
       <td class="sd-name" title="${escapeHtml(row.pw.name)}">${escapeHtml(row.pw.name)}</td>
       <td class="sd-sold">${escapeHtml(pwText)}</td>
       <td class="sd-sold">${escapeHtml(bhText)}</td>
+      <td>${escapeHtml(shareTextValue)}</td>
       <td>${escapeHtml(delta1Text)}</td>
       <td>${escapeHtml(delta2Text)}</td>
       <td><button class="toggle-btn" onclick="toggleStockTrend('${rowId}', this)">▶ 보기</button></td>
     </tr>
-    <tr class="trend-row" id="${rowId}"><td colspan="6">${chart}</td></tr>`;
+    <tr class="trend-row" id="${rowId}"><td colspan="7">${chart}</td></tr>`;
 }
 
 function renderIntegratedTable(rows) {
@@ -375,7 +387,7 @@ function renderIntegratedTable(rows) {
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th>상품명</th><th>PW 총판매추정</th><th>BH 총판매추정</th><th>직전 스냅샷 대비</th><th>그 전 스냅샷 대비</th><th>추이</th>
+          <th>상품명</th><th>PW 총판매추정</th><th>BH 총판매추정</th><th>점유율</th><th>직전 스냅샷 대비</th><th>그 전 스냅샷 대비</th><th>추이</th>
         </tr></thead>
         <tbody>${body}</tbody>
       </table>

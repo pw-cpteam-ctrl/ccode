@@ -516,31 +516,58 @@ check('stock-report: 종합표 — 많이 팔린 순(PW+BH 합산) 정렬 누락
   assert.ok(rows[1].pw.name.includes('적게 팔린'), '판매추정치 합산이 더 작은 상품이 뒤에 나와야 함');
 });
 
-check('stock-report: 종합표 추이 그래프 — PW/BH 재고 규모가 크게 달라도(9999 vs 100) 지수화로 둘 다 변화가 보여야 함', () => {
-  // 실사용 버그 리포트: PW가 BH보다 훨씬 크면(또는 반대) 같은 축에 원본 수량을 그대로
-  // 그리다 보니 작은 쪽이 축에 짓눌려 "변화 없이 일자"로 보임 — 최초 시점=100 지수로
-  // 바꿔서 스케일이 달라도 둘 다 변화폭이 보이는지 확인.
+check('stock-report: 종합표 추이 그래프 — 지수화 대신 총판매추정(개) 값을 그대로 그려야 함(사용자 피드백)', () => {
+  // 사용자 피드백: "지수화 이런거 필요없고 그냥 총판매추정 개수만 가지고 꺾은선 만들면
+  // 되잖아" — 재고 대신 총판매추정(estimateInitialCap 역산, 항상 0에서 우상향)을 그대로
+  // 그리면 PW/BH 규모가 달라도(996개 vs 386개) 자체 축이 변화량에 비례해서 안 짓눌림.
   const history = {
     snapshots: [
       { takenAt: '2026-07-04T00:00:00.000Z', stores: {
-        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 10000 }],
-        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 100 }],
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9999 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 900 }],
       } },
       { takenAt: '2026-07-06T00:00:00.000Z', stores: {
-        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9500 }],
-        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 50 }],
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9700 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 700 }],
       } },
       { takenAt: '2026-07-08T00:00:00.000Z', stores: {
-        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9000 }],
-        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 10 }],
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9486 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 470 }],
       } },
     ],
   };
   const compared = buildStockComparison(history);
   const html = renderStockSectionHtml(compared);
-  assert.ok(html.includes('지수 90'), 'PW(10000→9000)는 지수 90이어야 함(10% 감소)');
-  assert.ok(html.includes('지수 10'), 'BH(100→10)는 지수 10이어야 함(90% 감소) — 원본 수량 축이었으면 이 변화가 안 보였음');
-  assert.ok(html.includes('재고 지수'), '지수화 기준(최초 관측=100) 설명이 나와야 함');
+  assert.ok(html.includes('1개 판매추정(재고 9,999개)'), 'PW 첫 시점(10000-9999=1)이 툴팁에 나와야 함');
+  assert.ok(html.includes('514개 판매추정(재고 9,486개)'), 'PW 마지막 시점(10000-9486=514)이 툴팁에 나와야 함');
+  assert.ok(html.includes('100개 판매추정(재고 900개)'), 'BH 첫 시점(1000-900=100)이 툴팁에 나와야 함');
+  assert.ok(html.includes('530개 판매추정(재고 470개)'), 'BH 마지막 시점(1000-470=530)이 툴팁에 나와야 함');
+  assert.ok(html.includes('총판매추정(개) 추이'), '지수 대신 총판매추정 기준이라는 설명이 나와야 함');
+  assert.ok(!html.includes('지수'), '지수화 문구가 더 이상 남아있으면 안 됨');
+});
+
+check('stock-report: 종합표 추이 그래프 — x축 라벨이 날짜/시각 2줄로 나뉘어야 함(같은 날 여러 스냅샷 구분)', () => {
+  const history = {
+    snapshots: [
+      { takenAt: '2026-07-09T02:13:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9999 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 900 }],
+      } },
+      { takenAt: '2026-07-09T05:52:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9700 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 700 }],
+      } },
+      { takenAt: '2026-07-10T02:13:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9486 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 470 }],
+      } },
+    ],
+  };
+  const compared = buildStockComparison(history);
+  const html = renderStockSectionHtml(compared);
+  // KST = UTC+9: 07-09 02:13 → 07-09 11:13, 07-09 05:52 → 07-09 14:52
+  assert.ok(html.includes('>11:13<') && html.includes('>14:52<'), '같은 날짜(07-09)에 찍힌 두 스냅샷이 시각으로 구분돼야 함');
+  assert.ok(html.includes('>07-09<'), '날짜 라벨도 그대로 나와야 함(시각과 별도 줄)');
 });
 
 check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 다)를 old/로 옮기고 새 타임스탬프 경로를 돌려줌', () => {
