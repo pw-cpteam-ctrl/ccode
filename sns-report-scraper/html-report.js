@@ -400,6 +400,20 @@ function toggleAllEmbeds(platform, forceOpen) {
     toggleEmbeds(row.id, platform, btn);
   });
 }
+function toggleStockTrend(rowId, btn) {
+  var row = document.getElementById(rowId);
+  var opening = !row.classList.contains('open');
+  row.classList.toggle('open');
+  btn.textContent = opening ? '▼ 접기' : '▶ 보기';
+}
+function toggleAllStockTrends(forceOpen) {
+  document.querySelectorAll('tr.trend-row[id^="stock-trend-"]').forEach(function (row) {
+    var isOpen = row.classList.contains('open');
+    if (forceOpen === isOpen) return;
+    var btn = row.previousElementSibling.querySelector('.toggle-btn');
+    toggleStockTrend(row.id, btn);
+  });
+}
 </script>
 ${needsTwitterWidget ? '<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>' : ''}
 ${needsInstagramWidget ? '<script async src="https://www.instagram.com/embed.js"></script>' : ''}

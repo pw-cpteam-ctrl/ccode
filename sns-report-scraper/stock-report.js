@@ -21,6 +21,8 @@
  * — 후자는 SNS 상품과 매칭 안 되는(또는 SNS에 아예 안 올라온) 상품까지 포함한 전체 현황용.
  */
 
+const { extractKeywords, detectProductLine } = require('./aggregate');
+
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -73,7 +75,10 @@ function buildStockComparison(history) {
     stores[label] = products;
   }
 
-  return { latestTakenAt: latest.takenAt, previousTakenAt: previous ? previous.takenAt : null, snapshotCount: snapshots.length, stores, storeComparable };
+  // snapshots를 그대로 들고 있음 — 종합표(통합 매칭 + 시간별 추이) 렌더링 시 전체 히스토리가
+  // 필요한데, 그때마다 buildStockComparison을 다시 부르거나 별도로 history를 전달하지 않아도
+  // 되게 하려는 목적.
+  return { latestTakenAt: latest.takenAt, previousTakenAt: previous ? previous.takenAt : null, snapshotCount: snapshots.length, stores, storeComparable, snapshots };
 }
 
 function formatTakenAt(iso) {
@@ -143,6 +148,219 @@ function stockDeltaText(p) {
   return '변화 없음';
 }
 
+// ── 종합표(PW+BH 통합 매칭) ──────────────────────────────────────────────
+// 재고 스냅샷 섹션이 원래 PW표/BH표로 나뉘어 있었는데, "SNS 표처럼 PW/BH를 한 행에서
+// 바로 비교하고 싶다"는 요청으로 종합표를 추가함 — PW표/BH표는 지우지 않고 그대로 두고
+// (전체 재고 현황은 매칭 여부와 무관하게 항상 보여야 하니까), 종합표는 그 위에 추가로 얹음.
+//
+// 매칭 로직은 SNS 상품 매칭(aggregate.js의 extractKeywords/detectProductLine, 키워드
+// 2개 이상 겹치고 라인이 정확히 같아야 함)을 그대로 재사용 — 재고 상품명("[예약] GEM
+// 시리즈 카무이 ver 2 l 은혼 (재판)")도 브라켓/상용구/라인명을 걸러내면 SNS 텍스트와
+// 같은 방식으로 비교 가능. 한 그룹에 PW/BH가 각각 정확히 1개씩만 있을 때만 짝지음 —
+// 여러 개가 몰리면(재판/리뉴얼 등) 어느 걸 짝지어야 할지 애매하니 매칭 안 시키고
+// PW표/BH표에만 남겨둠(잘못 짝짓는 것보다 안전).
+function matchPwBhStockProducts(pwProducts, bhProducts) {
+  const MIN_SHARED_KEYWORDS = 2;
+  const entries = [
+    ...pwProducts.map(p => ({ side: 'pw', product: p, keywords: extractKeywords(p.name), line: detectProductLine(p.name) })),
+    ...bhProducts.map(p => ({ side: 'bh', product: p, keywords: extractKeywords(p.name), line: detectProductLine(p.name) })),
+  ];
+  const parent = entries.map((_, i) => i);
+  function find(i) { return parent[i] === i ? i : (parent[i] = find(parent[i])); }
+  function union(i, j) { const a = find(i), b = find(j); if (a !== b) parent[a] = b; }
+
+  for (let i = 0; i < entries.length; i++) {
+    if (entries[i].keywords.length === 0) continue;
+    for (let j = i + 1; j < entries.length; j++) {
+      if (entries[j].keywords.length === 0) continue;
+      if (entries[i].line !== entries[j].line) continue;
+      const overlap = entries[i].keywords.filter(k => entries[j].keywords.includes(k));
+      if (overlap.length >= MIN_SHARED_KEYWORDS) union(i, j);
+    }
+  }
+
+  const groups = new Map();
+  entries.forEach((e, i) => {
+    if (e.keywords.length === 0) return;
+    const root = find(i);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root).push(e);
+  });
+
+  const pairs = [];
+  for (const group of groups.values()) {
+    const pwSide = group.filter(e => e.side === 'pw');
+    const bhSide = group.filter(e => e.side === 'bh');
+    if (pwSide.length === 1 && bhSide.length === 1) {
+      pairs.push({ pw: pwSide[0].product, bh: bhSide[0].product });
+    }
+  }
+  return pairs;
+}
+
+// productId 하나의 스토어별 전체 스냅샷 재고 이력 — [{takenAt, stock}, ...] (오래된 순).
+function stockSeries(snapshots, storeLabel, productId) {
+  const series = [];
+  for (const snap of snapshots) {
+    const rec = (snap.stores[storeLabel] || []).find(r => r.productId === productId);
+    if (rec && typeof rec.stock === 'number') series.push({ takenAt: snap.takenAt, stock: rec.stock });
+  }
+  return series;
+}
+
+// series 끝에서 stepsBack번째 지점과 그 바로 이전 지점의 차이 — stepsBack=1이면 "직전
+// 스냅샷 대비"(stockDelta와 동일), stepsBack=2면 "그 전(전전) 스냅샷 대비". 그만큼 과거
+// 데이터가 없으면(스냅샷이 아직 부족하면) null — 화면에선 빈 칸으로 처리.
+function deltaAt(series, stepsBack) {
+  const len = series.length;
+  const cur = series[len - stepsBack];
+  const prev = series[len - stepsBack - 1];
+  if (!cur || !prev) return null;
+  return prev.stock - cur.stock; // 양수 = 판매(감소)
+}
+
+// comparison(buildStockComparison 결과, snapshots 포함)에서 종합표에 필요한 행 데이터를
+// 뽑아냄 — 매칭 페어별로 totalSold/점유율/최근 2단계 변화량/전체 추이 시리즈까지 한 번에.
+function buildIntegratedStockRows(comparison) {
+  const snapshots = comparison?.snapshots || [];
+  if (snapshots.length === 0) return [];
+
+  const pwLatest = comparison.stores.PW || [];
+  const bhLatest = comparison.stores.BH || [];
+  const pairs = matchPwBhStockProducts(pwLatest, bhLatest);
+
+  return pairs.map(({ pw, bh }) => {
+    const pwSeries = stockSeries(snapshots, 'PW', pw.productId);
+    const bhSeries = stockSeries(snapshots, 'BH', bh.productId);
+    return {
+      pw, bh,
+      pwDelta2: deltaAt(pwSeries, 2),
+      bhDelta2: deltaAt(bhSeries, 2),
+      pwSeries, bhSeries,
+    };
+  });
+}
+
+// "513개 (점유율 54%)"처럼 총 판매추정치와 양사 합산 기준 점유율을 한 칸에 표시.
+function totalSoldWithShareText(mine, other) {
+  if (!mine || typeof mine.totalSold !== 'number') return '-';
+  const mark = mine.totalSoldIsEstimated ? '*' : '';
+  const countText = mine.totalSold > 0 ? `${mine.totalSold.toLocaleString()}개`
+    : mine.totalSold < 0 ? `재입고+${Math.abs(mine.totalSold).toLocaleString()}개`
+      : '0개';
+  const a = Math.max(mine.totalSold, 0);
+  const b = Math.max(other && typeof other.totalSold === 'number' ? other.totalSold : 0, 0);
+  const sum = a + b;
+  const sharePct = sum > 0 ? Math.round((a / sum) * 100) : null;
+  return sharePct !== null ? `${countText}${mark} (점유율 ${sharePct}%)` : `${countText}${mark}`;
+}
+
+// "직전/전전 스냅샷 대비" 칸 — PW/BH 둘 다 값이 없으면(스냅샷이 그만큼 안 쌓였으면) 공란.
+function deltaPairText(pwDelta, bhDelta) {
+  if (pwDelta === null && bhDelta === null) return '-';
+  const one = v => (v === null || v === undefined) ? '-'
+    : v > 0 ? `${v.toLocaleString()}개 판매`
+      : v < 0 ? `재입고+${Math.abs(v).toLocaleString()}개`
+        : '변화 없음';
+  return `PW ${one(pwDelta)} · BH ${one(bhDelta)}`;
+}
+
+// 매칭된 상품 하나의 PW/BH 재고 추이 — 꺾은선 2개(PW 파랑/BH 빨강), 같은 재고 수량 축을
+// 공유(단위가 같은 값 2개를 겹쳐 보는 거라 이중축 문제가 아님). 토글을 열 때만 계산해서
+// 보여주면 되므로 매번 새로 그림 — 시점이 1~2개뿐이면 사실상 점 1~2개라 "추이"라 부르기
+// 애매해서(표와 다를 게 없음) 그래프 대신 안내 문구로 대체, 3개부터 그래프로 그림.
+function stockTrendChart(pwSeries, bhSeries, pwName, bhName) {
+  const allDates = [...new Set([...pwSeries, ...bhSeries].map(p => p.takenAt))].sort();
+  if (allDates.length < 3) {
+    return `<div class="trend-empty">스냅샷이 더 쌓이면 추이 그래프가 여기 표시됩니다(현재 ${allDates.length}개 시점).</div>`;
+  }
+
+  const w = Math.max(520, allDates.length * 90);
+  const h = 220;
+  const ml = 60, mr = 20, mt = 16, mb = 40;
+  const chartW = w - ml - mr, chartH = h - mt - mb;
+  const maxStock = Math.max(1, ...pwSeries.map(p => p.stock), ...bhSeries.map(p => p.stock)) * 1.1;
+
+  const x = i => ml + (allDates.length > 1 ? (i / (allDates.length - 1)) * chartW : chartW / 2);
+  const y = v => mt + chartH - (v / maxStock) * chartH;
+
+  function linePath(series) {
+    const points = allDates
+      .map((d, i) => { const rec = series.find(p => p.takenAt === d); return rec ? { i, v: rec.stock } : null; })
+      .filter(Boolean);
+    return points.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${x(p.i)},${y(p.v)}`).join(' ');
+  }
+  function dots(series, color) {
+    return allDates.map((d, i) => {
+      const rec = series.find(p => p.takenAt === d);
+      if (!rec) return '';
+      return `<circle cx="${x(i)}" cy="${y(rec.stock)}" r="3.5" fill="#fff" stroke="${color}" stroke-width="2"><title>${escapeHtml(formatTakenAt(d))} · ${rec.stock.toLocaleString()}개</title></circle>`;
+    }).join('');
+  }
+
+  const gridLines = [];
+  const ticks = 4;
+  for (let i = 0; i <= ticks; i++) {
+    const v = (maxStock / ticks) * i;
+    const yy = mt + chartH - (v / maxStock) * chartH;
+    gridLines.push(`<line x1="${ml}" y1="${yy}" x2="${w - mr}" y2="${yy}" stroke="#e9ecef" stroke-width="1"/>`);
+    gridLines.push(`<text x="${ml - 8}" y="${yy + 3}" font-size="10" fill="#6b7280" text-anchor="end">${Math.round(v).toLocaleString()}</text>`);
+  }
+  const xLabels = allDates.map((d, i) => `<text x="${x(i)}" y="${h - 10}" font-size="10" fill="#6b7280" text-anchor="middle">${escapeHtml(formatTakenAt(d).slice(5, 10))}</text>`).join('');
+
+  const svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${gridLines.join('')}
+    <path d="${linePath(pwSeries)}" fill="none" stroke="#1971c2" stroke-width="2"/>
+    <path d="${linePath(bhSeries)}" fill="none" stroke="#c0504d" stroke-width="2"/>
+    ${dots(pwSeries, '#1971c2')}${dots(bhSeries, '#c0504d')}${xLabels}
+  </svg>`;
+
+  return `<div class="trend-wrap">
+    <div class="trend-legend"><span class="pw">● PW ${escapeHtml(pwName)}</span><span class="bh">● BH ${escapeHtml(bhName)}</span></div>
+    <div class="trend-scroll">${svg}</div>
+  </div>`;
+}
+
+function renderIntegratedRow(row, index) {
+  const rowId = `stock-trend-${index}`;
+  const pwText = totalSoldWithShareText(row.pw, row.bh);
+  const bhText = totalSoldWithShareText(row.bh, row.pw);
+  const delta1Text = deltaPairText(row.pw.stockDelta, row.bh.stockDelta);
+  const delta2Text = deltaPairText(row.pwDelta2, row.bhDelta2);
+  const chart = stockTrendChart(row.pwSeries, row.bhSeries, row.pw.name, row.bh.name);
+  return `<tr>
+      <td class="sd-name" title="${escapeHtml(row.pw.name)}">${escapeHtml(row.pw.name)}</td>
+      <td class="sd-sold">${escapeHtml(pwText)}</td>
+      <td class="sd-sold">${escapeHtml(bhText)}</td>
+      <td>${escapeHtml(delta1Text)}</td>
+      <td>${escapeHtml(delta2Text)}</td>
+      <td><button class="toggle-btn" onclick="toggleStockTrend('${rowId}', this)">▶ 보기</button></td>
+    </tr>
+    <tr class="trend-row" id="${rowId}"><td colspan="6">${chart}</td></tr>`;
+}
+
+function renderIntegratedTable(rows) {
+  if (rows.length === 0) return '';
+  const body = rows.map((row, i) => renderIntegratedRow(row, i)).join('');
+  return `
+  <div class="stock-store stock-integrated">
+    <div class="section-head">
+      <h3>🔗 종합 (PW+BH 매칭, ${rows.length}쌍)</h3>
+      <div class="toggle-all">
+        <button class="toggle-all-btn" onclick="toggleAllStockTrends(true)">전체 펼치기</button>
+        <button class="toggle-all-btn" onclick="toggleAllStockTrends(false)">전체 접기</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>상품명</th><th>PW 총판매추정</th><th>BH 총판매추정</th><th>직전 스냅샷 대비</th><th>그 전 스냅샷 대비</th><th>추이</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
 function renderStoreTable(label, products) {
   const ranked = rankStockProducts(products);
 
@@ -179,6 +397,7 @@ function renderStockSectionHtml(comparison) {
   if (!comparison) return '';
 
   const storeLabels = Object.keys(comparison.stores);
+  const integratedRows = buildIntegratedStockRows(comparison);
 
   return `
   <section class="platform stock-section">
@@ -188,6 +407,7 @@ function renderStockSectionHtml(comparison) {
       역산 기준 총 판매 추정치 표시(스냅샷 주기와 무관하게 안정적인 값) · 누적 스냅샷
       ${comparison.snapshotCount}개
     </div>
+    ${renderIntegratedTable(integratedRows)}
     ${storeLabels.map(label => renderStoreTable(label, comparison.stores[label])).join('')}
     <div class="foot">
       ※ 재고는 "현재 시점" 값만 조회 가능해서(과거 소급 불가) <code>naver-stock-snapshot.js</code>를
@@ -205,6 +425,12 @@ function renderStockSectionHtml(comparison) {
       ※ "직전 스냅샷 대비" 컬럼은 "총 판매추정(재고)"와 달리 초기한도 추정이 아니라, 바로
       전 스냅샷 대비 재고가 실제로 얼마나 줄었는지(순수 실측값)입니다 — 스냅샷을 처음 찍은
       상품이거나 그 사이 수집이 실패했으면 "비교 불가"로 표시됩니다.<br>
+      ※ 맨 위 <b>🔗 종합</b> 표는 PW/BH 상품명이 서로 비슷한 것끼리 자동으로 짝지어서(SNS
+      상품 매칭과 같은 방식) 한 행에서 바로 비교하는 표입니다 — 짝지어지지 않은 상품은
+      사라지지 않고 아래 PW/BH 개별 표에 그대로 남아있습니다. "점유율"은 두 스토어 판매추정치
+      합산 기준이고, "직전/그 전 스냅샷 대비"는 최근 2단계 변화량만 보여줍니다(그 이전 변화는
+      "▶ 보기"를 눌러 열리는 추이 그래프에서 전체 확인 가능, 스냅샷이 2개뿐이면 "그 전 스냅샷
+      대비"는 아직 계산할 수 없어 빈 칸으로 남습니다).<br>
       ※ 이 목록은 SNS 비교표와 매칭 여부 상관없이 PW/BH 재고 전체를 보여줍니다 — 상품별 매출
       매칭은 위쪽 SNS 비교표 우측 끝(가로 스크롤)의 📦 매출 (PW vs BH) 컬럼을 참고하세요.
     </div>
@@ -222,6 +448,16 @@ const STOCK_SECTION_STYLE = `
 .sd-flat{color:#9099a6;text-align:right;font-variant-numeric:tabular-nums}
 .sd-na{color:#9099a6;text-align:right}
 .sd-price{text-align:right;color:#6b7280;font-variant-numeric:tabular-nums}
+.stock-integrated{margin-bottom:28px}
+.stock-integrated .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.stock-integrated .section-head h3{margin:0}
+tr.trend-row{display:none;background:#fafbfd}
+tr.trend-row.open{display:table-row}
+tr.trend-row td{padding:14px}
+.trend-empty{font-size:12px;color:#9099a6}
+.trend-legend{display:flex;gap:14px;font-size:12px;font-weight:700;margin-bottom:6px}
+.trend-legend .pw{color:#1971c2}.trend-legend .bh{color:#c0504d}
+.trend-scroll{overflow-x:auto}
 `;
 
 module.exports = {
@@ -230,6 +466,8 @@ module.exports = {
   rankMedal,
   rankStockProducts,
   findStockMatch,
+  matchPwBhStockProducts,
+  buildIntegratedStockRows,
   renderStockSectionHtml,
   STOCK_SECTION_STYLE,
 };
