@@ -169,10 +169,12 @@ function renderSourceList() {
           <button class="btn" data-action="redetect" data-id="${src.id}">다시 검출</button>
           <button class="btn primary" data-action="confirm" data-id="${src.id}" ${src.confirmed ? 'disabled' : ''}>${src.confirmed ? '크롭 완료됨' : '확인 및 크롭'}</button>
           <button class="btn" data-action="ai-fill" data-id="${src.id}" ${src.confirmed ? '' : 'disabled'} title="claude-sonnet-5로 사진과 텍스트를 함께 보고 표를 채웁니다 (유료 API 호출, 장당 약 2~4센트 수준). 결과는 항상 확인 대상으로만 표시됩니다.">🤖 AI로 채우기</button>
+          <button class="btn" data-action="preview-ai-crop" data-id="${src.id}" ${src.confirmed ? '' : 'disabled'} title="비용 없이, AI에게 실제로 전송될 크롭 이미지를 행 단위로 미리 볼 수 있습니다.">🔍 AI 전송 미리보기</button>
         </div>
       </div>
       <canvas class="overlay" data-canvas="${src.id}"></canvas>
       <div class="source-status ${src.confirmed ? 'confirmed' : ''}">${src.confirmed ? '✓ 개별 사진 크롭 완료 — photoId 부여됨' : '⚠ 검출 결과를 눈으로 확인한 뒤 크롭을 확정하세요 (행 간격은 불규칙할 수 있습니다)'}</div>
+      <div class="ai-crop-preview" data-preview="${src.id}" style="display:none;"></div>
     `;
     container.appendChild(block);
     drawDebugOverlay(src);
@@ -380,6 +382,26 @@ async function aiFillSource(srcId) {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🤖 AI로 채우기'; }
   }
+}
+
+// 비용 없이, AI에게 실제로 전송될 각 행 크롭 이미지를 그대로 화면에 보여준다.
+// "|" 뒤 작품명이 크롭에 실제로 포함되는지, 글자가 잘리지는 않는지 등을 API 호출
+// 전에 직접 눈으로 확인할 수 있게 하기 위함 — 지금까지 프롬프트만 계속 고쳤지만
+// 정작 AI에게 뭐가 보내지는지 검증한 적이 없어서 추가했다.
+function previewAiCrops(srcId) {
+  const src = state.sources.find((s) => s.id === srcId);
+  if (!src || !src.confirmed) return;
+  const container = document.querySelector(`[data-preview="${srcId}"]`);
+  const isOpen = container.style.display !== 'none' && container.dataset.rendered === 'true';
+  if (isOpen) { container.style.display = 'none'; return; }
+
+  const { rows } = src.grid;
+  container.innerHTML = Array.from({ length: rows.length }, (_, ri) => {
+    const canvas = cropRowsRegion(src, [ri]);
+    return `<div class="ai-crop-row"><div class="ai-crop-row-label">행 ${ri + 1}</div><img src="${canvas.toDataURL('image/png')}" /></div>`;
+  }).join('');
+  container.dataset.rendered = 'true';
+  container.style.display = 'block';
 }
 
 // ============================================================
@@ -1062,6 +1084,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btn.dataset.action === 'redetect') { src.grid = GridDetect.detectGrid(src.img); renderSourceList(); }
     if (btn.dataset.action === 'confirm') confirmSourceCrop(src.id);
     if (btn.dataset.action === 'ai-fill') aiFillSource(src.id);
+    if (btn.dataset.action === 'preview-ai-crop') previewAiCrops(src.id);
   });
 
   document.getElementById('toStep2Btn').addEventListener('click', () => goToStep(2));
