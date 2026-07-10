@@ -133,15 +133,27 @@ function soldWithStockText(p) {
   return `변화 없음${mark} (${stockText})`;
 }
 
+// totalSold(초기한도 역산, 항상 나오는 값)와 별개로, "직전 스냅샷 찍은 이후로만" 몇 개
+// 팔렸는지도 참고용으로 보고 싶다는 요청 — stockDelta는 buildStockComparison에서 이미
+// 계산해둔 필드(양수=직전 대비 줄어든 수량)라 그대로 표시만 하면 됨.
+function stockDeltaText(p) {
+  if (p.stockDelta === null || p.stockDelta === undefined) return '비교 불가';
+  if (p.stockDelta > 0) return `${p.stockDelta.toLocaleString()}개 판매`;
+  if (p.stockDelta < 0) return `재입고 +${Math.abs(p.stockDelta).toLocaleString()}개`;
+  return '변화 없음';
+}
+
 function renderStoreTable(label, products) {
   const ranked = rankStockProducts(products);
 
   const rows = ranked.map(p => {
     const cls = p.totalSold > 0 ? 'sd-sold' : p.totalSold < 0 ? 'sd-restock' : p.totalSold === 0 ? 'sd-flat' : 'sd-na';
+    const deltaCls = p.stockDelta > 0 ? 'sd-sold' : p.stockDelta < 0 ? 'sd-restock' : p.stockDelta === 0 ? 'sd-flat' : 'sd-na';
     return `<tr>
       <td class="sd-rank">${p.rank === null ? '-' : rankMedal(p.rank)}</td>
       <td class="sd-name" title="${escapeHtml(p.name)}">${escapeHtml(p.name || '(이름 없음)')}</td>
       <td class="${cls}">${soldWithStockText(p)}</td>
+      <td class="${deltaCls}">${stockDeltaText(p)}</td>
       <td class="sd-price">${p.price ? `${p.price.toLocaleString()}원` : '-'}</td>
     </tr>`;
   }).join('');
@@ -152,9 +164,9 @@ function renderStoreTable(label, products) {
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th>매출순위</th><th>상품명</th><th>총 판매추정 (재고)</th><th>가격</th>
+          <th>매출순위</th><th>상품명</th><th>총 판매추정 (재고)</th><th>직전 스냅샷 대비</th><th>가격</th>
         </tr></thead>
-        <tbody>${rows || '<tr><td colspan="4" class="empty">데이터 없음</td></tr>'}</tbody>
+        <tbody>${rows || '<tr><td colspan="5" class="empty">데이터 없음</td></tr>'}</tbody>
       </table>
     </div>
   </div>`;
@@ -190,8 +202,11 @@ function renderStockSectionHtml(comparison) {
       한도가 아니라 현재 재고를 가장 가까운 1000단위로 올려서 가정한 값이므로 참고용으로만
       봐주세요.<br>
       ※ "재입고"는 재고가 늘어난 경우(추가 입고, 또는 판매자가 한도를 다시 올린 경우)입니다.<br>
+      ※ "직전 스냅샷 대비" 컬럼은 "총 판매추정(재고)"와 달리 초기한도 추정이 아니라, 바로
+      전 스냅샷 대비 재고가 실제로 얼마나 줄었는지(순수 실측값)입니다 — 스냅샷을 처음 찍은
+      상품이거나 그 사이 수집이 실패했으면 "비교 불가"로 표시됩니다.<br>
       ※ 이 목록은 SNS 비교표와 매칭 여부 상관없이 PW/BH 재고 전체를 보여줍니다 — 상품별 매출
-      매칭은 위쪽 SNS 비교표 우측 끝(가로 스크롤)의 📦PW/BH 매출 컬럼을 참고하세요.
+      매칭은 위쪽 SNS 비교표 우측 끝(가로 스크롤)의 📦 매출 (PW vs BH) 컬럼을 참고하세요.
     </div>
   </section>`;
 }
