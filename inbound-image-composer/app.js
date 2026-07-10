@@ -208,10 +208,18 @@ function confirmSourceCrop(srcId) {
   }
 
   src.itemStartIndex = state.items.length; // AI 채우기 결과를 이 소스가 만든 항목에만 매핑하기 위한 범위
+  // 그리드 스캔 경계 그대로 자르면 검출이 살짝만 어긋나도 사진 가장자리가 잘릴 수 있다.
+  // 안쪽으로 당기지 않고 상하좌우 +3px 바깥쪽으로 여유를 둔다 — 배경이 흰색이라 여유분은
+  // 최종 렌더에서 티가 안 나고(176×176으로 다시 맞춰 그려짐), 대신 사진 잘림을 방지한다.
+  const CROP_MARGIN = 3;
   rows.forEach((y) => {
     cols.forEach((x) => {
       const photoId = `p${state.nextPhotoNum++}`;
-      state.photos[photoId] = GridDetect.cropCell(src.img, x, y, cardW, cardH);
+      const mx = Math.max(0, x - CROP_MARGIN);
+      const my = Math.max(0, y - CROP_MARGIN);
+      const mw = Math.min(src.img.width, x + cardW + CROP_MARGIN) - mx;
+      const mh = Math.min(src.img.height, y + cardH + CROP_MARGIN) - my;
+      state.photos[photoId] = GridDetect.cropCell(src.img, mx, my, mw, mh);
       state.items.push({
         id: uid('item'), photoId, ip: '', tag: '', price: '', ship: '무료배송',
         subGrade: 'other', pushToEnd: false, aiUncertain: false,
