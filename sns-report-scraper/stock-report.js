@@ -159,42 +159,56 @@ function stockDeltaText(p) {
 // 같은 방식으로 비교 가능. 한 그룹에 PW/BH가 각각 정확히 1개씩만 있을 때만 짝지음 —
 // 여러 개가 몰리면(재판/리뉴얼 등) 어느 걸 짝지어야 할지 애매하니 매칭 안 시키고
 // PW표/BH표에만 남겨둠(잘못 짝짓는 것보다 안전).
+// ⚠️ 처음엔 SNS 매칭(aggregate.js)과 완전히 같은 Union-Find 방식을 그대로 재사용했는데,
+// 실제 데이터로 확인해보니 매칭률이 너무 낮았음(51 PW개 중 14쌍만). 원인: Union-Find는
+// "전이적으로" 묶기 때문에(A-B, B-C가 연결되면 A-C까지 한 그룹), 같은 프랜차이즈의 여러
+// 변형 상품(예: "리바이 단품", "엘런 단품", "엘런+리바이 세트")이 프랜차이즈명("진격",
+// "거인")만으로도 서로 연결돼서 PW 여러 개 + BH 여러 개가 뒤섞인 큰 그룹이 되고, 그러면
+// 코드가 "1:1이 아니면 매칭 안 함"으로 전부 버려버림 — 정작 "리바이 단품" 하나만 놓고 보면
+// BH의 "리바이 단품"과 명백히 제일 잘 맞는 진짜 짝이 있었는데도 그룹이 뒤섞여서 놓친 것.
+//
+// 그래서 Union-Find(그룹화) 대신 PW-BH 쌍마다 직접 유사도 점수를 매기고(겹친 키워드 수를
+// 두 상품명 중 키워드가 더 많은 쪽 개수로 나눈 비율 — 세트 상품처럼 키워드가 많이 붙어서
+// 우연히 겹치는 경우에 점수가 낮아짐), PW/BH가 서로를 1순위로 고를 때만("상호 최선")
+// 확정 짝으로 인정. 점수가 동률인 후보가 있으면(예: 같은 상품의 "박스 구성"/"단품 랜덤"
+// 버전처럼 진짜 구분이 안 되는 경우) 그 상품은 짝짓지 않고 넘어감 — 잘못 짝짓는 것보다 안전.
 function matchPwBhStockProducts(pwProducts, bhProducts) {
   const MIN_SHARED_KEYWORDS = 2;
-  const entries = [
-    ...pwProducts.map(p => ({ side: 'pw', product: p, keywords: extractKeywords(p.name), line: detectProductLine(p.name) })),
-    ...bhProducts.map(p => ({ side: 'bh', product: p, keywords: extractKeywords(p.name), line: detectProductLine(p.name) })),
-  ];
-  const parent = entries.map((_, i) => i);
-  function find(i) { return parent[i] === i ? i : (parent[i] = find(parent[i])); }
-  function union(i, j) { const a = find(i), b = find(j); if (a !== b) parent[a] = b; }
+  const pwEntries = pwProducts.map(p => ({ product: p, keywords: extractKeywords(p.name), line: detectProductLine(p.name) }));
+  const bhEntries = bhProducts.map(p => ({ product: p, keywords: extractKeywords(p.name), line: detectProductLine(p.name) }));
 
-  for (let i = 0; i < entries.length; i++) {
-    if (entries[i].keywords.length === 0) continue;
-    for (let j = i + 1; j < entries.length; j++) {
-      if (entries[j].keywords.length === 0) continue;
-      if (entries[i].line !== entries[j].line) continue;
-      const overlap = entries[i].keywords.filter(k => entries[j].keywords.includes(k));
-      if (overlap.length >= MIN_SHARED_KEYWORDS) union(i, j);
-    }
-  }
-
-  const groups = new Map();
-  entries.forEach((e, i) => {
-    if (e.keywords.length === 0) return;
-    const root = find(i);
-    if (!groups.has(root)) groups.set(root, []);
-    groups.get(root).push(e);
+  const scored = [];
+  pwEntries.forEach((pw, i) => {
+    if (pw.keywords.length === 0) return;
+    bhEntries.forEach((bh, j) => {
+      if (bh.keywords.length === 0 || pw.line !== bh.line) return;
+      const overlap = pw.keywords.filter(k => bh.keywords.includes(k));
+      if (overlap.length < MIN_SHARED_KEYWORDS) return;
+      scored.push({ i, j, score: overlap.length / Math.max(pw.keywords.length, bh.keywords.length) });
+    });
   });
 
-  const pairs = [];
-  for (const group of groups.values()) {
-    const pwSide = group.filter(e => e.side === 'pw');
-    const bhSide = group.filter(e => e.side === 'bh');
-    if (pwSide.length === 1 && bhSide.length === 1) {
-      pairs.push({ pw: pwSide[0].product, bh: bhSide[0].product });
+  // key(PW면 i, BH면 j) 기준으로 "제일 점수 높은 상대"를 찾되, 동점 후보가 있으면 tie=true.
+  function bestByKey(key, otherKey) {
+    const best = new Map();
+    for (const s of scored) {
+      const k = s[key];
+      const cur = best.get(k);
+      if (!cur || s.score > cur.score) best.set(k, { idx: s[otherKey], score: s.score, tie: false });
+      else if (s.score === cur.score && s[otherKey] !== cur.idx) cur.tie = true;
     }
+    return best;
   }
+  const bestBhForPw = bestByKey('i', 'j');
+  const bestPwForBh = bestByKey('j', 'i');
+
+  const pairs = [];
+  bestBhForPw.forEach((bhBest, pwIdx) => {
+    if (bhBest.tie) return; // 이 PW 상품에 점수가 같은 BH 후보가 여럿 — 확정 안 함
+    const pwBest = bestPwForBh.get(bhBest.idx);
+    if (!pwBest || pwBest.tie || pwBest.idx !== pwIdx) return; // BH 쪽에서도 이 PW가 유일한 1순위여야 함
+    pairs.push({ pw: pwEntries[pwIdx].product, bh: bhEntries[bhBest.idx].product });
+  });
   return pairs;
 }
 
