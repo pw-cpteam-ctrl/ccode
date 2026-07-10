@@ -17,7 +17,7 @@ const state = {
   items: [],            // { id, photoId, ip, tag, price, ship, subGrade, pushToEnd }
   nextPhotoNum: 1,
   nextItemId: 1,
-  dict: { ipNameMap: {}, gradeTable: { S: [], A: [] }, moodClusters: [], storeProfiles: {} },
+  dict: { ipNameMap: {}, gradeTable: { S: [], A: [] }, moodClusters: [], storeProfiles: {}, productLineNames: [] },
   activeStore: 'goodsmile',
   pendingDeleteIds: [],
   lastDeletedBatch: null, // [{ item, index }] — 실행취소용, 가장 최근 삭제 1건만 기억
@@ -57,6 +57,7 @@ async function loadDict() {
     gradeTable: { S: [...window.SEED_GRADE_TABLE.S], A: [...window.SEED_GRADE_TABLE.A] },
     moodClusters: window.SEED_MOOD_CLUSTERS.map((c) => ({ ...c, members: [...c.members] })),
     storeProfiles: JSON.parse(JSON.stringify(window.SEED_STORE_PROFILES)),
+    productLineNames: [...window.SEED_PRODUCT_LINE_NAMES],
   };
 
   let server = {};
@@ -74,6 +75,7 @@ async function loadDict() {
     gradeTable: local.gradeTable || (server.gradeTable && server.gradeTable.S && server.gradeTable.S.length ? server.gradeTable : seed.gradeTable),
     moodClusters: local.moodClusters || (server.moodClusters && server.moodClusters.length ? server.moodClusters : seed.moodClusters),
     storeProfiles: local.storeProfiles || (Object.keys(server.storeProfiles || {}).length ? server.storeProfiles : seed.storeProfiles),
+    productLineNames: local.productLineNames || (server.productLineNames && server.productLineNames.length ? server.productLineNames : seed.productLineNames),
   };
   if (!state.dict.storeProfiles[state.activeStore]) {
     state.activeStore = Object.keys(state.dict.storeProfiles)[0];
@@ -330,7 +332,7 @@ async function aiFillSource(srcId) {
         body: JSON.stringify({
           imageBase64, mediaType: 'image/png', expectedCount: itemIndicesInBatch.length, layout: 'cardStrip',
           ipDictHint: state.dict.ipNameMap, tagWhitelist: tagWhitelistForActiveStore(),
-          moodClusters: state.dict.moodClusters,
+          moodClusters: state.dict.moodClusters, productLineNames: state.dict.productLineNames,
         }),
         signal: AbortSignal.timeout(60000),
       });
@@ -853,6 +855,7 @@ function openDictDialog(focusTab) {
   renderGradeInputs();
   renderClusterRows();
   renderStoreRows();
+  renderLineNamesInput();
   if (focusTab) switchDictTab(focusTab);
   document.getElementById('dictDialog').showModal();
 }
@@ -901,6 +904,10 @@ function addClusterRow(name = '', members = '') {
   `;
   row.querySelector('button').addEventListener('click', () => row.remove());
   container.appendChild(row);
+}
+
+function renderLineNamesInput() {
+  document.getElementById('lineNamesInput').value = (state.dict.productLineNames || []).join(', ');
 }
 
 function renderStoreRows() {
@@ -967,6 +974,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     return value;
   }
+  function readLineNamesValue() {
+    return document.getElementById('lineNamesInput').value.split(',').map((s) => s.trim()).filter(Boolean);
+  }
 
   document.getElementById('saveIpDictBtn').addEventListener('click', () => {
     saveDictLocal('ipNameMap', readIpDictValue());
@@ -1005,6 +1015,15 @@ document.addEventListener('DOMContentLoaded', () => {
     saveDictLocal('storeProfiles', value);
     populateStoreSelects();
     shareDictToGithub('storeProfiles', value, '스토어 프로필');
+  });
+
+  document.getElementById('saveLineNamesBtn').addEventListener('click', () => {
+    saveDictLocal('productLineNames', readLineNamesValue());
+  });
+  document.getElementById('shareLineNamesBtn').addEventListener('click', () => {
+    const value = readLineNamesValue();
+    saveDictLocal('productLineNames', value);
+    shareDictToGithub('productLineNames', value, `상품 라인명 (${value.length}건)`);
   });
 });
 

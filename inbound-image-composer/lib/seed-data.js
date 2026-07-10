@@ -78,6 +78,17 @@ const SEED_STORE_PROFILES = {
   },
 };
 
+// AI로 채우기가 이 단어들을 IP명으로 착각하지 않도록 걸러주는 목록. "⚙ 사전 관리 →
+// 상품 라인명" 탭에서 계속 늘려나간다 (새 상품 라인이 나올 때마다 이 목록에 추가).
+const SEED_PRODUCT_LINE_NAMES = [
+  '넨도로이드', '넨도로이드 돌', '피그마', '팝업퍼레이드', '팝업퍼레이드SP', '스케일 피규어',
+  '프라모델', '굿스마일아츠상하이', '시크릿 굿스마일', '헬로 굿스마일', '허기 굿스마일',
+  'DMM택토리', '쿠리탕', '쵸코링', '블라인드박스', '트레이딩 피규어', '프라이즈 피규어',
+  '컬러즈', 'One Seventh', '1/7', 'Phat!컴퍼니', '모데로이드', '조코푸니', 'System서비스',
+  'GEM', '룩업', '테노히라', '메가캣', '하이퍼바디', '크로니클', '아카타입',
+  '유니온크리에이티브', '루크레아',
+];
+
 const DESIGN_TOKENS = {
   ipColor: '#1b1b1f',
   tagBg: '#2f7bff',
@@ -96,6 +107,7 @@ if (typeof window !== 'undefined') {
   window.SEED_GRADE_TABLE = SEED_GRADE_TABLE;
   window.SEED_MOOD_CLUSTERS = SEED_MOOD_CLUSTERS;
   window.SEED_STORE_PROFILES = SEED_STORE_PROFILES;
+  window.SEED_PRODUCT_LINE_NAMES = SEED_PRODUCT_LINE_NAMES;
   window.VTUBER_AFFILIATION_HINT = VTUBER_AFFILIATION_HINT;
   window.DESIGN_TOKENS = DESIGN_TOKENS;
 }
