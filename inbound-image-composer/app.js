@@ -226,7 +226,10 @@ function confirmSourceCrop(srcId) {
 // 대화형 AI로 하던 것과 같은 경험: 이미지를 통째로 보내서 IP명/가격/태그/배송비를 채운다.
 // business-rules.md 원칙대로, 결과는 절대 그대로 확정되지 않고 항상 "확인 필요" 상태로만
 // 표에 반영된다(uncertain 플래그 → ⚠ 배지). 백엔드가 없으면 친절한 안내만 뜨고 끝난다.
-const AI_BATCH_SIZE = 6; // 한 번에 너무 많은 항목을 보내면 항목당 해상도/주의력이 부족해져 인식률이 급격히 떨어짐
+// 사진을 함께 보내면서 항목당 이미지 높이가 커져, 배치를 6개씩 묶으면 전체 스트립이
+// 너무 길어져 Vision API가 자동 축소할 위험이 있다(축소되면 방금 추가한 사진 해상도
+// 이득이 상쇄됨). 그래서 배치 크기를 3으로 줄여 스트립 전체 높이를 적당히 유지한다.
+const AI_BATCH_SIZE = 3;
 const AI_TEXT_STRIP_SCALE = 2; // 원본 텍스트가 워낙 작아서(칸 폭 176px) 2배로 키워서 보냄
 
 // 각 행의 "텍스트 영역"(사진 아래 ~ 다음 행 사진 시작 전) 높이를 계산.
@@ -241,26 +244,28 @@ function computeRowTextBottoms(src) {
   return rows.map((y, i) => (i + 1 < rows.length ? rows[i + 1] : Math.min(src.img.height, y + cardH + medianGap)));
 }
 
-// itemIndexInSource(그 소스 안에서 0부터 시작하는 인덱스)에 해당하는 칸의 "텍스트만" 크롭.
-// 사진은 빼고 이 부분만 보내야 AI가 쓸 수 있는 해상도를 전부 글자에 쓸 수 있다.
+// itemIndexInSource(그 소스 안에서 0부터 시작하는 인덱스)에 해당하는 칸을 "사진 + 텍스트"
+// 통째로 크롭한다. 예전엔 사진을 빼고 텍스트만 보냈는데, 텍스트가 흐리거나 잘려 있을 때
+// AI가 사진을 보고 캐릭터/작품을 유추할 단서가 전혀 없어 엉뚱한 텍스트를 만들어내는
+// 문제가 있었다 — 사람이 글자가 흐려도 사진 보고 맞추는 것과 같은 단서를 AI에게도 준다.
 // 높이에 상한을 두지 않는다 — 예전엔 160px로 강제 제한했는데, 별점/예약마감일/여러 줄
 // 상품명이 섞인 실제 스토어 페이지에서는 텍스트가 160px를 넘어가면서 잘려 AI가 잘린
 // 글자를 억지로 읽으려다 엉뚱한 텍스트를 만들어내는 문제가 있었다.
-function cropItemTextRegion(src, itemIndexInSource) {
-  const { cols, rows, cardW, cardH } = src.grid;
+function cropItemCardRegion(src, itemIndexInSource) {
+  const { cols, rows, cardW } = src.grid;
   const rowTextBottoms = computeRowTextBottoms(src);
   const ri = Math.floor(itemIndexInSource / cols.length);
   const ci = itemIndexInSource % cols.length;
   const x = cols[ci];
-  const yTop = rows[ri] + cardH;
+  const yTop = rows[ri];
   const height = Math.max(20, rowTextBottoms[ri] - yTop);
   return GridDetect.cropCell(src.img, x, yTop, cardW, height);
 }
 
-// batch에 속한 항목들의 텍스트 크롭을 세로로 이어붙인 "글자만 큼직하게" 이미지를 만든다.
-// 사진 없이 텍스트만, 2배 확대, 항목 사이 구분선 — AI가 25개를 한꺼번에 보는 대신 6개만 집중해서 보게 함.
+// batch에 속한 항목들의 "사진+텍스트" 크롭을 세로로 이어붙인 이미지를 만든다.
+// 2배 확대, 항목 사이 구분선 — AI가 25개를 한꺼번에 보는 대신 3개만 집중해서 보게 함.
 function buildTextStripImage(src, itemIndices) {
-  const crops = itemIndices.map((idx) => cropItemTextRegion(src, idx));
+  const crops = itemIndices.map((idx) => cropItemCardRegion(src, idx));
   const scale = AI_TEXT_STRIP_SCALE;
   const gap = 6;
   const width = Math.max(...crops.map((c) => c.width)) * scale;
@@ -327,7 +332,7 @@ async function aiFillSource(srcId) {
       const r = await fetch('/api/parse-image', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageBase64, mediaType: 'image/png', expectedCount: batch.length, layout: 'textStrip',
+          imageBase64, mediaType: 'image/png', expectedCount: batch.length, layout: 'cardStrip',
           ipDictHint: state.dict.ipNameMap, tagWhitelist: tagWhitelistForActiveStore(),
           moodClusters: state.dict.moodClusters,
         }),
