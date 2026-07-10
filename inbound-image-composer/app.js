@@ -244,6 +244,9 @@ function confirmSourceCrop(srcId) {
 // 이런 재조합 버그가 생길 여지가 없다 — 채팅으로 원본 스크린샷을 그대로 보여줬을 때
 // 인식률이 훨씬 좋았던 것과 같은 원리(레이아웃을 안 건드리는 게 핵심).
 const AI_ROWS_PER_BATCH = 1; // 한 번에 1개 행(보통 5개 항목)만 보냄 — 너무 많으면 인식률 급락
+const AI_STRIP_SCALE = 2; // 원본 텍스트가 작아서(칸 폭 176px) 2배로 키워서 보냄 — 행 단위로
+// 바꾸면서(사진+텍스트를 원본 그대로 크롭) 이 확대를 실수로 빠뜨렸었다. 특정 항목에서
+// 반복적으로 텍스트 인식이 실패하는 사례가 있어 다시 추가.
 
 // 각 행의 "텍스트 영역"(사진 아래 ~ 다음 행 사진 시작 전) 높이를 계산.
 // grid-detect가 잡아주는 건 사진 높이(cardH)뿐이라, 그 아래 상품명/가격 텍스트 줄은 직접 계산해야 한다.
@@ -267,20 +270,28 @@ function cropRowsRegion(src, rowIndices) {
   const yTop = rows[rowIndices[0]];
   const yBottom = rowTextBottoms[rowIndices[rowIndices.length - 1]];
   const height = Math.max(20, yBottom - yTop);
-  const canvas = GridDetect.cropCell(src.img, 0, yTop, src.img.width, height);
+  const raw = GridDetect.cropCell(src.img, 0, yTop, src.img.width, height);
 
+  const scale = AI_STRIP_SCALE;
+  const canvas = document.createElement('canvas');
+  canvas.width = raw.width * scale;
+  canvas.height = raw.height * scale;
   const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false; // 확대해도 흐려지지 않게 (저해상도 텍스트라 흐림 처리는 오히려 해로움)
+  ctx.drawImage(raw, 0, 0, canvas.width, canvas.height);
+
   ctx.strokeStyle = '#ff3b30';
   ctx.lineWidth = 2;
   ctx.fillStyle = '#ff3b30';
   ctx.font = 'bold 18px sans-serif';
   let n = 1;
   rowIndices.forEach((ri) => {
-    const rowTop = rows[ri] - yTop;
-    const rowBottom = rowTextBottoms[ri] - yTop;
+    const rowTop = (rows[ri] - yTop) * scale;
+    const rowBottom = (rowTextBottoms[ri] - yTop) * scale;
     cols.forEach((cx) => {
-      ctx.strokeRect(cx, rowTop, cardW, rowBottom - rowTop);
-      ctx.fillText(`#${n}`, cx + 4, rowTop + 18 < rowBottom ? rowTop + 18 : rowTop + 14);
+      const x = cx * scale;
+      ctx.strokeRect(x, rowTop, cardW * scale, rowBottom - rowTop);
+      ctx.fillText(`#${n}`, x + 4, rowTop + 18 < rowBottom ? rowTop + 18 : rowTop + 14);
       n++;
     });
   });
