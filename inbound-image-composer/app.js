@@ -439,18 +439,21 @@ function scaledThumb(canvas) {
 // ============================================================
 let dragFromIndex = null;
 
-// 5열 x 2줄 = 10개 단위로 박스를 나눠서 "1p, 2p..." 구분선을 넣는다 — 카드가 계속
-// 한 줄로 쭉 이어지면 몇 번째 묶음인지 눈으로 가늠하기 어려워서 실사용 중 요청받은 구성.
-const PREVIEW_PAGE_GROUP_SIZE = 10;
+// 5열 x 5줄 = 25개 단위로 박스(페이지)를 나눈다. 박스는 항상 2열로 나란히 배치되고,
+// 홀수 개(마지막 박스가 짝이 없을 때)면 빈 박스를 하나 더 붙여 짝을 맞춘다 — 그래야
+// 마지막 박스 하나만 있을 때 카드가 컨테이너 폭 전체로 늘어나 커지는 걸 막을 수 있다.
+const PREVIEW_PAGE_GROUP_SIZE = 25;
 
 function renderPreviewGrid(containerId, items, opts) {
   const container = document.getElementById(containerId);
   container.innerHTML = '';
   const pages = chunk(items, PREVIEW_PAGE_GROUP_SIZE);
+  if (pages.length === 0) pages.push([], []);
+  else if (pages.length % 2 === 1) pages.push([]);
 
   pages.forEach((pageItems, pageIdx) => {
     const pageBox = document.createElement('div');
-    pageBox.className = 'preview-page-box';
+    pageBox.className = `preview-page-box${pageItems.length === 0 ? ' empty' : ''}`;
     pageBox.innerHTML = `<div class="preview-page-label">${pageIdx + 1}p</div>`;
     const grid = document.createElement('div');
     grid.className = 'preview-grid';
