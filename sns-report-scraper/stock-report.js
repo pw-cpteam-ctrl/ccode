@@ -229,7 +229,7 @@ function buildIntegratedStockRows(comparison) {
   const bhLatest = comparison.stores.BH || [];
   const pairs = matchPwBhStockProducts(pwLatest, bhLatest);
 
-  return pairs.map(({ pw, bh }) => {
+  const rows = pairs.map(({ pw, bh }) => {
     const pwSeries = stockSeries(snapshots, 'PW', pw.productId);
     const bhSeries = stockSeries(snapshots, 'BH', bh.productId);
     return {
@@ -239,6 +239,10 @@ function buildIntegratedStockRows(comparison) {
       pwSeries, bhSeries,
     };
   });
+
+  // 많이 팔린 순(PW+BH 총판매추정 합산 내림차순) 정렬 — 누락됐던 부분.
+  rows.sort((a, b) => ((b.pw.totalSold ?? 0) + (b.bh.totalSold ?? 0)) - ((a.pw.totalSold ?? 0) + (a.bh.totalSold ?? 0)));
+  return rows;
 }
 
 // "513개 (점유율 54%)"처럼 총 판매추정치와 양사 합산 기준 점유율을 한 칸에 표시.
@@ -265,28 +269,42 @@ function deltaPairText(pwDelta, bhDelta) {
   return `PW ${one(pwDelta)} · BH ${one(bhDelta)}`;
 }
 
-// 매칭된 상품 하나의 PW/BH 재고 추이 — 꺾은선 2개(PW 파랑/BH 빨강), 같은 재고 수량 축을
-// 공유(단위가 같은 값 2개를 겹쳐 보는 거라 이중축 문제가 아님). 토글을 열 때만 계산해서
-// 보여주면 되므로 매번 새로 그림 — 시점이 1~2개뿐이면 사실상 점 1~2개라 "추이"라 부르기
-// 애매해서(표와 다를 게 없음) 그래프 대신 안내 문구로 대체, 3개부터 그래프로 그림.
+// 매칭된 상품 하나의 PW/BH 재고 추이 — 꺾은선 2개(PW 파랑/BH 빨강). PW/BH는 서로 다른
+// 상품(초기 판매한도 자체가 다름)이라 원본 재고 수량을 그대로 한 축에 겹치면, 한쪽이
+// 훨씬 크면(예: PW 9999 vs BH 470) 작은 쪽이 축에 짓눌려 변화가 없는 것처럼(거의 일자로)
+// 보이는 문제가 있었음 — 그렇다고 각자 축을 따로 주면 이중축 문제가 생기므로, 대신 "최초
+// 관측 시점 = 100"으로 지수화해서 두 상품 다 "자기 자신의 시작점 대비 몇 %인지"를 같은
+// 축에서 비교(다이버징 바에서 쓴 것과 같은 원칙 — 실측값 대신 공통 기준으로 정규화).
+// 원래 재고 수량은 각 점의 툴팁에서 확인 가능. 토글을 열 때만 계산해서 보여주면 되므로
+// 매번 새로 그림 — 시점이 1~2개뿐이면 사실상 점 1~2개라 "추이"라 부르기 애매해서(표와
+// 다를 게 없음) 그래프 대신 안내 문구로 대체, 3개부터 그래프로 그림.
 function stockTrendChart(pwSeries, bhSeries, pwName, bhName) {
   const allDates = [...new Set([...pwSeries, ...bhSeries].map(p => p.takenAt))].sort();
   if (allDates.length < 3) {
     return `<div class="trend-empty">스냅샷이 더 쌓이면 추이 그래프가 여기 표시됩니다(현재 ${allDates.length}개 시점).</div>`;
   }
 
+  // 최초 관측값 기준 지수(100=시작점). 시작 재고가 0이면 나눗셈이 안 되니 그 시리즈는
+  // 지수화를 건너뛰고 0으로 고정(재입고 전까지는 계속 0%).
+  function indexed(series) {
+    const base = series[0]?.stock;
+    return series.map(p => ({ takenAt: p.takenAt, stock: p.stock, index: base > 0 ? (p.stock / base) * 100 : 0 }));
+  }
+  const pwIdx = indexed(pwSeries);
+  const bhIdx = indexed(bhSeries);
+
   const w = Math.max(520, allDates.length * 90);
   const h = 220;
   const ml = 60, mr = 20, mt = 16, mb = 40;
   const chartW = w - ml - mr, chartH = h - mt - mb;
-  const maxStock = Math.max(1, ...pwSeries.map(p => p.stock), ...bhSeries.map(p => p.stock)) * 1.1;
+  const maxIndex = Math.max(120, ...pwIdx.map(p => p.index), ...bhIdx.map(p => p.index)) * 1.05;
 
   const x = i => ml + (allDates.length > 1 ? (i / (allDates.length - 1)) * chartW : chartW / 2);
-  const y = v => mt + chartH - (v / maxStock) * chartH;
+  const y = v => mt + chartH - (v / maxIndex) * chartH;
 
   function linePath(series) {
     const points = allDates
-      .map((d, i) => { const rec = series.find(p => p.takenAt === d); return rec ? { i, v: rec.stock } : null; })
+      .map((d, i) => { const rec = series.find(p => p.takenAt === d); return rec ? { i, v: rec.index } : null; })
       .filter(Boolean);
     return points.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${x(p.i)},${y(p.v)}`).join(' ');
   }
@@ -294,28 +312,32 @@ function stockTrendChart(pwSeries, bhSeries, pwName, bhName) {
     return allDates.map((d, i) => {
       const rec = series.find(p => p.takenAt === d);
       if (!rec) return '';
-      return `<circle cx="${x(i)}" cy="${y(rec.stock)}" r="3.5" fill="#fff" stroke="${color}" stroke-width="2"><title>${escapeHtml(formatTakenAt(d))} · ${rec.stock.toLocaleString()}개</title></circle>`;
+      return `<circle cx="${x(i)}" cy="${y(rec.index)}" r="3.5" fill="#fff" stroke="${color}" stroke-width="2"><title>${escapeHtml(formatTakenAt(d))} · ${rec.stock.toLocaleString()}개 (지수 ${Math.round(rec.index)})</title></circle>`;
     }).join('');
   }
 
   const gridLines = [];
   const ticks = 4;
   for (let i = 0; i <= ticks; i++) {
-    const v = (maxStock / ticks) * i;
-    const yy = mt + chartH - (v / maxStock) * chartH;
+    const v = (maxIndex / ticks) * i;
+    const yy = mt + chartH - (v / maxIndex) * chartH;
     gridLines.push(`<line x1="${ml}" y1="${yy}" x2="${w - mr}" y2="${yy}" stroke="#e9ecef" stroke-width="1"/>`);
-    gridLines.push(`<text x="${ml - 8}" y="${yy + 3}" font-size="10" fill="#6b7280" text-anchor="end">${Math.round(v).toLocaleString()}</text>`);
+    gridLines.push(`<text x="${ml - 8}" y="${yy + 3}" font-size="10" fill="#6b7280" text-anchor="end">${Math.round(v)}</text>`);
   }
+  // 100(시작점) 기준선 — 점선으로 "여기서부터 변화"를 명확히
+  const baselineY = y(100);
+  gridLines.push(`<line x1="${ml}" y1="${baselineY}" x2="${w - mr}" y2="${baselineY}" stroke="#adb5bd" stroke-width="1" stroke-dasharray="3,3"/>`);
   const xLabels = allDates.map((d, i) => `<text x="${x(i)}" y="${h - 10}" font-size="10" fill="#6b7280" text-anchor="middle">${escapeHtml(formatTakenAt(d).slice(5, 10))}</text>`).join('');
 
   const svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${gridLines.join('')}
-    <path d="${linePath(pwSeries)}" fill="none" stroke="#1971c2" stroke-width="2"/>
-    <path d="${linePath(bhSeries)}" fill="none" stroke="#c0504d" stroke-width="2"/>
-    ${dots(pwSeries, '#1971c2')}${dots(bhSeries, '#c0504d')}${xLabels}
+    <path d="${linePath(pwIdx)}" fill="none" stroke="#1971c2" stroke-width="2"/>
+    <path d="${linePath(bhIdx)}" fill="none" stroke="#c0504d" stroke-width="2"/>
+    ${dots(pwIdx, '#1971c2')}${dots(bhIdx, '#c0504d')}${xLabels}
   </svg>`;
 
   return `<div class="trend-wrap">
     <div class="trend-legend"><span class="pw">● PW ${escapeHtml(pwName)}</span><span class="bh">● BH ${escapeHtml(bhName)}</span></div>
+    <div class="trend-sub">재고 지수(최초 관측 시점=100, 값이 클수록 재고가 늘어난 것) · 실제 재고 수량은 점에 마우스를 올리면 확인 가능</div>
     <div class="trend-scroll">${svg}</div>
   </div>`;
 }
@@ -457,6 +479,7 @@ tr.trend-row td{padding:14px}
 .trend-empty{font-size:12px;color:#9099a6}
 .trend-legend{display:flex;gap:14px;font-size:12px;font-weight:700;margin-bottom:6px}
 .trend-legend .pw{color:#1971c2}.trend-legend .bh{color:#c0504d}
+.trend-sub{font-size:11px;color:#9099a6;margin-bottom:6px}
 .trend-scroll{overflow-x:auto}
 `;
 

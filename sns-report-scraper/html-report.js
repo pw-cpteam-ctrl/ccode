@@ -143,6 +143,11 @@ function salesBar(pwMatch, bhMatch) {
   };
   const title = `PW: ${pwMatch ? (pwMatch.name || '매칭 안 됨') : '매칭 안 됨'} · BH: ${bhMatch ? (bhMatch.name || '매칭 안 됨') : '매칭 안 됨'}`;
 
+  // 리트윗/좋아요 칸의 "2400 (3.4배)" 캡션(metric-diff)과 같은 자리에, 매출도 PW:BH
+  // 점유율을 "77:23"처럼 병기 — 반올림한 PW 쪽 값으로 BH를 역산해서 합이 항상 100이 되게 함.
+  const pwShare = Math.round(pwPct);
+  const shareCaption = total > 0 ? `<div class="metric-diff">${pwShare}:${100 - pwShare}</div>` : '';
+
   return `<td class="metric" title="${escapeHtml(title)}">
     <div class="metriccell">
       <div class="metricbar">
@@ -150,6 +155,7 @@ function salesBar(pwMatch, bhMatch) {
         <div class="metricbar-track">${track}</div>
         <span class="metricbar-val bh">${label(bhMatch, bhVal)}</span>
       </div>
+      ${shareCaption}
     </div>
   </td>`;
 }
