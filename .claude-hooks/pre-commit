@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# 커밋에 흔한 시크릿 패턴/.env 파일이 포함되면 차단
+pattern='(AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|ANTHROPIC_API_KEY[[:space:]]*=|sk-ant-[a-zA-Z0-9_-]{20,}|sk-[a-zA-Z0-9]{20,}|GITHUB_TOKEN[[:space:]]*=|ghp_[a-zA-Z0-9]{30,}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[0-9A-Za-z-]{10,})'
+
+hit=$(git diff --cached -U0 | grep -EnI "$pattern")
+if [ -n "$hit" ]; then
+  echo "[pre-commit] 차단: 커밋 내용에 시크릿으로 의심되는 패턴이 있습니다:" >&2
+  echo "$hit" >&2
+  exit 1
+fi
+
+env_files=$(git diff --cached --name-only | grep -E '(^|/)\.env(\..*)?$')
+if [ -n "$env_files" ]; then
+  echo "[pre-commit] 차단: .env 파일은 커밋할 수 없습니다:" >&2
+  echo "$env_files" >&2
+  exit 1
+fi
+
+exit 0

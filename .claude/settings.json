@@ -1,0 +1,20 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$(git rev-parse --show-toplevel)\" && git config core.hooksPath .claude-hooks 2>/dev/null; true",
+            "statusMessage": "git hooks(core.hooksPath) 연결 중..."
+          },
+          {
+            "type": "command",
+            "command": "cd \"$(git rev-parse --show-toplevel)\" && jq -n --rawfile content handoff-behavior-guide.md '{hookSpecificOutput: {hookEventName: \"SessionStart\", additionalContext: (\"다음은 이 저장소(ccode)의 필수 작업 행동 지침이다. 매 세션 시작 시 자동 주입됨:\\n\\n\" + $content)}}'",
+            "statusMessage": "handoff-behavior-guide.md 주입 중..."
+          }
+        ]
+      }
+    ]
+  }
+}
