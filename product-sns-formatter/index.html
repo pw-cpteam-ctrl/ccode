@@ -38,6 +38,21 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 .guide-box .tip{background:#fff;border:1px solid #f0c96b;border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.7;color:#5a4a2a;margin-bottom:8px;}
 .guide-box .tip:last-child{margin-bottom:0;}
 .guide-box .tip b{color:#b3661a;}
+.slot-box{margin-top:14px;background:#f5f3ee;border:1px solid var(--ui-border);border-radius:8px;padding:10px 12px;}
+.slot-box .slot-title{font-size:12px;font-weight:700;color:var(--ui-sub);margin-bottom:4px;}
+.slot-box .slot-note{font-size:11.5px;color:var(--ui-sub);margin-bottom:8px;line-height:1.5;}
+.slots{display:flex;flex-direction:column;gap:6px;}
+.slot-item{display:flex;align-items:center;gap:8px;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:8px 10px;font-size:12.5px;cursor:pointer;}
+.slot-item:hover{border-color:var(--ui-accent);}
+.slot-item .s-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.slot-item .s-meta{color:var(--ui-sub);font-size:11px;white-space:nowrap;}
+.slot-item .s-del{color:var(--ui-sub);font-weight:700;padding:0 2px 0 4px;}
+.slot-item .s-del:hover{color:var(--ui-warn);}
+.slot-empty{color:var(--ui-sub);font-size:12px;}
+.correction-box{margin-top:8px;padding:10px 12px;background:#fdecea;border:1px solid #f3b8b0;border-radius:8px;font-size:12.5px;color:#c0392b;display:none;}
+.correction-box .c-title{font-weight:700;margin-bottom:4px;}
+.correction-box ul{margin:0;padding-left:18px;}
+.correction-box li{margin-bottom:2px;}
 </style>
 </head>
 <body>
@@ -56,6 +71,7 @@ button:disabled{opacity:.5;cursor:not-allowed;}
     <div class="tip"><b>💡 알아두면 좋은 것 1</b> — 이 도구는 "기억력"이 없어요. 버튼 누를 때마다 완전히 처음 상태로 시작해요. 그래서 "이전에 말한 거 기억해서 이번에도 그렇게 해줘" 같은 건 안 통해요. 매번 새로 다 알려줘야 해요.</div>
     <div class="tip"><b>💡 알아두면 좋은 것 2</b> — "추가지시" 칸에 뭔가 적으면 <b>이번 한 번만</b> 적용돼요. 다음에 또 쓸 때는 다시 안 써도 되는 게 아니라, 매번 새로 써줘야 해요. (예: "이모지 빼줘"라고 한 번 적었다고 다음부터 계속 빠지지 않아요)</div>
     <div class="tip"><b>💡 알아두면 좋은 것 3</b> — 결과물 포맷이 마음에 안 들면, 그냥 넘어가지 말고 <b>아래 "개선사항 메모장"</b>에 적어주세요! 이 메모는 AI한테 전달되는 게 아니라, 사람이 나중에 확인하고 규칙을 고칠지 판단하는 용도예요. 적어주셔야 나중에 더 좋아져요.</div>
+    <div class="tip"><b>💡 알아두면 좋은 것 4</b> — 작업 내용은 <b>이 브라우저에 자동으로 저장</b>돼요. 페이지를 다시 열면 마지막으로 하던 작업이 그대로 채워져 있고, "이전 입력/변환 이력"에서 예전 작업도 클릭해서 다시 불러올 수 있어요.</div>
   </div>
 
   <div class="step">
@@ -73,7 +89,14 @@ button:disabled{opacity:.5;cursor:not-allowed;}
     <div class="status" id="formatStatus"></div>
     <div class="warn-box" id="formatWarn"></div>
     <div class="result-box" id="resultBox"></div>
+    <div class="correction-box" id="correctionBox"></div>
     <button class="secondary" onclick="copyResult()" id="btnCopy" style="display:none;margin-top:8px;">결과 복사</button>
+
+    <div class="slot-box">
+      <div class="slot-title">↺ 이전 입력/변환 이력 (최근 10개 · 자동 저장)</div>
+      <div class="slot-note">변환하거나 페이지를 벗어나면 현재 작업이 자동 저장됩니다. 클릭하면 그 내용으로 되돌립니다.</div>
+      <div id="slots" class="slots"></div>
+    </div>
   </div>
 
   <div class="step">
@@ -89,8 +112,11 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 <script>
 const $ = s => document.querySelector(s);
 const MEMO_STORAGE_KEY = 'product-sns-formatter:memos';
+const SLOT_KEY = 'product-sns-formatter:slots';
+const SLOT_MAX = 10;
 
 let lastResult = '';
+let lastCorrections = [];
 
 /* ── 1단계: 변환 (LLM 호출, 백엔드 미배포/키 미설정 시 안내 후 실패) ── */
 async function runFormat() {
@@ -100,6 +126,7 @@ async function runFormat() {
 
   $('#formatWarn').style.display = 'none';
   $('#resultBox').style.display = 'none';
+  $('#correctionBox').style.display = 'none';
   $('#btnCopy').style.display = 'none';
   $('#formatStatus').textContent = '변환 중...';
 
@@ -113,10 +140,13 @@ async function runFormat() {
     if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
 
     lastResult = data.result || '';
+    lastCorrections = data.corrections || [];
     $('#resultBox').textContent = lastResult;
     $('#resultBox').style.display = 'block';
+    renderCorrections(lastCorrections);
     $('#btnCopy').style.display = '';
     $('#formatStatus').textContent = '변환 완료';
+    pushSlot(snapshotNow());
 
     // 입력 로그 저장은 최선 노력(fire-and-forget) — 비공개 로그 레포 연결 전에는 실패해도 무시.
     fetch('/api/save-log', {
@@ -132,6 +162,14 @@ async function runFormat() {
     $('#formatWarn').textContent = `변환에 실패했어요: ${err.message}\n\nANTHROPIC_API_KEY 등록 + Vercel 배포가 끝나야 정상 동작합니다. 자세한 내용은 PLAN.md / README.md 참고.`;
     $('#formatWarn').style.display = 'block';
   }
+}
+
+function renderCorrections(corrections) {
+  const box = $('#correctionBox');
+  if (!corrections || !corrections.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="c-title">⚠️ 맞춤법/표현 교정 내역</div><ul>' +
+    corrections.map(c => `<li>${escapeHtml(c)}</li>`).join('') + '</ul>';
+  box.style.display = 'block';
 }
 
 function copyResult() {
@@ -188,6 +226,109 @@ async function saveMemo() {
     $('#memoStatus').textContent = `깃허브 저장은 실패했지만 브라우저에는 남아있어요 (${err.message}). GITHUB_TOKEN 등 설정 전까지는 정상입니다.`;
   }
 }
+
+/* ── 이전 입력/변환 이력 슬롯 (자동 저장, 클릭 시 복원) ── */
+function loadSlots() {
+  try { return JSON.parse(localStorage.getItem(SLOT_KEY) || '[]'); }
+  catch { return []; }
+}
+function saveSlots(a) {
+  try { localStorage.setItem(SLOT_KEY, JSON.stringify(a)); }
+  catch { /* 용량 초과 시 조용히 무시 — 텍스트뿐이라 용량 부담은 거의 없음 */ }
+}
+function snapshotNow() {
+  return {
+    at: new Date().toISOString(),
+    productText: $('#inProduct').value,
+    extraInstruction: $('#inExtra').value,
+    result: lastResult,
+    corrections: lastCorrections,
+  };
+}
+function slotLabel(s) {
+  const p = (s.productText || '').trim();
+  if (!p) return '(빈 입력)';
+  const firstLine = p.split('\n').map(x => x.trim()).find(Boolean) || p;
+  return firstLine.length > 30 ? firstLine.slice(0, 30) + '…' : firstLine;
+}
+function pushSlot(snap, skipRender) {
+  if (!snap.productText.trim() && !snap.result) return; // 빈 작업은 저장 안 함
+  const a = loadSlots();
+  const top = a[0];
+  if (top && top.productText === snap.productText && top.extraInstruction === snap.extraInstruction && top.result === snap.result) {
+    return; // 직전 슬롯과 내용이 같으면 중복 저장 안 함
+  }
+  a.unshift(snap);
+  saveSlots(a.slice(0, SLOT_MAX));
+  if (!skipRender) renderSlots();
+}
+function applySlot(s) {
+  pushSlot(snapshotNow()); // 지금 작업 먼저 보존
+  $('#inProduct').value = s.productText || '';
+  $('#inExtra').value = s.extraInstruction || '';
+  lastResult = s.result || '';
+  lastCorrections = s.corrections || [];
+  if (lastResult) {
+    $('#resultBox').textContent = lastResult;
+    $('#resultBox').style.display = 'block';
+    $('#btnCopy').style.display = '';
+  } else {
+    $('#resultBox').style.display = 'none';
+    $('#btnCopy').style.display = 'none';
+  }
+  renderCorrections(lastCorrections);
+  $('#formatStatus').textContent = '이전 입력을 불러왔어요.';
+  renderSlots();
+}
+function deleteSlot(i) {
+  const a = loadSlots();
+  a.splice(i, 1);
+  saveSlots(a);
+  renderSlots();
+}
+function renderSlots() {
+  const box = $('#slots');
+  const a = loadSlots();
+  if (!a.length) { box.innerHTML = '<div class="slot-empty">아직 저장된 이력이 없습니다.</div>'; return; }
+  box.innerHTML = a.map((s, i) => `
+    <div class="slot-item" data-i="${i}">
+      <span class="s-title">${escapeHtml(slotLabel(s))}</span>
+      <span class="s-meta">${s.result ? '변환됨 · ' : ''}${escapeHtml(new Date(s.at).toLocaleString())}</span>
+      <span class="s-del" data-del="${i}">✕</span>
+    </div>`).join('');
+  box.querySelectorAll('.slot-item').forEach(el => {
+    el.addEventListener('click', e => {
+      const delTarget = e.target.closest('[data-del]');
+      const i = Number(el.dataset.i);
+      if (delTarget) { deleteSlot(i); return; }
+      applySlot(loadSlots()[i]);
+    });
+  });
+}
+// 탭을 닫거나 다른 탭/창으로 전환할 때 현재 작업을 자동 보존
+window.addEventListener('beforeunload', () => { pushSlot(snapshotNow(), true); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') pushSlot(snapshotNow(), true);
+});
+
+/* ── 초기 로드: 마지막 작업 자동 복원 + 목록 렌더 ── */
+(function initSlots() {
+  const slots = loadSlots();
+  if (slots.length) {
+    const s = slots[0];
+    $('#inProduct').value = s.productText || '';
+    $('#inExtra').value = s.extraInstruction || '';
+    lastResult = s.result || '';
+    lastCorrections = s.corrections || [];
+    if (lastResult) {
+      $('#resultBox').textContent = lastResult;
+      $('#resultBox').style.display = 'block';
+      $('#btnCopy').style.display = '';
+      renderCorrections(lastCorrections);
+    }
+  }
+  renderSlots();
+})();
 
 renderMemos(loadMemos());
 </script>
