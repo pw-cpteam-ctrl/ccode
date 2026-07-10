@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { formatTakenAt, rankMedal, rankStockProducts, findStockMatch, renderStockSectionHtml, STOCK_SECTION_STYLE } = require('./stock-report');
+const { formatTakenAt, rankStockProducts, findStockMatch, renderStockSectionHtml, STOCK_SECTION_STYLE } = require('./stock-report');
 
 const FIELD_LABELS = { likes: '좋아요', retweets: '리트윗', comments: '댓글' };
 const FIELD_ICONS = { likes: '♥️', retweets: '♻️', comments: '💬' };
@@ -117,28 +117,41 @@ function embedBlockquote(platformKey, post) {
   return '';
 }
 
-// SNS 상품(ip/line) 하나에 매칭된 네이버 재고 항목을 표 우측 끝 컬럼 한 칸으로 렌더링.
-// 별도 섹션으로 안 빼고 같은 표 안(가로 스크롤로 보이는 우측)에 두는 게 목적 — 위아래로
-// 왔다갔다하며 대조하지 않아도 되게.
-// "직전 스냅샷 대비 변화량"이 아니라 **총 판매 추정치**(totalSold, stock-report.js) — 사용자
-// 피드백: "몇 개 팔렸는지 추이 변화가 궁금한 게 아니라 언제 리포트를 내든 현시점 몇 개
-// 팔렸는지가 궁금하다"는 것이 명확해져서, 스냅샷 주기에 흔들리지 않는 안정적인 값으로 바꿈.
-function stockMatchCell(match) {
-  if (!match) return '<td class="metric sm-none">-</td>';
-  if (match.totalSold === null || match.totalSold === undefined) {
-    return `<td class="metric sm-none" title="${escapeHtml(match.name || '')}">-</td>`;
-  }
-  const soldText = match.totalSold > 0 ? `${match.totalSold.toLocaleString()}개`
-    : match.totalSold < 0 ? `재입고+${Math.abs(match.totalSold).toLocaleString()}`
-      : '0개';
-  // 1~3위는 메달 이모지라 순위인 게 바로 보이는데, 4위부터는 그냥 숫자만 나와서 판매량이랑
-  // 헷갈릴 수 있음 — "위" 붙여서 명시.
-  const rankPart = match.rank ? `<span class="sm-rank">${match.rank <= 3 ? rankMedal(match.rank) : `${match.rank}위`}</span> ` : '';
-  const cls = match.totalSoldIsEstimated ? 'sm-estimate' : 'sm-match';
-  const tooltip = match.totalSoldIsEstimated
-    ? `${match.name || ''} · 초기 판매한도 약 ${match.estimatedCap != null ? match.estimatedCap.toLocaleString() : '?'}개로 가정해 역산한 추정치(실제 이전 데이터 없음)`
-    : (match.name || '');
-  return `<td class="metric ${cls}" title="${escapeHtml(tooltip)}">${rankPart}<span class="sm-count">${soldText}${match.totalSoldIsEstimated ? '*' : ''}</span></td>`;
+// SNS 상품(ip/line) 하나에 매칭된 PW/BH 네이버 재고 항목을 표 우측 끝에 한 칸으로 렌더링.
+// 예전엔 PW/BH 칸이 따로 있어서(각자 순위+개수 텍스트) 어느 쪽이 더 파는지 숫자를 눈으로
+// 대조해야 했음 — 리트윗/좋아요 칸(metricBar)과 형식을 통일해서 "부분 대 전체" 분할 바로
+// 바꿈. 재고 매칭은 PW/BH가 서로 다른 store 안에서 각자 순위가 매겨지는 거라(총 판매
+// 추정치, stock-report.js) 그 절대 개수를 막대 비율로 비교.
+function salesBar(pwMatch, bhMatch) {
+  const pwVal = pwMatch && typeof pwMatch.totalSold === 'number' ? pwMatch.totalSold : null;
+  const bhVal = bhMatch && typeof bhMatch.totalSold === 'number' ? bhMatch.totalSold : null;
+  if (pwVal === null && bhVal === null) return '<td class="metric sm-none">-</td>';
+
+  // 재입고(음수)는 막대 비율 계산에서 0으로 취급 — 라벨엔 실제 값("재입고+N")을 그대로 보여줌.
+  const pwBar = Math.max(pwVal ?? 0, 0);
+  const bhBar = Math.max(bhVal ?? 0, 0);
+  const total = pwBar + bhBar;
+  const pwPct = total > 0 ? (pwBar / total) * 100 : 50;
+  const track = total > 0
+    ? `<div class="metricbar-pw" style="width:${pwPct}%"></div><div class="metricbar-bh" style="width:${100 - pwPct}%"></div>`
+    : '';
+
+  const label = (match, val) => {
+    if (val === null) return '매칭 안 됨';
+    const mark = match.totalSoldIsEstimated ? '*' : '';
+    return val < 0 ? `재입고+${Math.abs(val).toLocaleString()}${mark}` : `${val.toLocaleString()}개${mark}`;
+  };
+  const title = `PW: ${pwMatch ? (pwMatch.name || '매칭 안 됨') : '매칭 안 됨'} · BH: ${bhMatch ? (bhMatch.name || '매칭 안 됨') : '매칭 안 됨'}`;
+
+  return `<td class="metric" title="${escapeHtml(title)}">
+    <div class="metriccell">
+      <div class="metricbar">
+        <span class="metricbar-val pw">${label(pwMatch, pwVal)}</span>
+        <div class="metricbar-track">${track}</div>
+        <span class="metricbar-val bh">${label(bhMatch, bhVal)}</span>
+      </div>
+    </div>
+  </td>`;
 }
 
 function renderPlatformSection(platformKey, data, stockComparison) {
@@ -177,7 +190,7 @@ function renderPlatformSection(platformKey, data, stockComparison) {
   const headerCells = ['순위', 'IP', '시리즈',
     ...displayFields.map(f => `${fieldIcon(f)} ${FIELD_LABELS[f] || f}`),
     '⏰ 시각', '결과', '게시물',
-    ...(hasStock ? ['📦PW 매출', '📦BH 매출'] : [])];
+    ...(hasStock ? ['📦 매출 (PW vs BH)'] : [])];
 
   const rows = products.map((p, i) => {
     const rank = i + 1;
@@ -193,8 +206,7 @@ function renderPlatformSection(platformKey, data, stockComparison) {
       `<td>${verdictBadge(p.verdict)}</td>`,
       `<td><button class="toggle-btn" onclick="toggleEmbeds('${embedRowId}','${platformKey}',this)">▶ 보기</button></td>`,
       ...(hasStock ? [
-        stockMatchCell(findStockMatch(p.ip, p.line, pwStockRanked)),
-        stockMatchCell(findStockMatch(p.ip, p.line, bhStockRanked)),
+        salesBar(findStockMatch(p.ip, p.line, pwStockRanked), findStockMatch(p.ip, p.line, bhStockRanked)),
       ] : []),
     ].join('');
 
@@ -324,15 +336,6 @@ td.metric{min-width:170px}
 .time-raw:first-child{text-align:left}.time-raw:last-child{text-align:right}
 .time-diff-num{flex:none;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;color:#6b7280}
 .time-diff-num.pw{color:#1971c2}.time-diff-num.bh{color:#c0504d}
-/* 매출 매칭 칸은 "3위 200개" 정도의 짧은 텍스트만 들어가서, 다른 지표 칸(min-width:170px,
-   분할바/diverging바용)만큼 넓을 필요가 없음 — 두 클래스 조합(.metric.sm-*)으로 명시해서
-   기본 .metric{min-width:170px}보다 우선 적용, 표 전체 폭을 줄여서 가로 스크롤 없이도
-   들어갈 수 있게 함. */
-td.metric.sm-match, td.metric.sm-estimate, td.metric.sm-none{min-width:64px;text-align:left}
-td.sm-match, td.sm-estimate{font-size:12px;font-variant-numeric:tabular-nums}
-td.sm-estimate{border-bottom:1px dotted #2f9e44}
-.sm-rank{color:#2f9e44;font-weight:700}
-.sm-count{color:#495057;font-weight:600}
 td.sm-none{color:#c9ced8;font-size:12px}
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
 .badge.ok{background:#ebfbee;color:#2f9e44}.badge.mid{background:#fff4e6;color:#e8590c}.badge.low{background:#fff0f0;color:#c0504d}
@@ -373,7 +376,7 @@ ${sections}
 ※ 표현이 서로 다르거나 상품명을 못 뽑은 게시물은 "매칭 안 됨" 목록에 별도로 있습니다 — 조용히 빠진 게 아닙니다.<br>
 ※ 결과(우세/경합/약세)는 표에 표시된 지표(리트윗+좋아요 또는 좋아요+댓글)가 둘 다 PW가 크면 우세, 둘 다 작으면 약세, 엇갈리면 경합입니다.<br>
 ※ "게시물 보기"는 인터넷 연결된 브라우저에서 열어야 실제 카드로 보입니다 — 오프라인/차단 상태면 링크만 보임.<br>
-※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).${stockComparison ? '<br>※ 📦PW/BH 매출 칸(표 우측 끝, 가로 스크롤): 상품명으로 네이버 재고 데이터와 근사 매칭한 결과 — 초록 숫자(순위)+회색 숫자(개수)는 그 스토어 안에서의 총 판매추정 순위와 개수. 현재 재고를 가장 가까운 1000단위로 올려 "초기 판매한도였을 것"으로 가정하고 역산한 값이라 항상 "*"와 밑줄 점선으로 추정치임을 표시합니다(리포트를 언제 뽑든 안정적인 값이지만 실제 한도와는 다를 수 있음). "-"는 매칭되는 재고 상품을 못 찾은 경우. 마우스 올리면 실제로 매칭된 재고 상품명이 보이니 매칭이 맞는지 확인해보세요.' : ''}
+※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).${stockComparison ? '<br>※ 📦 매출 칸(표 우측 끝, 가로 스크롤): 상품명으로 네이버 재고 데이터와 근사 매칭한 결과를 리트윗/좋아요 칸과 같은 분할 바로 표시 — 막대는 PW/BH 총 판매추정치(개수) 비율, 숫자 뒤 "*"는 현재 재고를 가장 가까운 1000단위로 올려 "초기 판매한도였을 것"으로 가정하고 역산한 추정치라는 표시. "매칭 안 됨"은 그 스토어에서 이름이 비슷한 재고 상품을 못 찾은 경우, "-"는 PW/BH 둘 다 못 찾은 경우. 마우스 올리면 실제로 매칭된 재고 상품명이 보이니 매칭이 맞는지 확인해보세요.' : ''}
 </div>
 ${renderStockSectionHtml(stockComparison)}
 </div>
