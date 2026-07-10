@@ -231,13 +231,21 @@ const AI_TEXT_STRIP_SCALE = 2; // 원본 텍스트가 워낙 작아서(칸 폭 1
 
 // 각 행의 "텍스트 영역"(사진 아래 ~ 다음 행 사진 시작 전) 높이를 계산.
 // grid-detect가 잡아주는 건 사진 높이(cardH)뿐이라, 그 아래 상품명/가격 텍스트 줄은 직접 계산해야 한다.
+// 마지막 행은 다음 행 기준점이 없어서, 다른 행들의 실측 텍스트 높이 중간값으로 추정한다
+// (별점/예약마감일/여러 줄 상품명처럼 텍스트가 긴 포맷에서도 고정값보다 안정적).
 function computeRowTextBottoms(src) {
   const { rows, cardH } = src.grid;
-  return rows.map((y, i) => (i + 1 < rows.length ? rows[i + 1] : Math.min(src.img.height, y + cardH + 130)));
+  const gaps = rows.slice(0, -1).map((y, i) => rows[i + 1] - (y + cardH));
+  const sorted = [...gaps].sort((a, b) => a - b);
+  const medianGap = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 200;
+  return rows.map((y, i) => (i + 1 < rows.length ? rows[i + 1] : Math.min(src.img.height, y + cardH + medianGap)));
 }
 
 // itemIndexInSource(그 소스 안에서 0부터 시작하는 인덱스)에 해당하는 칸의 "텍스트만" 크롭.
 // 사진은 빼고 이 부분만 보내야 AI가 쓸 수 있는 해상도를 전부 글자에 쓸 수 있다.
+// 높이에 상한을 두지 않는다 — 예전엔 160px로 강제 제한했는데, 별점/예약마감일/여러 줄
+// 상품명이 섞인 실제 스토어 페이지에서는 텍스트가 160px를 넘어가면서 잘려 AI가 잘린
+// 글자를 억지로 읽으려다 엉뚱한 텍스트를 만들어내는 문제가 있었다.
 function cropItemTextRegion(src, itemIndexInSource) {
   const { cols, rows, cardW, cardH } = src.grid;
   const rowTextBottoms = computeRowTextBottoms(src);
@@ -245,7 +253,7 @@ function cropItemTextRegion(src, itemIndexInSource) {
   const ci = itemIndexInSource % cols.length;
   const x = cols[ci];
   const yTop = rows[ri] + cardH;
-  const height = Math.max(20, Math.min(160, rowTextBottoms[ri] - yTop));
+  const height = Math.max(20, rowTextBottoms[ri] - yTop);
   return GridDetect.cropCell(src.img, x, yTop, cardW, height);
 }
 
