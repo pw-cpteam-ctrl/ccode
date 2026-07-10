@@ -55,7 +55,7 @@ Step 5: 최종 분할 & 내보내기
 | **lib/render-page.js** | 카드 렌더(5×4), 미리보기 스트립 | ✓ 포팅 완료 |
 | **lib/seed-data.js** | IP명 사전, 등급표, 클러스터, 스토어 프로필 초기값 | ✓ 완성 |
 | **lib/github.js** | GitHub Contents API 커밋 (사전 저장용) | ✓ 완성 |
-| **api/parse-image.js** | Claude Vision(Haiku) 이미지 인식 | ✓ 배포됨 |
+| **api/parse-image.js** | Claude Vision(Sonnet) 이미지 인식 | ✓ 배포됨 |
 | **api/load-dict.js** | 사전 데이터 조회 (선택) | ✓ 배포됨 |
 | **api/save-dict.js** | 사전 데이터 저장 (선택) | ✓ 배포됨 |
 
@@ -78,7 +78,7 @@ Step 5: 최종 분할 & 내보내기
 - **범위**: IP명/태그/가격/배송비/등급/순서 누적 (여러 세션 유지)
 
 ### 4. AI 인식 (선택 기능)
-- **모델**: `claude-haiku-4-5` (저렴함, 이미지 인식 충분)
+- **모델**: `claude-sonnet-5` (haiku 대비 단가 2배지만, 사진+텍스트 복합 인식에서 정확도 개선)
 - **호출 시점**: Step 1에서 "AI로 채우기" 버튼 클릭만 (자동 호출 없음)
 - **결과**: 항상 "⚠ 추정 - 확인 필요" 배지로만 표시 (자동 확정 금지)
 - **배치 방식**: 한 번에 3개씩 나눠서 호출 (정확도 개선)
