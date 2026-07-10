@@ -570,6 +570,37 @@ check('stock-report: 종합표 추이 그래프 — x축 라벨이 날짜/시각
   assert.ok(html.includes('>07-09<'), '날짜 라벨도 그대로 나와야 함(시각과 별도 줄)');
 });
 
+check('stock-report: 종합표 추이 그래프 — PW가 좁은 범위(994~999)에서만 움직여도, BH(변화 없음)와 축을 공유하지 않아서 눌리지 않고 보여야 함', () => {
+  // 실사용 버그 리포트 재현: PW 총판매추정이 994~999개(범위 5)로 아주 좁게 움직이는데,
+  // 이걸 BH(386개, 변화 없음)와 같은 축(0부터 시작)에 그리면 5개짜리 움직임이 전체 축의
+  // 1%도 안 돼서 "일자"로 보임 — PW/BH를 각자 축을 가진 두 그래프(위아래)로 분리해서
+  // 그 문제를 해결했는지, PW 선의 y좌표가 실제로 서로 달라지는지 확인.
+  const history = {
+    snapshots: [
+      { takenAt: '2026-07-09T00:34:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9001 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 4614 }],
+      } },
+      { takenAt: '2026-07-09T00:53:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9006 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 4614 }],
+      } },
+      { takenAt: '2026-07-09T04:24:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9004 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 4614 }],
+      } },
+    ],
+  };
+  const compared = buildStockComparison(history);
+  const html = renderStockSectionHtml(compared);
+  const pathMatches = [...html.matchAll(/<path d="([^"]+)"/g)].map(m => m[1]);
+  assert.strictEqual(pathMatches.length, 2, 'PW 패널 1개 + BH 패널 1개, 총 path 2개여야 함');
+  const pwYs = [...pathMatches[0].matchAll(/[ML]-?[\d.]+,(-?[\d.]+)/g)].map(m => parseFloat(m[1]));
+  assert.strictEqual(pwYs.length, 3, 'PW 점 3개(994~999개 대응)가 모두 그려져야 함');
+  const spread = Math.max(...pwYs) - Math.min(...pwYs);
+  assert.ok(spread > 20, `PW가 994~999개로만 움직여도(BH와 축을 공유하지 않으므로) 화면상 y좌표 차이가 눈에 띄어야 함(실측 ${spread.toFixed(1)}px)`);
+});
+
 check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 다)를 old/로 옮기고 새 타임스탬프 경로를 돌려줌', () => {
   const dir = path.join(__dirname, 'verify-output', 'archive-test');
   fs.rmSync(dir, { recursive: true, force: true });

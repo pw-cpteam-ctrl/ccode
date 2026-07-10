@@ -275,16 +275,20 @@ function deltaPairText(pwDelta, bhDelta) {
   return `PW ${one(pwDelta)} · BH ${one(bhDelta)}`;
 }
 
-// 매칭된 상품 하나의 PW/BH "총판매추정" 추이 — 꺾은선 2개(PW 파랑/BH 빨강). 처음엔
-// 원본 재고 수량을 그렸는데, 재고는 초기 판매한도(큰 고정값)에서 조금씩 줄어드는
-// 구조라 그 큰 고정값이 축을 지배해버려서 실제 변화폭이 작아 보이는 문제가 있었음
-// (지수화로 스케일을 맞춰봤지만, 사용자 피드백: "그냥 총판매추정 개수로 그리면 되지
-// 굳이 지수화할 필요 없다"). 총판매추정(estimateInitialCap - 재고)은 그 자체가 이미
-// "변화량 누적치"라 축이 큰 고정값에 짓눌리지 않고 자연스럽게 우상향하는 선이 됨 —
-// PW/BH 규모가 달라도(996개 vs 386개) 각자 축 상에서 증가 추세가 그대로 드러남.
-// 실제 재고 수량은 각 점의 툴팁에서 확인 가능. 토글을 열 때만 계산해서 보여주면 되므로
-// 매번 새로 그림 — 시점이 1~2개뿐이면 사실상 점 1~2개라 "추이"라 부르기 애매해서(표와
-// 다를 게 없음) 그래프 대신 안내 문구로 대체, 3개부터 그래프로 그림.
+// 매칭된 상품 하나의 PW/BH "총판매추정" 추이.
+//
+// ⚠️ 세 번째 시행착오: (1) 원본 재고 수량을 한 축에 그렸다가 큰 고정값(초기한도)에
+// 축이 지배당해 변화가 안 보임 → (2) 최초 시점=100 지수화로 바꿨는데 사용자가 "그냥
+// 개수로 그리면 되지 지수화 왜 하냐"고 반려 → (3) 총판매추정 개수를 그대로 그렸지만,
+// 실제 데이터로 확인해보니 여전히 일자로 보임: PW가 994~999개(하루 새 5개 차이)처럼
+// 아주 좁은 범위에서 움직이는데, 그 값을 BH(386개, 변화 없음)와 **같은 축**(0부터
+// 시작)에 그리다 보니 5개짜리 변화가 전체 축(0~1000+)의 0.5%도 안 돼서 또 안 보임 —
+// 축을 0부터 강제로 시작한 게 원인. 그래서 PW/BH를 각자 축을 가진 두 개의 작은
+// 그래프(위아래로 쌓음, small multiples)로 분리하고, 각 축은 그 시리즈 자체의
+// 최소~최대 범위로 확대(0 강제 안 함) — 주가 차트처럼 "그 범위 안에서의 움직임"이
+// 목적이라 0을 포함할 필요가 없음. 이러면 PW의 994~999개짜리 미세한 변화도, BH의
+// 진짜로 변화 없는 평평한 선도 각자 제대로 보임. 값이 완전히 똑같아 축 범위가 0이
+// 되는 경우엔 위아래로 최소 여백을 줘서 선이 차트 중앙에 보이게 함.
 function stockTrendChart(pwSeries, bhSeries, pwName, bhName) {
   const allDates = [...new Set([...pwSeries, ...bhSeries].map(p => p.takenAt))].sort();
   if (allDates.length < 3) {
@@ -299,55 +303,58 @@ function stockTrendChart(pwSeries, bhSeries, pwName, bhName) {
   const bhSold = toSoldSeries(bhSeries);
 
   const w = Math.max(560, allDates.length * 100);
-  const h = 230;
-  const ml = 60, mr = 20, mt = 16, mb = 50;
-  const chartW = w - ml - mr, chartH = h - mt - mb;
-  const maxSold = Math.max(1, ...pwSold.map(p => p.totalSold), ...bhSold.map(p => p.totalSold)) * 1.15;
-  const minSold = Math.min(0, ...pwSold.map(p => p.totalSold), ...bhSold.map(p => p.totalSold));
-  const range = (maxSold - minSold) || 1;
+  const ml = 60, mr = 20;
+  const chartW = w - ml - mr;
+  const panelH = 130, panelMt = 20, panelMb = 10;
+  const chartH = panelH - panelMt - panelMb;
+  const xAxisH = 34;
+  const h = panelH * 2 + xAxisH;
 
   const x = i => ml + (allDates.length > 1 ? (i / (allDates.length - 1)) * chartW : chartW / 2);
-  const y = v => mt + chartH - ((v - minSold) / range) * chartH;
 
-  function linePath(series) {
+  function panel(series, color, name, yOffset) {
+    const values = series.map(p => p.totalSold);
+    const rawMin = Math.min(...values), rawMax = Math.max(...values);
+    // 값이 다 같으면(rawMax===rawMin) 범위가 0이 되니 최소 여백을 강제로 줌.
+    const pad = (rawMax - rawMin) * 0.2 || Math.max(1, Math.abs(rawMax) * 0.05, 1);
+    const min = rawMin - pad, max = rawMax + pad;
+    const range = (max - min) || 1;
+    const y = v => yOffset + panelMt + chartH - ((v - min) / range) * chartH;
+
+    const gridLines = [];
+    const ticks = 3;
+    for (let i = 0; i <= ticks; i++) {
+      const v = min + (range / ticks) * i;
+      const yy = y(v);
+      gridLines.push(`<line x1="${ml}" y1="${yy}" x2="${w - mr}" y2="${yy}" stroke="#e9ecef" stroke-width="1"/>`);
+      gridLines.push(`<text x="${ml - 8}" y="${yy + 3}" font-size="10" fill="#6b7280" text-anchor="end">${Math.round(v).toLocaleString()}</text>`);
+    }
     const points = allDates
-      .map((d, i) => { const rec = series.find(p => p.takenAt === d); return rec ? { i, v: rec.totalSold } : null; })
+      .map((d, i) => { const rec = series.find(p => p.takenAt === d); return rec ? { i, rec } : null; })
       .filter(Boolean);
-    return points.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${x(p.i)},${y(p.v)}`).join(' ');
-  }
-  function dots(series, color) {
-    return allDates.map((d, i) => {
-      const rec = series.find(p => p.takenAt === d);
-      if (!rec) return '';
-      return `<circle cx="${x(i)}" cy="${y(rec.totalSold)}" r="3.5" fill="#fff" stroke="${color}" stroke-width="2"><title>${escapeHtml(formatTakenAt(d))} · ${rec.totalSold.toLocaleString()}개 판매추정(재고 ${rec.stock.toLocaleString()}개)</title></circle>`;
-    }).join('');
+    const path = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${x(p.i)},${y(p.rec.totalSold)}`).join(' ');
+    const dots = points.map(p => `<circle cx="${x(p.i)}" cy="${y(p.rec.totalSold)}" r="3.5" fill="#fff" stroke="${color}" stroke-width="2"><title>${escapeHtml(formatTakenAt(p.rec.takenAt))} · ${p.rec.totalSold.toLocaleString()}개 판매추정(재고 ${p.rec.stock.toLocaleString()}개)</title></circle>`).join('');
+    const label = `<text x="${ml}" y="${yOffset + 12}" font-size="11" font-weight="700" fill="${color}">${escapeHtml(name)}</text>`;
+    return `${label}${gridLines.join('')}<path d="${path}" fill="none" stroke="${color}" stroke-width="2"/>${dots}`;
   }
 
-  const gridLines = [];
-  const ticks = 4;
-  for (let i = 0; i <= ticks; i++) {
-    const v = minSold + (range / ticks) * i;
-    const yy = y(v);
-    gridLines.push(`<line x1="${ml}" y1="${yy}" x2="${w - mr}" y2="${yy}" stroke="#e9ecef" stroke-width="1"/>`);
-    gridLines.push(`<text x="${ml - 8}" y="${yy + 3}" font-size="10" fill="#6b7280" text-anchor="end">${Math.round(v).toLocaleString()}</text>`);
-  }
+  const pwPanel = panel(pwSold, '#1971c2', `PW ${pwName}`, 0);
+  const bhPanel = panel(bhSold, '#c0504d', `BH ${bhName}`, panelH);
+  const divider = `<line x1="${ml}" y1="${panelH}" x2="${w - mr}" y2="${panelH}" stroke="#eef0f4" stroke-width="1"/>`;
+
   // 같은 날짜에 스냅샷을 여러 번 찍을 수도 있어서(하루에 여러 번 실행) 날짜만 보여주면
   // 라벨이 죄다 "07-09"로 겹쳐 보임 — 날짜/시각을 2줄로 나눠서 구분되게 표시.
   const xLabels = allDates.map((d, i) => {
     const [datePart, timePart] = formatTakenAt(d).split(' ');
-    return `<text x="${x(i)}" y="${h - 24}" font-size="10" fill="#6b7280" text-anchor="middle">${escapeHtml(datePart.slice(5))}</text>` +
-      `<text x="${x(i)}" y="${h - 10}" font-size="10" fill="#6b7280" text-anchor="middle">${escapeHtml(timePart)}</text>`;
+    const baseY = panelH * 2;
+    return `<text x="${x(i)}" y="${baseY + 14}" font-size="10" fill="#6b7280" text-anchor="middle">${escapeHtml(datePart.slice(5))}</text>` +
+      `<text x="${x(i)}" y="${baseY + 28}" font-size="10" fill="#6b7280" text-anchor="middle">${escapeHtml(timePart)}</text>`;
   }).join('');
 
-  const svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${gridLines.join('')}
-    <path d="${linePath(pwSold)}" fill="none" stroke="#1971c2" stroke-width="2"/>
-    <path d="${linePath(bhSold)}" fill="none" stroke="#c0504d" stroke-width="2"/>
-    ${dots(pwSold, '#1971c2')}${dots(bhSold, '#c0504d')}${xLabels}
-  </svg>`;
+  const svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${pwPanel}${divider}${bhPanel}${xLabels}</svg>`;
 
   return `<div class="trend-wrap">
-    <div class="trend-legend"><span class="pw">● PW ${escapeHtml(pwName)}</span><span class="bh">● BH ${escapeHtml(bhName)}</span></div>
-    <div class="trend-sub">총판매추정(개) 추이 · 실제 재고 수량은 점에 마우스를 올리면 확인 가능</div>
+    <div class="trend-sub">총판매추정(개) 추이 · PW/BH 각자 변화폭에 맞춰 축을 따로 확대함(둘의 축 스케일이 서로 다를 수 있음) · 실제 재고 수량은 점에 마우스를 올리면 확인 가능</div>
     <div class="trend-scroll">${svg}</div>
   </div>`;
 }
