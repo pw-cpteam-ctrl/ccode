@@ -439,55 +439,72 @@ function scaledThumb(canvas) {
 // ============================================================
 let dragFromIndex = null;
 
+// 5열 x 2줄 = 10개 단위로 박스를 나눠서 "1p, 2p..." 구분선을 넣는다 — 카드가 계속
+// 한 줄로 쭉 이어지면 몇 번째 묶음인지 눈으로 가늠하기 어려워서 실사용 중 요청받은 구성.
+const PREVIEW_PAGE_GROUP_SIZE = 10;
+
 function renderPreviewGrid(containerId, items, opts) {
   const container = document.getElementById(containerId);
   container.innerHTML = '';
-  items.forEach((item, idx) => {
-    const card = document.createElement('div');
-    card.className = 'pcard';
-    card.draggable = !!opts.draggable;
-    card.dataset.index = idx;
+  const pages = chunk(items, PREVIEW_PAGE_GROUP_SIZE);
 
-    const checkboxHtml = opts.selectable
-      ? `<input type="checkbox" class="del-check" data-id="${item.id}" ${state.pendingDeleteIds.includes(item.id) ? 'checked' : ''} />`
-      : '';
+  pages.forEach((pageItems, pageIdx) => {
+    const pageBox = document.createElement('div');
+    pageBox.className = 'preview-page-box';
+    pageBox.innerHTML = `<div class="preview-page-label">${pageIdx + 1}p</div>`;
+    const grid = document.createElement('div');
+    grid.className = 'preview-grid';
+    pageBox.appendChild(grid);
+    container.appendChild(pageBox);
 
-    card.innerHTML = `
-      ${checkboxHtml}
-      <button class="edit-btn" data-edit="${item.id}">✎</button>
-      <div class="thumb-slot"></div>
-      <div class="ip">${item.aiUncertain ? '⚠ ' : ''}${item.ip || '<span style=\"color:#c0c4cc\">IP명 없음</span>'}${item.tag ? `<span class="tag">${item.tag}</span>` : ''}</div>
-      <div class="price">${item.price || ''}</div>
-      <div class="ship">${item.ship || ''}</div>
-    `;
-    card.querySelector('.thumb-slot').appendChild(scaledThumb(state.photos[item.photoId]));
-    container.appendChild(card);
+    pageItems.forEach((item, localIdx) => {
+      const idx = pageIdx * PREVIEW_PAGE_GROUP_SIZE + localIdx; // state.items 기준 전체 인덱스 유지
+      const card = document.createElement('div');
+      card.className = 'pcard';
+      card.draggable = !!opts.draggable;
+      card.dataset.index = idx;
 
-    card.querySelector('[data-edit]').addEventListener('click', () => openItemDialog(item.id));
+      const checkboxHtml = opts.selectable
+        ? `<input type="checkbox" class="del-check" data-id="${item.id}" ${state.pendingDeleteIds.includes(item.id) ? 'checked' : ''} />`
+        : '';
 
-    if (opts.selectable) {
-      card.querySelector('.del-check').addEventListener('change', (e) => {
-        if (e.target.checked) state.pendingDeleteIds.push(item.id);
-        else state.pendingDeleteIds = state.pendingDeleteIds.filter((id) => id !== item.id);
-        updateSelectedCount();
-      });
-    }
+      card.innerHTML = `
+        ${checkboxHtml}
+        <button class="edit-btn" data-edit="${item.id}">✎</button>
+        <div class="thumb-slot"></div>
+        <div class="ip">${item.aiUncertain ? '⚠ ' : ''}${item.ip || '<span style=\"color:#c0c4cc\">IP명 없음</span>'}${item.tag ? `<span class="tag">${item.tag}</span>` : ''}</div>
+        <div class="price">${item.price || ''}</div>
+        <div class="ship">${item.ship || ''}</div>
+      `;
+      card.querySelector('.thumb-slot').appendChild(scaledThumb(state.photos[item.photoId]));
+      grid.appendChild(card);
 
-    if (opts.draggable) {
-      card.addEventListener('dragstart', () => { dragFromIndex = idx; });
-      card.addEventListener('dragover', (e) => { e.preventDefault(); card.classList.add('dragover'); });
-      card.addEventListener('dragleave', () => card.classList.remove('dragover'));
-      card.addEventListener('drop', (e) => {
-        e.preventDefault();
-        card.classList.remove('dragover');
-        if (dragFromIndex === null || dragFromIndex === idx) return;
-        const [moved] = state.items.splice(dragFromIndex, 1);
-        state.items.splice(idx, 0, moved);
-        dragFromIndex = null;
-        renderPreviewGrid(containerId, state.items, opts);
-        updateSplitPreviewText();
-      });
-    }
+      card.querySelector('[data-edit]').addEventListener('click', () => openItemDialog(item.id));
+
+      if (opts.selectable) {
+        card.querySelector('.del-check').addEventListener('change', (e) => {
+          if (e.target.checked) state.pendingDeleteIds.push(item.id);
+          else state.pendingDeleteIds = state.pendingDeleteIds.filter((id) => id !== item.id);
+          updateSelectedCount();
+        });
+      }
+
+      if (opts.draggable) {
+        card.addEventListener('dragstart', () => { dragFromIndex = idx; });
+        card.addEventListener('dragover', (e) => { e.preventDefault(); card.classList.add('dragover'); });
+        card.addEventListener('dragleave', () => card.classList.remove('dragover'));
+        card.addEventListener('drop', (e) => {
+          e.preventDefault();
+          card.classList.remove('dragover');
+          if (dragFromIndex === null || dragFromIndex === idx) return;
+          const [moved] = state.items.splice(dragFromIndex, 1);
+          state.items.splice(idx, 0, moved);
+          dragFromIndex = null;
+          renderPreviewGrid(containerId, state.items, opts);
+          updateSplitPreviewText();
+        });
+      }
+    });
   });
 
   if (containerId === 'previewGrid') updateSplitPreviewText();

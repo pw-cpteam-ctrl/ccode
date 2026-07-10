@@ -71,10 +71,13 @@
   @media (max-width: 900px) { .step2-grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 480px) { .step2-grid { grid-template-columns: 1fr; } }
 
-  .preview-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; }
-  @media (max-width: 1024px) { .preview-grid { grid-template-columns: repeat(6, 1fr); gap: 6px; } }
-  @media (max-width: 768px) { .preview-grid { grid-template-columns: repeat(4, 1fr); gap: 6px; } }
-  @media (max-width: 480px) { .preview-grid { grid-template-columns: repeat(3, 1fr); gap: 4px; } }
+  .preview-pages { display: flex; flex-direction: column; gap: 14px; }
+  .preview-page-box { border: 1px solid var(--line2); border-radius: 8px; padding: 10px; background: #fafafa; }
+  .preview-page-label { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+  .preview-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  @media (max-width: 1024px) { .preview-grid { grid-template-columns: repeat(4, 1fr); gap: 6px; } }
+  @media (max-width: 768px) { .preview-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; } }
+  @media (max-width: 480px) { .preview-grid { grid-template-columns: repeat(2, 1fr); gap: 4px; } }
   .pcard { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: #fff; cursor: grab; position: relative; min-height: 120px; }
   .pcard.dragover { outline: 2px dashed var(--accent); }
   .pcard .del-check { position: absolute; top: 6px; left: 6px; z-index: 2; width: 18px; height: 18px; }
@@ -175,7 +178,7 @@
         </div>
         <div id="splitPreviewText" style="font-size:12px;color:var(--muted);"></div>
       </div>
-      <div class="preview-grid" id="previewGrid"></div>
+      <div class="preview-pages" id="previewGrid"></div>
     </div>
     <div class="footer-nav">
       <button class="btn" id="backTo2Btn">← 이전 (표 정리)</button>
@@ -211,7 +214,7 @@
         <select id="storeSelectStep5"></select>
         <button class="btn primary" id="autoSortBtn">자동 정렬 적용</button>
       </div>
-      <div class="preview-grid" id="sortPreviewGrid"></div>
+      <div class="preview-pages" id="sortPreviewGrid"></div>
     </div>
     <div class="footer-nav">
       <button class="btn" id="backTo3Btn">← 미리보기로 돌아가서 수동 조정</button>
