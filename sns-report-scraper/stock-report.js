@@ -1,18 +1,20 @@
 /**
  * naver-stock-snapshot.js가 쌓아둔 재고 히스토리를 정리해서 상품별 "총 판매 추정치"를 계산.
  *
- * ⚠️ 처음엔 "직전 스냅샷 대비 변화량"(그 사이에만 몇 개 팔렸는지)을 기본으로 썼는데, 사용자
- * 피드백으로 방향을 바꿈: "언제 리포트를 내든 현시점 몇 개 팔렸는지(총 판매 추정)가 궁금한
- * 거고, 스냅샷 사이 변화 추이는 그 자체로 별도 관심사"라는 게 명확해짐. 그래서 이제 기본
- * 지표는 **totalSold**(이 상품을 처음 관측한 이후 총 추정 판매량, 스냅샷 주기와 무관하게
- * 안정적)로 삼고, stockDelta(직전 스냅샷 대비)는 참고용으로만 남겨둠.
+ * ⚠️ 두 번째 방향 전환: 한때 "이 상품을 우리가 처음 관측했을 때 재고 - 현재재고"(firstStock
+ * 기준 실측 delta)를 "실제 기준점 있음(hasRealBaseline)"으로 우대해서 썼는데, 이러면 스냅샷을
+ * 쌓기 시작한 지 며칠 안 된 상품은 "우리가 추적한 이후"만 잡혀서 1개/6개/8개처럼 터무니없이
+ * 작은 숫자가 나옴 — 메가하우스 피규어는 예약판매가 보통 몇 달째 진행 중이라 실제 누적 판매는
+ * 그보다 훨씬 큰데, 우리 관측 시작점이 늦었다는 이유로 축소돼 보이는 문제.
  *
- * totalSold 계산: 이 상품을 과거 스냅샷(최신 제외) 중 가장 먼저 관측했을 때의 재고를 기준점
- * (firstStock)으로 삼아 `firstStock - 현재재고`. 한 번도 이전에 관측된 적 없는(이번이 정말
- * 처음 잡힌) 상품만, 메가하우스 예약판매 관행(9999/10000 같은 "깔끔한" 숫자로 판매 한도를
- * 걸어둠)을 이용해 현재 재고 위의 가장 가까운 1000단위를 "초기 한도"로 가정하고 역산
- * (estimateInitialCap) — 이 경우만 totalSoldIsEstimated=true로 표시해서 정확도 차이를 숨기지
- * 않음.
+ * 그래서 이제 totalSold는 실제 과거 스냅샷 유무와 무관하게 **항상** 메가하우스 예약판매 관행
+ * (9999/10000 같은 "깔끔한" 숫자로 판매 한도를 걸어둠)을 이용해 현재 재고 위의 가장 가까운
+ * 1000단위를 "초기 한도"로 가정하고 역산(estimateInitialCap)한다 — `초기한도 - 현재재고`.
+ * 예약 시작 시점부터의 총 판매를 더 잘 반영하지만 여전히 추정치이므로 totalSoldIsEstimated는
+ * 항상 true, 화면엔 "*"로 표시해서 정확도 한계를 숨기지 않음.
+ *
+ * stockDelta(직전 스냅샷 대비 변화량)는 참고용으로 그대로 남겨둠 — "최근에 얼마나 움직였는지"는
+ * totalSold(누적)와는 별개 관심사.
  *
  * 결과물은 두 군데에서 씀(html-report.js): (1) SNS 비교표 우측 끝에 붙는 매출 매칭 컬럼
  * (findStockMatch), (2) 리포트 맨 아래 독립 섹션으로 PW/BH 재고 전체 목록(renderStockSectionHtml)
@@ -23,29 +25,25 @@ function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// 실제 기준점(firstStock)이 없는 상품(이번이 정말 처음 관측된 경우)에만 쓰는 대체 추정 —
-// 현재 재고를 가장 가까운 1000단위로 올려서 "초기 판매한도였을 것"으로 가정하고 역산.
+// 현재 재고를 가장 가까운 1000단위로 올려서 "초기 판매한도였을 것"으로 가정하고 역산 —
+// totalSold는 실제 과거 기록 유무와 무관하게 항상 이 방식으로 계산(위 파일 헤더 설명 참고).
 function estimateInitialCap(stock) {
   if (typeof stock !== 'number') return null;
   return Math.max(1000, Math.ceil(stock / 1000) * 1000);
 }
 
 // 히스토리(naver-stock-snapshot.js가 저장한 { snapshots: [...] })를 받아서 store(PW/BH)별로
-// 상품별 총 판매 추정치(totalSold)를 계산. 스냅샷이 1개뿐이면 firstStock 기준점이 없어서
-// 전부 초기 한도 추정으로 대체.
+// 상품별 총 판매 추정치(totalSold)를 계산.
 //
 // store별로 "비교 가능 여부(storeComparable)"를 따로 둠 — 직전 스냅샷이 전체적으로 존재해도,
 // 그 시점에 특정 store만 수집 실패(0건)했을 수 있음(예: 로그인 게이트 걸려서 BH만 0건이었던
-// 적이 있었음) — stockDelta(직전 대비, 참고용) 계산에만 영향, totalSold는 "최신 제외 과거
-// 스냅샷 전체"에서 최초 관측치를 찾으므로 직전 스냅샷 하나가 비어도 그 전 스냅샷에 데이터가
-// 있으면 영향 없음.
+// 적이 있었음) — stockDelta(직전 대비, 참고용) 계산에만 영향을 줌.
 function buildStockComparison(history) {
   const snapshots = history?.snapshots || [];
   if (snapshots.length === 0) return null;
 
   const latest = snapshots[snapshots.length - 1];
   const previous = snapshots.length >= 2 ? snapshots[snapshots.length - 2] : null;
-  const priorSnapshots = snapshots.slice(0, -1); // 최신 제외 — "이전에 관측된 적 있는지" 판단용
   const storeLabels = Object.keys(latest.stores || {});
 
   const stores = {};
@@ -56,31 +54,19 @@ function buildStockComparison(history) {
     storeComparable[label] = prevRecords.length > 0;
     const prevByProductId = new Map(prevRecords.map(r => [r.productId, r]));
 
-    // 오래된 스냅샷부터 훑어서 productId별 "최초 관측 재고"를 기록(먼저 찾은 값을 유지).
-    const firstSeen = new Map();
-    for (const snap of priorSnapshots) {
-      for (const r of (snap.stores[label] || [])) {
-        if (typeof r.stock === 'number' && !firstSeen.has(r.productId)) firstSeen.set(r.productId, r.stock);
-      }
-    }
-
     const products = latestRecords.map(r => {
       const prev = prevByProductId.get(r.productId);
       const stockDelta = prev && typeof prev.stock === 'number' && typeof r.stock === 'number'
         ? prev.stock - r.stock // 양수 = 직전 스냅샷 대비 줄어든 수량(참고용, 화면 기본 지표 아님)
         : null;
 
-      const hasRealBaseline = typeof firstSeen.get(r.productId) === 'number';
-      const firstStock = hasRealBaseline ? firstSeen.get(r.productId) : null;
-      const estimatedCap = hasRealBaseline ? null : estimateInitialCap(r.stock);
-      const totalSold = typeof r.stock !== 'number' ? null
-        : hasRealBaseline ? firstStock - r.stock
-          : estimatedCap - r.stock;
+      const estimatedCap = estimateInitialCap(r.stock);
+      const totalSold = typeof r.stock !== 'number' ? null : estimatedCap - r.stock;
 
       return {
         productId: r.productId, name: r.name, price: r.price, stock: r.stock,
         prevStock: prev ? prev.stock : null, stockDelta,
-        firstStock, estimatedCap, totalSold, totalSoldIsEstimated: !hasRealBaseline,
+        estimatedCap, totalSold, totalSoldIsEstimated: true,
       };
     });
 
