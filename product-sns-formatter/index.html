@@ -27,7 +27,6 @@ button.secondary{background:var(--ui-card);color:var(--ui-text);}
 button:disabled{opacity:.5;cursor:not-allowed;}
 .status{font-size:12.5px;color:var(--ui-sub);margin-top:8px;}
 .warn-box{background:#fbf1e4;border:1px solid #ecd6ac;border-radius:8px;padding:12px 14px;margin-top:10px;font-size:12.5px;color:var(--ui-warn);display:none;white-space:pre-line;}
-.result-box{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:14px;margin-top:10px;font-size:14px;white-space:pre-wrap;min-height:60px;display:none;}
 .memo-list{margin-top:10px;display:flex;flex-direction:column;gap:6px;}
 .memo-item{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:8px 12px;font-size:12.5px;}
 .memo-item .at{color:var(--ui-sub);font-size:11px;margin-right:6px;}
@@ -54,11 +53,23 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 .correction-box .c-title{font-weight:700;margin-bottom:4px;}
 .correction-box ul{margin:0;padding-left:18px;}
 .correction-box li{margin-bottom:2px;}
-.brand-toggle{display:flex;width:100%;border:1px solid var(--ui-border);border-radius:8px;overflow:hidden;}
-.brand-opt{flex:1;display:flex;align-items:center;justify-content:center;gap:0;padding:11px 6px;font-size:14px;font-weight:700;cursor:pointer;background:var(--ui-card);color:var(--ui-text);border-right:1px solid var(--ui-border);transition:background .15s,color .15s;user-select:none;}
-.brand-opt:last-child{border-right:none;}
+.diff-wrap{margin-top:10px;}
+.diff-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;}
+.diff-head .diff-label{font-size:12.5px;color:var(--ui-sub);font-weight:700;}
+.diff-toggle-btn{padding:5px 10px;font-size:12px;font-weight:700;}
+.diff-cols{display:flex;gap:10px;}
+.diff-col{flex:1;min-width:0;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:10px 12px;}
+.diff-col-title{font-size:11.5px;font-weight:700;color:var(--ui-sub);margin-bottom:6px;}
+.diff-content{font-size:13.5px;white-space:pre-wrap;word-break:break-word;min-height:40px;}
+.diff-empty{color:var(--ui-sub);}
+del.diffdel{background:#fdecea;color:#c0392b;text-decoration:line-through;text-decoration-color:#c0392b;}
+ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
+.diff-wrap.plain del.diffdel,.diff-wrap.plain ins.diffins{background:none;color:inherit;text-decoration:none;}
+@media (max-width:600px){.diff-cols{flex-direction:column;}}
+.brand-toggle{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;}
+.brand-opt{display:flex;align-items:center;justify-content:center;padding:10px 22px;font-size:14px;font-weight:700;cursor:pointer;background:var(--ui-card);color:var(--ui-text);border:1px solid var(--ui-border);border-radius:8px;transition:background .15s,color .15s,border-color .15s;user-select:none;}
 .brand-opt input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
-.brand-opt.selected{background:var(--ui-accent);color:#fff;}
+.brand-opt.selected{background:var(--ui-accent);color:#fff;border-color:var(--ui-accent);}
 </style>
 </head>
 <body>
@@ -105,7 +116,16 @@ button:disabled{opacity:.5;cursor:not-allowed;}
     <button onclick="runFormat()">변환하기</button>
     <div class="status" id="formatStatus"></div>
     <div class="warn-box" id="formatWarn"></div>
-    <div class="result-box" id="resultBox"></div>
+    <div class="diff-wrap" id="diffWrap" style="display:none;">
+      <div class="diff-head">
+        <span class="diff-label">원문 vs 변환 결과 비교</span>
+        <button type="button" class="secondary diff-toggle-btn" id="btnDiffToggle" onclick="toggleDiffColor()">색깔 없이 보기</button>
+      </div>
+      <div class="diff-cols">
+        <div class="diff-col"><div class="diff-col-title">원문</div><div class="diff-content" id="diffOld"></div></div>
+        <div class="diff-col"><div class="diff-col-title">변환 결과</div><div class="diff-content" id="diffNew"></div></div>
+      </div>
+    </div>
     <div class="correction-box" id="correctionBox"></div>
     <button class="secondary" onclick="copyResult()" id="btnCopy" style="display:none;margin-top:8px;">결과 복사</button>
 
@@ -162,7 +182,7 @@ async function runFormat() {
   if (!productText) { alert('상품정보를 입력해주세요.'); return; }
 
   $('#formatWarn').style.display = 'none';
-  $('#resultBox').style.display = 'none';
+  $('#diffWrap').style.display = 'none';
   $('#correctionBox').style.display = 'none';
   $('#btnCopy').style.display = 'none';
   $('#formatStatus').textContent = '변환 중...';
@@ -178,8 +198,8 @@ async function runFormat() {
 
     lastResult = data.result || '';
     lastCorrections = data.corrections || [];
-    $('#resultBox').textContent = lastResult;
-    $('#resultBox').style.display = 'block';
+    renderDiffView(productText, lastResult);
+    $('#diffWrap').style.display = '';
     renderCorrections(lastCorrections);
     $('#btnCopy').style.display = '';
     $('#formatStatus').textContent = '변환 완료';
@@ -208,8 +228,55 @@ function renderCorrections(corrections) {
   const box = $('#correctionBox');
   if (!corrections || !corrections.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
   box.innerHTML = '<div class="c-title">⚠️ 맞춤법/표현 교정 내역</div><ul>' +
-    corrections.map(c => `<li>${escapeHtml(c)}</li>`).join('') + '</ul>';
+    corrections.map(c => `<li>${boldKeyParts(c)}</li>`).join('') + '</ul>';
   box.style.display = 'block';
+}
+
+// 교정 내역에서 "무엇을 무엇으로" 부분(따옴표/괄호로 감싼 부분)만 볼드 처리 — 많을 때 훑어보기 쉽게.
+function boldKeyParts(text) {
+  const parts = String(text).split(/("[^"]*"|'[^']*'|「[^」]*」|『[^』]*』)/g);
+  return parts.map((p, i) => (i % 2 === 1 ? `<b>${escapeHtml(p)}</b>` : escapeHtml(p))).join('');
+}
+
+/* ── 원문 vs 결과 단어 단위 비교 (위키/코드 리뷰 스타일 좌우 diff) ── */
+function tokenizeForDiff(s) {
+  return String(s || '').split(/(\s+)/).filter(t => t.length > 0);
+}
+function computeDiff(oldText, newText) {
+  const a = tokenizeForDiff(oldText), b = tokenizeForDiff(newText);
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const ops = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { ops.push({ type: 'equal', text: a[i] }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push({ type: 'del', text: a[i] }); i++; }
+    else { ops.push({ type: 'ins', text: b[j] }); j++; }
+  }
+  while (i < n) { ops.push({ type: 'del', text: a[i] }); i++; }
+  while (j < m) { ops.push({ type: 'ins', text: b[j] }); j++; }
+  return ops;
+}
+function renderDiffView(oldText, newText) {
+  const ops = computeDiff(oldText, newText);
+  let oldHtml = '', newHtml = '';
+  for (const op of ops) {
+    const esc = escapeHtml(op.text);
+    if (op.type === 'equal') { oldHtml += esc; newHtml += esc; }
+    else if (op.type === 'del') { oldHtml += `<del class="diffdel">${esc}</del>`; }
+    else { newHtml += `<ins class="diffins">${esc}</ins>`; }
+  }
+  $('#diffOld').innerHTML = oldHtml || '<span class="diff-empty">(내용 없음)</span>';
+  $('#diffNew').innerHTML = newHtml || '<span class="diff-empty">(내용 없음)</span>';
+}
+function toggleDiffColor() {
+  const plain = $('#diffWrap').classList.toggle('plain');
+  $('#btnDiffToggle').textContent = plain ? '색깔 보기' : '색깔 없이 보기';
 }
 
 function copyResult() {
@@ -314,11 +381,11 @@ function applySlot(s) {
   lastResult = s.result || '';
   lastCorrections = s.corrections || [];
   if (lastResult) {
-    $('#resultBox').textContent = lastResult;
-    $('#resultBox').style.display = 'block';
+    renderDiffView(s.productText || '', lastResult);
+    $('#diffWrap').style.display = '';
     $('#btnCopy').style.display = '';
   } else {
-    $('#resultBox').style.display = 'none';
+    $('#diffWrap').style.display = 'none';
     $('#btnCopy').style.display = 'none';
   }
   renderCorrections(lastCorrections);
@@ -367,8 +434,8 @@ document.addEventListener('visibilitychange', () => {
     lastResult = s.result || '';
     lastCorrections = s.corrections || [];
     if (lastResult) {
-      $('#resultBox').textContent = lastResult;
-      $('#resultBox').style.display = 'block';
+      renderDiffView(s.productText || '', lastResult);
+      $('#diffWrap').style.display = '';
       $('#btnCopy').style.display = '';
       renderCorrections(lastCorrections);
     }
