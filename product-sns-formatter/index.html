@@ -54,9 +54,11 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 .correction-box .c-title{font-weight:700;margin-bottom:4px;}
 .correction-box ul{margin:0;padding-left:18px;}
 .correction-box li{margin-bottom:2px;}
-.brand-radios{display:flex;gap:14px;flex-wrap:wrap;}
-.brand-radios label{display:flex;align-items:center;gap:5px;font-size:13.5px;font-weight:600;cursor:pointer;}
-.brand-radios input{cursor:pointer;}
+.brand-toggle{display:flex;width:100%;border:1px solid var(--ui-border);border-radius:8px;overflow:hidden;}
+.brand-opt{flex:1;display:flex;align-items:center;justify-content:center;gap:0;padding:11px 6px;font-size:14px;font-weight:700;cursor:pointer;background:var(--ui-card);color:var(--ui-text);border-right:1px solid var(--ui-border);transition:background .15s,color .15s;user-select:none;}
+.brand-opt:last-child{border-right:none;}
+.brand-opt input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
+.brand-opt.selected{background:var(--ui-accent);color:#fff;}
 </style>
 </head>
 <body>
@@ -85,10 +87,10 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 
     <div class="field">
       <label>브랜드 선택 (필수)</label>
-      <div class="brand-radios" id="brandRadios">
-        <label><input type="radio" name="brand" value="bushiroad"> 부시로드</label>
-        <label><input type="radio" name="brand" value="megahouse"> 메가하우스</label>
-        <label><input type="radio" name="brand" value="goodsmile"> 굿스마일</label>
+      <div class="brand-toggle" id="brandRadios">
+        <label class="brand-opt"><input type="radio" name="brand" value="goodsmile" checked>굿스마일</label>
+        <label class="brand-opt"><input type="radio" name="brand" value="megahouse">메가하우스</label>
+        <label class="brand-opt"><input type="radio" name="brand" value="bushiroad">부시로드</label>
       </div>
     </div>
 
@@ -134,13 +136,23 @@ let lastResult = '';
 let lastCorrections = [];
 
 /* ── 1단계: 변환 (LLM 호출, 백엔드 미배포/키 미설정 시 안내 후 실패) ── */
+const DEFAULT_BRAND = 'goodsmile'; // 굿스마일 건수가 제일 많아서 기본값
 function getSelectedBrand() {
   return document.querySelector('input[name="brand"]:checked')?.value || '';
 }
 function setSelectedBrand(brand) {
-  const el = document.querySelector(`input[name="brand"][value="${brand}"]`);
+  const el = document.querySelector(`input[name="brand"][value="${brand || DEFAULT_BRAND}"]`);
   if (el) el.checked = true;
+  refreshBrandUI();
 }
+function refreshBrandUI() {
+  document.querySelectorAll('.brand-opt').forEach(opt => {
+    opt.classList.toggle('selected', opt.querySelector('input').checked);
+  });
+}
+document.querySelectorAll('#brandRadios input[name="brand"]').forEach(el => {
+  el.addEventListener('change', refreshBrandUI);
+});
 
 async function runFormat() {
   const productText = $('#inProduct').value.trim();
@@ -361,6 +373,7 @@ document.addEventListener('visibilitychange', () => {
       renderCorrections(lastCorrections);
     }
   }
+  refreshBrandUI();
   renderSlots();
 })();
 
