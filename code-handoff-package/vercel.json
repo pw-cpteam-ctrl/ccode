@@ -3,7 +3,7 @@
     "deploymentEnabled": {
       "main": true,
       "claude/code-handoff-package-t86pg4": true,
-      "*": false
+      "**": false
     }
   }
 }
