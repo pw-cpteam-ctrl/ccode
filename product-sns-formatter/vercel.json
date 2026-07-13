@@ -2,7 +2,9 @@
   "ignoreCommand": "[ -z \"$VERCEL_GIT_PREVIOUS_SHA\" ] && exit 1 || git diff --quiet $VERCEL_GIT_PREVIOUS_SHA HEAD ./",
   "git": {
     "deploymentEnabled": {
-      "vercel-deploy-block-verify-test": false
+      "main": true,
+      "claude/sns-formatter-verified-commits-test": true,
+      "*": false
     }
   }
 }

@@ -1,0 +1,9 @@
+{
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "claude/sns-report-automation-k14iq0": true,
+      "*": false
+    }
+  }
+}
