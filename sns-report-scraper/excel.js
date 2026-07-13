@@ -146,6 +146,32 @@ function writeProductPlatformSection(sheet, platformKey, data) {
   sheet.addRow([]);
 }
 
+// Windows에서는 대상 파일(outputPath)이 엑셀 등 다른 프로그램에서 열려있으면 rename이
+// EPERM으로 실패함(맥/리눅스는 열려있어도 rename 가능해서 여기서 처음 겪는 문제). 잠깐의
+// 잠금(백신 검사, OneDrive 동기화 등)일 수도 있어서 몇 번 재시도해보고, 그래도 안 되면
+// "엑셀 파일을 닫아야 함"을 사용자가 바로 알 수 있는 안내 메시지로 바꿔서 던짐 — 원본
+// 스택트레이스만 봐서는 뭘 해야 하는지 알기 어려움. 수집한 데이터 자체는 tmpPath에 그대로
+// 남아있어 유실되지 않음(재시도/재실행 시 새로 만들어지므로 tmpPath를 지우진 않음).
+async function renameWithRetry(tmpPath, outputPath, { retries = 5, delayMs = 1000 } = {}) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      fs.renameSync(tmpPath, outputPath);
+      return;
+    } catch (e) {
+      if (e.code !== 'EPERM' && e.code !== 'EBUSY') throw e;
+      if (attempt === retries) {
+        throw new Error(
+          `엑셀 파일(${outputPath})이 다른 프로그램(엑셀 등)에서 열려있어서 저장하지 못했습니다. ` +
+          `그 파일을 닫고 다시 실행해주세요. 이번에 수집/취합한 내용은 유실되지 않고 ` +
+          `"${tmpPath}"에 그대로 남아있습니다.`
+        );
+      }
+      console.log(`⏳ 엑셀 파일이 다른 프로그램에서 사용 중인 것 같습니다 — ${delayMs / 1000}초 후 재시도 (${attempt}/${retries})`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
 /**
  * 취합 리포트를 엑셀 파일에 저장. 시트는 "수집 기간"(startDate_endDate) 기준으로 관리됨 —
  * 같은 기간으로 재실행하면 그 기간의 기존 시트만 최신 내용으로 교체(갱신)하고, 기간이
@@ -189,9 +215,9 @@ async function saveReportToExcel(report, outputPath) {
   fs.mkdirSync(dir, { recursive: true });
   const tmpPath = `${outputPath}.tmp-${process.pid}`;
   await workbook.xlsx.writeFile(tmpPath);
-  fs.renameSync(tmpPath, outputPath); // 같은 파일시스템 내 rename은 원자적 교체
+  await renameWithRetry(tmpPath, outputPath); // 같은 파일시스템 내 rename은 원자적 교체
 
   return sheetName;
 }
 
-module.exports = { saveReportToExcel, sanitizeSheetName };
+module.exports = { saveReportToExcel, sanitizeSheetName, renameWithRetry };

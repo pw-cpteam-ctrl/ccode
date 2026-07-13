@@ -7,7 +7,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { parseCount, buildComparisonReport, buildProductComparison, extractOwnProductName, extractCompetitorProductName, extractKeywords, formatKstTime } = require('./aggregate');
-const { saveReportToExcel } = require('./excel');
+const { saveReportToExcel, renameWithRetry } = require('./excel');
 const { extractFromHtml, sanitizeJsonLiteral, extractAssignedJson, withPageParam } = require('./naver-stock');
 const { buildStockComparison, rankStockProducts, findStockMatch, matchPwBhStockProducts, buildIntegratedStockRows, renderStockSectionHtml } = require('./stock-report');
 const { buildHtmlReport } = require('./html-report');
@@ -698,6 +698,42 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
     const files = fs.readdirSync(path.dirname(outPath));
     assert.deepStrictEqual(files, ['mock-report.xlsx']);
   });
+
+  // ── renameWithRetry: 엑셀 파일이 다른 프로그램(엑셀 등)에 열려있어 rename이 EPERM으로
+  // 실패하는 윈도우 환경을 재현 — 실제 fs.renameSync를 잠깐 흉내낸 함수로 바꿔치기해서 검증.
+  const realRename = fs.renameSync;
+  try {
+    let calls = 0;
+    fs.renameSync = () => {
+      calls++;
+      if (calls < 3) { const e = new Error('mock EPERM'); e.code = 'EPERM'; throw e; }
+    };
+    await renameWithRetry('from', 'to', { retries: 5, delayMs: 1 });
+    check('엑셀: 파일이 잠깐 잠겨있어도(EPERM) 재시도해서 결국 성공함', () => {
+      assert.strictEqual(calls, 3, '3번째 시도에서 성공해야 함');
+    });
+  } catch (e) {
+    check('엑셀: 파일이 잠깐 잠겨있어도(EPERM) 재시도해서 결국 성공함', () => { throw e; });
+  } finally {
+    fs.renameSync = realRename;
+  }
+
+  try {
+    fs.renameSync = () => { const e = new Error('mock EPERM'); e.code = 'EPERM'; throw e; };
+    let thrown = null;
+    try {
+      await renameWithRetry('from', 'to', { retries: 3, delayMs: 1 });
+    } catch (e) {
+      thrown = e;
+    }
+    check('엑셀: 계속 잠겨있으면(EPERM) 재시도 다 써도 "파일을 닫아달라"는 안내 메시지로 실패함', () => {
+      assert.ok(thrown, '에러가 던져져야 함');
+      assert.match(thrown.message, /다른 프로그램.*열려있어서/);
+      assert.match(thrown.message, /유실되지 않고/);
+    });
+  } finally {
+    fs.renameSync = realRename;
+  }
 
   console.log(`\n(생성된 검증용 엑셀 파일: ${outPath} — 직접 열어서 표 형태도 확인 가능)`);
   if (process.exitCode) {
