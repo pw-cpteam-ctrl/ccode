@@ -70,6 +70,18 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .brand-opt{display:flex;align-items:center;justify-content:center;padding:10px 22px;font-size:14px;font-weight:700;cursor:pointer;background:var(--ui-card);color:var(--ui-text);border:1px solid var(--ui-border);border-radius:8px;transition:background .15s,color .15s,border-color .15s;user-select:none;}
 .brand-opt input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
 .brand-opt.selected{background:var(--ui-accent);color:#fff;border-color:var(--ui-accent);}
+.anomaly-details{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:14px 22px;margin-bottom:18px;}
+.anomaly-details summary{cursor:pointer;font-size:14.5px;font-weight:800;list-style:none;}
+.anomaly-details summary::-webkit-details-marker{display:none;}
+.anomaly-details[open] summary{margin-bottom:10px;}
+.anomaly-list{display:flex;flex-direction:column;gap:10px;margin-top:10px;}
+.anomaly-item{background:var(--ui-card);border:1px solid #f3b8b0;border-radius:8px;padding:10px 12px;font-size:12.5px;}
+.an-head{display:flex;gap:8px;align-items:center;margin-bottom:4px;font-size:11.5px;color:var(--ui-sub);flex-wrap:wrap;}
+.an-brand,.an-reason{background:#fdecea;color:#c0392b;border-radius:4px;padding:1px 6px;font-weight:700;}
+.an-msg{margin-bottom:6px;font-weight:600;}
+.an-block{margin-top:6px;}
+.an-label{font-size:11px;font-weight:700;color:var(--ui-sub);margin-bottom:2px;}
+.an-text{white-space:pre-wrap;word-break:break-word;}
 </style>
 </head>
 <body>
@@ -144,6 +156,14 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
     <div class="status" id="memoStatus"></div>
     <div class="memo-list" id="memoList"></div>
   </div>
+
+  <details class="anomaly-details" id="anomalyDetails">
+    <summary>🪲 이상 감지 로그 (AI가 규칙 어겨서 자동 차단된 기록)</summary>
+    <p class="desc">일본어 무단 생성처럼 기계적으로 판별되는 이상 징후는 자동으로 여기 쌓여요. 공유할 때 캡처해서 보내주면 원인 파악이 빨라요.</p>
+    <button type="button" class="secondary" onclick="loadAnomalyLog()">새로고침</button>
+    <div class="status" id="anomalyStatus"></div>
+    <div id="anomalyList" class="anomaly-list"></div>
+  </details>
 </div>
 
 <script>
@@ -445,6 +465,40 @@ document.addEventListener('visibilitychange', () => {
 })();
 
 renderMemos(loadMemos());
+
+/* ── 이상 감지 로그 (details 토글 열릴 때 서버에서 불러와서 렌더) ── */
+async function loadAnomalyLog() {
+  $('#anomalyStatus').textContent = '불러오는 중...';
+  try {
+    const res = await fetch('/api/anomaly-log');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
+    renderAnomalyLog(data.entries || []);
+    $('#anomalyStatus').textContent = `${(data.entries || []).length}건`;
+  } catch (err) {
+    $('#anomalyStatus').textContent = `불러오기 실패: ${err.message}`;
+  }
+}
+function renderAnomalyLog(entries) {
+  const box = $('#anomalyList');
+  if (!entries.length) { box.innerHTML = '<div class="slot-empty">아직 감지된 이상이 없어요.</div>'; return; }
+  box.innerHTML = entries.map(e => `
+    <div class="anomaly-item">
+      <div class="an-head">
+        <span>${escapeHtml(new Date(e.at).toLocaleString())}</span>
+        <span class="an-brand">${escapeHtml(BRAND_LABELS[e.brand] || e.brand || '?')}</span>
+        <span class="an-reason">${escapeHtml(e.reason || '')}</span>
+      </div>
+      <div class="an-msg">${escapeHtml(e.message || '')}</div>
+      <div class="an-block"><div class="an-label">원문</div><div class="an-text">${escapeHtml(e.productText || '')}</div></div>
+      <div class="an-block"><div class="an-label">차단된 결과</div><div class="an-text">${escapeHtml(e.blockedResult || '')}</div></div>
+      ${e.corrections && e.corrections.length ? `<div class="an-block"><div class="an-label">corrections</div><ul>${e.corrections.map(c => `<li>${boldKeyParts(c)}</li>`).join('')}</ul></div>` : ''}
+    </div>
+  `).join('');
+}
+$('#anomalyDetails').addEventListener('toggle', function () {
+  if (this.open) loadAnomalyLog();
+});
 </script>
 </body>
 </html>

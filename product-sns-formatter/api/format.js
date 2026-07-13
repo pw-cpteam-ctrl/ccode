@@ -6,6 +6,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { BRANDS } from '../rules/format-rules.js';
+import { appendToGithubFile } from '../lib/github.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -40,19 +41,34 @@ export default async function handler(req, res) {
     const text = message.content.find((block) => block.type === 'text')?.text || '{}';
     const parsed = JSON.parse(text);
     const result = (parsed.result || '').trim();
+    const corrections = parsed.corrections || [];
 
-    // 안전장치: 프롬프트로 아무리 금지해도 모델이 이따금 원문에 없던 일본어를 지어낼 때가 있어서,
-    // 히라가나/가타카나(한국어에 없는 문자)가 원문에 없던 새 글자로 나오면 결과를 내보내지 않고 막는다.
-    const newJapanese = findNewJapaneseChars(productText, result);
-    if (newJapanese.length) {
-      res.status(502).json({ error: `AI가 입력에 없던 일본어 문자(${newJapanese.join(', ')})를 결과에 만들어냈어요. 다시 변환해주세요.` });
+    // 안전장치: 프롬프트로 아무리 금지해도 모델이 이따금 규칙을 어길 때가 있어서, 기계적으로
+    // 판별 가능한 이상 징후는 결과를 내보내지 않고 막은 뒤 왜 그랬는지 로그로 남긴다.
+    const anomaly = detectAnomaly(productText, result);
+    if (anomaly) {
+      await logAnomaly({ brand, productText, extraInstruction, result, corrections, ...anomaly });
+      res.status(502).json({ error: `${anomaly.message} 다시 변환해주세요. (이번 시도는 이상감지 로그에 남았어요.)` });
       return;
     }
 
-    res.status(200).json({ result, corrections: parsed.corrections || [] });
+    res.status(200).json({ result, corrections });
   } catch (err) {
     res.status(502).json({ error: `Claude 호출 실패: ${err.message}` });
   }
+}
+
+// 새 이상 감지 항목을 추가하려면 이 함수 안에서 검사 하나를 더 넣고, 걸리면
+// { reason, message } 형태로 바로 return하면 된다. reason은 로그에서 종류를 구분하는 값.
+function detectAnomaly(productText, result) {
+  const newJapanese = findNewJapaneseChars(productText, result);
+  if (newJapanese.length) {
+    return {
+      reason: 'new-japanese-chars',
+      message: `AI가 입력에 없던 일본어 문자(${newJapanese.join(', ')})를 결과에 만들어냈어요.`,
+    };
+  }
+  return null;
 }
 
 // 히라가나/가타카나는 한국어 표기에 등장할 일이 없으므로, 결과에 있는데 원문엔 없다면
@@ -62,6 +78,39 @@ function findNewJapaneseChars(inputText, outputText) {
   const inputChars = new Set((inputText || '').match(jpPattern) || []);
   const outputChars = new Set((outputText || '').match(jpPattern) || []);
   return [...outputChars].filter((c) => !inputChars.has(c));
+}
+
+// 이상 감지 로그: 왜 막혔는지 나중에 볼 수 있게 깃허브에 남긴다 (GITHUB_TOKEN 등 미설정 시 조용히 무시).
+async function logAnomaly({ reason, message, brand, productText, extraInstruction, result, corrections }) {
+  const token = process.env.GITHUB_TOKEN;
+  const owner = process.env.GITHUB_LOG_OWNER || process.env.GITHUB_OWNER;
+  const repo = process.env.GITHUB_LOG_REPO || process.env.GITHUB_REPO;
+  const branch = process.env.GITHUB_BRANCH || 'main';
+  if (!token || !owner || !repo) return; // 로그 저장은 최선 노력 — 미설정이면 그냥 넘어간다.
+
+  const entry = {
+    at: new Date().toISOString(),
+    reason,
+    message,
+    brand: brand || '',
+    productText,
+    extraInstruction: extraInstruction || '',
+    blockedResult: result,
+    corrections,
+  };
+  try {
+    await appendToGithubFile({
+      token,
+      owner,
+      repo,
+      branch,
+      path: 'logs/format-anomalies.jsonl',
+      newLine: JSON.stringify(entry),
+      message: `이상 감지 로그 추가 (${reason})`,
+    });
+  } catch (err) {
+    console.error('이상 감지 로그 저장 실패:', err.message);
+  }
 }
 
 const RESULT_SCHEMA = {
