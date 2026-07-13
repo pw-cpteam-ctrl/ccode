@@ -7,7 +7,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { parseCount, summarizeAccount, buildComparisonReport, buildProductComparison, extractOwnProductName, extractCompetitorProductName, extractKeywords, formatKstTime } = require('./aggregate');
-const { buildAccountReportHtml } = require('./account-report');
+const { buildAccountReportHtml, buildPlaintextDump } = require('./account-report');
 const { saveReportToExcel, renameWithRetry } = require('./excel');
 const { extractFromHtml, sanitizeJsonLiteral, extractAssignedJson, withPageParam } = require('./naver-stock');
 const { buildStockComparison, rankStockProducts, findStockMatch, matchPwBhStockProducts, buildIntegratedStockRows, renderStockSectionHtml } = require('./stock-report');
@@ -264,6 +264,17 @@ check('collect-account용 buildAccountReportHtml: 계정 단독 성과(비교 �
   assert.match(html, /GoodsmileP/);
   assert.match(html, /새 피규어 공개/);
   assert.match(html, />300</, '총 좋아요 합계가 표시돼야 함');
+});
+
+check('collect-account용 buildPlaintextDump: plaintext 모드는 지표 없이 시각순(오래된 것부터) 본문만', () => {
+  const chronologicalPosts = [
+    { link: 'https://x.com/GoodsmileP/status/1', datetime: '2026-07-02T01:00:00.000Z', likes: '999', retweets: '999', text: '먼저 쓴 글' },
+    { link: 'https://x.com/GoodsmileP/status/2', datetime: '2026-07-03T01:00:00.000Z', likes: '1', retweets: '1', text: '나중에 쓴 글' },
+  ];
+  const dump = buildPlaintextDump({ handle: 'GoodsmileP', startDate: '2026-07-01', endDate: '2026-07-11', chronologicalPosts });
+  assert.ok(dump.indexOf('먼저 쓴 글') < dump.indexOf('나중에 쓴 글'), '좋아요/리트윗과 무관하게 오래된 게시물이 먼저 나와야 함');
+  assert.ok(!/999/.test(dump), '지표(좋아요/리트윗 숫자)는 plaintext 출력에 없어야 함');
+  assert.match(dump, /GoodsmileP/);
 });
 
 check('naver-stock: __PRELOADED_STATE__ / __next_f 플라이트 두 경로 다 재고·가격 추출', () => {

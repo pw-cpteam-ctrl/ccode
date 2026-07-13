@@ -56,4 +56,14 @@ function buildAccountReportHtml({ handle, startDate, endDate, summary, rankedPos
 </body></html>`;
 }
 
-module.exports = { buildAccountReportHtml };
+// plaintext 모드용 — 지표(좋아요/리트윗) 없이 게시 시각순(오래된 것부터)으로 본문 텍스트만
+// 나열. "뭐라고 썼는지"만 훑어보고 싶을 때 쓰는 용도라 텍스트를 60자로 자르지 않고 그대로 둠.
+function buildPlaintextDump({ handle, startDate, endDate, chronologicalPosts }) {
+  const header = `@${handle} 트위터 게시물 원문 (${startDate} ~ ${endDate}, 총 ${chronologicalPosts.length}건, 오래된 순)\n`;
+  const body = chronologicalPosts.map(p =>
+    `[${formatKstTime(p.datetime)}] ${p.link}\n${p.text || '(본문 없음)'}`
+  ).join('\n\n---\n\n');
+  return `${header}\n${body || '(게시물 없음)'}\n`;
+}
+
+module.exports = { buildAccountReportHtml, buildPlaintextDump };
