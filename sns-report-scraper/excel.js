@@ -21,14 +21,15 @@ function sanitizeSheetName(name) {
   return name.replace(/[\\/:*?[\]]/g, '-').slice(0, 31);
 }
 
-function uniqueSheetName(workbook, baseName) {
-  let name = sanitizeSheetName(baseName);
-  let suffix = 2;
-  while (workbook.getWorksheet(name)) {
-    name = sanitizeSheetName(`${baseName} (${suffix})`);
-    suffix++;
+// 시트 이름을 수집 기간(baseName)만으로 고정 — 같은 기간으로 재실행하면 그 시트만 최신
+// 내용으로 교체(갱신)하고, 기간이 다르면 그대로 새 시트로 추가(히스토리 보존).
+function replaceWorksheet(workbook, name) {
+  const existing = workbook.getWorksheet(name);
+  if (existing) {
+    console.log(`♻️  같은 수집 기간의 기존 시트 "${name}"를 최신 내용으로 갱신(이전 내용은 교체됨)`);
+    workbook.removeWorksheet(existing.id);
   }
-  return name;
+  return workbook.addWorksheet(name);
 }
 
 function writePlatformSection(sheet, platformKey, data) {
@@ -146,12 +147,15 @@ function writeProductPlatformSection(sheet, platformKey, data) {
 }
 
 /**
- * 취합 리포트를 엑셀 파일에 저장. 기존 시트는 절대 지우지 않고 새 시트를 추가만 함(히스토리 누적).
+ * 취합 리포트를 엑셀 파일에 저장. 시트는 "수집 기간"(startDate_endDate) 기준으로 관리됨 —
+ * 같은 기간으로 재실행하면 그 기간의 기존 시트만 최신 내용으로 교체(갱신)하고, 기간이
+ * 다르면 새 시트로 추가되어 과거 기간의 히스토리는 그대로 보존된다(같은 기간 재실행을
+ * 반복해도 시트가 무한히 쌓이지 않게 하기 위한 정책 — 다른 기간끼리는 절대 서로 덮어쓰지 않음).
  * 쓰기 중 프로세스가 죽어도 원본이 깨지지 않도록 임시 파일에 쓴 뒤 교체(원자적 교체)한다.
  *
  * @param {object} report   aggregate.js의 buildComparisonReport() 결과
  * @param {string} outputPath  저장할 xlsx 경로
- * @returns {Promise<string>} 실제로 추가된 시트 이름
+ * @returns {Promise<string>} 실제로 사용된 시트 이름
  */
 async function saveReportToExcel(report, outputPath) {
   const workbook = new ExcelJS.Workbook();
@@ -160,9 +164,9 @@ async function saveReportToExcel(report, outputPath) {
     await workbook.xlsx.readFile(outputPath);
   }
 
-  const baseName = `${report.startDate}_${report.endDate}`.replace(/-/g, '');
-  const sheetName = uniqueSheetName(workbook, baseName);
-  const sheet = workbook.addWorksheet(sheetName);
+  const baseName = sanitizeSheetName(`${report.startDate}_${report.endDate}`.replace(/-/g, ''));
+  const sheetName = baseName;
+  const sheet = replaceWorksheet(workbook, sheetName);
 
   sheet.addRow([`수집 기간: ${report.startDate} ~ ${report.endDate}`]);
   sheet.addRow([`생성 시각: ${report.generatedAt}`]);
@@ -174,8 +178,8 @@ async function saveReportToExcel(report, outputPath) {
 
   sheet.columns.forEach(col => { col.width = 20; });
 
-  const productSheetName = uniqueSheetName(workbook, `${baseName}-상품별`);
-  const productSheet = workbook.addWorksheet(productSheetName);
+  const productSheetName = sanitizeSheetName(`${baseName}-상품별`);
+  const productSheet = replaceWorksheet(workbook, productSheetName);
   Object.entries(report.platforms).forEach(([platformKey, data]) => {
     writeProductPlatformSection(productSheet, platformKey, data);
   });
@@ -190,4 +194,4 @@ async function saveReportToExcel(report, outputPath) {
   return sheetName;
 }
 
-module.exports = { saveReportToExcel, sanitizeSheetName, uniqueSheetName };
+module.exports = { saveReportToExcel, sanitizeSheetName };

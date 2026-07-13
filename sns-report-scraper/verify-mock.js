@@ -662,24 +662,36 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// ── 3. 엑셀 저장: 히스토리 누적(기존 시트 보존) + 재실행 시 이름 충돌 처리 확인 ──
+// ── 3. 엑셀 저장: 같은 기간 재실행은 시트를 갱신(교체), 다른 기간은 누적 보존 ──
 (async () => {
   const outPath = path.join(__dirname, 'verify-output', 'mock-report.xlsx');
   fs.rmSync(path.dirname(outPath), { recursive: true, force: true });
 
   const sheet1 = await saveReportToExcel(report, outPath);
-  const sheet2 = await saveReportToExcel(report, outPath); // 같은 기간으로 재실행
+  const sheet2 = await saveReportToExcel(report, outPath); // 같은 기간으로 재실행(테스트 중 반복 실행 시나리오)
 
   const ExcelJS = require('exceljs');
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(outPath);
 
-  check('엑셀: 재실행해도 기존 시트가 지워지지 않고 누적됨', () => {
-    assert.notStrictEqual(sheet1, sheet2, '같은 기간 재실행 시 시트 이름이 달라야 함(덮어쓰기 방지)');
-    assert.ok(wb.getWorksheet(sheet1), '첫 번째 시트가 남아있어야 함');
-    assert.ok(wb.getWorksheet(sheet2), '두 번째 시트도 존재해야 함');
-    // 저장 1회당 요약 시트 + 상품별 비교 시트 2개씩 생성됨 → 2회 저장 시 총 4개
-    assert.strictEqual(wb.worksheets.length, 4);
+  check('엑셀: 같은 수집 기간으로 재실행하면 시트가 쌓이지 않고 갱신(교체)됨', () => {
+    assert.strictEqual(sheet1, sheet2, '같은 기간이면 시트 이름도 같아야 함(같은 시트를 갱신하는 것)');
+    assert.ok(wb.getWorksheet(sheet1), '갱신된 시트가 남아있어야 함');
+    // 같은 기간을 2번 저장해도 요약 시트 + 상품별 비교 시트, 총 2개만 있어야 함(누적되면 안 됨)
+    assert.strictEqual(wb.worksheets.length, 2);
+  });
+
+  const otherReport = { ...report, startDate: '2026-07-10', endDate: '2026-07-11' };
+  const sheet3 = await saveReportToExcel(otherReport, outPath); // 다른 기간
+  const wb2 = new ExcelJS.Workbook();
+  await wb2.xlsx.readFile(outPath);
+
+  check('엑셀: 다른 수집 기간은 별도 시트로 추가되고 기존 기간 시트는 그대로 보존됨', () => {
+    assert.notStrictEqual(sheet1, sheet3, '기간이 다르면 시트 이름도 달라야 함');
+    assert.ok(wb2.getWorksheet(sheet1), '이전 기간 시트가 지워지지 않고 남아있어야 함');
+    assert.ok(wb2.getWorksheet(sheet3), '새 기간 시트도 존재해야 함');
+    // 기간1(요약+상품별 2개) + 기간2(요약+상품별 2개) = 4개
+    assert.strictEqual(wb2.worksheets.length, 4);
   });
 
   check('엑셀: 임시파일이 정리되고 최종 파일만 남음', () => {

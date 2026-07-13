@@ -113,16 +113,22 @@ async function collectInstagram({ account, sessionFile, startDate, endDate, head
             }
           }
 
-          // 본문 캡션: 계정명 뒤에 오는 텍스트 블록에서 추출
+          // 본문 캡션: 계정명 뒤에 오는 텍스트 블록에서 추출.
+          // "가장 긴 span[dir=auto]"이 항상 캡션이라는 보장이 없음 — 팬 댓글 등에 같은 단어가
+          // 여러 번 반복된 긴 댓글이 있으면 그게 캡션보다 길어져서 잘못 뽑힐 수 있음(실제 사례:
+          // 캡션 대신 댓글의 "신지"만 반복된 텍스트가 캡션으로 잘못 추출됨). 그래서 가장 긴
+          // 순서대로 후보를 훑으며 "계정명으로 시작하는" 진짜 캡션 패턴에 매칭되는 첫 번째
+          // 후보만 채택하고, 어느 것도 매칭 안 되면(패턴이 달라진 경우 등) 최후 수단으로만
+          // 가장 긴 span의 원문을 그대로 씀.
           const spans = [...document.querySelectorAll('span[dir="auto"]')]
             .sort((a, b) => b.innerText.length - a.innerText.length);
+          const re = new RegExp(`${acct}\\s*\\n\\s*\\n?\\s*(?:수정됨\\s*)?(?:•\\s*)?\\d+[\\w가-힣]+\\s*\\n([\\s\\S]+)`);
           let caption = '';
-          if (spans[0]) {
-            const raw = spans[0].innerText;
-            const re = new RegExp(`${acct}\\s*\\n\\s*\\n?\\s*(?:수정됨\\s*)?(?:•\\s*)?\\d+[\\w가-힣]+\\s*\\n([\\s\\S]+)`);
-            const m = raw.match(re);
-            caption = m ? m[1] : raw;
+          for (const span of spans) {
+            const m = span.innerText.match(re);
+            if (m) { caption = m[1]; break; }
           }
+          if (!caption && spans[0]) caption = spans[0].innerText;
 
           return { datetime: timeEl.getAttribute('datetime'), likes, comments, caption };
         }, account);
