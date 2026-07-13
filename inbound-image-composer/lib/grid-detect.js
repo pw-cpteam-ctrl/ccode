@@ -69,9 +69,23 @@ function detectGrid(img) {
   const rowSets = sampleCols.map((x) => detectRowTops(ctx, x, img.height, scale));
   const rows = rowSets.reduce((a, b) => (b.length > a.length ? b : a));
 
-  const colStarts = rows.length
-    ? detectColStarts(ctx, rows[0] + Math.round(40 * scale), img.width, scale) // sample mid-photo, avoids edge artifacts
-    : [];
+  // 열 탐지는 딱 한 줄(rows[0]+40)만 샘플링했었는데, 하필 그 세로 위치에서 특정 상품
+  // 사진(예: 배경이 흰 편인 아이콘/스티커류)이 흰색에 가까우면 그 열 전체가 통째로
+  // 누락되는 문제가 실사용 중 발견됐다(5열인데 4열로 검출). 행 탐지처럼 여러 지점을
+  // 교차 검사해서 가장 많은 열이 잡힌 결과를 채택한다 — 앞쪽 몇 개 행에서 각각 시도해보고
+  // (한 상품이 흰 편이어도 다른 행의 같은 열은 사진이 다르니 잡힐 가능성이 높다),
+  // 그래도 안 되면 같은 행 안에서 세로 위치를 조금씩 바꿔가며 추가로 시도한다.
+  let colStarts = [];
+  if (rows.length) {
+    const rowsToTry = rows.slice(0, Math.min(rows.length, 5));
+    const offsetsToTry = [40, 80, 120, 20].map((o) => Math.round(o * scale));
+    for (const rowY of rowsToTry) {
+      for (const offset of offsetsToTry) {
+        const attempt = detectColStarts(ctx, rowY + offset, img.width, scale);
+        if (attempt.length > colStarts.length) colStarts = attempt;
+      }
+    }
+  }
 
   return { cols: colStarts, rows, cardW, cardH };
 }

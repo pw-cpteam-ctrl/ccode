@@ -212,11 +212,15 @@
       <h2>4단계 · 최종 분할 &amp; 내보내기</h2>
       <div id="step5Guard" class="hint"></div>
       <div id="step5Body" style="display:none;">
-        <div class="row" style="margin-bottom:14px;">
+        <div class="row" style="margin-bottom:14px;flex-wrap:wrap;">
           <label style="font-size:13px;">헤더 이미지</label>
           <select id="headerSelect"></select>
           <button class="btn primary" id="generatePagesBtn">페이지 생성 (JPEG q0.94)</button>
           <button class="btn" id="downloadAllBtn" disabled>전체 다운로드</button>
+        </div>
+        <div class="header-preview-wrap" style="margin-bottom:14px;">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">선택된 헤더 미리보기 (비어 있으면 원본 이미지에서 1행 위쪽에 캡처된 내용이 없다는 뜻)</div>
+          <img id="headerPreviewImg" style="max-width:100%;border:1px dashed var(--line2);border-radius:4px;display:block;" />
         </div>
         <div class="summary-box" id="finalSummary"></div>
         <div id="pagesContainer"></div>

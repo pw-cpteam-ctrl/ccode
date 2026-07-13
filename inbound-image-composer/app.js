@@ -949,6 +949,19 @@ function renderStep5() {
   document.getElementById('pagesContainer').innerHTML = '';
   document.getElementById('downloadAllBtn').disabled = true;
   state.finalPages = null;
+  updateHeaderPreview();
+}
+
+// 헤더 드롭다운에서 실제로 어떤 이미지가 선택된 건지 눈으로 바로 확인할 수 있게 미리보기를
+// 보여준다. 원본 이미지에서 "1행 시작 지점보다 위쪽" 영역을 그대로 캡처한 것이라, 원본
+// 스크린샷 자체가 상품 그리드 바로 위부터 시작해서 배너가 안 찍혀 있으면 이 미리보기도
+// 비어 보인다 — 그 경우 "AI로 채우기"나 최종 렌더 쪽 버그가 아니라 원본 캡처 범위 문제다.
+function updateHeaderPreview() {
+  const img = document.getElementById('headerPreviewImg');
+  if (!img) return;
+  const headerId = document.getElementById('headerSelect').value;
+  const header = state.headers.find((h) => h.id === headerId);
+  img.src = header ? header.canvas.toDataURL('image/png') : '';
 }
 
 async function generatePages() {
@@ -1216,6 +1229,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('generatePagesBtn').addEventListener('click', generatePages);
   document.getElementById('downloadAllBtn').addEventListener('click', downloadAllPages);
+  document.getElementById('headerSelect').addEventListener('change', updateHeaderPreview);
 
   goToStep(1);
 });
