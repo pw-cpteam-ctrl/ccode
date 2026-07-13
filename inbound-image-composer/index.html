@@ -53,6 +53,18 @@
   .footer-nav { display: flex; justify-content: space-between; margin-top: 18px; gap: 10px; }
   @media (max-width: 480px) { .footer-nav { flex-direction: column; } .footer-nav button { width: 100%; } }
 
+  .slotbox { background: #ececef; border: 1px solid var(--line2); border-radius: 10px; padding: 11px; margin-bottom: 16px; }
+  .slotbox-h { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .3px; margin-bottom: 4px; }
+  .slotbox-note { font-size: 11px; color: var(--muted); line-height: 1.45; margin-bottom: 8px; }
+  .slots { display: flex; flex-direction: column; gap: 6px; }
+  .slot { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+  .slot:hover { border-color: var(--accent); background: #f5f9ff; }
+  .slot .s-title { font-weight: 600; font-size: 13px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .slot .s-meta { color: var(--muted); font-size: 11px; }
+  .slot .s-del { color: var(--muted); font-weight: 700; padding: 0 2px 0 4px; }
+  .slot .s-del:hover { color: var(--danger); }
+  .slot-empty { color: var(--muted); font-size: 12px; line-height: 1.5; }
+
   .source-block { border: 1px dashed var(--line2); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
   .source-block canvas.overlay { max-width: 100%; border: 1px solid var(--line); border-radius: 6px; }
   .source-status { font-size: 12px; color: var(--muted); margin: 8px 0; }
@@ -140,6 +152,16 @@
         Claude(claude-sonnet-5)가 사진과 텍스트를 함께 보고 2단계 표를 미리 채워줍니다 — 유료 API 호출이며
         (장당 2~4센트 수준), 백엔드가 배포되어 있지 않으면 조용히 안내만 뜨고 수동 입력으로 진행하면 됩니다.
         AI가 채운 값도 항상 ⚠ 확인 필요 상태로 표시되며 사람이 확정해야 합니다.</p>
+
+      <div class="slotbox">
+        <div class="slotbox-h">↺ 이전 작업 (최근 5개 · 자동 저장)</div>
+        <div class="slotbox-note">탭을 닫거나 다른 탭으로 넘어갈 때 그 시점의 표 데이터(사진 썸네일 포함)가
+          자동으로 슬롯에 남습니다. 누르면 그 상태로 바로 돌아갑니다 — 단, 용량 절약을 위해 사진은
+          압축된 썸네일로 저장되므로 <b>최종 내보내기 화질이 살짝 낮아질 수 있습니다</b>. 정상 작업
+          중이면 이 캐시를 거치지 말고 그대로 이어서 진행하세요.</div>
+        <div id="slots" class="slots"></div>
+      </div>
+
       <input type="file" id="fileInput" accept="image/*" multiple />
       <div id="sourceList"></div>
     </div>

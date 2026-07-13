@@ -168,6 +168,144 @@ function goToStep(n) {
 }
 
 // ============================================================
+// 이전 작업 슬롯 캐시 (탭 닫기/전환 시 자동 저장, 최근 5개)
+// insta-gen의 슬롯 캐시 패턴을 그대로 가져와 이 툴의 state 구조에 맞춤. 원본 소스
+// 이미지(state.sources)는 용량이 너무 커서 저장 대상에서 뺐다 — 대신 이미 크롭된
+// photos/headers를 압축 JPEG로 저장한다. 즉 이 캐시로 복원하면 표 데이터(IP명/가격/
+// 태그/순서 등)는 100% 그대로 돌아오지만, 최종 내보내기에 쓰이는 사진 화질은 압축된
+// 만큼 살짝 낮아진다 — 사고로 탭을 닫았을 때를 위한 안전망이지, 정상 작업 경로를
+// 대체하는 기능이 아니다.
+// ============================================================
+const SLOT_KEY = 'inbound-image-composer-slots-v1';
+const SLOT_MAX = 5;
+
+function loadSlots() {
+  try { return JSON.parse(localStorage.getItem(SLOT_KEY) || '[]'); } catch (e) { return []; }
+}
+
+function saveSlots(list) {
+  const trimmed = list.slice(0, SLOT_MAX);
+  try { localStorage.setItem(SLOT_KEY, JSON.stringify(trimmed)); return; } catch (e) { /* 용량 초과 — 아래에서 재시도 */ }
+  // 용량 초과 시 오래된 슬롯부터 사진 데이터를 비우고(텍스트만 남김) 재시도한다.
+  const stripped = trimmed.map((s) => ({ ...s }));
+  for (let i = stripped.length - 1; i >= 0; i--) {
+    stripped[i] = { ...stripped[i], photos: {}, headers: [] };
+    try { localStorage.setItem(SLOT_KEY, JSON.stringify(stripped)); return; } catch (e) { /* 계속 다음 슬롯도 비우기 */ }
+  }
+}
+
+// 캔버스를 축소 JPEG로 압축해서 저장 용량을 아낀다 (사진은 이미 176px 안팎이라 화질
+// 손실이 크지 않지만, 최종 내보내기 원본보다는 낮은 화질이 되는 트레이드오프가 있다).
+function compressCanvasForSlot(canvas, max, quality) {
+  try {
+    const scale = Math.min(1, max / Math.max(canvas.width, canvas.height));
+    const w = Math.max(1, Math.round(canvas.width * scale));
+    const h = Math.max(1, Math.round(canvas.height * scale));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    c.getContext('2d').drawImage(canvas, 0, 0, w, h);
+    return c.toDataURL('image/jpeg', quality);
+  } catch (e) { return ''; }
+}
+
+function dataUrlToCanvas(dataUrl) {
+  return new Promise((resolve) => {
+    const c = document.createElement('canvas');
+    if (!dataUrl) { c.width = 1; c.height = 1; resolve(c); return; }
+    const img = new Image();
+    img.onload = () => { c.width = img.width; c.height = img.height; c.getContext('2d').drawImage(img, 0, 0); resolve(c); };
+    img.onerror = () => { c.width = 1; c.height = 1; resolve(c); };
+    img.src = dataUrl;
+  });
+}
+
+function snapshotState() {
+  if (!state.items.length) return null; // 저장할 표 데이터가 없으면 스냅샷 자체를 안 만듦
+  const photos = {};
+  Object.entries(state.photos).forEach(([id, canvas]) => { photos[id] = compressCanvasForSlot(canvas, 220, 0.82); });
+  const headers = state.headers.map((h) => ({ id: h.id, label: h.label, imgData: compressCanvasForSlot(h.canvas, 1000, 0.82) }));
+  return {
+    ts: Date.now(),
+    step: state.step,
+    items: JSON.parse(JSON.stringify(state.items)),
+    photos,
+    headers,
+    nextPhotoNum: state.nextPhotoNum,
+    nextItemId: state.nextItemId,
+    activeStore: state.activeStore,
+    orderConfirmed: state.orderConfirmed,
+  };
+}
+
+function slotLabel(s) {
+  const withIp = s.items.find((it) => it.ip);
+  return `${s.items.length}개 항목${withIp ? ` (${withIp.ip} 외)` : ''}`;
+}
+
+function pushSlot(snap, skipRender) {
+  if (!snap) return;
+  const list = loadSlots();
+  list.unshift(snap);
+  saveSlots(list);
+  if (!skipRender) renderSlots();
+}
+
+function deleteSlot(i) {
+  const list = loadSlots();
+  list.splice(i, 1);
+  saveSlots(list);
+  renderSlots();
+}
+
+async function applySlot(s) {
+  pushSlot(snapshotState()); // 되돌리기 전에 지금 작업 중이던 것도 먼저 보존
+  state.items = JSON.parse(JSON.stringify(s.items));
+  state.photos = {};
+  for (const [id, dataUrl] of Object.entries(s.photos || {})) {
+    state.photos[id] = await dataUrlToCanvas(dataUrl);
+  }
+  state.headers = [];
+  for (const h of (s.headers || [])) {
+    state.headers.push({ id: h.id, label: h.label, canvas: await dataUrlToCanvas(h.imgData) });
+  }
+  state.nextPhotoNum = s.nextPhotoNum || 1;
+  state.nextItemId = s.nextItemId || 1;
+  state.activeStore = s.activeStore || state.activeStore;
+  state.orderConfirmed = !!s.orderConfirmed;
+  state.sources = []; // 원본 소스는 캐시 대상이 아니라 1단계 업로드 목록은 비워진 채로 시작
+  renderSlots();
+  goToStep(2); // 사진+표 데이터가 이미 다 있으니 표 정리 화면으로 바로 이동
+}
+
+function renderSlots() {
+  const box = document.getElementById('slots');
+  if (!box) return;
+  const list = loadSlots();
+  if (!list.length) { box.innerHTML = '<div class="slot-empty">아직 저장된 이전 작업이 없습니다.</div>'; return; }
+  box.innerHTML = '';
+  list.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'slot';
+    const title = document.createElement('span');
+    title.className = 's-title';
+    title.textContent = slotLabel(s);
+    const meta = document.createElement('span');
+    meta.className = 's-meta';
+    try { meta.textContent = new Date(s.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { /* noop */ }
+    const del = document.createElement('span');
+    del.className = 's-del'; del.textContent = '✕'; del.title = '삭제';
+    row.appendChild(title); row.appendChild(meta); row.appendChild(del);
+    row.addEventListener('click', (e) => { if (e.target === del) deleteSlot(i); else applySlot(s); });
+    box.appendChild(row);
+  });
+}
+
+window.addEventListener('beforeunload', () => { pushSlot(snapshotState(), true); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') pushSlot(snapshotState(), true);
+});
+
+// ============================================================
 // STEP 1 — 업로드 & 그리드 검출
 // ============================================================
 function readImageFile(file) {
@@ -1202,6 +1340,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadDict();
   populateStoreSelects();
   renderStepIndicator();
+  renderSlots();
 
   document.getElementById('fileInput').addEventListener('change', (e) => handleFilesSelected(e.target.files));
   document.getElementById('sourceList').addEventListener('click', (e) => {
