@@ -8,11 +8,15 @@
  * 경쟁사 계정도 sessionFile은 자사와 동일한 세션 파일을 씀 — 경쟁사 로그인이 아니라,
  * "내 계정으로 로그인한 상태에서 경쟁사의 공개 게시물을 조회"하는 방식이라서 정상임.
  *
- * 매번 돌릴 때 startDate/endDate만 그 달 리포트 기간에 맞게 바꿔주면 됨.
+ * 기간은 커맨드라인에서 YYYY-MM-DD 두 개(시작일 종료일)로 바로 지정 가능 — 안 주면
+ * CONFIG.startDate/endDate 기본값 사용. endDate는 미포함(그 날짜 자정 이전까지)이라
+ * 하루치만 보려면 다음날을 endDate로 줄 것(예: 7/10 하루 → 2026-07-10 2026-07-11).
  *
- * 사용법: node run.js           — 트위터+인스타 둘 다 수집(기본)
- *        node run.js twitter    — 트위터만 수집
- *        node run.js instagram  — 인스타만 수집(세션 막 갱신했을 때 등)
+ * 사용법: node run.js                                — 트위터+인스타, CONFIG 기본 기간
+ *        node run.js twitter                         — 트위터만, CONFIG 기본 기간
+ *        node run.js instagram                       — 인스타만, CONFIG 기본 기간
+ *        node run.js 2026-07-10 2026-07-11            — 트위터+인스타, 지정 기간(7/10 하루)
+ *        node run.js twitter 2026-07-10 2026-07-11    — 트위터만, 지정 기간
  * 한쪽만 수집해도 캐시(cachePath)에 남아있던 다른 플랫폼 데이터는 보존됨(안 지워짐).
  */
 const fs = require('fs');
@@ -71,10 +75,25 @@ async function collectAll(accounts) {
 }
 
 async function main() {
-  const platformFilter = process.argv[2];
-  if (platformFilter && !['twitter', 'instagram'].includes(platformFilter)) {
-    console.error('❌ 사용법: node run.js [twitter|instagram] (안 주면 둘 다 수집)');
+  const args = process.argv.slice(2);
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  let platformFilter;
+  const cliDates = [];
+  for (const arg of args) {
+    if (arg === 'twitter' || arg === 'instagram') platformFilter = arg;
+    else if (DATE_RE.test(arg)) cliDates.push(arg);
+    else {
+      console.error(`❌ 사용법: node run.js [twitter|instagram] [시작일 종료일 (YYYY-MM-DD YYYY-MM-DD)]`);
+      process.exit(1);
+    }
+  }
+  if (cliDates.length === 1) {
+    console.error('❌ 시작일/종료일 둘 다 줘야 함 (예: node run.js 2026-07-10 2026-07-11)');
     process.exit(1);
+  }
+  if (cliDates.length === 2) {
+    [CONFIG.startDate, CONFIG.endDate] = cliDates;
+    console.log(`📅 커맨드라인 기간 지정: ${CONFIG.startDate} ~ ${CONFIG.endDate} (미포함)`);
   }
 
   const ownToCollect = platformFilter ? CONFIG.own.filter(a => a.platform === platformFilter) : CONFIG.own;
