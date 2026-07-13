@@ -83,24 +83,18 @@ async function collectInstagram({ account, sessionFile, startDate, endDate, head
   }
 
   // ── Step 2: 각 게시물 개별 파싱 ──
-  // 실제 계정으로 돌려보니, 게시물 상세 페이지를 연속으로 여러 번 열면 인스타가 비로그인
-  // 사용자 취급하듯 "가입하기/로그인" 유도 모달을 씌우는 경우가 있었음(스크린샷으로 확인).
-  // datetime/캡션은 이 모달과 무관하게 잘 읽히는데, 좋아요/댓글수만 못 읽어서(null) "일단
-  // 파싱은 됐다"고 보고 재시도 없이 넘어가던 게 진짜 원인 — 아래에서 그 모달을 걷어내
-  // 보고, 그래도 좋아요를 못 읽었으면 이 게시물도 재시도 대상에 포함시킴.
+  // (2026-07-13: "좋아요 null이면 재시도" + Esc키 모달 닫기를 시도해봤는데, 실제로 돌려보니
+  // 전체 게시물 100%가 3번 다 실패 — 가끔 뜨는 모달 때문이라는 가설이 틀렸고 시간만
+  // 3배로 늘렸음. 원인이 다른 곳(세션 자체 문제 또는 좋아요 표시 위치/방식 변경)일 가능성이
+  // 커서 재시도 코드는 되돌림 — 원인 재확인 후 다시 접근할 것, TROUBLESHOOTING 문서 참고.)
   const MAX_ATTEMPTS = 3;
   const results = [];
   for (const url of links) {
     let parsed = null;
-    for (let attempt = 0; attempt < MAX_ATTEMPTS && (!parsed || parsed.likes === null); attempt++) {
+    for (let attempt = 0; attempt < MAX_ATTEMPTS && !parsed; attempt++) {
       try {
         await page.goto(url, { waitUntil: 'domcontentloaded' });
         await page.waitForTimeout(2000);
-
-        // "가입하기/로그인" 유도 모달이 떠 있으면 Esc로 닫아보고 콘텐츠가 다시 보이도록
-        // 잠깐 더 기다림 — 모달이 없으면 아무 효과 없이 그냥 지나감(부작용 없음).
-        await page.keyboard.press('Escape').catch(() => {});
-        await page.waitForTimeout(500);
 
         parsed = await page.evaluate((acct) => {
           const timeEl = document.querySelector('time[datetime]');
@@ -146,10 +140,6 @@ async function collectInstagram({ account, sessionFile, startDate, endDate, head
       } catch (e) {
         console.warn(`[instagram] 재시도 ${attempt + 1}/${MAX_ATTEMPTS} (${url}): ${e.message}`);
         await page.waitForTimeout(3000 + attempt * 2000);
-      }
-      if (parsed && parsed.likes === null && attempt < MAX_ATTEMPTS - 1) {
-        console.warn(`[instagram] 좋아요를 못 읽음(로그인 유도 모달 등으로 추정), 재시도 ${attempt + 2}/${MAX_ATTEMPTS} (${url})`);
-        await page.waitForTimeout(2000);
       }
     }
     if (parsed) results.push({ url, ...parsed });
