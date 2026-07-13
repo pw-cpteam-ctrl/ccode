@@ -828,6 +828,19 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
     assert.strictEqual(ws.getCell('F7').value, '게시물 A');
   });
 
+  const multilinePosts = [
+    { link: 'https://x.com/GoodsmileP/status/3', datetime: '2026-07-13T01:00:00.000Z', likes: '1', retweets: '1', text: '1번째 줄\n2번째 줄\n3번째 줄' },
+  ];
+  const sheetC = await saveAccountReportToExcel({ handle: 'GoodsmileP', startDate: '2026-07-20', endDate: '2026-07-21', posts: multilinePosts }, accountOutPath);
+  const wbAcc2 = new ExcelJS2.Workbook();
+  await wbAcc2.xlsx.readFile(accountOutPath);
+  check('account-excel: 본문의 줄바꿈이 공백으로 뭉개지지 않고 셀 안에 그대로 보존되며 wrapText가 켜져 있어야 함', () => {
+    const ws = wbAcc2.getWorksheet(sheetC);
+    const cell = ws.getCell('F6');
+    assert.strictEqual(cell.value, '1번째 줄\n2번째 줄\n3번째 줄', '줄바꿈 문자가 그대로 남아있어야 함(공백으로 치환 금지)');
+    assert.strictEqual(cell.alignment && cell.alignment.wrapText, true, 'wrapText가 켜져 있어야 실제로 줄바꿈되어 보임');
+  });
+
   console.log(`\n(생성된 검증용 엑셀 파일: ${outPath} — 직접 열어서 표 형태도 확인 가능)`);
   if (process.exitCode) {
     console.error('\n일부 검증 실패');

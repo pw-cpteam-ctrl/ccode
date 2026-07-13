@@ -28,7 +28,13 @@ async function saveAccountReportToExcel({ handle, startDate, endDate, posts }, o
   const score = p => (parseCount(p.likes) || 0) + (parseCount(p.retweets) || 0);
   const ranked = [...posts].sort((a, b) => score(b) - score(a));
   ranked.forEach((p, i) => {
-    sheet.addRow([i + 1, formatKstTime(p.datetime), p.link, parseCount(p.likes), parseCount(p.retweets), (p.text || '').replace(/\n/g, ' ')]);
+    const text = p.text || '';
+    // 줄바꿈을 공백으로 지우지 않고 그대로 둠 — wrapText를 켜야 엑셀이 셀 안에서
+    // \n 기준으로 실제 줄바꿈해서 보여줌(안 켜면 줄바꿈 문자가 있어도 한 줄로 뭉개져 보임).
+    const row = sheet.addRow([i + 1, formatKstTime(p.datetime), p.link, parseCount(p.likes), parseCount(p.retweets), text]);
+    row.getCell(6).alignment = { wrapText: true, vertical: 'top' };
+    const lineCount = text.split('\n').length;
+    if (lineCount > 1) row.height = lineCount * 15; // 줄 수만큼 행 높이를 넉넉히 잡아서 잘림 방지
   });
 
   sheet.columns.forEach(col => { col.width = 18; });
