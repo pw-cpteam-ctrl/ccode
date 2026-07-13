@@ -1362,6 +1362,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderSlots();
 
   document.getElementById('fileInput').addEventListener('change', (e) => handleFilesSelected(e.target.files));
+  // 파일 선택창을 거치지 않고 클립보드에서 스크린샷을 바로 Ctrl+V로 붙여넣을 수 있게 지원 —
+  // 캡처 도구로 찍은 이미지를 저장 없이 바로 붙여넣는 흐름이 훨씬 빠르다.
+  document.addEventListener('paste', (e) => {
+    if (state.step !== 1 || state.sources.length >= 3) return;
+    const imageItem = Array.from(e.clipboardData?.items || []).find((it) => it.type.startsWith('image/'));
+    if (!imageItem) return;
+    e.preventDefault();
+    const file = imageItem.getAsFile();
+    if (file) handleFilesSelected([file]);
+  });
   document.getElementById('sourceList').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
