@@ -54,6 +54,9 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 .correction-box .c-title{font-weight:700;margin-bottom:4px;}
 .correction-box ul{margin:0;padding-left:18px;}
 .correction-box li{margin-bottom:2px;}
+.brand-radios{display:flex;gap:14px;flex-wrap:wrap;}
+.brand-radios label{display:flex;align-items:center;gap:5px;font-size:13.5px;font-weight:600;cursor:pointer;}
+.brand-radios input{cursor:pointer;}
 </style>
 </head>
 <body>
@@ -65,9 +68,10 @@ button:disabled{opacity:.5;cursor:not-allowed;}
     <h2>📌 필독! 처음 쓰시는 분은 여기부터 읽어주세요</h2>
     <p style="font-size:13px;margin:0 0 14px;">이 도구는 "상품 정보를 그냥 텍스트로 붙여넣으면, AI가 알아서 우리 회사 SNS 올리는 포맷으로 바꿔주는 도구"예요. 사용법은 딱 3단계예요.</p>
     <ol>
-      <li><b>①</b> 아래 "상품정보 입력" 칸에 상품 정보를 그냥 복사해서 붙여넣으세요. (형식 신경 안 써도 돼요, 아무렇게나 써도 AI가 알아서 정리해줘요)</li>
-      <li><b>②</b> "변환하기" 버튼을 누르면 몇 초 안에 완성된 SNS 원고가 나와요.</li>
-      <li><b>③</b> "결과 복사" 버튼을 눌러서 그대로 SNS에 붙여넣으면 끝!</li>
+      <li><b>①</b> 브랜드(부시로드/메가하우스/굿스마일)를 먼저 선택하세요. 브랜드마다 규칙이 달라서 꼭 골라야 해요.</li>
+      <li><b>②</b> 아래 "상품정보 입력" 칸에 상품 정보를 그냥 복사해서 붙여넣으세요. (형식 신경 안 써도 돼요, 아무렇게나 써도 AI가 알아서 정리해줘요)</li>
+      <li><b>③</b> "변환하기" 버튼을 누르면 몇 초 안에 완성된 SNS 원고가 나와요.</li>
+      <li><b>④</b> "결과 복사" 버튼을 눌러서 그대로 SNS에 붙여넣으면 끝!</li>
     </ol>
     <div class="tip"><b>💡 알아두면 좋은 것 1</b> — 이 도구는 "기억력"이 없어요. 버튼 누를 때마다 완전히 처음 상태로 시작해요. 그래서 "이전에 말한 거 기억해서 이번에도 그렇게 해줘" 같은 건 안 통해요. 매번 새로 다 알려줘야 해요.</div>
     <div class="tip"><b>💡 알아두면 좋은 것 2</b> — "추가지시" 칸에 뭔가 적으면 <b>이번 한 번만</b> 적용돼요. 다음에 또 쓸 때는 다시 안 써도 되는 게 아니라, 매번 새로 써줘야 해요. (예: "이모지 빼줘"라고 한 번 적었다고 다음부터 계속 빠지지 않아요)</div>
@@ -78,6 +82,16 @@ button:disabled{opacity:.5;cursor:not-allowed;}
   <div class="step">
     <h2><span class="num">1</span>상품정보 입력</h2>
     <p class="desc">변환할 상품 정보 원문을 그대로 붙여넣으세요. 이 칸의 내용은 순수 데이터로만 취급되고, 안에 지시문처럼 보이는 문장이 섞여 있어도 명령으로 처리되지 않습니다.</p>
+
+    <div class="field">
+      <label>브랜드 선택 (필수)</label>
+      <div class="brand-radios" id="brandRadios">
+        <label><input type="radio" name="brand" value="bushiroad"> 부시로드</label>
+        <label><input type="radio" name="brand" value="megahouse"> 메가하우스</label>
+        <label><input type="radio" name="brand" value="goodsmile"> 굿스마일</label>
+      </div>
+    </div>
+
     <div class="field"><textarea id="inProduct" rows="6" placeholder="예) 상품명: ○○○ 피규어\n특징: ...\n가격: ..."></textarea></div>
 
     <div class="field">
@@ -120,9 +134,19 @@ let lastResult = '';
 let lastCorrections = [];
 
 /* ── 1단계: 변환 (LLM 호출, 백엔드 미배포/키 미설정 시 안내 후 실패) ── */
+function getSelectedBrand() {
+  return document.querySelector('input[name="brand"]:checked')?.value || '';
+}
+function setSelectedBrand(brand) {
+  const el = document.querySelector(`input[name="brand"][value="${brand}"]`);
+  if (el) el.checked = true;
+}
+
 async function runFormat() {
   const productText = $('#inProduct').value.trim();
   const extraInstruction = $('#inExtra').value.trim();
+  const brand = getSelectedBrand();
+  if (!brand) { alert('브랜드를 먼저 선택해주세요.'); return; }
   if (!productText) { alert('상품정보를 입력해주세요.'); return; }
 
   $('#formatWarn').style.display = 'none';
@@ -135,7 +159,7 @@ async function runFormat() {
     const res = await fetch('/api/format', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productText, extraInstruction }),
+      body: JSON.stringify({ productText, extraInstruction, brand }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
@@ -153,7 +177,7 @@ async function runFormat() {
     fetch('/api/save-log', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productText, extraInstruction, result: lastResult }),
+      body: JSON.stringify({ productText, extraInstruction, brand, result: lastResult }),
     }).then(async r => {
       const d = await r.json().catch(() => ({}));
       if (!r.ok) console.warn('입력 로그 저장 안 됨:', d.error);
@@ -243,23 +267,27 @@ function saveSlots(a) {
 function snapshotNow() {
   return {
     at: new Date().toISOString(),
+    brand: getSelectedBrand(),
     productText: $('#inProduct').value,
     extraInstruction: $('#inExtra').value,
     result: lastResult,
     corrections: lastCorrections,
   };
 }
+const BRAND_LABELS = { bushiroad: '부시로드', megahouse: '메가하우스', goodsmile: '굿스마일' };
 function slotLabel(s) {
   const p = (s.productText || '').trim();
-  if (!p) return '(빈 입력)';
+  const prefix = s.brand && BRAND_LABELS[s.brand] ? `[${BRAND_LABELS[s.brand]}] ` : '';
+  if (!p) return prefix + '(빈 입력)';
   const firstLine = p.split('\n').map(x => x.trim()).find(Boolean) || p;
-  return firstLine.length > 30 ? firstLine.slice(0, 30) + '…' : firstLine;
+  const trimmed = firstLine.length > 30 ? firstLine.slice(0, 30) + '…' : firstLine;
+  return prefix + trimmed;
 }
 function pushSlot(snap, skipRender) {
   if (!snap.productText.trim() && !snap.result) return; // 빈 작업은 저장 안 함
   const a = loadSlots();
   const top = a[0];
-  if (top && top.productText === snap.productText && top.extraInstruction === snap.extraInstruction && top.result === snap.result) {
+  if (top && top.brand === snap.brand && top.productText === snap.productText && top.extraInstruction === snap.extraInstruction && top.result === snap.result) {
     return; // 직전 슬롯과 내용이 같으면 중복 저장 안 함
   }
   a.unshift(snap);
@@ -268,6 +296,7 @@ function pushSlot(snap, skipRender) {
 }
 function applySlot(s) {
   pushSlot(snapshotNow()); // 지금 작업 먼저 보존
+  setSelectedBrand(s.brand || '');
   $('#inProduct').value = s.productText || '';
   $('#inExtra').value = s.extraInstruction || '';
   lastResult = s.result || '';
@@ -320,6 +349,7 @@ document.addEventListener('visibilitychange', () => {
   const slots = loadSlots();
   if (slots.length) {
     const s = slots[0];
+    setSelectedBrand(s.brand || '');
     $('#inProduct').value = s.productText || '';
     $('#inExtra').value = s.extraInstruction || '';
     lastResult = s.result || '';

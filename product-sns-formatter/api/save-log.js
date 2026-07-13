@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { productText, extraInstruction, result } = req.body || {};
+  const { productText, extraInstruction, brand, result } = req.body || {};
   if (!productText || !productText.trim()) {
     res.status(400).json({ error: '저장할 입력(productText)이 비어 있어요.' });
     return;
@@ -29,6 +29,7 @@ export default async function handler(req, res) {
   try {
     const entry = {
       at: new Date().toISOString(),
+      brand: brand || '',
       productText,
       extraInstruction: extraInstruction || '',
       result: result || '',
