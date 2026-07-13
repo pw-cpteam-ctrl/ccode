@@ -220,4 +220,4 @@ async function saveReportToExcel(report, outputPath) {
   return sheetName;
 }
 
-module.exports = { saveReportToExcel, sanitizeSheetName, renameWithRetry };
+module.exports = { saveReportToExcel, sanitizeSheetName, renameWithRetry, replaceWorksheet };

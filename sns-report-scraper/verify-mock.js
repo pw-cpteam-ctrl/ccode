@@ -9,6 +9,7 @@ const path = require('path');
 const { parseCount, summarizeAccount, buildComparisonReport, buildProductComparison, extractOwnProductName, extractCompetitorProductName, extractKeywords, formatKstTime } = require('./aggregate');
 const { buildAccountReportHtml, buildPlaintextDump } = require('./account-report');
 const { saveReportToExcel, renameWithRetry } = require('./excel');
+const { saveAccountReportToExcel } = require('./account-excel');
 const { extractFromHtml, sanitizeJsonLiteral, extractAssignedJson, withPageParam } = require('./naver-stock');
 const { buildStockComparison, rankStockProducts, findStockMatch, matchPwBhStockProducts, buildIntegratedStockRows, renderStockSectionHtml } = require('./stock-report');
 const { buildHtmlReport } = require('./html-report');
@@ -794,6 +795,38 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
   } finally {
     fs.renameSync = realRename;
   }
+
+  // ── collect-account용 엑셀: excel.js와 같은 정책(같은 계정+기간이면 시트 교체, 다른
+  // 기간은 별도 시트로 누적)이 account-report.xlsx에도 그대로 적용되는지 확인 ──
+  const accountOutPath = path.join(__dirname, 'verify-output', 'account-report.xlsx');
+  const accountPosts = [
+    { link: 'https://x.com/GoodsmileP/status/1', datetime: '2026-07-02T01:00:00.000Z', likes: '10', retweets: '5', text: '게시물 A' },
+    { link: 'https://x.com/GoodsmileP/status/2', datetime: '2026-07-03T01:00:00.000Z', likes: '30', retweets: '9', text: '게시물 B' },
+  ];
+  const sheetA1 = await saveAccountReportToExcel({ handle: 'GoodsmileP', startDate: '2026-07-01', endDate: '2026-07-11', posts: accountPosts }, accountOutPath);
+  const sheetA2 = await saveAccountReportToExcel({ handle: 'GoodsmileP', startDate: '2026-07-01', endDate: '2026-07-11', posts: accountPosts }, accountOutPath);
+  const sheetB = await saveAccountReportToExcel({ handle: 'GoodsmileP', startDate: '2026-07-12', endDate: '2026-07-19', posts: accountPosts }, accountOutPath);
+
+  const ExcelJS2 = require('exceljs');
+  const wbAcc = new ExcelJS2.Workbook();
+  await wbAcc.xlsx.readFile(accountOutPath);
+
+  check('account-excel: 같은 계정+같은 기간으로 재실행하면 시트가 쌓이지 않고 갱신됨', () => {
+    assert.strictEqual(sheetA1, sheetA2, '같은 계정+기간이면 시트 이름도 같아야 함');
+    assert.ok(wbAcc.getWorksheet(sheetA1));
+  });
+  check('account-excel: 다른 기간은 별도 시트로 추가되고 기존 시트는 보존됨', () => {
+    assert.notStrictEqual(sheetA1, sheetB);
+    assert.ok(wbAcc.getWorksheet(sheetA1), '이전 기간 시트가 남아있어야 함');
+    assert.ok(wbAcc.getWorksheet(sheetB));
+    assert.strictEqual(wbAcc.worksheets.length, 2, '계정별 시트 1개(엑셀은 요약+상품별처럼 나뉘지 않고 계정당 1개) x 기간 2개');
+  });
+  check('account-excel: 게시물이 (좋아요+리트윗) 합산 내림차순으로 들어감', () => {
+    const ws = wbAcc.getWorksheet(sheetB);
+    // 5행: 헤더, 6행: 1위(게시물 B, 30+9=39), 7행: 2위(게시물 A, 10+5=15)
+    assert.strictEqual(ws.getCell('F6').value, '게시물 B');
+    assert.strictEqual(ws.getCell('F7').value, '게시물 A');
+  });
 
   console.log(`\n(생성된 검증용 엑셀 파일: ${outPath} — 직접 열어서 표 형태도 확인 가능)`);
   if (process.exitCode) {
