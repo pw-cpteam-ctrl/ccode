@@ -141,6 +141,33 @@ check('extractKeywords: 실전에서 발견된 오매칭 패턴들이 다시 생
   assert.ok(singleWordOverlap.length < 2, '흔한 단어 1개 겹침만으로는 매칭 기준(2개 이상)에 못 미쳐야 함');
 });
 
+check('BH 발표 게시물 고정 템플릿("원형/최초/추가/추후")이 서로 다른 상품끼리 다리 역할 하면 안 됨', () => {
+  // 실전 사례: BH가 신제품 발표 게시물마다 "OO 원형 첫 공개... 룩업 시리즈 신제품 OO 최초
+  // 공개! 추가 정보 추후 공개 예정"이라는 문구를 그대로 재사용해서, 이 상용구 단어들이
+  // GENERIC_KEYWORDS에 없었을 때 BH 게시물 5건이 서로 전부 연결되고, 거기에 각 PW 게시물이
+  // 다리처럼 붙어서 실제로는 무관한 상품 10건(PW 5 + BH 5)이 통째로 하나로 뭉쳤었음.
+  const own = [
+    { link: 'https://x.com/own/reborn', datetime: '2026-07-10T01:00:00.000Z', likes: '10', retweets: '5', text: '[원형 최초공개] 가히리 룩업\n\n가정교사 히트맨 REBORN!\n사와다 츠나요시\n히바리 쿄야' },
+    { link: 'https://x.com/own/p5r', datetime: '2026-07-10T02:00:00.000Z', likes: '10', retweets: '5', text: '[원형 최초공개] 페르소나5 더 로열 룩업\n\n주인공\n모르가나' },
+    { link: 'https://x.com/own/kaguya', datetime: '2026-07-10T03:00:00.000Z', likes: '10', retweets: '5', text: '[원형 최초공개] 초 가구야 공주! 룩업\n\n가구야\n이로하' },
+    { link: 'https://x.com/own/bleach', datetime: '2026-07-10T04:00:00.000Z', likes: '10', retweets: '5', text: '[채색원형 최초공개] 블리치 룩업\n\n히츠가야 토시로\n히라코 신지' },
+    { link: 'https://x.com/own/honkai', datetime: '2026-07-10T05:00:00.000Z', likes: '10', retweets: '5', text: '[채색원형 최초공개] 붕괴 스타레일 룩업\n\n더 헤르타\n카프카' },
+  ];
+  const comp = [
+    { link: 'https://x.com/comp/reborn', datetime: '2026-07-10T06:00:00.000Z', likes: '3', retweets: '1', text: '원형 첫 공개\n가정교사 히트맨 리본 REBORN\n룩업 사와다 츠나요시\n룩업 히바리 쿄야\n룩업 시리즈 신제품 원형 최초 공개! 추가 정보 추후 공개 예정' },
+    { link: 'https://x.com/comp/p5r', datetime: '2026-07-10T06:10:00.000Z', likes: '3', retweets: '1', text: '원형 첫 공개\n페르소나 5 더 로열 P5R\n룩업 주인공\n룩업 모르가나\n룩업 시리즈 신제품 원형 최초 공개! 추가 정보 추후 공개 예정' },
+    { link: 'https://x.com/comp/kaguya', datetime: '2026-07-10T06:20:00.000Z', likes: '3', retweets: '1', text: '원형 첫 공개\n초 가구야 공주\n룩업 가구야\n룩업 사카요리 이로하\n룩업 시리즈 신제품 원형 최초 공개! 추가 정보 추후 공개 예정' },
+    { link: 'https://x.com/comp/bleach', datetime: '2026-07-10T06:30:00.000Z', likes: '3', retweets: '1', text: '색채 조형 첫 공개\n블리치 BLEACH\n룩업 히츠가야 토시로\n룩업 히라코 신지\n룩업 시리즈 신제품 색채 조형 공개! 추가 정보 추후 공개 예정' },
+    { link: 'https://x.com/comp/honkai', datetime: '2026-07-10T06:40:00.000Z', likes: '3', retweets: '1', text: '색채 조형 첫 공개\n붕괴 스타레일\n룩업 헤르타 카프카\n룩업 시리즈 신제품 색채 조형 공개! 추가 정보 추후 공개 예정' },
+  ];
+  const result = buildProductComparison(own, comp, ['likes', 'retweets'], 'text', ['retweets', 'likes']);
+  assert.strictEqual(result.products.length, 5, '상용구로 다리 놓이지 않고 5개 상품으로 정확히 분리돼야 함');
+  result.products.forEach(p => {
+    assert.strictEqual(p.own.postCount, 1, `"${p.ip}" 행은 PW 게시물 1건씩만 있어야 함(다른 상품과 안 섞임)`);
+    assert.strictEqual(p.competitor.postCount, 1, `"${p.ip}" 행은 BH 게시물 1건씩만 있어야 함(다른 상품과 안 섞임)`);
+  });
+});
+
 check('수동 매칭(manual-matches): 자동으로 안 묶이는 게시물도 사람이 지정하면 상품 행에 들어감', () => {
   const ownP = [{ link: 'https://x.com/own/999', datetime: '2026-07-01T01:00:00.000Z', likes: '10', retweets: '5', text: '전혀 안 겹치는 문구' }];
   const compP = [{ link: 'https://x.com/comp/999', datetime: '2026-07-01T02:00:00.000Z', likes: '3', retweets: '1', text: '완전히 다른 문구' }];
