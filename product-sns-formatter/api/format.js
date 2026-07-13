@@ -39,10 +39,29 @@ export default async function handler(req, res) {
     });
     const text = message.content.find((block) => block.type === 'text')?.text || '{}';
     const parsed = JSON.parse(text);
-    res.status(200).json({ result: (parsed.result || '').trim(), corrections: parsed.corrections || [] });
+    const result = (parsed.result || '').trim();
+
+    // 안전장치: 프롬프트로 아무리 금지해도 모델이 이따금 원문에 없던 일본어를 지어낼 때가 있어서,
+    // 히라가나/가타카나(한국어에 없는 문자)가 원문에 없던 새 글자로 나오면 결과를 내보내지 않고 막는다.
+    const newJapanese = findNewJapaneseChars(productText, result);
+    if (newJapanese.length) {
+      res.status(502).json({ error: `AI가 입력에 없던 일본어 문자(${newJapanese.join(', ')})를 결과에 만들어냈어요. 다시 변환해주세요.` });
+      return;
+    }
+
+    res.status(200).json({ result, corrections: parsed.corrections || [] });
   } catch (err) {
     res.status(502).json({ error: `Claude 호출 실패: ${err.message}` });
   }
+}
+
+// 히라가나/가타카나는 한국어 표기에 등장할 일이 없으므로, 결과에 있는데 원문엔 없다면
+// 100% AI가 새로 지어낸 일본어라고 판단할 수 있다 (한자는 한국 인명/지명에도 쓰여서 제외).
+function findNewJapaneseChars(inputText, outputText) {
+  const jpPattern = /[぀-ヿㇰ-ㇿ]/g;
+  const inputChars = new Set((inputText || '').match(jpPattern) || []);
+  const outputChars = new Set((outputText || '').match(jpPattern) || []);
+  return [...outputChars].filter((c) => !inputChars.has(c));
 }
 
 const RESULT_SCHEMA = {
