@@ -387,14 +387,31 @@ function drawDebugOverlay(src) {
 function confirmSourceCrop(srcId) {
   const src = state.sources.find((s) => s.id === srcId);
   if (!src || src.confirmed) return;
+
+  // "다시 검출" 후 재확정(redo)하는 경우 — 이 소스가 예전에 만들어둔 항목/사진/헤더를
+  // 먼저 지운다. id 기준으로 지워야 안전하다(itemStartIndex 같은 위치 기준으로 지우면,
+  // 그 사이 2/3단계에서 순서를 바꾸거나 다른 항목을 지웠을 때 엉뚱한 항목이 삭제될 수 있음).
+  if (src.itemIds && src.itemIds.length) {
+    const idsToRemove = new Set(src.itemIds);
+    state.items.filter((it) => idsToRemove.has(it.id)).forEach((it) => { delete state.photos[it.photoId]; });
+    state.items = state.items.filter((it) => !idsToRemove.has(it.id));
+  }
+  if (src.headerId) {
+    state.headers = state.headers.filter((h) => h.id !== src.headerId);
+    src.headerId = null;
+  }
+
   const { cols, rows, cardW, cardH } = src.grid;
 
   if (rows.length) {
     const headerCanvas = GridDetect.cropCell(src.img, 0, 0, src.img.width, rows[0]);
-    state.headers.push({ id: uid('hdr'), label: `소스 ${state.headers.length + 1} 헤더`, canvas: headerCanvas });
+    const headerId = uid('hdr');
+    state.headers.push({ id: headerId, label: `소스 ${state.headers.length + 1} 헤더`, canvas: headerCanvas });
+    src.headerId = headerId;
   }
 
-  src.itemStartIndex = state.items.length; // AI 채우기 결과를 이 소스가 만든 항목에만 매핑하기 위한 범위
+  src.itemStartIndex = state.items.length; // AI 채우기 결과를 이 소스가 만든 항목에만 매핑하기 위한 범위(같은 1단계 세션 안에서만 유효)
+  src.itemIds = []; // 재크롭 시 이 소스가 만든 항목만 정확히 지우기 위한 id 목록
   // 그리드 스캔 경계 그대로 자르면 검출이 살짝만 어긋나도 사진 가장자리가 잘릴 수 있다.
   // 안쪽으로 당기지 않고 상하좌우 +3px 바깥쪽으로 여유를 둔다 — 배경이 흰색이라 여유분은
   // 최종 렌더에서 티가 안 나고(176×176으로 다시 맞춰 그려짐), 대신 사진 잘림을 방지한다.
@@ -407,8 +424,10 @@ function confirmSourceCrop(srcId) {
       const mw = Math.min(src.img.width, x + cardW + CROP_MARGIN) - mx;
       const mh = Math.min(src.img.height, y + cardH + CROP_MARGIN) - my;
       state.photos[photoId] = GridDetect.cropCell(src.img, mx, my, mw, mh);
+      const itemId = uid('item');
+      src.itemIds.push(itemId);
       state.items.push({
-        id: uid('item'), photoId, ip: '', tag: '', price: '', ship: '무료배송',
+        id: itemId, photoId, ip: '', tag: '', price: '', ship: '무료배송',
         subGrade: 'other', pushToEnd: false, aiUncertain: false,
       });
     });
@@ -1347,7 +1366,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
     const src = state.sources.find((s) => s.id === btn.dataset.id);
-    if (btn.dataset.action === 'redetect') { src.grid = GridDetect.detectGrid(src.img); renderSourceList(); }
+    if (btn.dataset.action === 'redetect') {
+      // 이미 크롭 확정된 소스는 재확정(다시 크롭)까지 가능하게 열어준다 — 예전엔 확정 후
+      // "다시 검출"을 눌러도 확인 버튼이 계속 비활성 상태라 재검출 결과를 반영할 방법이
+      // 없었다(재검출해도 아무것도 안 바뀌는 것처럼 보이는 버그). 대신 재확정하면 이
+      // 소스에서 이미 만든 항목이 전부 교체되므로, 2단계 이후에서 직접 고친 내용이
+      // 있으면 사라진다는 걸 미리 경고한다.
+      if (src.confirmed) {
+        const ok = window.confirm(
+          '이미 크롭이 확정된 소스입니다. 다시 검출하면 이 소스에서 만든 항목이 전부 삭제되고 새로 만들어집니다.\n' +
+          '2단계 이후에서 IP명/가격/태그 등을 직접 고친 내용이 있다면 함께 사라집니다. 계속할까요?'
+        );
+        if (!ok) return;
+        src.confirmed = false;
+      }
+      src.grid = GridDetect.detectGrid(src.img);
+      renderSourceList();
+    }
     if (btn.dataset.action === 'confirm') confirmSourceCrop(src.id);
     if (btn.dataset.action === 'ai-fill') aiFillSource(src.id);
   });
