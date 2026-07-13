@@ -351,7 +351,7 @@ td.empty{color:#9099a6;padding:24px}
 tr.embed-row{display:none;background:#fafbfd}
 tr.embed-row.open{display:table-row}
 tr.embed-row td{white-space:normal;text-align:left}
-.embed-cols{display:flex;gap:20px;padding:12px 4px}
+.embed-cols{display:flex;gap:20px;padding:12px 4px;width:60%}
 .embed-col{flex:1;min-width:0;max-height:640px;overflow-y:auto}
 .embed-col h4{margin:0 0 8px;font-size:12px;padding-bottom:6px;border-bottom:2px solid #eef0f4}
 .embed-col h4.pw{color:#1971c2}.embed-col h4.bh{color:#c0504d}
@@ -387,16 +387,24 @@ ${sections}
 ${renderStockSectionHtml(stockComparison)}
 </div>
 <script>
+// 인스타그램 embed.js는 트위터 widgets.js와 달리 async 로딩이 늦게 끝나면(느린 네트워크 등)
+// 토글을 누른 시점에 window.instgrm이 아직 없어서 조용히 아무 일도 안 일어남 — 예전엔
+// dataset.rendered를 그때 바로 '1'로 찍어버려서 다시 열어도 재시도가 안 됐던 게 "네트워크는
+// 되는데 임베드만 안 뜨는" 버그의 원인. widgets.load/Embeds.process는 여러 번 불러도
+// 이미 처리된 임베드는 건드리지 않으므로(멱등) rendered 플래그 없이 열 때마다 시도하고,
+// 스크립트가 아직 안 뜬 경우 잠깐 폴링해서 뜨자마자 처리한다.
+function tryRenderEmbeds(platform, row, attemptsLeft) {
+  if (attemptsLeft === undefined) attemptsLeft = 20; // 300ms * 20 = 최대 6초까지 대기
+  if (platform === 'twitter' && window.twttr && window.twttr.widgets) { window.twttr.widgets.load(row); return; }
+  if (platform === 'instagram' && window.instgrm && window.instgrm.Embeds) { window.instgrm.Embeds.process(); return; }
+  if (attemptsLeft > 0) setTimeout(function () { tryRenderEmbeds(platform, row, attemptsLeft - 1); }, 300);
+}
 function toggleEmbeds(rowId, platform, btn) {
   var row = document.getElementById(rowId);
   var opening = !row.classList.contains('open');
   row.classList.toggle('open');
   btn.textContent = opening ? '▼ 접기' : '▶ 보기';
-  if (opening && !row.dataset.rendered) {
-    row.dataset.rendered = '1';
-    if (platform === 'twitter' && window.twttr) window.twttr.widgets.load(row);
-    if (platform === 'instagram' && window.instgrm) window.instgrm.Embeds.process();
-  }
+  if (opening) tryRenderEmbeds(platform, row);
 }
 function toggleAllEmbeds(platform, forceOpen) {
   document.querySelectorAll('tr.embed-row[id^="embed-' + platform + '-"]').forEach(function (row) {
