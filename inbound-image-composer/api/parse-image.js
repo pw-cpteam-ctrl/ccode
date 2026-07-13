@@ -52,8 +52,9 @@ const RESULT_SCHEMA = {
           tag: { type: 'string', description: 'ip가 "VTuber"면 소속(예: 홀로라이브, 니지산지)을 여기 적는다. 그 외엔 화이트리스트 태그 중 하나(룩업/테노히라/메가캣) 또는 빈 문자열. 확실하지 않으면 빈 문자열' },
           moodCluster: { type: 'string', description: '아래 분위기 클러스터 목록 중 이 IP와 가장 어울리는 클러스터명. 애매하거나 목록에 없으면 빈 문자열' },
           uncertain: { type: 'boolean', description: 'IP명 판단이 애매하거나 원문을 명확히 읽지 못했으면 true' },
+          genderLean: { type: 'string', enum: ['male', 'female', 'unknown'], description: '이 IP/캐릭터의 주 소비층 성향 추측. 남성향이면 male, 여성향이면 female, 판단이 애매하면 unknown. S/A급으로 이미 유명한 IP라도 상관없이 항상 추측해서 채워라(클라이언트가 필요할 때만 사용한다).' },
         },
-        required: ['rawText', 'ip', 'price', 'ship', 'tag', 'moodCluster', 'uncertain'],
+        required: ['rawText', 'ip', 'price', 'ship', 'tag', 'moodCluster', 'uncertain', 'genderLean'],
         additionalProperties: false,
       },
     },
@@ -143,8 +144,15 @@ function buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, la
     clusterLines || '(클러스터 사전 없음 — moodCluster는 항상 빈 문자열)',
     '- 애매하거나 어느 클러스터에도 안 맞으면 moodCluster는 빈 문자열로 둔다. 억지로 끼워맞추지 마라.',
     '',
+    '## 성향 추측 (genderLean)',
+    '- 이 상품의 IP/캐릭터가 주로 남성 소비자에게 인기 있는지(예: 미소녀 피규어 단품, 밀리터리물),',
+    '  여성 소비자에게 인기 있는지(예: 아이돌/밴드 육성물, 순정만화, 잘생긴 남성 캐릭터 중심 작품)',
+    '  추측해서 genderLean에 "male" 또는 "female"로 답해라. 정말 판단이 안 서면 "unknown".',
+    '- 이미 유명해서 사전/등급표에 있을 법한 IP라도 상관없이 매번 채워라 — 실제로 등급표에',
+    '  있는지는 클라이언트가 별도로 확인하고, 사전에 없는 IP에 대해서만 이 값을 실제로 사용한다.',
+    '',
     '## 출력',
-    '- rawText/ip/price/ship/tag/moodCluster/uncertain 필드를 가진 JSON만 출력. 설명 텍스트 없이.',
+    '- rawText/ip/price/ship/tag/moodCluster/uncertain/genderLean 필드를 가진 JSON만 출력. 설명 텍스트 없이.',
   ].join('\n');
 }
 

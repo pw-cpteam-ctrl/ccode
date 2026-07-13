@@ -7,7 +7,7 @@
 // 오히려 번거롭다는 피드백에 따라 즉시 삭제 + 실행취소(undo)로 단순화했다.
 // ============================================================
 
-const STEP_LABELS = ['업로드/검출', '표 정리', '전체 미리보기', '순서 정렬', '최종 내보내기'];
+const STEP_LABELS = ['업로드/검출', '표 정리', '미리보기 & 정렬', '최종 내보내기'];
 
 const state = {
   step: 1,
@@ -24,6 +24,11 @@ const state = {
   orderConfirmed: false,
   finalPages: null, // array of { items, canvas }
 };
+
+// 2단계(표 정리)의 빈 배경 드래그 다중 선택은 3/4단계(카드 그리드)의 group-selected
+// 선택과 목적이 다르다(태그/클러스터 일괄편집 대 카드 이동) — 같은 변수를 쓰면 단계를
+// 넘나들 때 선택이 뜻하지 않게 이어질 수 있어 별도 변수로 관리한다.
+let step2SelectedIds = new Set();
 
 function uid(prefix) { return `${prefix}${state.nextItemId++}`; }
 function chunk(arr, size) {
@@ -72,14 +77,45 @@ async function loadDict() {
 
   state.dict = {
     ipNameMap: { ...seed.ipNameMap, ...(server.ipNameMap || {}), ...(local.ipNameMap || {}) },
-    gradeTable: local.gradeTable || (server.gradeTable && server.gradeTable.S && server.gradeTable.S.length ? server.gradeTable : seed.gradeTable),
-    moodClusters: local.moodClusters || (server.moodClusters && server.moodClusters.length ? server.moodClusters : seed.moodClusters),
-    storeProfiles: local.storeProfiles || (Object.keys(server.storeProfiles || {}).length ? server.storeProfiles : seed.storeProfiles),
-    productLineNames: local.productLineNames || (server.productLineNames && server.productLineNames.length ? server.productLineNames : seed.productLineNames),
+    gradeTable: mergeGradeTable(seed.gradeTable, server.gradeTable, local.gradeTable),
+    moodClusters: mergeMoodClusters(seed.moodClusters, server.moodClusters, local.moodClusters),
+    storeProfiles: { ...seed.storeProfiles, ...(server.storeProfiles || {}), ...(local.storeProfiles || {}) },
+    productLineNames: uniqStrings([...seed.productLineNames, ...(server.productLineNames || []), ...(local.productLineNames || [])]),
   };
   if (!state.dict.storeProfiles[state.activeStore]) {
     state.activeStore = Object.keys(state.dict.storeProfiles)[0];
   }
+}
+
+function uniqStrings(arr) {
+  return [...new Set(arr.filter(Boolean))];
+}
+
+// 예전엔 로컬(또는 GitHub)에 값이 "하나라도" 저장돼 있으면 그걸로 시드 전체를 통째로
+// 덮어썼다 — 그래서 시드에 나중에 추가된 항목(예: 등급표의 "주술회전")이 사용자의
+// 예전 로컬 저장값 때문에 계속 안 보이는 버그가 있었다. 항상 시드 + 서버 + 로컬을
+// 합집합으로 병합해서, 로컬 편집이 시드 기본값을 지우는 일이 없게 한다.
+function mergeGradeTable(seed, server, local) {
+  const s = server && server.S ? server : { S: [], A: [] };
+  const l = local && local.S ? local : { S: [], A: [] };
+  return {
+    S: uniqStrings([...seed.S, ...s.S, ...l.S]),
+    A: uniqStrings([...seed.A, ...s.A, ...l.A]),
+  };
+}
+
+// 클러스터는 이름 기준으로 합치고, 같은 이름이면 멤버 목록을 합집합으로 합친다.
+function mergeMoodClusters(seed, server, local) {
+  const byName = new Map();
+  [seed, server || [], local || []].forEach((list) => {
+    list.forEach((c) => {
+      if (!byName.has(c.name)) byName.set(c.name, { name: c.name, note: c.note || '', members: [] });
+      const entry = byName.get(c.name);
+      entry.members = uniqStrings([...entry.members, ...(c.members || [])]);
+      if (c.note) entry.note = c.note;
+    });
+  });
+  return [...byName.values()];
 }
 
 // 이 브라우저에 즉시 저장 (백엔드 불필요, 확인창 없음 — 언제든 되돌릴 수 있는 로컬 편집이라서).
@@ -120,7 +156,7 @@ function renderStepIndicator() {
 
 function goToStep(n) {
   if (n === 2 && Object.keys(state.photos).length === 0) return;
-  if (n === 5 && !state.orderConfirmed) { showStep5Guard(); }
+  if (n === 4 && !state.orderConfirmed) { showStep5Guard(); }
   if (n !== 3) hideUndoBanner(); // 실행취소는 3단계 컨텍스트에서만 의미가 있음
   state.step = n;
   document.querySelectorAll('.step').forEach((s) => s.classList.remove('active'));
@@ -128,8 +164,7 @@ function goToStep(n) {
   renderStepIndicator();
   if (n === 2) renderDataTable();
   if (n === 3) renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
-  if (n === 4) renderPreviewGrid('sortPreviewGrid', state.items, { draggable: true, selectable: false });
-  if (n === 5) renderStep5();
+  if (n === 4) renderStep5();
 }
 
 // ============================================================
@@ -169,12 +204,10 @@ function renderSourceList() {
           <button class="btn" data-action="redetect" data-id="${src.id}">다시 검출</button>
           <button class="btn primary" data-action="confirm" data-id="${src.id}" ${src.confirmed ? 'disabled' : ''}>${src.confirmed ? '크롭 완료됨' : '확인 및 크롭'}</button>
           <button class="btn" data-action="ai-fill" data-id="${src.id}" ${src.confirmed ? '' : 'disabled'} title="claude-sonnet-5로 사진과 텍스트를 함께 보고 표를 채웁니다 (유료 API 호출, 장당 약 2~4센트 수준). 결과는 항상 확인 대상으로만 표시됩니다.">🤖 AI로 채우기</button>
-          <button class="btn" data-action="preview-ai-crop" data-id="${src.id}" ${src.confirmed ? '' : 'disabled'} title="비용 없이, AI에게 실제로 전송될 크롭 이미지를 행 단위로 미리 볼 수 있습니다.">🔍 AI 전송 미리보기</button>
         </div>
       </div>
       <canvas class="overlay" data-canvas="${src.id}"></canvas>
-      <div class="source-status ${src.confirmed ? 'confirmed' : ''}">${src.confirmed ? '✓ 개별 사진 크롭 완료 — photoId 부여됨' : '⚠ 검출 결과를 눈으로 확인한 뒤 크롭을 확정하세요 (행 간격은 불규칙할 수 있습니다)'}</div>
-      <div class="ai-crop-preview" data-preview="${src.id}" style="display:none;"></div>
+      <div class="source-status ${src.confirmed ? 'confirmed' : ''}">${src.confirmed ? '✓ 개별 사진 크롭 완료 — photoId 부여됨' : '⚠ 검출 결과를 눈으로 확인한 뒤 크롭을 확정하세요 (행 간격은 불규칙할 수 있습니다). 빨간 박스 = 사진 크롭 범위, 초록 점선 = AI에게 실제로 전송되는 텍스트 포함 범위'}</div>
     `;
     container.appendChild(block);
     drawDebugOverlay(src);
@@ -188,9 +221,23 @@ function drawDebugOverlay(src) {
   canvas.height = src.img.height;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(src.img, 0, 0);
+  const { cols, rows, cardW, cardH } = src.grid;
+
+  // 초록 점선: AI에게 실제로 전송되는 크롭 범위(사진+아래 텍스트, 행 전체 폭) — 빨간
+  // 사진 박스보다 더 아래로 내려간다. "|" 뒤 작품명 텍스트가 이 범위 안에 실제로 들어
+  // 오는지 여기서 바로 확인 가능 (예전엔 별도 "미리보기" 버튼으로 뺐었는데, 사진 박스만
+  // 그리던 이 오버레이와 겹쳐 보여서 의미가 없었다 — 하나로 합침).
+  if (rows.length) {
+    const rowTextBottoms = computeRowTextBottoms(src);
+    ctx.strokeStyle = '#2ecc71';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    rows.forEach((y, i) => ctx.strokeRect(0, y, src.img.width, rowTextBottoms[i] - y));
+    ctx.setLineDash([]);
+  }
+
   ctx.strokeStyle = 'red';
   ctx.lineWidth = 2;
-  const { cols, rows, cardW, cardH } = src.grid;
   rows.forEach((y) => cols.forEach((x) => ctx.strokeRect(x, y, cardW, cardH)));
   // 헤더 영역(첫 행 위쪽) 표시
   if (rows.length) {
@@ -318,6 +365,18 @@ function applyAiClusterResult(item, moodClusterName) {
   return true;
 }
 
+// 사전 기반 분류가 최우선이다: S/A급 등급표에 이미 있는 IP는 effectiveGrade()가
+// subGrade와 무관하게 'S_A'로 취급하므로 여기서 건드릴 필요가 없다. 사전에 없는
+// IP에 한해서만 AI가 추측한 성향(genderLean)으로 B급 남/여성향을 채운다 — B/C 등급
+// 자체(판매 우선순위)는 AI가 알 수 없는 영업 판단이라 항상 B로 채우고, 사람이
+// 드롭다운에서 필요하면 C로 낮춰서 직접 조정한다.
+function applyAiGenderLean(item, genderLean) {
+  if (!item.ip) return;
+  if (state.dict.gradeTable.S.includes(item.ip) || state.dict.gradeTable.A.includes(item.ip)) return;
+  if (genderLean === 'male') item.subGrade = 'B_male';
+  else if (genderLean === 'female') item.subGrade = 'B_female';
+}
+
 async function aiFillSource(srcId) {
   const src = state.sources.find((s) => s.id === srcId);
   if (!src || !src.confirmed) return;
@@ -329,6 +388,7 @@ async function aiFillSource(srcId) {
   let uncertainCount = 0;
   let filledCount = 0;
   let clusteredCount = 0;
+  let genderClassifiedCount = 0;
 
   try {
     for (let b = 0; b < rowBatches.length; b++) {
@@ -364,44 +424,29 @@ async function aiFillSource(srcId) {
         const item = state.items[src.itemStartIndex + itemIndicesInBatch[j]];
         if (!item) return;
         // 모델이 그래도 ip를 비워서 주면 rawText로 대체 — 빈 칸보다는 "확인해서 고칠 글자"가 있는 게 낫다.
-        item.ip = result.ip || result.rawText || '';
+        // trim 필수: 사전(gradeTable/ipNameMap) 조회가 문자열 완전일치라서, 앞뒤 공백이 하나라도
+        // 남으면 "주술회전"처럼 이미 사전에 있는 IP도 조용히 매칭 실패해서 미분류로 빠진다.
+        item.ip = (result.ip || result.rawText || '').trim();
         item.price = result.price || '';
         item.ship = result.ship || '무료배송';
         item.tag = result.tag || '';
         item.aiUncertain = !!result.uncertain || !item.ip;
         if (item.aiUncertain) uncertainCount++;
         if (applyAiClusterResult(item, result.moodCluster)) clusteredCount++;
+        const gradeBefore = item.subGrade;
+        applyAiGenderLean(item, result.genderLean);
+        if (item.subGrade !== gradeBefore) genderClassifiedCount++;
         filledCount++;
       });
       renderDataTable();
     }
     if (clusteredCount) saveDictLocal('moodClusters', state.dict.moodClusters);
-    alert(`AI가 ${filledCount}개 항목을 채웠습니다.\n확인이 필요한 항목: ${uncertainCount}개 (⚠ 표시된 곳을 확인하세요)\n분위기 클러스터에 새로 편입된 IP: ${clusteredCount}개`);
+    alert(`AI가 ${filledCount}개 항목을 채웠습니다.\n확인이 필요한 항목: ${uncertainCount}개 (⚠ 표시된 곳을 확인하세요)\n분위기 클러스터에 새로 편입된 IP: ${clusteredCount}개\n등급표에 없어 AI가 성향(B급 남/여성향)을 추측한 항목: ${genderClassifiedCount}개 (등급 자체는 필요시 2단계에서 직접 조정)`);
   } catch (e) {
     alert(`AI로 채우기 실패: ${e.message}\n(백엔드가 배포되어 있지 않다면 정상입니다 — 수동으로 입력해주세요)`);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🤖 AI로 채우기'; }
   }
-}
-
-// 비용 없이, AI에게 실제로 전송될 각 행 크롭 이미지를 그대로 화면에 보여준다.
-// "|" 뒤 작품명이 크롭에 실제로 포함되는지, 글자가 잘리지는 않는지 등을 API 호출
-// 전에 직접 눈으로 확인할 수 있게 하기 위함 — 지금까지 프롬프트만 계속 고쳤지만
-// 정작 AI에게 뭐가 보내지는지 검증한 적이 없어서 추가했다.
-function previewAiCrops(srcId) {
-  const src = state.sources.find((s) => s.id === srcId);
-  if (!src || !src.confirmed) return;
-  const container = document.querySelector(`[data-preview="${srcId}"]`);
-  const isOpen = container.style.display !== 'none' && container.dataset.rendered === 'true';
-  if (isOpen) { container.style.display = 'none'; return; }
-
-  const { rows } = src.grid;
-  container.innerHTML = Array.from({ length: rows.length }, (_, ri) => {
-    const canvas = cropRowsRegion(src, [ri]);
-    return `<div class="ai-crop-row"><div class="ai-crop-row-label">행 ${ri + 1}</div><img src="${canvas.toDataURL('image/png')}" /></div>`;
-  }).join('');
-  container.dataset.rendered = 'true';
-  container.style.display = 'block';
 }
 
 // ============================================================
@@ -438,13 +483,26 @@ function ipDictSuggestionHtml(ip) {
 // 배송비는 이 화면(2단계)에서는 편집하지 않는다 — 대부분 무료배송으로 고정이라 편집란이
 // 오히려 목록을 길게 만들어 가독성을 해쳤음. 값 자체는 item.ship에 그대로 남아있고
 // (기본 "무료배송"), 예외적으로 바꿔야 하면 3단계 카드의 "✎ 수정" 다이얼로그에서 가능하다.
+// 같은 IP명끼리 왼쪽 테두리 색을 맞춰서 눈으로 묶어 볼 수 있게 한다. IP 문자열을
+// 해시해서 고정 팔레트에서 색을 고르므로, 같은 이름이면 항상 같은 색이 나온다
+// (여러 IP가 팔레트 안에서 같은 색을 나눠 쓸 수 있는데, 전역 구분자가 아니라
+// "이 화면에서 같은 걸 묶어보기" 용도라 색상 충돌은 감수할 만한 트레이드오프다).
+const IP_COLOR_PALETTE = ['#e74c3c', '#e67e22', '#f0b400', '#27ae60', '#16a085', '#2980b9', '#8e44ad', '#c0392b', '#2c3e50', '#d35400'];
+function colorForIp(ip) {
+  if (!ip) return 'transparent';
+  let hash = 0;
+  for (let i = 0; i < ip.length; i++) hash = (hash * 31 + ip.charCodeAt(i)) >>> 0;
+  return IP_COLOR_PALETTE[hash % IP_COLOR_PALETTE.length];
+}
+
 function renderDataTable() {
   const grid = document.getElementById('dataTableBody');
   grid.innerHTML = '';
   state.items.forEach((item) => {
     const card = document.createElement('div');
-    card.className = 'step2-card';
-    card.dataset.id = item.id;
+    card.className = `step2-card${step2SelectedIds.has(item.id) ? ' group-selected' : ''}`;
+    card.dataset.itemId = item.id;
+    card.style.borderLeftColor = colorForIp(item.ip);
     const tagOptions = ['<option value="">(없음)</option>']
       .concat(tagWhitelistForActiveStore().map((t) => `<option value="${t}" ${item.tag === t ? 'selected' : ''}>${t}</option>`))
       .join('');
@@ -480,6 +538,58 @@ function renderDataTable() {
       item.ip = state.dict.ipNameMap[item.ip];
       renderDataTable();
     });
+  });
+
+  attachMarqueeSelection(grid, '.step2-card', (idSet) => { step2SelectedIds = idSet; renderBulkEditBar(); });
+  renderBulkEditBar();
+}
+
+// 2단계에서 빈 배경을 드래그로 여러 행을 묶어 선택하면(step2SelectedIds), 태그나
+// 분위기 클러스터 편입을 선택 항목 전체에 한 번에 적용할 수 있는 툴바를 보여준다.
+// 하나하나 드롭다운을 고쳐야 했던 불편함(원래 설계 그대로면 항목이 많을 때 매우 번거로움)을 줄이기 위함.
+function renderBulkEditBar() {
+  const bar = document.getElementById('bulkEditBar');
+  if (!bar) return;
+  const ids = [...step2SelectedIds].filter((id) => state.items.some((i) => i.id === id));
+  if (!ids.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+
+  const tagOptions = ['<option value="">(없음)</option>']
+    .concat(tagWhitelistForActiveStore().map((t) => `<option value="${t}">${t}</option>`)).join('');
+  const clusterOptions = ['<option value="">클러스터 선택</option>']
+    .concat(state.dict.moodClusters.map((c) => `<option value="${c.name}">${c.name}</option>`)).join('');
+
+  bar.style.display = 'flex';
+  bar.innerHTML = `
+    <strong>${ids.length}개 선택됨</strong>
+    <select id="bulkTagSelect">${tagOptions}</select>
+    <button class="btn" id="bulkApplyTagBtn">선택 항목 태그 일괄 적용</button>
+    <select id="bulkClusterSelect">${clusterOptions}</select>
+    <button class="btn" id="bulkApplyClusterBtn">선택 항목 IP를 이 클러스터에 일괄 편입</button>
+    <button class="btn ghost" id="bulkClearSelectionBtn">선택 해제</button>
+  `;
+
+  document.getElementById('bulkApplyTagBtn').addEventListener('click', () => {
+    const tag = document.getElementById('bulkTagSelect').value;
+    ids.forEach((id) => { const it = state.items.find((i) => i.id === id); if (it) it.tag = tag; });
+    renderDataTable();
+  });
+  document.getElementById('bulkApplyClusterBtn').addEventListener('click', () => {
+    const clusterName = document.getElementById('bulkClusterSelect').value;
+    if (!clusterName) return;
+    const cluster = state.dict.moodClusters.find((c) => c.name === clusterName);
+    if (!cluster) return;
+    let added = 0;
+    ids.forEach((id) => {
+      const it = state.items.find((i) => i.id === id);
+      if (it && it.ip && !cluster.members.includes(it.ip)) { cluster.members.push(it.ip); added++; }
+    });
+    if (added) saveDictLocal('moodClusters', state.dict.moodClusters);
+    alert(`"${clusterName}" 클러스터에 IP ${added}개를 새로 편입했습니다.`);
+    renderDataTable();
+  });
+  document.getElementById('bulkClearSelectionBtn').addEventListener('click', () => {
+    step2SelectedIds = new Set();
+    renderDataTable();
   });
 }
 
@@ -520,9 +630,14 @@ function moveItemsBeforeTarget(movingIds, targetItemId) {
 // 카드가 없는 빈 배경을 클릭+드래그하면 사각형 선택 영역을 그려서, 겹치는 카드들을
 // group-selected 상태로 표시한다. 이후 그 중 하나를 드래그하면 선택된 카드 전체가
 // 순서를 유지한 채 함께 이동한다 (체크박스 선택과는 별개 — 삭제용이 아니라 이동 전용).
-function attachMarqueeSelection(container) {
-  // container(#previewGrid/#sortPreviewGrid)는 매 렌더마다 innerHTML만 비워지고 같은 DOM
-  // 노드가 재사용되므로, 리스너를 매번 새로 붙이면 렌더될 때마다 계속 누적된다 — 한 번만 붙인다.
+//
+// 선택박스 엘리먼트를 container의 자식으로 두고 container 기준 좌표로 그렸었는데,
+// 드래그가 container 바깥으로 나가는 순간 박스가 잘려 보여서(실제 판정 로직은 계속
+// 정상 동작했지만) 마치 선택이 안 되는 것처럼 느껴지는 문제가 있었다. body에 직접
+// 붙이고 position:fixed + 뷰포트 좌표를 그대로 써서 페이지 전체에서 끊김 없이 그려지게 한다.
+function attachMarqueeSelection(container, cardSelector, onSelectionChange) {
+  // container는 매 렌더마다 innerHTML만 비워지고 같은 DOM 노드가 재사용되므로, 리스너를
+  // 매번 새로 붙이면 렌더될 때마다 계속 누적된다 — 한 번만 붙인다.
   if (container.dataset.marqueeAttached) return;
   container.dataset.marqueeAttached = '1';
   let marqueeEl = null;
@@ -538,15 +653,14 @@ function attachMarqueeSelection(container) {
   }
 
   function updateMarqueeEl(box) {
-    const containerRect = container.getBoundingClientRect();
-    marqueeEl.style.left = `${box.x1 - containerRect.left + container.scrollLeft}px`;
-    marqueeEl.style.top = `${box.y1 - containerRect.top + container.scrollTop}px`;
+    marqueeEl.style.left = `${box.x1}px`;
+    marqueeEl.style.top = `${box.y1}px`;
     marqueeEl.style.width = `${box.x2 - box.x1}px`;
     marqueeEl.style.height = `${box.y2 - box.y1}px`;
   }
 
   function highlightIntersecting(box) {
-    container.querySelectorAll('.pcard').forEach((card) => {
+    container.querySelectorAll(cardSelector).forEach((card) => {
       const r = card.getBoundingClientRect();
       const intersects = !(r.right < box.x1 || r.left > box.x2 || r.bottom < box.y1 || r.top > box.y2);
       card.classList.toggle('group-selected', intersects);
@@ -554,13 +668,13 @@ function attachMarqueeSelection(container) {
   }
 
   container.addEventListener('mousedown', (e) => {
-    if (e.button !== 0 || e.target.closest('.pcard')) return; // 카드 위에서 시작하면 기존 드래그 이동 우선
+    if (e.button !== 0 || e.target.closest(cardSelector)) return; // 카드 위에서 시작하면 기존 드래그 이동 우선
     active = true;
     startX = e.clientX;
     startY = e.clientY;
     marqueeEl = document.createElement('div');
-    marqueeEl.className = 'marquee-box';
-    container.appendChild(marqueeEl);
+    marqueeEl.className = 'marquee-box marquee-box-fixed';
+    document.body.appendChild(marqueeEl);
     updateMarqueeEl(rectFrom(startX, startY));
     e.preventDefault();
   });
@@ -576,9 +690,10 @@ function attachMarqueeSelection(container) {
     if (!active) return;
     active = false;
     if (marqueeEl) { marqueeEl.remove(); marqueeEl = null; }
-    groupSelectedIds = new Set(
-      Array.from(container.querySelectorAll('.pcard.group-selected')).map((c) => c.dataset.itemId)
+    const idSet = new Set(
+      Array.from(container.querySelectorAll(`${cardSelector}.group-selected`)).map((c) => c.dataset.itemId)
     );
+    if (onSelectionChange) onSelectionChange(idSet);
   });
 }
 
@@ -722,7 +837,6 @@ document.addEventListener('DOMContentLoaded', () => {
     item.aiUncertain = false; // 사람이 직접 확인/수정했으므로 확인필요 배지 해제
     document.getElementById('itemDialog').close();
     renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
-    renderPreviewGrid('sortPreviewGrid', state.items, { draggable: true, selectable: false });
     renderDataTable();
   });
 });
@@ -814,14 +928,14 @@ function autoSortItems() {
   pushed.sort(sorter);
   state.items = [...normal, ...pushed];
   state.orderConfirmed = false;
-  renderPreviewGrid('sortPreviewGrid', state.items, { draggable: true, selectable: false });
+  renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
 }
 
 // ============================================================
-// STEP 5 — 최종 분할 & 내보내기
+// STEP 4 — 최종 분할 & 내보내기
 // ============================================================
 function showStep5Guard() {
-  document.getElementById('step5Guard').textContent = '먼저 4단계에서 "순서 확정하고 다음 단계 →"를 눌러야 합니다.';
+  document.getElementById('step5Guard').textContent = '먼저 3단계에서 "순서 확정하고 다음 단계 →"를 눌러야 합니다.';
   document.getElementById('step5Guard').style.display = 'block';
   document.getElementById('step5Body').style.display = 'none';
 }
@@ -1084,16 +1198,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btn.dataset.action === 'redetect') { src.grid = GridDetect.detectGrid(src.img); renderSourceList(); }
     if (btn.dataset.action === 'confirm') confirmSourceCrop(src.id);
     if (btn.dataset.action === 'ai-fill') aiFillSource(src.id);
-    if (btn.dataset.action === 'preview-ai-crop') previewAiCrops(src.id);
   });
 
   document.getElementById('toStep2Btn').addEventListener('click', () => goToStep(2));
   document.getElementById('backTo1Btn').addEventListener('click', () => goToStep(1));
   document.getElementById('toStep3Btn').addEventListener('click', () => goToStep(3));
   document.getElementById('backTo2Btn').addEventListener('click', () => goToStep(2));
-  document.getElementById('toStep4Btn').addEventListener('click', () => goToStep(4));
-  document.getElementById('backTo3Btn').addEventListener('click', () => goToStep(3));
-  document.getElementById('backTo4Btn').addEventListener('click', () => goToStep(4));
+  document.getElementById('backTo4Btn').addEventListener('click', () => goToStep(3));
 
   document.getElementById('selectDeleteBtn').addEventListener('click', deleteSelectedItems);
   document.getElementById('undoDeleteBtn').addEventListener('click', undoDelete);
@@ -1101,7 +1212,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('storeSelectStep2').addEventListener('change', (e) => { state.activeStore = e.target.value; renderDataTable(); });
   document.getElementById('storeSelectStep5').addEventListener('change', (e) => { state.activeStore = e.target.value; });
   document.getElementById('autoSortBtn').addEventListener('click', autoSortItems);
-  document.getElementById('confirmOrderBtn').addEventListener('click', () => { state.orderConfirmed = true; goToStep(5); });
+  document.getElementById('confirmOrderBtn').addEventListener('click', () => { state.orderConfirmed = true; goToStep(4); });
 
   document.getElementById('generatePagesBtn').addEventListener('click', generatePages);
   document.getElementById('downloadAllBtn').addEventListener('click', downloadAllPages);
