@@ -344,6 +344,7 @@ function renderSourceList() {
           <button class="btn" data-action="redetect" data-id="${src.id}">다시 검출</button>
           <button class="btn primary" data-action="confirm" data-id="${src.id}" ${src.confirmed ? 'disabled' : ''}>${src.confirmed ? '크롭 완료됨' : '확인 및 크롭'}</button>
           <button class="btn" data-action="ai-fill" data-id="${src.id}" ${src.confirmed ? '' : 'disabled'} title="claude-sonnet-5로 사진과 텍스트를 함께 보고 표를 채웁니다 (유료 API 호출, 장당 약 2~4센트 수준). 결과는 항상 확인 대상으로만 표시됩니다.">🤖 AI로 채우기</button>
+          <button class="btn" data-action="ocr-label" data-id="${src.id}" ${src.confirmed ? '' : 'disabled'} title="이 소스가 이 도구로 이미 만든 결과물(재수입)일 때만 쓰세요. 사진은 안 보내고 사진 아래 이미 적혀 있는 IP명·가격·태그 글자만 다시 읽어옵니다 — 사진을 함께 보내는 'AI로 채우기'보다 저렴합니다.">🏷️ 라벨만 재인식</button>
         </div>
       </div>
       <canvas class="overlay" data-canvas="${src.id}"></canvas>
@@ -506,6 +507,45 @@ function cropRowsRegion(src, rowIndices) {
   return canvas;
 }
 
+// cropRowsRegion과 달리 사진(cardH) 부분은 아예 빼고 그 아래 텍스트 라벨 줄만 잘라낸다.
+// 이 도구가 이미 만들어낸 결과물(사진+IP명/가격 글자가 이미 렌더링된 최종 이미지)을
+// 다시 소스로 올려서 "순서만 재조정"하고 싶을 때 전용 — 그 경우 사진을 보고 캐릭터를
+// 새로 알아맞힐 필요가 전혀 없고(이미 아는 상품이라 사진은 그냥 참고용), 이미 깨끗하게
+// 렌더링된 글자만 그대로 읽어오면 되므로 사진 픽셀을 통째로 뺀 만큼 이미지 토큰이 준다.
+function cropLabelStripRegion(src, rowIndices) {
+  const { cols, rows, cardW, cardH } = src.grid;
+  const rowTextBottoms = computeRowTextBottoms(src);
+  const yTop = rows[rowIndices[0]] + cardH;
+  const yBottom = rowTextBottoms[rowIndices[rowIndices.length - 1]];
+  const height = Math.max(20, yBottom - yTop);
+  const raw = GridDetect.cropCell(src.img, 0, yTop, src.img.width, height);
+
+  const scale = AI_STRIP_SCALE;
+  const canvas = document.createElement('canvas');
+  canvas.width = raw.width * scale;
+  canvas.height = raw.height * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(raw, 0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = '#ff3b30';
+  ctx.lineWidth = 2;
+  ctx.fillStyle = '#ff3b30';
+  ctx.font = 'bold 18px sans-serif';
+  let n = 1;
+  rowIndices.forEach((ri) => {
+    const rowTop = (rows[ri] + cardH - yTop) * scale;
+    const rowBottom = (rowTextBottoms[ri] - yTop) * scale;
+    cols.forEach((cx) => {
+      const x = cx * scale;
+      ctx.strokeRect(x, rowTop, cardW * scale, rowBottom - rowTop);
+      ctx.fillText(`#${n}`, x + 4, rowTop + 18 < rowBottom ? rowTop + 18 : rowTop + 14);
+      n++;
+    });
+  });
+  return canvas;
+}
+
 function chunkArray(arr, size) {
   const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -605,6 +645,68 @@ async function aiFillSource(srcId) {
     alert(`AI로 채우기 실패: ${e.message}\n(백엔드가 배포되어 있지 않다면 정상입니다 — 수동으로 입력해주세요)`);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🤖 AI로 채우기'; }
+  }
+}
+
+// "라벨만 재인식" — 이 도구가 이미 만든 결과물(사진 아래 IP명/가격 글자가 이미
+// 렌더링된 카드)을 다시 소스로 올려서 순서만 재조정하고 싶을 때 전용. aiFillSource와
+// 달리 사진은 아예 안 보내고(cropLabelStripRegion), 사전 매칭/성향 추측/클러스터 판단도
+// 안 한다 — 그건 크게 다시 잡을 필요 없는 "이미 렌더링된 글자를 그대로 옮겨 적기"만
+// 하는 작업이라 훨씬 저렴하다. 성향/클러스터가 필요하면 이 다음 3단계 "AI 분류로
+// 정렬 보조"(텍스트 전용, 더 저렴)를 이어서 쓰면 된다.
+async function ocrLabelsForSource(srcId) {
+  const src = state.sources.find((s) => s.id === srcId);
+  if (!src || !src.confirmed) return;
+
+  const btn = document.querySelector(`button[data-action="ocr-label"][data-id="${srcId}"]`);
+  const { rows, cols } = src.grid;
+  const rowIndicesAll = Array.from({ length: rows.length }, (_, i) => i);
+  const rowBatches = chunkArray(rowIndicesAll, AI_ROWS_PER_BATCH);
+  let filledCount = 0;
+
+  try {
+    for (let b = 0; b < rowBatches.length; b++) {
+      if (btn) { btn.disabled = true; btn.textContent = `라벨 인식 중... (${b + 1}/${rowBatches.length})`; }
+      const rowBatch = rowBatches[b];
+      const itemIndicesInBatch = [];
+      rowBatch.forEach((ri) => {
+        for (let ci = 0; ci < cols.length; ci++) {
+          const idx = ri * cols.length + ci;
+          if (idx < src.itemCount) itemIndicesInBatch.push(idx);
+        }
+      });
+      if (!itemIndicesInBatch.length) continue;
+
+      const stripCanvas = cropLabelStripRegion(src, rowBatch);
+      const dataUrl = stripCanvas.toDataURL('image/png');
+      const imageBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+
+      const r = await fetch('/api/ocr-label', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64, mediaType: 'image/png', expectedCount: itemIndicesInBatch.length }),
+        signal: AbortSignal.timeout(60000),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || '라벨 인식 실패');
+
+      data.items.slice(0, itemIndicesInBatch.length).forEach((result, j) => {
+        const item = state.items[src.itemStartIndex + itemIndicesInBatch[j]];
+        if (!item) return;
+        item.ip = (result.ip || '').trim();
+        item.price = result.price || '';
+        item.ship = result.ship || '무료배송';
+        item.tag = result.tag || '';
+        // 이미 렌더링된 깨끗한 글자를 그대로 옮긴 것이라 aiUncertain 배지는 붙이지 않는다
+        // (원본 스크린샷을 흐릿한 사진째로 추측한 게 아니라 실제로 읽은 글자 그대로임).
+        filledCount++;
+      });
+      renderDataTable();
+    }
+    alert(`라벨 텍스트 ${filledCount}개 항목을 읽어왔습니다.\nIP명·가격·태그가 채워졌으니, 필요하면 2단계에서 확인 후 텍스트 잠금을 켜고 3단계에서 순서만 조정하세요.`);
+  } catch (e) {
+    alert(`라벨 인식 실패: ${e.message}\n(백엔드가 배포되어 있지 않다면 정상입니다 — 수동으로 입력해주세요)`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🏷️ 라벨만 재인식'; }
   }
 }
 
@@ -1486,6 +1588,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (btn.dataset.action === 'confirm') confirmSourceCrop(src.id);
     if (btn.dataset.action === 'ai-fill') aiFillSource(src.id);
+    if (btn.dataset.action === 'ocr-label') ocrLabelsForSource(src.id);
   });
 
   document.getElementById('toStep2Btn').addEventListener('click', () => goToStep(2));
