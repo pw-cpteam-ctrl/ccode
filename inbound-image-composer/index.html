@@ -65,7 +65,8 @@
   .slot .s-del:hover { color: var(--danger); }
   .slot-empty { color: var(--muted); font-size: 12px; line-height: 1.5; }
 
-  .source-block { border: 1px dashed var(--line2); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+  .source-block { border: 1px dashed var(--line2); border-radius: 8px; padding: 14px; margin-bottom: 14px; transition: box-shadow .2s, border-color .2s; }
+  .source-block.just-redetected { border-color: var(--ok); box-shadow: 0 0 0 3px rgba(26,158,99,.25); }
   .source-block canvas.overlay { max-width: 100%; border: 1px solid var(--line); border-radius: 6px; }
   .source-status { font-size: 12px; color: var(--muted); margin: 8px 0; }
   .source-status.confirmed { color: var(--ok); font-weight: 700; }

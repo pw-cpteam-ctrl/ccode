@@ -334,6 +334,7 @@ function renderSourceList() {
   state.sources.forEach((src) => {
     const block = document.createElement('div');
     block.className = 'source-block';
+    block.dataset.srcId = src.id;
     const cellCount = src.grid.rows.length * src.grid.cols.length;
     block.innerHTML = `
       <div class="row between">
@@ -1392,6 +1393,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       src.grid = GridDetect.detectGrid(src.img);
       renderSourceList();
+      // 재검출 결과가 이전과 똑같을 수도 있어서(같은 이미지 → 같은 알고리즘 → 같은 결과),
+      // 화면이 안 바뀌면 버튼이 먹통인 것처럼 보인다는 피드백이 있었다 — 결과가 바뀌든
+      // 안 바뀌든 "방금 다시 검출을 실행했다"는 걸 눈에 띄게(테두리 강조 + 버튼 문구 변경) 확인시켜준다.
+      const flashBlock = document.querySelector(`.source-block[data-src-id="${src.id}"]`);
+      if (flashBlock) {
+        flashBlock.classList.add('just-redetected');
+        setTimeout(() => flashBlock.classList.remove('just-redetected'), 1400);
+        const redetectBtn = flashBlock.querySelector('button[data-action="redetect"]');
+        if (redetectBtn) {
+          const original = redetectBtn.textContent;
+          redetectBtn.textContent = '✓ 재검출 완료';
+          setTimeout(() => { redetectBtn.textContent = original; }, 1400);
+        }
+      }
     }
     if (btn.dataset.action === 'confirm') confirmSourceCrop(src.id);
     if (btn.dataset.action === 'ai-fill') aiFillSource(src.id);
