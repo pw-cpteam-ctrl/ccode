@@ -1107,6 +1107,7 @@ function autoSortItems() {
 // 편입된 IP는 다시 물어볼 필요가 없으니 대상에서 뺀다.
 async function classifyIpsForSort() {
   const btn = document.getElementById('aiClassifyBtn');
+  const blankCount = state.items.filter((it) => !it.ip.trim()).length;
   const candidates = [...new Set(
     state.items.map((it) => it.ip.trim()).filter((ip) => ip)
   )].filter((ip) => {
@@ -1115,7 +1116,17 @@ async function classifyIpsForSort() {
   });
 
   if (!candidates.length) {
-    alert('AI로 새로 분류할 IP가 없습니다 (전부 이미 등급표/클러스터에 등록돼 있어요).');
+    // IP명이 비어있어서 후보가 0개인 건지, 이미 다 등록돼 있어서 0개인 건지를 구분해서
+    // 알려준다 — 뭉뚱그려서 "이미 다 등록돼 있다"고만 하면, 실제로는 텍스트 잠금을
+    // 켠 시점에 IP명을 아직 안 채워서 전부 빈 칸인 경우를 완전히 잘못 설명하게 된다.
+    if (blankCount) {
+      alert(`IP명이 비어있는 항목이 ${blankCount}개라서 AI가 분류할 대상이 없습니다.\n` +
+        (state.textLocked
+          ? '지금 텍스트 잠금 중이라 IP명을 입력할 수 없는 상태입니다 — 2단계에서 잠금을 먼저 해제하고 IP명을 채운 뒤 다시 시도하세요.'
+          : '2단계에서 IP명을 먼저 입력한 뒤 다시 시도하세요.'));
+    } else {
+      alert('AI로 새로 분류할 IP가 없습니다 (전부 이미 등급표/클러스터에 등록돼 있어요).');
+    }
     return;
   }
 
