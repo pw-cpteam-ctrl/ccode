@@ -94,6 +94,8 @@
   @media (max-width: 480px) { .preview-grid { grid-template-columns: repeat(3, 1fr); gap: 4px; } }
   .pcard { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: #fff; cursor: grab; position: relative; min-height: 120px; }
   .pcard.dragover { outline: 2px dashed var(--accent); }
+  .pcard.drag-source { opacity: .4; }
+  .pcard.draggable-card:active { cursor: grabbing; }
   .pcard.group-selected { outline: 2px solid var(--accent); background: #eef4ff; }
   .pcard .del-check { position: absolute; top: 6px; left: 6px; z-index: 2; width: 18px; height: 18px; }
   .pcard canvas, .pcard img.pthumb { width: 100%; aspect-ratio: 1/1; object-fit: cover; border-radius: 5px; display: block; }
@@ -289,6 +291,11 @@
   <section class="step" id="step-4">
     <div class="card-panel">
       <h2>4단계 · 최종 분할 &amp; 내보내기</h2>
+      <p class="hint">이 단계는 순서를 바꾸는 화면이 아니라 최종 이미지를 만들어 다운로드하는
+        화면입니다 — 그래서 3단계 같은 카드 미리보기/드래그가 여기는 없습니다(없어진 게
+        아니라 원래 이 화면엔 없습니다). 순서를 더 조정하고 싶으면 아래 "← 미리보기 & 정렬로"
+        버튼으로 3단계로 돌아가세요. "페이지 생성"을 누르기 전까지는 실제 페이지 이미지도
+        안 보이는 게 정상입니다.</p>
       <div id="step5Guard" class="hint"></div>
       <div id="step5Body" style="display:none;">
         <div class="row" style="margin-bottom:14px;flex-wrap:wrap;">

@@ -866,8 +866,85 @@ function scaledThumb(canvas) {
 // ============================================================
 // STEP 3 / 4 — 전체 미리보기 (공용 렌더)
 // ============================================================
-let dragFromItemId = null;
-let dragGroupIds = null; // 드래그 시작한 카드가 그룹 선택에 포함돼 있으면 함께 옮길 id 목록
+// 카드 순서 변경(드래그)은 브라우저 네이티브 HTML5 draggable API 대신 마우스
+// mousedown/mousemove/mouseup으로 직접 구현한다. 네이티브 드래그는 트랙패드/입력 방식에
+// 따라 dragstart 자체가 안 잡히는 경우가 실사용 중 보고됐고(Playwright로 실제 마우스
+// 이동을 흉내낸 dragTo()도 재현 실패), 브라우저마다 미묘하게 동작이 달라 신뢰하기 어렵다.
+// 아래 마우스 이벤트 기반 방식은 이미 이 파일의 빈 배경 드래그 다중 선택(마퀴 선택)에서
+// 검증된 것과 같은 패턴이라 훨씬 안정적이다.
+let customDragCleanup = null; // 현재 진행 중인 카드 드래그의 정리(cleanup) 함수 — 중복 시작 방지용
+
+function startCardDrag(itemId, containerId, opts) {
+  if (customDragCleanup) customDragCleanup(); // 혹시 이전 드래그가 안 끝났으면 먼저 정리
+
+  const dragIds = (groupSelectedIds.has(itemId) && groupSelectedIds.size > 1)
+    ? Array.from(groupSelectedIds) : [itemId];
+  const dragIdSet = new Set(dragIds);
+  let currentTargetEl = null;
+  let lastClientY = 0;
+
+  document.querySelectorAll(`.pcard[data-item-id]`).forEach((c) => {
+    if (dragIdSet.has(c.dataset.itemId)) c.classList.add('drag-source');
+  });
+
+  // 항목이 155개처럼 많으면 미리보기가 화면 여러 배 높이로 길어지는데, 네이티브 HTML5
+  // 드래그는 뷰포트 가장자리에 마우스를 대고 있으면 자동으로 스크롤해주는 기능이 브라우저에
+  // 내장돼 있다. 이 커스텀 드래그로 바꾸면서 그 기능이 사라지면 "위쪽/아래쪽 다른 페이지에
+  // 있는 카드로는 드래그를 아예 못 하는" 퇴보가 생기므로, 같은 동작을 직접 구현한다.
+  const EDGE_SIZE = 70;
+  const MAX_SCROLL_SPEED = 18;
+  const scrollTimer = setInterval(() => {
+    if (lastClientY < EDGE_SIZE) {
+      const speed = MAX_SCROLL_SPEED * (1 - lastClientY / EDGE_SIZE);
+      window.scrollBy(0, -speed);
+    } else if (lastClientY > window.innerHeight - EDGE_SIZE) {
+      const speed = MAX_SCROLL_SPEED * (1 - (window.innerHeight - lastClientY) / EDGE_SIZE);
+      window.scrollBy(0, speed);
+    }
+  }, 16);
+
+  function findCardUnder(x, y) {
+    const el = document.elementFromPoint(x, y);
+    return el ? el.closest('.pcard') : null;
+  }
+
+  function onMouseMove(e) {
+    lastClientY = e.clientY;
+    const card = findCardUnder(e.clientX, e.clientY);
+    if (currentTargetEl && currentTargetEl !== card) currentTargetEl.classList.remove('dragover');
+    if (card && !dragIdSet.has(card.dataset.itemId)) {
+      card.classList.add('dragover');
+      currentTargetEl = card;
+    } else {
+      currentTargetEl = null;
+    }
+  }
+
+  function cleanup() {
+    clearInterval(scrollTimer);
+    document.querySelectorAll('.pcard.drag-source').forEach((c) => c.classList.remove('drag-source'));
+    if (currentTargetEl) currentTargetEl.classList.remove('dragover');
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+    customDragCleanup = null;
+  }
+
+  function onMouseUp(e) {
+    const card = findCardUnder(e.clientX, e.clientY);
+    const targetId = card && !dragIdSet.has(card.dataset.itemId) ? card.dataset.itemId : null;
+    cleanup();
+    if (targetId) {
+      moveItemsBeforeTarget(dragIds, targetId);
+      renderPreviewGrid(containerId, state.items, opts);
+      updateSplitPreviewText();
+    }
+  }
+
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
+  customDragCleanup = cleanup;
+}
+
 // 빈 배경을 마우스로 드래그해서 여러 카드를 한 번에 선택하는 용도 — 체크박스(삭제용
 // pendingDeleteIds)와는 별개의 개념이라 컨테이너별로 따로 관리한다.
 let groupSelectedIds = new Set();
@@ -979,8 +1056,7 @@ function renderPreviewGrid(containerId, items, opts) {
     pageItems.forEach((item) => {
       const locked = state.textLocked;
       const card = document.createElement('div');
-      card.className = `pcard${groupSelectedIds.has(item.id) ? ' group-selected' : ''}${locked ? ' text-locked' : ''}`;
-      card.draggable = !!opts.draggable; // 잠금 상태에서도 순서 변경(드래그)은 항상 허용
+      card.className = `pcard${groupSelectedIds.has(item.id) ? ' group-selected' : ''}${locked ? ' text-locked' : ''}${opts.draggable ? ' draggable-card' : ''}`;
       card.dataset.itemId = item.id;
 
       const checkboxHtml = opts.selectable
@@ -1009,29 +1085,21 @@ function renderPreviewGrid(containerId, items, opts) {
       }
 
       if (opts.draggable) {
-        card.addEventListener('dragstart', () => {
-          dragFromItemId = item.id;
-          // 드래그 시작한 카드가 2개 이상짜리 그룹 선택에 포함돼 있으면 그룹 전체를 옮긴다.
-          dragGroupIds = (groupSelectedIds.has(item.id) && groupSelectedIds.size > 1)
-            ? Array.from(groupSelectedIds) : [item.id];
-        });
-        card.addEventListener('dragover', (e) => { e.preventDefault(); card.classList.add('dragover'); });
-        card.addEventListener('dragleave', () => card.classList.remove('dragover'));
-        card.addEventListener('drop', (e) => {
+        card.addEventListener('mousedown', (e) => {
+          if (e.button !== 0) return;
+          if (e.target.closest('.edit-btn') || e.target.closest('.del-check')) return; // 버튼/체크박스 클릭은 그대로 통과
           e.preventDefault();
-          card.classList.remove('dragover');
-          if (dragFromItemId === null) return;
-          moveItemsBeforeTarget(dragGroupIds || [dragFromItemId], item.id);
-          dragFromItemId = null;
-          dragGroupIds = null;
-          renderPreviewGrid(containerId, state.items, opts);
-          updateSplitPreviewText();
+          startCardDrag(item.id, containerId, opts);
         });
       }
     });
   });
 
-  attachMarqueeSelection(container);
+  // cardSelector/onSelectionChange 인자가 빠져 있던 버그 수정 — container만 넘기면
+  // attachMarqueeSelection 내부의 querySelectorAll(cardSelector)가 undefined를 셀렉터로
+  // 받아 카드를 하나도 못 찾아서, 빈 배경을 드래그해도 아무 카드도 group-selected로
+  // 표시되지 않는(마퀴 선택이 완전히 먹통인) 상태였다.
+  attachMarqueeSelection(container, '.pcard', (idSet) => { groupSelectedIds = idSet; });
   if (containerId === 'previewGrid') updateSplitPreviewText();
 }
 
