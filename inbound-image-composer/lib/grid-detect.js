@@ -7,14 +7,16 @@
 // 이미지 내에서 불규칙할 수 있어 절대 고정 피치로 계산하지 않고 매번 픽셀 스캔한다.
 // ============================================================
 
-function detectRowTops(ctx, x, imgHeight, scale = 1) {
+function detectRowTops(ctx, x, imgHeight, scale = 1, params = {}) {
+  const whiteThreshold = params.whiteThreshold ?? 240;
+  const [runMin, runMax] = params.rowRunBounds ?? [150, 200];
   const col = ctx.getImageData(x, 0, 1, imgHeight).data;
   const tops = [];
   const heights = [];
   let runStart = -1;
   for (let y = 0; y < imgHeight; y++) {
     const r = col[y * 4], g = col[y * 4 + 1], b = col[y * 4 + 2];
-    const isWhite = r > 240 && g > 240 && b > 240;
+    const isWhite = r > whiteThreshold && g > whiteThreshold && b > whiteThreshold;
     if (!isWhite && runStart < 0) {
       runStart = y;
     } else if (isWhite && runStart >= 0) {
@@ -25,7 +27,7 @@ function detectRowTops(ctx, x, imgHeight, scale = 1) {
       // measured runLen of each accepted run becomes a cardH sample below — real
       // screenshots aren't always a clean linear rescale of the 1000px reference, so
       // the crop size has to come from what's actually on the page, not from scale alone.
-      if (runLen > 150 * scale && runLen < 200 * scale) {
+      if (runLen > runMin * scale && runLen < runMax * scale) {
         tops.push(runStart);
         heights.push(runLen);
       }
@@ -35,14 +37,16 @@ function detectRowTops(ctx, x, imgHeight, scale = 1) {
   return { tops, heights };
 }
 
-function detectColStarts(ctx, y, imgWidth, scale = 1) {
+function detectColStarts(ctx, y, imgWidth, scale = 1, params = {}) {
+  const whiteThreshold = params.whiteThreshold ?? 240;
+  const [runMin, runMax] = params.colRunBounds ?? [90, 260];
   const row = ctx.getImageData(0, y, imgWidth, 1).data;
   const cols = [];
   const widths = [];
   let runStart = -1;
   for (let x = 0; x < imgWidth; x++) {
     const r = row[x * 4], g = row[x * 4 + 1], b = row[x * 4 + 2];
-    const isWhite = r > 240 && g > 240 && b > 240;
+    const isWhite = r > whiteThreshold && g > whiteThreshold && b > whiteThreshold;
     if (!isWhite && runStart < 0) {
       runStart = x;
     } else if (isWhite && runStart >= 0) {
@@ -50,7 +54,7 @@ function detectColStarts(ctx, y, imgWidth, scale = 1) {
       // upper bound rejects runs where two adjacent cards' non-white pixels merged
       // into one (no white gutter between them at this particular y) — a real single
       // card is never wider than ~1.5x the 1000px-baseline card width.
-      if (runLen > 90 * scale && runLen < 260 * scale) {
+      if (runLen > runMin * scale && runLen < runMax * scale) {
         cols.push(runStart);
         widths.push(runLen);
       }
@@ -59,6 +63,18 @@ function detectColStarts(ctx, y, imgWidth, scale = 1) {
   }
   return { cols, widths };
 }
+
+// "다시 검출"이 의미를 가지려면 같은 이미지를 다시 넣었을 때 전과 다른 시도를 해봐야 한다
+// — detectGrid가 순수하게 픽셀만 보는 결정론적 함수라서, 예전엔 몇 번을 다시 눌러도
+// 정확히 똑같은 결과만 나오는 게 당연했다(사용자가 "이 버튼 대체 무슨 의미냐"고 지적한
+// 지점). 아래 3가지 변형(흰색 판정 임계값, 사진 한 칸으로 인정하는 세로/가로 길이 범위)을
+// 순환하면서 시도해, 기본값이 안 맞는 이미지(배경이 살짝 회색빛이거나 카드 비율이 다른
+// 경우 등)에서 재검출을 누를 때마다 실제로 다른 결과를 시도해볼 수 있게 한다.
+const DETECT_VARIANTS = [
+  { whiteThreshold: 240, rowRunBounds: [150, 200], colRunBounds: [90, 260] }, // 기본값
+  { whiteThreshold: 225, rowRunBounds: [130, 220], colRunBounds: [80, 280] }, // 배경이 살짝 회색빛인 경우
+  { whiteThreshold: 248, rowRunBounds: [155, 195], colRunBounds: [95, 240] }, // 더 엄격하게(잡음 배제)
+];
 
 function median(nums) {
   if (!nums.length) return null;
@@ -72,7 +88,8 @@ function median(nums) {
 // (±1-2px) due to anti-aliasing. Cross-check at least 3 columns and use the most
 // common (here: longest) value-set, then visually verify with a debug overlay
 // before trusting the grid for a full 30-80 item crop run.
-function detectGrid(img) {
+function detectGrid(img, variant = 0) {
+  const params = DETECT_VARIANTS[variant % DETECT_VARIANTS.length];
   const canvas = document.createElement('canvas');
   canvas.width = img.width;
   canvas.height = img.height;
@@ -88,7 +105,7 @@ function detectGrid(img) {
   const fallbackCardW = Math.round(176 * scale);
   const fallbackCardH = Math.round(176 * scale);
 
-  const rowSets = sampleCols.map((x) => detectRowTops(ctx, x, img.height, scale));
+  const rowSets = sampleCols.map((x) => detectRowTops(ctx, x, img.height, scale, params));
   const bestRowSet = rowSets.reduce((a, b) => (b.tops.length > a.tops.length ? b : a));
   const rows = bestRowSet.tops;
   // 카드 크기(cardW/cardH)를 "이미지 폭 비율로 176px를 스케일링한 값"으로만 추정했었는데,
@@ -112,7 +129,7 @@ function detectGrid(img) {
     const offsetsToTry = [40, 80, 120, 20].map((o) => Math.round(o * scale));
     for (const rowY of rowsToTry) {
       for (const offset of offsetsToTry) {
-        const attempt = detectColStarts(ctx, rowY + offset, img.width, scale);
+        const attempt = detectColStarts(ctx, rowY + offset, img.width, scale, params);
         if (attempt.cols.length > colStarts.length) {
           colStarts = attempt.cols;
           colWidths = attempt.widths;
@@ -138,5 +155,5 @@ function cropCell(img, x, y, w, h) {
 }
 
 if (typeof window !== 'undefined') {
-  window.GridDetect = { detectRowTops, detectColStarts, detectGrid, cropCell };
+  window.GridDetect = { detectRowTops, detectColStarts, detectGrid, cropCell, DETECT_VARIANTS };
 }

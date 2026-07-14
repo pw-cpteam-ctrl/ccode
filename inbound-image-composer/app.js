@@ -323,8 +323,8 @@ async function handleFilesSelected(fileList) {
   // 이미지 로딩은 순차 로딩이 눈에 띄게 느리므로 Promise.all로 병렬 처리한다.
   const imgs = await Promise.all(files.map(readImageFile));
   imgs.forEach((img) => {
-    const grid = GridDetect.detectGrid(img);
-    state.sources.push({ id: uid('src'), img, grid, confirmed: false });
+    const grid = GridDetect.detectGrid(img, 0);
+    state.sources.push({ id: uid('src'), img, grid, confirmed: false, gridVariant: 0, headerHeightOverride: null });
   });
   renderSourceList();
 }
@@ -348,10 +348,22 @@ function renderSourceList() {
         </div>
       </div>
       <canvas class="overlay" data-canvas="${src.id}"></canvas>
+      <div class="row header-height-row">
+        <label>헤더 높이(px) 직접 조정
+          <input type="number" class="header-height-input" data-id="${src.id}" min="0" max="${src.img.height}"
+            value="${src.headerHeightOverride ?? (src.grid.rows[0] || 0)}" ${src.confirmed ? 'disabled' : ''} />
+        </label>
+        <span class="hint" style="margin:0;">파란 박스(맨 위)가 실제로 잘릴 헤더 배너 범위입니다 — 자동 검출이 안 맞으면 숫자를 직접 바꿔서 맞추세요.</span>
+      </div>
       <div class="source-status ${src.confirmed ? 'confirmed' : ''}">${src.confirmed ? '✓ 개별 사진 크롭 완료 — photoId 부여됨' : '⚠ 검출 결과를 눈으로 확인한 뒤 크롭을 확정하세요 (행 간격은 불규칙할 수 있습니다). 빨간 박스 = 사진 크롭 범위, 초록 점선 = AI에게 실제로 전송되는 텍스트 포함 범위'}</div>
     `;
     container.appendChild(block);
     drawDebugOverlay(src);
+    block.querySelector('.header-height-input').addEventListener('input', (e) => {
+      const v = Math.max(0, Math.min(src.img.height, Number(e.target.value) || 0));
+      src.headerHeightOverride = v;
+      drawDebugOverlay(src);
+    });
   });
   document.getElementById('toStep2Btn').disabled = Object.keys(state.photos).length === 0;
 }
@@ -382,8 +394,9 @@ function drawDebugOverlay(src) {
   rows.forEach((y) => cols.forEach((x) => ctx.strokeRect(x, y, cardW, cardH)));
   // 헤더 영역(첫 행 위쪽) 표시
   if (rows.length) {
+    const headerH = src.headerHeightOverride ?? rows[0];
     ctx.strokeStyle = '#2f7bff';
-    ctx.strokeRect(0, 0, src.img.width, rows[0]);
+    ctx.strokeRect(0, 0, src.img.width, headerH);
   }
 }
 
@@ -407,7 +420,12 @@ function confirmSourceCrop(srcId) {
   const { cols, rows, cardW, cardH } = src.grid;
 
   if (rows.length) {
-    const headerCanvas = GridDetect.cropCell(src.img, 0, 0, src.img.width, rows[0]);
+    // 자동 검출된 rows[0](첫 상품 행 시작점)를 그대로 헤더 높이로 썼었는데, 이 값이
+    // 잘못 잡히면(배너 위쪽 여백 판정이 이미지마다 다름) 헤더가 통째로 비어 보이는
+    // 문제를 사용자가 스스로 고칠 방법이 없었다 — 1단계에서 직접 조정한 값이 있으면
+    // 그 값을 우선 사용한다.
+    const headerH = src.headerHeightOverride ?? rows[0];
+    const headerCanvas = GridDetect.cropCell(src.img, 0, 0, src.img.width, headerH);
     const headerId = uid('hdr');
     state.headers.push({ id: headerId, label: `소스 ${state.headers.length + 1} 헤더`, canvas: headerCanvas });
     src.headerId = headerId;
@@ -1637,7 +1655,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!ok) return;
         src.confirmed = false;
       }
-      src.grid = GridDetect.detectGrid(src.img);
+      // "다시 검출"이 같은 이미지에 똑같은 결정론적 알고리즘을 그대로 다시 돌리기만 해서,
+      // 몇 번을 눌러도 항상 똑같은 결과만 나와 "이 버튼이 대체 무슨 의미냐"는 지적을 받았다.
+      // 이제 누를 때마다 다른 판정 기준(흰색 임계값, 사진 한 칸으로 인정하는 길이 범위)을
+      // 순환하며 시도해서, 기본값이 안 맞는 이미지에서도 실제로 다른 결과를 시도해볼 수 있다.
+      src.gridVariant = ((src.gridVariant ?? 0) + 1) % GridDetect.DETECT_VARIANTS.length;
+      src.headerHeightOverride = null; // 그리드를 새로 잡으면 헤더 높이도 새 rows[0] 기준으로 다시 제안
+      src.grid = GridDetect.detectGrid(src.img, src.gridVariant);
       renderSourceList();
       // 재검출 결과가 이전과 똑같을 수도 있어서(같은 이미지 → 같은 알고리즘 → 같은 결과),
       // 화면이 안 바뀌면 버튼이 먹통인 것처럼 보인다는 피드백이 있었다 — 결과가 바뀌든
@@ -1649,8 +1673,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const redetectBtn = flashBlock.querySelector('button[data-action="redetect"]');
         if (redetectBtn) {
           const original = redetectBtn.textContent;
-          redetectBtn.textContent = '✓ 재검출 완료';
-          setTimeout(() => { redetectBtn.textContent = original; }, 1400);
+          redetectBtn.textContent = `✓ 다른 방식으로 재시도 (${src.gridVariant + 1}/${GridDetect.DETECT_VARIANTS.length})`;
+          setTimeout(() => { redetectBtn.textContent = original; }, 1800);
         }
       }
     }
