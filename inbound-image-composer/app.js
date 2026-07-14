@@ -1098,6 +1098,62 @@ function autoSortItems() {
   renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
 }
 
+// 3단계용 "AI 분류 보조" — 1단계 "AI로 채우기"(aiFillSource, api/parse-image)와는 완전히
+// 다른 경로다. 저건 사진을 다시 보내 ip/가격/태그까지 새로 뽑아내는 이미지 인식이라
+// 비용이 크고, 이미 확정(또는 텍스트 잠금)된 글자를 덮어쓸 위험이 있다. 이 함수는 이미
+// 알고 있는 IP명 "텍스트"만 보내서 정렬에만 쓰이는 성향(subGrade)·분위기 클러스터 두
+// 값만 채우고 ip/가격/태그는 절대 건드리지 않는다 — 텍스트 잠금 모드와 그대로 호환되고
+// 이미지 토큰이 안 들어서 비용도 훨씬 적다. 등급표(S/A)에 이미 있거나 클러스터에 이미
+// 편입된 IP는 다시 물어볼 필요가 없으니 대상에서 뺀다.
+async function classifyIpsForSort() {
+  const btn = document.getElementById('aiClassifyBtn');
+  const candidates = [...new Set(
+    state.items.map((it) => it.ip.trim()).filter((ip) => ip)
+  )].filter((ip) => {
+    if (state.dict.gradeTable.S.includes(ip) || state.dict.gradeTable.A.includes(ip)) return false;
+    return clusterInfo(ip).ci === Infinity;
+  });
+
+  if (!candidates.length) {
+    alert('AI로 새로 분류할 IP가 없습니다 (전부 이미 등급표/클러스터에 등록돼 있어요).');
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = `AI 분류 중... (${candidates.length}개 IP)`; }
+  try {
+    const r = await fetch('/api/classify-ip', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ipNames: candidates, moodClusters: state.dict.moodClusters }),
+      signal: AbortSignal.timeout(60000),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'AI 분류 실패');
+
+    const resultByIp = new Map(data.items.map((it) => [it.ip, it]));
+    let clusteredCount = 0;
+    let genderClassifiedCount = 0;
+    state.items.forEach((item) => {
+      const result = resultByIp.get(item.ip.trim());
+      if (!result) return;
+      if (applyAiClusterResult(item, result.moodCluster)) clusteredCount++;
+      const gradeBefore = item.subGrade;
+      applyAiGenderLean(item, result.genderLean);
+      if (item.subGrade !== gradeBefore) genderClassifiedCount++;
+    });
+    if (clusteredCount) saveDictLocal('moodClusters', state.dict.moodClusters);
+    renderDataTable();
+    autoSortItems();
+    alert(`AI가 IP ${candidates.length}개의 성향/분위기를 분류하고 자동 정렬까지 적용했습니다.\n` +
+      `분위기 클러스터에 새로 편입된 IP: ${clusteredCount}개\n` +
+      `등급표에 없어 성향(B급 남/여성향)을 새로 추측한 항목: ${genderClassifiedCount}개\n` +
+      `(IP명·가격·태그는 전혀 바뀌지 않았습니다)`);
+  } catch (e) {
+    alert(`AI 분류 실패: ${e.message}\n(백엔드가 배포되어 있지 않다면 정상입니다)`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🏷️ AI 분류로 정렬 보조'; }
+  }
+}
+
 // ============================================================
 // STEP 4 — 최종 분할 & 내보내기
 // ============================================================
@@ -1433,6 +1489,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('storeSelectStep2').addEventListener('change', (e) => { state.activeStore = e.target.value; renderDataTable(); });
   document.getElementById('storeSelectStep5').addEventListener('change', (e) => { state.activeStore = e.target.value; });
   document.getElementById('autoSortBtn').addEventListener('click', autoSortItems);
+  document.getElementById('aiClassifyBtn').addEventListener('click', classifyIpsForSort);
   document.getElementById('textLockToggle').addEventListener('change', (e) => {
     state.textLocked = e.target.checked;
     step2SelectedIds = new Set(); // 잠금 전환 시 일괄편집 선택 상태가 남아있으면 헷갈리니 초기화
