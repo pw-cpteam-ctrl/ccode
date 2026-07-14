@@ -23,6 +23,7 @@ const state = {
   lastDeletedBatch: null, // [{ item, index }] — 실행취소용, 가장 최근 삭제 1건만 기억
   orderConfirmed: false,
   finalPages: null, // array of { items, canvas }
+  textLocked: false, // true면 IP명/가격/태그 등 글자 수정을 막고 카드 순서 변경만 허용
 };
 
 // 2단계(표 정리)의 빈 배경 드래그 다중 선택은 3/4단계(카드 그리드)의 group-selected
@@ -163,7 +164,7 @@ function goToStep(n) {
   document.getElementById(`step-${n}`).classList.add('active');
   renderStepIndicator();
   if (n === 2) renderDataTable();
-  if (n === 3) renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
+  if (n === 3) { renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true }); updateTextLockBanner(); }
   if (n === 4) renderStep5();
 }
 
@@ -656,25 +657,27 @@ function colorForIp(ip) {
 function renderDataTable() {
   const grid = document.getElementById('dataTableBody');
   grid.innerHTML = '';
+  const locked = state.textLocked;
   state.items.forEach((item) => {
     const card = document.createElement('div');
-    card.className = `step2-card${step2SelectedIds.has(item.id) ? ' group-selected' : ''}`;
+    card.className = `step2-card${step2SelectedIds.has(item.id) ? ' group-selected' : ''}${locked ? ' text-locked' : ''}`;
     card.dataset.itemId = item.id;
     card.style.borderLeftColor = colorForIp(item.ip);
     const tagOptions = ['<option value="">(없음)</option>']
       .concat(tagWhitelistForActiveStore().map((t) => `<option value="${t}" ${item.tag === t ? 'selected' : ''}>${t}</option>`))
       .join('');
+    const dis = locked ? 'disabled' : '';
     card.innerHTML = `
       <div class="thumb"></div>
       <div class="fields">
         <div class="fields-row">
-          <input class="ip-input" value="${item.ip}" placeholder="IP명" />
-          <select class="tag-select">${tagOptions}</select>
+          <input class="ip-input" value="${item.ip}" placeholder="IP명" ${dis} />
+          <select class="tag-select" ${dis}>${tagOptions}</select>
         </div>
         <div class="suggest-slot">${item.aiUncertain ? '<span class="warn-badge">⚠ AI 추정 - 확인 필요</span> ' : ''}${ipDictSuggestionHtml(item.ip)}</div>
         <div class="fields-row">
-          <input class="price-input" value="${item.price}" placeholder="가격 (예: 44,400원)" />
-          <select class="subgrade-select">
+          <input class="price-input" value="${item.price}" placeholder="가격 (예: 44,400원)" ${dis} />
+          <select class="subgrade-select" ${dis}>
             <option value="other" ${item.subGrade === 'other' ? 'selected' : ''}>기타</option>
             <option value="B_male" ${item.subGrade === 'B_male' ? 'selected' : ''}>B급 남성향</option>
             <option value="B_female" ${item.subGrade === 'B_female' ? 'selected' : ''}>B급 여성향</option>
@@ -709,7 +712,7 @@ function renderBulkEditBar() {
   const bar = document.getElementById('bulkEditBar');
   if (!bar) return;
   const ids = [...step2SelectedIds].filter((id) => state.items.some((i) => i.id === id));
-  if (!ids.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  if (!ids.length || state.textLocked) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
 
   const tagOptions = ['<option value="">(없음)</option>']
     .concat(tagWhitelistForActiveStore().map((t) => `<option value="${t}">${t}</option>`)).join('');
@@ -872,18 +875,19 @@ function renderPreviewGrid(containerId, items, opts) {
     container.appendChild(pageBox);
 
     pageItems.forEach((item) => {
+      const locked = state.textLocked;
       const card = document.createElement('div');
-      card.className = `pcard${groupSelectedIds.has(item.id) ? ' group-selected' : ''}`;
-      card.draggable = !!opts.draggable;
+      card.className = `pcard${groupSelectedIds.has(item.id) ? ' group-selected' : ''}${locked ? ' text-locked' : ''}`;
+      card.draggable = !!opts.draggable; // 잠금 상태에서도 순서 변경(드래그)은 항상 허용
       card.dataset.itemId = item.id;
 
       const checkboxHtml = opts.selectable
-        ? `<input type="checkbox" class="del-check" data-id="${item.id}" ${state.pendingDeleteIds.includes(item.id) ? 'checked' : ''} />`
+        ? `<input type="checkbox" class="del-check" data-id="${item.id}" ${state.pendingDeleteIds.includes(item.id) ? 'checked' : ''} ${locked ? 'disabled' : ''} />`
         : '';
 
       card.innerHTML = `
         ${checkboxHtml}
-        <button class="edit-btn" data-edit="${item.id}">✎</button>
+        <button class="edit-btn" data-edit="${item.id}" ${locked ? 'disabled' : ''}>✎</button>
         <div class="thumb-slot"></div>
         <div class="ip">${item.aiUncertain ? '⚠ ' : ''}${item.ip || '<span style=\"color:#c0c4cc\">IP명 없음</span>'}${item.tag ? `<span class="tag">${item.tag}</span>` : ''}</div>
         <div class="price">${item.price || ''}</div>
@@ -892,9 +896,9 @@ function renderPreviewGrid(containerId, items, opts) {
       card.querySelector('.thumb-slot').appendChild(scaledThumb(state.photos[item.photoId]));
       grid.appendChild(card);
 
-      card.querySelector('[data-edit]').addEventListener('click', () => openItemDialog(item.id));
+      if (!locked) card.querySelector('[data-edit]').addEventListener('click', () => openItemDialog(item.id));
 
-      if (opts.selectable) {
+      if (opts.selectable && !locked) {
         card.querySelector('.del-check').addEventListener('change', (e) => {
           if (e.target.checked) state.pendingDeleteIds.push(item.id);
           else state.pendingDeleteIds = state.pendingDeleteIds.filter((id) => id !== item.id);
@@ -927,6 +931,11 @@ function renderPreviewGrid(containerId, items, opts) {
 
   attachMarqueeSelection(container);
   if (containerId === 'previewGrid') updateSplitPreviewText();
+}
+
+function updateTextLockBanner() {
+  const banner = document.getElementById('textLockBanner');
+  if (banner) banner.style.display = state.textLocked ? 'block' : 'none';
 }
 
 function updateSelectedCount() {
@@ -1424,6 +1433,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('storeSelectStep2').addEventListener('change', (e) => { state.activeStore = e.target.value; renderDataTable(); });
   document.getElementById('storeSelectStep5').addEventListener('change', (e) => { state.activeStore = e.target.value; });
   document.getElementById('autoSortBtn').addEventListener('click', autoSortItems);
+  document.getElementById('textLockToggle').addEventListener('change', (e) => {
+    state.textLocked = e.target.checked;
+    step2SelectedIds = new Set(); // 잠금 전환 시 일괄편집 선택 상태가 남아있으면 헷갈리니 초기화
+    renderDataTable();
+    updateTextLockBanner();
+    if (state.step === 3) renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
+  });
   document.getElementById('confirmOrderBtn').addEventListener('click', () => { state.orderConfirmed = true; goToStep(4); });
 
   document.getElementById('generatePagesBtn').addEventListener('click', generatePages);

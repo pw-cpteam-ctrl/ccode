@@ -100,6 +100,11 @@
   .marquee-box { position: absolute; border: 1px dashed var(--accent); background: rgba(47,123,255,.1); pointer-events: none; z-index: 5; }
   .marquee-box-fixed { position: fixed; z-index: 9999; }
   .undo-banner { display: flex; align-items: center; gap: 10px; background: #fff3d6; border: 1px solid #f0c869; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; }
+  .text-lock-toggle { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; color: var(--muted); background: #f3f5f8; border: 1px solid #e1e5ea; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; cursor: pointer; }
+  .text-lock-toggle input { margin-top: 2px; }
+  .text-lock-banner { background: #eef2ff; border: 1px solid #c3cdfa; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; color: #33409e; }
+  .step2-card.text-locked input, .step2-card.text-locked select { background: #f0f1f3; color: #9aa0a8; cursor: not-allowed; }
+  .pcard.text-locked .edit-btn { opacity: .35; cursor: not-allowed; }
   @media (max-width: 480px) { .pcard { min-height: 100px; } .pcard .edit-btn { font-size: 10px; padding: 4px 6px; } }
   .pcard .ip { font-weight: 800; font-size: 13px; margin-top: 6px; color: var(--text); }
   .pcard .tag { display: inline-block; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 5px; margin-left: 4px; }
@@ -187,6 +192,11 @@
         <label style="font-size:13px;">스토어 프로필</label>
         <select id="storeSelectStep2"></select>
       </div>
+      <label class="text-lock-toggle">
+        <input type="checkbox" id="textLockToggle" />
+        🔒 텍스트 잠금 (순서만 변경) — 켜면 IP명·가격·태그 등 글자를 실수로 못 고치고,
+        3단계에서 카드 드래그로 순서만 옮길 수 있어요.
+      </label>
       <div class="bulk-edit-bar" id="bulkEditBar" style="display:none;"></div>
       <div class="step2-grid" id="dataTableBody"></div>
     </div>
@@ -208,6 +218,10 @@
         ③ 분위기 클러스터. 등급표/클러스터는
         <button class="link-btn" data-open-dict="grade">사전 관리에서 편집</button>할 수 있습니다.
         자동 정렬 후에도 카드를 드래그해서 미세 조정할 수 있습니다.</p>
+      <div id="textLockBanner" class="text-lock-banner" style="display:none;">
+        🔒 텍스트 잠금 중 — 카드를 드래그해 순서만 바꿀 수 있어요. 글자를 고치려면
+        2단계에서 잠금을 먼저 해제하세요.
+      </div>
       <div class="row between" style="margin-bottom:12px;flex-wrap:wrap;">
         <div class="row" style="flex-wrap:wrap;">
           <button class="btn danger" id="selectDeleteBtn">선택 삭제</button>
