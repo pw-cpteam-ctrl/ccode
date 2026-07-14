@@ -354,7 +354,7 @@ function renderSourceList() {
           <button class="btn" data-action="redetect" data-id="${src.id}">다시 검출</button>
           <button class="btn primary" data-action="confirm" data-id="${src.id}" ${src.confirmed ? 'disabled' : ''}>${src.confirmed ? '크롭 완료됨' : '확인 및 크롭'}</button>
           <button class="btn" data-action="ai-fill" data-id="${src.id}" ${src.confirmed ? '' : 'disabled'} title="claude-sonnet-5로 사진과 텍스트를 함께 보고 표를 채웁니다 (유료 API 호출, 장당 약 2~4센트 수준). 결과는 항상 확인 대상으로만 표시됩니다.">🤖 AI로 채우기</button>
-          <button class="btn" data-action="ocr-label" data-id="${src.id}" ${src.confirmed ? '' : 'disabled'} title="이 소스가 이 도구로 이미 만든 결과물(재수입)일 때만 쓰세요. 사진은 안 보내고 사진 아래 이미 적혀 있는 IP명·가격·태그 글자만 다시 읽어옵니다 — 사진을 함께 보내는 'AI로 채우기'보다 저렴합니다.">🏷️ 라벨만 재인식</button>
+          <button class="btn" data-action="ocr-label" data-id="${src.id}" ${src.confirmed ? '' : 'disabled'} title="사진은 안 보내고 사진 아래 텍스트(상품명/가격/태그)만 보고 IP명을 추출합니다 — 'AI로 채우기'와 같은 추출 규칙을 쓰지만 사진이 없어서 글자가 흐릴 때 그림으로 확인하는 기능만 빠집니다. 원본 스크린샷/재수입 둘 다 쓸 수 있고, 사진을 함께 보내는 'AI로 채우기'보다 저렴합니다.">🏷️ 라벨만 재인식</button>
         </div>
       </div>
       <canvas class="overlay" data-canvas="${src.id}"></canvas>
@@ -690,7 +690,10 @@ async function ocrLabelsForSource(srcId) {
   const { rows, cols } = src.grid;
   const rowIndicesAll = Array.from({ length: rows.length }, (_, i) => i);
   const rowBatches = chunkArray(rowIndicesAll, AI_ROWS_PER_BATCH);
+  let uncertainCount = 0;
   let filledCount = 0;
+  let clusteredCount = 0;
+  let genderClassifiedCount = 0;
 
   try {
     for (let b = 0; b < rowBatches.length; b++) {
@@ -709,9 +712,19 @@ async function ocrLabelsForSource(srcId) {
       const dataUrl = stripCanvas.toDataURL('image/png');
       const imageBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
 
+      // 처음엔 "이미 깨끗하게 렌더링된 글자를 그대로 옮겨 적기"만 하는 걸로 설계했는데,
+      // 실제로는 원본 매장 스크린샷(상품명이 지저분한 원문 그대로인 경우)에도 이 버튼을
+      // 쓰고 싶어했다 — 그대로 옮겨 적기만 하면 상품명 전체가 그대로 ip에 들어가버려서
+      // 쓸모가 없었다. 그래서 이제 aiFillSource(1단계 "AI로 채우기")와 똑같은 IP명 추출
+      // 규칙(사전/라인업 태그/분위기 클러스터/성향)을 그대로 적용한다 — 사진만 안 보낼 뿐,
+      // 인식 품질/결과 처리는 동일하다.
       const r = await fetch('/api/ocr-label', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64, mediaType: 'image/png', expectedCount: itemIndicesInBatch.length }),
+        body: JSON.stringify({
+          imageBase64, mediaType: 'image/png', expectedCount: itemIndicesInBatch.length,
+          ipDictHint: state.dict.ipNameMap, tagWhitelist: tagWhitelistForActiveStore(),
+          moodClusters: state.dict.moodClusters, productLineNames: state.dict.productLineNames,
+        }),
         signal: AbortSignal.timeout(60000),
       });
       const data = await r.json();
@@ -720,17 +733,22 @@ async function ocrLabelsForSource(srcId) {
       data.items.slice(0, itemIndicesInBatch.length).forEach((result, j) => {
         const item = state.items[src.itemStartIndex + itemIndicesInBatch[j]];
         if (!item) return;
-        item.ip = (result.ip || '').trim();
+        item.ip = (result.ip || result.rawText || '').trim();
         item.price = result.price || '';
         item.ship = result.ship || '무료배송';
         item.tag = result.tag || '';
-        // 이미 렌더링된 깨끗한 글자를 그대로 옮긴 것이라 aiUncertain 배지는 붙이지 않는다
-        // (원본 스크린샷을 흐릿한 사진째로 추측한 게 아니라 실제로 읽은 글자 그대로임).
+        item.aiUncertain = !!result.uncertain || !item.ip;
+        if (item.aiUncertain) uncertainCount++;
+        if (applyAiClusterResult(item, result.moodCluster)) clusteredCount++;
+        const gradeBefore = item.subGrade;
+        applyAiGenderLean(item, result.genderLean);
+        if (item.subGrade !== gradeBefore) genderClassifiedCount++;
         filledCount++;
       });
       renderDataTable();
     }
-    alert(`라벨 텍스트 ${filledCount}개 항목을 읽어왔습니다.\nIP명·가격·태그가 채워졌으니, 필요하면 2단계에서 확인 후 텍스트 잠금을 켜고 3단계에서 순서만 조정하세요.`);
+    if (clusteredCount) saveDictLocal('moodClusters', state.dict.moodClusters);
+    alert(`라벨에서 ${filledCount}개 항목을 인식했습니다.\n확인이 필요한 항목: ${uncertainCount}개 (⚠ 표시된 곳을 확인하세요)\n분위기 클러스터에 새로 편입된 IP: ${clusteredCount}개\n등급표에 없어 성향을 새로 추측한 항목: ${genderClassifiedCount}개`);
   } catch (e) {
     alert(`라벨 인식 실패: ${e.message}\n(백엔드가 배포되어 있지 않다면 정상입니다 — 수동으로 입력해주세요)`);
   } finally {
