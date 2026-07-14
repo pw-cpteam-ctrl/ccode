@@ -243,9 +243,19 @@ function slotLabel(s) {
   return `${s.items.length}개 항목${withIp ? ` (${withIp.ip} 외)` : ''}`;
 }
 
+// 탭을 여러 번 전환하면 그 사이 아무 작업도 안 했어도 beforeunload/visibilitychange가
+// 매번 새 스냅샷을 만들어서, 내용은 완전히 같은데 시각만 다른 슬롯이 계속 쌓이는 문제가
+// 있었다. ts(저장 시각)만 다르고 나머지 내용이 전부 같으면 "완전히 동일한 데이터"로
+// 보고 새로 추가하지 않는다.
+function snapshotContentKey(s) {
+  const { ts, ...rest } = s;
+  return JSON.stringify(rest);
+}
+
 function pushSlot(snap, skipRender) {
   if (!snap) return;
   const list = loadSlots();
+  if (list.length && snapshotContentKey(list[0]) === snapshotContentKey(snap)) return;
   list.unshift(snap);
   saveSlots(list);
   if (!skipRender) renderSlots();
