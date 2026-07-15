@@ -511,10 +511,14 @@ function saveSlots(a){
 }
 function snapshotWith(src){ return { ts:Date.now(), source:src, headline:state.text.headline, work:state.work, line:state.line, linePrefix:state.linePrefix, product:state.text.product, jp:state.jp, saleDate:state.saleDate, saleDow:state.saleDow, bullet:state.bullet, imgData:state.imgData, thumb: state.img ? compressImage(state.img, 200, 0.7) : '', fg:{...state.fg}, bg:{...state.bg}, size:{...state.size} }; }
 function slotLabel(s){ const w=(s.work||'').trim(); if(w && w!=='[작품명]') return w + (s.line?(' · '+s.line):''); const f=(s.source||'').split('\n').map(x=>x.trim()).filter(Boolean)[0]; return f || '(빈 입력)'; }
+// 탭을 여러 번 전환하면 그 사이 아무 작업도 안 했어도 beforeunload/visibilitychange가
+// 매번 새 스냅샷을 만들어서, 내용은 완전히 같은데 저장 시각(ts)만 다른 슬롯이 계속
+// 쌓이는 문제가 있었다. ts만 빼고 나머지 내용을 통째로 비교해 완전히 같으면 스킵한다.
+function snapshotContentKey(s){ const { ts, ...rest } = s; return JSON.stringify(rest); }
 function pushSlot(snap, skipRender){
   if((!snap.work || snap.work==='[작품명]') && !(snap.product||'').trim() && !(snap.source||'').trim() && !snap.imgData) return;
   let a=loadSlots();
-  if(a.length && a[0].source===snap.source && a[0].product===snap.product && a[0].work===snap.work) return; // 직전과 동일하면 스킵
+  if(a.length && snapshotContentKey(a[0])===snapshotContentKey(snap)) return; // 직전과 완전히 동일하면 스킵
   a.unshift(snap); a=a.slice(0,SLOT_MAX); saveSlots(a); if(!skipRender) renderSlots();
 }
 function applySlot(s){
