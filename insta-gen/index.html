@@ -16,10 +16,10 @@
   .hint { color: var(--muted); font-size: 13px; margin-top: 10px; text-align: center; font-weight: 300; line-height: 1.5; }
   .subtitle { font-size:16px; color:var(--text); font-weight:700; margin:-2px 0 12px; line-height:1.35; }
 
-  /* 이미지 작업란: 슬롯 5칸(좌) + 미리보기(우) */
-  .imagerow { display:flex; gap:12px; align-items:flex-start; }
-  .slotcol { flex:0 0 64px; display:flex; flex-direction:column; gap:8px; }
-  .slotsq { position:relative; width:64px; height:64px; border:1.5px dashed var(--line2); border-radius:8px; display:flex; align-items:center; justify-content:center; text-align:center; font-size:10.5px; line-height:1.25; color:var(--muted); padding:4px; cursor:pointer; background:#fff; background-size:cover; background-position:center; overflow:hidden; }
+  /* 이미지 작업란: 슬롯 6칸(좌) + 미리보기(우) — 슬롯 6칸 높이 합(60*6+9*5=405)이 미리보기 높이(405)와 정확히 일치 */
+  .imagerow { display:flex; gap:48px; align-items:flex-start; } /* 48px = 미리보기 우측 끝이 노란박스(3·텍스트) 우측 끝과 정렬되도록 계산된 값 */
+  .slotcol { flex:0 0 60px; display:flex; flex-direction:column; gap:9px; }
+  .slotsq { position:relative; width:60px; height:60px; border:1.5px dashed var(--line2); border-radius:8px; display:flex; align-items:center; justify-content:center; text-align:center; font-size:10.5px; line-height:1.25; color:var(--muted); padding:4px; cursor:pointer; background:#fff; background-size:cover; background-position:center; overflow:hidden; }
   .slotsq.filled { border-style:solid; border-color:var(--line2); color:var(--text); font-weight:600; }
   .slotsq:hover { border-color:var(--accent); color:var(--accent); }
   .slotsq.has-thumb:hover { border-color:var(--accent); }
@@ -117,7 +117,7 @@
     <div class="hint">미리보기만 75% 축소 (다운로드 화질엔 영향 없음) · 드래그로 위치 조정</div>
     <div class="card infobar">
       <div class="infobar-col">
-        <div class="slotbox-h">↺ 이전 입력 (최근 5개)</div>
+        <div class="slotbox-h">↺ 이전 입력 (최근 6개)</div>
         <div class="slotbox-note">자동 채우기를 쓸 때마다 직전 작업이 왼쪽 슬롯에 쌓입니다. 슬롯을 눌러 다른 상품으로 바로 전환하세요.</div>
       </div>
       <div class="infobar-col">
@@ -499,7 +499,7 @@ function parseJP(txt){
 function setSelect(id,val){ const el=document.getElementById(id); if(val&&[...el.options].some(o=>o.value===val)){ el.value=val; return true; } return false; }
 
 /* ── 이전 입력 캐시 (최근 5칸 · localStorage) ── */
-const SLOT_KEY='instaSlots_v1', SLOT_MAX=5;
+const SLOT_KEY='instaSlots_v1', SLOT_MAX=6;
 let appliedSource='';   // 현재 3번 필드가 만들어진 원문 (적용 시 갱신)
 function loadSlots(){ try{ return JSON.parse(localStorage.getItem(SLOT_KEY)||'[]'); }catch{ return []; } }
 function saveSlots(a){
