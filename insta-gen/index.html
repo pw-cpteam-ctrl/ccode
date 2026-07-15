@@ -330,8 +330,15 @@ function render(){
 
   ctx.fillStyle='#efe8e2';
   const plines = state.text.product.split('\n').map(s=>s.trim()).filter(Boolean);
-  const lh = state.size.product*1.12, base = 1120+titleShift;
-  plines.forEach((ln,i)=>{ const t=(state.bullet?'• ':'')+ln; fitText(t,300,state.size.product,MAXW); ctx.fillText(t,W/2,base+i*lh); });
+  const lh = state.size.product*1.12;
+  // 제품명 블록을 줄 수와 무관하게 타이틀~푸터 사이의 '세로 중앙'에 맞춘다. 한 줄이든
+  // 두 줄이든 큰 타이틀에 딱 붙지 않고 가운데에 자리잡도록 — 블록 중앙(baseline 기준)을
+  // 항상 CY에 두고 N줄을 대칭 배치한다. (CY는 시각적으로 튜닝한 값)
+  const CY = 1172+titleShift;
+  let firstBaseline = CY - (plines.length-1)*lh/2;
+  const TOP_MIN = 1104+titleShift;              // 줄이 많아도 이 위로는 안 올라가게(타이틀 겹침 방지)
+  if(firstBaseline < TOP_MIN) firstBaseline = TOP_MIN;
+  plines.forEach((ln,i)=>{ const t=(state.bullet?'• ':'')+ln; fitText(t,300,state.size.product,MAXW); ctx.fillText(t,W/2,firstBaseline+i*lh); });
 
   ctx.shadowBlur=0; ctx.strokeStyle='rgba(255,255,255,.28)'; ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(180,1244); ctx.lineTo(900,1244); ctx.stroke();
