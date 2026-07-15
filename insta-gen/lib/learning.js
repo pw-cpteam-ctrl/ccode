@@ -22,6 +22,9 @@ export async function recordLearning(parsed, sourceText, gh) {
   const prodJpLines = (parsed.productJp || '').split('\n').map(s => s.trim()).filter(Boolean);
   // product/productJp 줄 수가 다르면 인덱스 기반 매칭이 엉뚱한 이름끼리 짝지어질 수 있어
   // 캐릭터 학습은 건너뛴다(작품명은 1:1이라 이 문제가 없어 그대로 진행).
+  // (한계: 줄 수가 같은 채로 사용자가 줄 순서만 바꾸면 JP↔KR가 어긋난 채 학습될 수 있음.
+  //  줄 순서까지는 서버가 알 수 없어 완전 차단은 불가 — 대신 아래 '2회 반복 시에만 승격'이
+  //  1회성 오정렬을 걸러주는 안전망 역할을 한다.)
   if (prodLines.length === prodJpLines.length) {
     prodLines.forEach((kr, i) => { const jp = prodJpLines[i]; if (jp) candidates.push({ kind: 'chars', jp, kr }); });
   }

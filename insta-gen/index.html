@@ -104,6 +104,10 @@
   .slotbox-h { font-size:12px; font-weight:700; color:#4b5563; letter-spacing:.3px; margin-bottom:4px; }
   .slotbox-note { font-size:11px; color:var(--muted); line-height:1.45; margin-bottom:8px; }
   .spacewarn { font-size:12px; color:var(--danger); font-weight:600; line-height:1.5; margin-top:6px; min-height:0; }
+  /* 저장 실패/용량정리 등 조용히 넘어가면 안 되는 알림용 토스트 */
+  #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); max-width:520px; width:calc(100% - 48px); background:#2b2f36; color:#fff; font-size:13px; font-weight:500; line-height:1.5; padding:13px 16px; border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,.28); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:9999; text-align:center; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  #toast.warn { background:#8a2f3d; }
 </style>
 </head>
 <body>
@@ -254,6 +258,8 @@
       <div class="blockmsg" id="blockmsg"></div>
     </div>
   </div>
+
+  <div id="toast" role="status" aria-live="polite"></div>
 
 <script src="dict.js"></script>
 <script>
@@ -499,16 +505,25 @@ function parseJP(txt){
 
 function setSelect(id,val){ const el=document.getElementById(id); if(val&&[...el.options].some(o=>o.value===val)){ el.value=val; return true; } return false; }
 
-/* ── 이전 입력 캐시 (최근 5칸 · localStorage) ── */
+/* ── 이전 입력 캐시 (최근 6칸 · localStorage) ── */
 const SLOT_KEY='instaSlots_v1', SLOT_MAX=6;
 let appliedSource='';   // 현재 3번 필드가 만들어진 원문 (적용 시 갱신)
 function loadSlots(){ try{ return JSON.parse(localStorage.getItem(SLOT_KEY)||'[]'); }catch{ return []; } }
+// 반환값으로 저장 결과를 알려준다({ok, strippedImages}) — 호출부가 조용히 넘기지 않고
+// 사용자에게 토스트로 알릴 수 있게. (데이터 유실은 이 레포 최우선 항목)
 function saveSlots(a){
   a=a.slice(0,SLOT_MAX);
-  try{ localStorage.setItem(SLOT_KEY, JSON.stringify(a)); return; }catch(e){}
+  try{ localStorage.setItem(SLOT_KEY, JSON.stringify(a)); return {ok:true}; }catch(e){}
   // 용량 초과 → 오래된 슬롯부터 사진(복원용 원본+섬네일)을 비우며 재시도, 그래도 안 되면 사진 전부 제거
   const b=a.map(s=>({...s}));
-  for(let i=b.length-1;i>=0;i--){ b[i].imgData=''; b[i].thumb=''; try{ localStorage.setItem(SLOT_KEY, JSON.stringify(b)); return; }catch(e){} }
+  for(let i=b.length-1;i>=0;i--){ b[i].imgData=''; b[i].thumb=''; try{ localStorage.setItem(SLOT_KEY, JSON.stringify(b)); return {ok:true, strippedImages:true}; }catch(e){} }
+  return {ok:false};
+}
+let _toastTimer=null;
+function showToast(msg, warn){
+  const el=document.getElementById('toast'); if(!el) return;
+  el.textContent=msg; el.classList.toggle('warn', !!warn); el.classList.add('show');
+  clearTimeout(_toastTimer); _toastTimer=setTimeout(()=>el.classList.remove('show'), 4200);
 }
 function snapshotWith(src){ return { ts:Date.now(), source:src, headline:state.text.headline, work:state.work, line:state.line, linePrefix:state.linePrefix, product:state.text.product, jp:state.jp, saleDate:state.saleDate, saleDow:state.saleDow, bullet:state.bullet, imgData:state.imgData, thumb: state.img ? compressImage(state.img, 200, 0.7) : '', fg:{...state.fg}, bg:{...state.bg}, size:{...state.size} }; }
 function slotLabel(s){ const w=(s.work||'').trim(); if(w && w!=='[작품명]') return w + (s.line?(' · '+s.line):''); const f=(s.source||'').split('\n').map(x=>x.trim()).filter(Boolean)[0]; return f || '(빈 입력)'; }
@@ -520,7 +535,12 @@ function pushSlot(snap, skipRender){
   if((!snap.work || snap.work==='[작품명]') && !(snap.product||'').trim() && !(snap.source||'').trim() && !snap.imgData) return;
   let a=loadSlots();
   if(a.length && snapshotContentKey(a[0])===snapshotContentKey(snap)) return; // 직전과 완전히 동일하면 스킵
-  a.unshift(snap); a=a.slice(0,SLOT_MAX); saveSlots(a); if(!skipRender) renderSlots();
+  a.unshift(snap); a=a.slice(0,SLOT_MAX); const r=saveSlots(a); if(!skipRender) renderSlots();
+  // 페이지를 닫는 중(skipRender)엔 토스트가 안 보이므로 화면이 살아있을 때만 알린다
+  if(!skipRender){
+    if(r.strippedImages) showToast('저장 공간이 부족해 오래된 슬롯의 사진을 정리했어요. (텍스트 내용은 유지됩니다)', true);
+    else if(!r.ok) showToast('⚠ 저장 공간이 부족해 이번 작업이 슬롯에 저장되지 않았어요. 안 쓰는 슬롯을 삭제한 뒤 다시 시도해 주세요.', true);
+  }
 }
 function applySlot(s){
   state.aiLearn = null;   // 다른 작업으로 전환 — 이전 AI 결과를 지금 사진/원문과 잘못 짝지어 학습하지 않도록 폐기
@@ -794,7 +814,10 @@ function restoreSlot(s){
 }
 
 (async ()=>{
-  try{ await document.fonts.load('800 76px Pretendard'); await document.fonts.load('300 60px Pretendard'); }catch{}
+  // 카드에 실제로 쓰는 굵기를 전부 미리 로드해야 첫 렌더의 글자 폭 측정(measureText)이
+  // 폴백 폰트로 잘못 계산돼 타이틀 한 줄/두 줄 판단·크기가 어긋나는 것을 막는다.
+  // (헤드라인 800, 타이틀 700, 푸터 500, 제품명 300)
+  try{ await Promise.all(['800 76px Pretendard','700 80px Pretendard','500 34px Pretendard','300 60px Pretendard'].map(f=>document.fonts.load(f))); await document.fonts.ready; }catch{}
   const slots=loadSlots();
   if(slots.length){ restoreSlot(slots[0]); syncControlsUI(); checkWorkSpacing(); }
   composeTitle(); updatePreview(); render(); runValidation(); renderSlots(); updateCopyCount();
