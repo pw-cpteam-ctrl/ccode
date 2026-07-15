@@ -11,9 +11,43 @@
   body { background: var(--bg); color: var(--text); display: flex; min-height: 100vh; gap: 28px; padding: 28px; align-items: flex-start; }
 
   .left { flex: 0 0 auto; width: 432px; display: flex; flex-direction: column; gap: 16px; }
-  #stage { width: 432px; height: 540px; border-radius: 14px; box-shadow: 0 10px 36px rgba(0,0,0,.16); cursor: grab; touch-action: none; background: #e9eaee; }
+  #stage { width: 324px; height: 405px; border-radius: 14px; box-shadow: 0 10px 36px rgba(0,0,0,.16); cursor: grab; touch-action: none; background: #e9eaee; display:block; } /* 미리보기만 75% 축소 — canvas width/height(1080x1350) 속성은 그대로 = 다운로드 화질 무관 */
   #stage.drag { cursor: grabbing; }
   .hint { color: var(--muted); font-size: 13px; margin-top: 10px; text-align: center; font-weight: 300; line-height: 1.5; }
+  .subtitle { font-size:16px; color:var(--text); font-weight:700; margin:-2px 0 12px; line-height:1.35; }
+
+  /* 이미지 작업란: 슬롯 5칸(좌) + 미리보기(우) */
+  .imagerow { display:flex; gap:12px; align-items:flex-start; }
+  .slotcol { flex:0 0 64px; display:flex; flex-direction:column; gap:8px; }
+  .slotsq { position:relative; width:64px; height:64px; border:1.5px dashed var(--line2); border-radius:8px; display:flex; align-items:center; justify-content:center; text-align:center; font-size:10.5px; line-height:1.25; color:var(--muted); padding:4px; cursor:pointer; background:#fff; }
+  .slotsq.filled { border-style:solid; border-color:var(--line2); color:var(--text); font-weight:600; }
+  .slotsq:hover { border-color:var(--accent); color:var(--accent); }
+  .slotsq .s-del { position:absolute; top:2px; right:4px; font-size:11px; font-weight:700; color:var(--muted); display:none; }
+  .slotsq.filled:hover .s-del { display:block; }
+  .slotsq .s-del:hover { color:var(--danger); }
+  .stagewrap { flex:0 0 324px; width:324px; } /* canvas 실폭(324px)으로 고정 — 안내문구가 캔버스 중심에 맞도록 */
+
+  /* 이전입력 설명 | 사진 크롭·배경지 슬라이더 — 2열 카드 */
+  .infobar { display:flex; gap:16px; }
+  .infobar-col { min-width:0; }
+  .infobar-col:first-child { flex:0 0 35%; }
+  .infobar-col:last-child { flex:1 1 65%; }
+  .infobar-col + .infobar-col { border-left:1px solid var(--line); padding-left:16px; }
+
+  /* 1(사진)+2(원문입력) 카드 — 가로 2열 */
+  .combo12 { display:flex; flex-direction:row; gap:4%; align-items:flex-start; }
+  .combo-photo { flex:0 0 18%; display:flex; flex-direction:column; height:294px; } /* '무료로 채우기/AI로 채우기' 버튼 줄 끝나는 지점까지 정확히 맞춤 */
+  .combo-photo h2 { flex:0 0 auto; }
+  .upload.compact { display:flex; flex:1 1 auto; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:14px 6px; text-align:center; font-size:11.5px; }
+  .upload.compact .icon { font-size:20px; }
+  .combo-text { flex:1 1 78%; min-width:0; }
+
+  /* 3·텍스트: ①헤드라인 + ②작품명 2열 (헤드라인은 '원형 최초공개' 6자가 다 보이는 폭) */
+  .field-row { display:flex; gap:8px; margin-bottom:12px; }
+  .field-row .field { margin-bottom:0; }
+  .field-head { flex:0 0 134px; }
+  .field-head select { padding-left:8px; padding-right:4px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; }
+  .field-work { flex:1 1 auto; min-width:0; }
 
   .panel { flex: 1; max-width: 430px; display: flex; flex-direction: column; gap: 16px; }
   h1 { font-size: 20px; font-weight: 700; }
@@ -23,6 +57,9 @@
   .card h2 { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .5px; margin-bottom: 12px; }
   .card.box-y { background:#fffbe9; border-color:#ecdf9e; }
   .card.box-b { background:#edf5fd; border-color:#b9daf1; }
+  .card.box-t { background:#f7f0e2; border-color:#e3d3a8; font-size:12px; line-height:1.6; color:var(--text); }
+  .card.box-t b { font-weight:700; }
+  .card.box-t .tip { color:var(--muted); margin-top:6px; }
 
   .upload { display: block; border: 1.5px dashed var(--line2); border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; transition: .15s; font-weight: 500; color: var(--muted); line-height: 1.5; }
   .upload:hover { border-color: var(--accent); color: var(--accent); }
@@ -39,14 +76,11 @@
   .check input { width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }
   .note { font-size: 12px; color: var(--muted); font-weight: 400; line-height: 1.5; margin-bottom: 10px; }
   .preview-line { font-size: 12px; color: var(--text); font-weight: 600; margin-top: 6px; background:#f6f2f4; border:1px solid var(--line); border-radius:7px; padding:6px 9px; }
-  .helpbox { font-size: 12px; color: var(--text); line-height: 1.6; margin-top: 10px; background:#f6f2f4; border:1px solid var(--line); border-radius:9px; padding:11px 13px; }
-  .helpbox b { font-weight: 700; }
-  .helpbox .tip { color: var(--muted); margin-top: 6px; }
 
   .slider, .stepper { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; }
   .slider:last-child, .stepper:last-child { margin-bottom: 0; }
   .slider label, .stepper label { flex: 0 0 80px; font-size: 12px; color: var(--muted); }
-  .slider input[type=range] { flex: 1; accent-color: var(--accent); }
+  .slider input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); } /* min-width:0 없으면 좁은 칸에서 슬라이더가 카드 밖으로 튀어나감 */
   .slider .val { flex: 0 0 42px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
   .stepper { margin-top: 8px; }
   .stepper .ctrl { display: flex; align-items: center; gap: 8px; }
@@ -62,91 +96,56 @@
   .btn2 { flex:1; border:1px solid var(--line2); background:#fff; border-radius:8px; padding:9px; font-size:13px; font-weight:600; cursor:pointer; color:var(--text); }
   .btn2:hover { border-color:var(--accent); color:var(--accent); }
   #t_copy { width:100%; min-height:220px; background:#fff; border:1px solid var(--line2); border-radius:8px; color:var(--text); padding:11px; font-size:13px; line-height:1.6; font-family:'Pretendard',sans-serif; resize:vertical; }
-  .slots { display:flex; flex-direction:column; gap:6px; }
-  .slot { display:flex; align-items:center; gap:8px; border:1px solid var(--line2); background:#fff; border-radius:8px; padding:8px 10px; cursor:pointer; transition:.12s; }
-  .slot:hover { border-color:var(--accent); background:#fffafc; }
-  .slot .s-title { font-weight:600; font-size:13px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .slot .s-meta { color:var(--muted); font-size:11px; font-variant-numeric:tabular-nums; }
-  .slot .s-del { color:var(--muted); font-weight:700; padding:0 2px 0 4px; font-size:13px; }
-  .slot .s-del:hover { color:var(--danger); }
-  .slot-empty { color:var(--muted); font-size:12px; line-height:1.5; }
   .ccount { font-size:12px; color:var(--muted); margin-top:7px; font-variant-numeric:tabular-nums; }
   .ccount b { font-weight:700; }
   .ccount.over { color:var(--danger); font-weight:600; }
-  .slotbox { background:#ececef; border:1px solid #dcdde2; border-radius:10px; padding:11px; margin-top:12px; }
   .slotbox-h { font-size:12px; font-weight:700; color:#4b5563; letter-spacing:.3px; margin-bottom:4px; }
   .slotbox-note { font-size:11px; color:var(--muted); line-height:1.45; margin-bottom:8px; }
-  .slotbox .slot { background:#fff; }
   .spacewarn { font-size:12px; color:var(--danger); font-weight:600; line-height:1.5; margin-top:6px; min-height:0; }
 </style>
 </head>
 <body>
   <div class="left">
-    <div>
-      <canvas id="stage" width="1080" height="1350"></canvas>
-      <div class="hint">사진 위를 <b>드래그</b>해서 위치 조정 · 휠/슬라이더로 <b>확대</b><br>업로드 · 끌어놓기 · <b>붙여넣기(Ctrl/⌘+V)</b> 모두 가능</div>
-    </div>
-    <div class="card box-b">
-      <h2>원고 (캡션) — 복붙용</h2>
-      <div class="field"><label>일본어 작품명 (해시태그용 · 선택)</label><input type="text" id="t_jp" placeholder="예: 銀魂"></div>
-      <div class="field"><label>예약판매일 (예: 3월 5일 · 비우면 생략)</label><input type="text" id="t_saledate" placeholder="예: 3월 5일"></div>
-      <div class="copybtns">
-        <button class="btn2" id="genCopy">원고 생성 / 새로고침</button>
-        <button class="btn2" id="doCopy">복사</button>
-      </div>
-      <textarea id="t_copy" placeholder="'원고 생성'을 누르면 위 텍스트값으로 캡션이 만들어집니다. 만든 뒤 자유롭게 수정하세요."></textarea>
-      <div class="ccount" id="copyCount">0 / 280 (한글 0/140)</div>
-      <div class="slotbox">
-        <div class="slotbox-h">↺ 이전 입력 (최근 5개 · 자동 저장 · 사진 포함)</div>
-        <div class="slotbox-note">새 원문을 [무료로 채우기]/[AI로 채우기]로 채울 때마다 직전 작업이 슬롯에 남습니다. 누르면 그 내용으로 되돌립니다.</div>
-        <div id="slots" class="slots"></div>
+    <div class="imagerow">
+      <div class="slotcol" id="slots"></div>
+      <div class="stagewrap">
+        <canvas id="stage" width="1080" height="1350"></canvas>
+        <div class="hint">미리보기만 75% 축소 (다운로드 화질엔 영향 없음) · 드래그로 위치 조정</div>
       </div>
     </div>
-  </div>
-
-  <div class="panel">
-    <h1>인스타 카드 생성기 <small>원문 → 정형 입력 → 카드 + 원고</small></h1>
-
-    <div class="card">
-      <h2>1 · 사진</h2>
-      <label class="upload">사진 선택 · 끌어다 놓기 · 붙여넣기<small>클립보드 이미지는 Ctrl/⌘+V</small><input type="file" id="file" accept="image/*"></label>
-    </div>
-
-    <div class="card">
-      <h2>2 · 원문 입력 (필수)</h2>
-      <p class="note">일본어 원문을 그대로 붙여넣고 아래 두 버튼 중 하나를 누르면 헤드라인·작품·라인·캐릭터·예약일을 자동 인식해 3번을 채웁니다.</p>
-      <div class="field"><textarea id="t_source" rows="8" placeholder="일본어 원문 그대로 붙여넣기. 예)&#10;◤彩色原型初公開！◢&#10;見上げる見守るフィギュア るかっぷ&#10;進撃の巨人&#10;アルミン・アルレルト&#10;エレン・イェーガー むむっとver.&#10;⏰予約開始は3月5日(木)"></textarea></div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn2" id="applySrc" style="flex:1">무료로 채우기</button>
-        <button class="btn2" id="aiParseSrc" style="flex:1;border-color:#7c5cbf;color:#7c5cbf">✦ AI로 채우기</button>
+    <div class="card infobar">
+      <div class="infobar-col">
+        <div class="slotbox-h">↺ 이전 입력 (최근 5개)</div>
+        <div class="slotbox-note">자동 채우기를 쓸 때마다 직전 작업이 왼쪽 슬롯에 쌓입니다. 슬롯을 눌러 다른 상품으로 바로 전환하세요.</div>
       </div>
-      <div class="helpbox">
-        <div><b>두 버튼, 뭐가 다른가요?</b></div>
-        <div style="margin-top:8px;">🆓 <b>무료로 채우기</b> — 도구 안에 미리 저장된 사전(작품명·캐릭터명 목록)을 보고 알아서 채워줍니다. 인터넷이 안 되는 상황에서도 작동해요. 다만 사전에 없는 새로운 작품/캐릭터는 못 알아볼 수 있어요.</div>
-        <div style="margin-top:8px;">✦ <b>AI로 채우기</b> — Claude AI에게 물어봐서 채웁니다. 사전에 없는 새 작품/캐릭터도 알아볼 확률이 훨씬 높아요. 대신 누를 때마다 AI 사용료(토큰)가 조금씩 나갑니다. 한 번 누르는 비용 자체는 크지 않지만(버튼 1번당 몇 원 수준), 자주 누적해서 쓰면 요금이 꽤 나올 수 있어요.</div>
-        <div class="tip">💡 추천: 먼저 [무료로 채우기]를 눌러보고, 안 채워지거나 이상하면 [AI로 채우기]를 눌러보세요.</div>
+      <div class="infobar-col">
+        <h2>사진 크롭 / 배경지</h2>
+        <div class="slider"><label>사진 확대</label><input type="range" id="s_zoom" min="100" max="300" value="100"><span class="val" id="v_zoom">1.0×</span></div>
+        <div class="slider"><label>배경 불투명</label><input type="range" id="s_op" min="20" max="100" value="50"><span class="val" id="v_op">50%</span></div>
+        <div class="slider"><label>배경 흐림</label><input type="range" id="s_blur" min="0" max="70" value="45"><span class="val" id="v_blur">45</span></div>
       </div>
-      <div class="note" id="srcStatus" style="margin-top:8px;margin-bottom:0"></div>
     </div>
-
     <div class="card box-y">
       <h2>3 · 텍스트 (양식 고정 — 순서·표기 자동)</h2>
-      <div class="field">
-        <label>① 헤드라인 (선택)</label>
-        <select id="t_headline">
-          <option>원형 최초공개</option>
-          <option>채색원형 최초공개</option>
-          <option>샘플 최초공개</option>
-          <option>재판매 결정</option>
-          <option>한정 재판매 결정</option>
-          <option>예약 시작</option>
-          <option>상품화 결정</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>② 작품명 (IP)</label>
-        <input type="text" id="t_work" value="[작품명]" placeholder="예: 은혼 / 나루토 질풍전 / 주술회전">
-        <div class="spacewarn" id="spaceWarn"></div>
+      <div class="subtitle">2번 클릭 후 여기에서 수정</div>
+      <div class="field-row">
+        <div class="field field-head">
+          <label>① 헤드라인</label>
+          <select id="t_headline">
+            <option>원형 최초공개</option>
+            <option>채색원형 최초공개</option>
+            <option>샘플 최초공개</option>
+            <option>재판매 결정</option>
+            <option>한정 재판매 결정</option>
+            <option>예약 시작</option>
+            <option>상품화 결정</option>
+          </select>
+        </div>
+        <div class="field field-work">
+          <label>② 작품명 (IP)</label>
+          <input type="text" id="t_work" value="[작품명]" placeholder="예: 은혼 / 나루토 질풍전 / 주술회전">
+          <div class="spacewarn" id="spaceWarn"></div>
+        </div>
       </div>
       <div class="field">
         <label>③ 시리즈/라인 (작품 뒤에 자동으로 붙음)</label>
@@ -206,12 +205,46 @@
       </div>
       <div class="field"><label>⑤ 푸터</label><input type="text" id="t_footer" value="메가하우스 공식 스토어"></div>
     </div>
+  </div>
 
-    <div class="card">
-      <h2>4 · 사진 크롭 / 배경지</h2>
-      <div class="slider"><label>사진 확대</label><input type="range" id="s_zoom" min="100" max="300" value="100"><span class="val" id="v_zoom">1.0×</span></div>
-      <div class="slider"><label>배경 불투명</label><input type="range" id="s_op" min="20" max="100" value="50"><span class="val" id="v_op">50%</span></div>
-      <div class="slider"><label>배경 흐림</label><input type="range" id="s_blur" min="0" max="70" value="45"><span class="val" id="v_blur">45</span></div>
+  <div class="panel">
+    <h1>인스타 카드 생성기 <small>원문 → 정형 입력 → 카드 + 원고</small></h1>
+
+    <div class="card combo12">
+      <div class="combo-photo">
+        <h2>1 · 사진</h2>
+        <label class="upload compact"><span class="icon">📷</span><span>사진 선택<br>· 붙여넣기(Ctrl+V)</span><input type="file" id="file" accept="image/*"></label>
+      </div>
+      <div class="combo-text">
+        <h2>2 · 원문 입력 (필수)</h2>
+        <div class="subtitle">일본어 원문을 붙여넣고 버튼을 누르면 3번이 자동으로 채워집니다</div>
+        <div class="field"><textarea id="t_source" rows="7" placeholder="일본어 원문 그대로 붙여넣기. 예)&#10;◤彩色原型初公開！◢&#10;見上げる見守るフィギュア るかっぷ&#10;進撃の巨人&#10;アルミン・アルレルト&#10;エレン・イェーガー むむっとver.&#10;⏰予約開始は3月5日(木)"></textarea></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn2" id="applySrc" style="flex:1">무료로 채우기</button>
+          <button class="btn2" id="aiParseSrc" style="flex:1;border-color:#7c5cbf;color:#7c5cbf">✦ AI로 채우기</button>
+        </div>
+        <div class="note" id="srcStatus" style="margin-top:8px;margin-bottom:0"></div>
+      </div>
+    </div>
+
+    <div class="card box-t">
+      <div><b>두 버튼, 뭐가 다른가요?</b></div>
+      <div style="margin-top:8px;">🆓 <b>무료로 채우기</b> — 도구 안에 미리 저장된 사전(작품명·캐릭터명 목록)을 보고 알아서 채워줍니다. 인터넷이 안 되는 상황에서도 작동해요. 다만 사전에 없는 새로운 작품/캐릭터는 못 알아볼 수 있어요.</div>
+      <div style="margin-top:8px;">✦ <b>AI로 채우기</b> — Claude AI에게 물어봐서 채웁니다. 사전에 없는 새 작품/캐릭터도 알아볼 확률이 훨씬 높아요. 대신 누를 때마다 AI 사용료(토큰)가 조금씩 나갑니다. 한 번 누르는 비용 자체는 크지 않지만(버튼 1번당 몇 원 수준), 자주 누적해서 쓰면 요금이 꽤 나올 수 있어요.</div>
+      <div class="tip">💡 추천: 먼저 [무료로 채우기]를 눌러보고, 안 채워지거나 이상하면 [AI로 채우기]를 눌러보세요.</div>
+    </div>
+
+    <div class="card box-b">
+      <h2>원고 (캡션) — 복붙용</h2>
+      <div class="subtitle">3번 텍스트를 다 채운 뒤 눌러서 만드세요</div>
+      <div class="field"><label>일본어 작품명 (해시태그용 · 선택)</label><input type="text" id="t_jp" placeholder="예: 銀魂"></div>
+      <div class="field"><label>예약판매일 (예: 3월 5일 · 비우면 생략)</label><input type="text" id="t_saledate" placeholder="예: 3월 5일"></div>
+      <div class="copybtns">
+        <button class="btn2" id="genCopy">원고 생성 / 새로고침</button>
+        <button class="btn2" id="doCopy">복사</button>
+      </div>
+      <textarea id="t_copy" placeholder="'원고 생성'을 누르면 위 텍스트값으로 캡션이 만들어집니다. 만든 뒤 자유롭게 수정하세요."></textarea>
+      <div class="ccount" id="copyCount">0 / 280 (한글 0/140)</div>
     </div>
 
     <div>
@@ -504,17 +537,22 @@ function deleteSlot(i){ let a=loadSlots(); a.splice(i,1); saveSlots(a); renderSl
 function renderSlots(){
   const box=document.getElementById('slots'); if(!box) return;
   const a=loadSlots();
-  if(!a.length){ box.innerHTML='<div class="slot-empty">아직 저장된 입력이 없습니다. 원문을 [무료로 채우기]/[AI로 채우기]로 채우면 직전 작업이 여기에 쌓입니다.</div>'; return; }
   box.innerHTML='';
-  a.forEach((s,i)=>{
-    const d=document.createElement('div'); d.className='slot';
-    const t=document.createElement('span'); t.className='s-title'; t.textContent=slotLabel(s);
-    const m=document.createElement('span'); m.className='s-meta'; try{ m.textContent=new Date(s.ts).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch{}
-    const x=document.createElement('span'); x.className='s-del'; x.textContent='✕'; x.title='삭제';
-    d.appendChild(t); d.appendChild(m); d.appendChild(x);
-    d.addEventListener('click',e=>{ if(e.target===x){ deleteSlot(i); } else { applySlot(s); } });
+  for(let i=0;i<SLOT_MAX;i++){
+    const s=a[i];
+    const d=document.createElement('div'); d.className='slotsq'+(s?' filled':'');
+    if(s){
+      d.textContent=slotLabel(s);
+      let when=''; try{ when=new Date(s.ts).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch{}
+      d.title=slotLabel(s)+(when?' · '+when:'');
+      const x=document.createElement('span'); x.className='s-del'; x.textContent='✕'; x.title='삭제';
+      d.appendChild(x);
+      d.addEventListener('click',e=>{ if(e.target===x){ deleteSlot(i); } else { applySlot(s); } });
+    } else {
+      d.textContent='빈 슬롯';
+    }
     box.appendChild(d);
-  });
+  }
 }
 
 function applySource(){
