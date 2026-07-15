@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
-# main 브랜치 외 push 차단 + non-fast-forward(강제) push 차단
+# main 브랜치로의 non-fast-forward(강제) push만 차단.
+# (다른 브랜치로의 push는 허용 — Claude Code가 새 작업마다 배정하는
+#  feature 브랜치 push까지 막아버리는 문제가 있었어서 제거함)
 z40=0000000000000000000000000000000000000000
 
 while read -r local_ref local_sha remote_ref remote_sha; do
   [ -z "$local_ref" ] && continue
 
-  if [ "$remote_ref" != "refs/heads/main" ]; then
-    echo "[pre-push] 차단: 이 저장소는 main 브랜치에만 push할 수 있습니다 (대상: $remote_ref)." >&2
-    exit 1
-  fi
-
-  if [ "$remote_sha" != "$z40" ]; then
+  if [ "$remote_ref" == "refs/heads/main" ] && [ "$remote_sha" != "$z40" ]; then
     if ! git merge-base --is-ancestor "$remote_sha" "$local_sha"; then
-      echo "[pre-push] 차단: non-fast-forward(강제) push는 금지되어 있습니다." >&2
+      echo "[pre-push] 차단: main 브랜치로 non-fast-forward(강제) push는 금지되어 있습니다." >&2
       echo "  git fetch origin main && git rebase origin/main 후 다시 시도하세요." >&2
       exit 1
     fi
