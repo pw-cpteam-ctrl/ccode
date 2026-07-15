@@ -10,6 +10,8 @@ const { parseCount, summarizeAccount, buildComparisonReport, buildProductCompari
 const { buildAccountReportHtml, buildPlaintextDump } = require('./account-report');
 const { saveReportToExcel, renameWithRetry } = require('./excel');
 const { saveAccountReportToExcel } = require('./account-excel');
+const { buildPeriodSummary, buildPeriodComparisonHtml } = require('./period-comparison');
+const { savePeriodComparisonToExcel } = require('./period-excel');
 const { extractFromHtml, sanitizeJsonLiteral, extractAssignedJson, withPageParam } = require('./naver-stock');
 const { buildStockComparison, rankStockProducts, findStockMatch, matchPwBhStockProducts, buildIntegratedStockRows, renderStockSectionHtml } = require('./stock-report');
 const { buildHtmlReport } = require('./html-report');
@@ -868,6 +870,64 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
     const cell = ws.getCell('F6');
     assert.strictEqual(cell.value, '1번째 줄\n2번째 줄\n3번째 줄', '줄바꿈 문자가 그대로 남아있어야 함(공백으로 치환 금지)');
     assert.strictEqual(cell.alignment && cell.alignment.wrapText, true, 'wrapText가 켜져 있어야 실제로 줄바꿈되어 보임');
+  });
+
+  // ── compare-periods.js용: 여러 기간(공백 있어도 됨)을 나란히 비교하는 기능 ──
+  const periodA = { label: '2026-06-10~2026-06-13', report: buildComparisonReport({
+    startDate: '2026-06-10', endDate: '2026-06-13',
+    own: [{ platform: 'twitter', account: 'own', posts: [
+      { link: 'https://x.com/own/a1', datetime: '2026-06-10T01:00:00.000Z', likes: '100', retweets: '10', text: '기간A 게시물' },
+    ] }],
+    competitors: [{ platform: 'twitter', account: 'comp', posts: [
+      { link: 'https://x.com/comp/a1', datetime: '2026-06-10T02:00:00.000Z', likes: '40', retweets: '4', text: '기간A 경쟁사 게시물' },
+    ] }],
+  }) };
+  const periodB = { label: '2026-06-18~2026-06-22', report: buildComparisonReport({
+    startDate: '2026-06-18', endDate: '2026-06-22',
+    own: [{ platform: 'twitter', account: 'own', posts: [
+      { link: 'https://x.com/own/b1', datetime: '2026-06-18T01:00:00.000Z', likes: '200', retweets: '20', text: '기간B 게시물 1' },
+      { link: 'https://x.com/own/b2', datetime: '2026-06-19T01:00:00.000Z', likes: '300', retweets: '30', text: '기간B 게시물 2' },
+    ] }],
+    competitors: [{ platform: 'twitter', account: 'comp', posts: [
+      { link: 'https://x.com/comp/b1', datetime: '2026-06-18T02:00:00.000Z', likes: '90', retweets: '9', text: '기간B 경쟁사 게시물' },
+    ] }],
+  }) };
+
+  check('buildPeriodSummary: 기간마다 자사/경쟁사 총합이 따로 계산되고 나란히 놓여야 함', () => {
+    const summary = buildPeriodSummary([periodA, periodB]);
+    const tw = summary.find(s => s.platform === 'twitter');
+    const postCountRow = tw.rows.find(r => r.key === 'postCount');
+    assert.deepStrictEqual(postCountRow.cells[0], { own: 1, competitor: 1 }, '기간A: 자사 1건, 경쟁사 1건');
+    assert.deepStrictEqual(postCountRow.cells[1], { own: 2, competitor: 1 }, '기간B: 자사 2건, 경쟁사 1건');
+    const likesRow = tw.rows.find(r => r.key === 'total_likes');
+    assert.strictEqual(likesRow.cells[0].own, 100);
+    assert.strictEqual(likesRow.cells[1].own, 500, '기간B 자사 좋아요 합산(200+300)');
+    assert.strictEqual(likesRow.cells[1].competitor, 90);
+  });
+
+  check('buildPeriodComparisonHtml: 기간 라벨과 지표가 표에 들어가야 함', () => {
+    const html = buildPeriodComparisonHtml([periodA, periodB]);
+    assert.match(html, /2026-06-10~2026-06-13/);
+    assert.match(html, /2026-06-18~2026-06-22/);
+    assert.match(html, /게시물 수/);
+  });
+
+  const periodExcelPath = path.join(__dirname, 'verify-output', 'period-comparison.xlsx');
+  const sheetP1 = await savePeriodComparisonToExcel([periodA, periodB], periodExcelPath);
+  const sheetP2 = await savePeriodComparisonToExcel([periodA, periodB], periodExcelPath);
+  const periodC = { label: '2026-06-27~2026-06-30', report: periodB.report };
+  const sheetP3 = await savePeriodComparisonToExcel([periodA, periodC], periodExcelPath);
+
+  const ExcelJS3 = require('exceljs');
+  const wbPeriod = new ExcelJS3.Workbook();
+  await wbPeriod.xlsx.readFile(periodExcelPath);
+  check('period-excel: 같은 기간 조합으로 재실행하면 시트가 쌓이지 않고 갱신됨', () => {
+    assert.strictEqual(sheetP1, sheetP2, '같은 기간 조합이면 시트 이름도 같아야 함');
+  });
+  check('period-excel: 다른 기간 조합은 별도 시트로 추가되고 기존 시트는 보존됨', () => {
+    assert.notStrictEqual(sheetP1, sheetP3);
+    assert.ok(wbPeriod.getWorksheet(sheetP1), '이전 기간 조합 시트가 남아있어야 함');
+    assert.ok(wbPeriod.getWorksheet(sheetP3));
   });
 
   console.log(`\n(생성된 검증용 엑셀 파일: ${outPath} — 직접 열어서 표 형태도 확인 가능)`);

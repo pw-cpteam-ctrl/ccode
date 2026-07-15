@@ -18,6 +18,10 @@
  *        node run.js 2026-07-10 2026-07-11            — 트위터+인스타, 지정 기간(7/10 하루)
  *        node run.js twitter 2026-07-10 2026-07-11    — 트위터만, 지정 기간
  * 한쪽만 수집해도 캐시(cachePath)에 남아있던 다른 플랫폼 데이터는 보존됨(안 지워짐).
+ *
+ * 기간 사이에 공백(게시글 없는 날)이 있어서 여러 기간을 따로따로 수집해야 하는 경우엔,
+ * 그 기간들로 이 스크립트를 각각 실행해두면(예: 6/10~13, 6/18~22, 6/27~30 각각 실행) 자동으로
+ * reports/period-cache/에 기간별로 남고, compare-periods.js로 재수집 없이 나란히 비교 가능.
  */
 const fs = require('fs');
 const path = require('path');
@@ -41,6 +45,9 @@ const CONFIG = {
   // 수집한 원본 게시물을 여기에 캐시해둠 — 리포트 포맷만 고칠 땐 재수집(몇 분) 없이
   // rebuild-report.js로 이 캐시만 다시 읽어서 몇 초 안에 엑셀만 새로 뽑을 수 있음.
   cachePath: './reports/_last-collection.json',
+  // compare-periods.js가 읽는 기간별 원본 캐시 저장 위치 (아래 main()에서 매 실행마다
+  // "시작일_종료일.json" 파일로 하나씩 남김 — cachePath와 달리 덮어써지지 않음)
+  periodCacheDir: './reports/period-cache',
   // 자동 매칭이 놓친 게시물을 수동으로 짝지어주는 목록. "매칭 안 됨" 목록에서 번호(PW #n,
   // BH #n)로 지정해서 { pw: [링크], bh: [링크], label: "표시할 이름" } 형태로 추가하면 됨.
   manualMatchesPath: './manual-matches.json',
@@ -115,14 +122,24 @@ async function main() {
 
   // 원본 게시물 캐시 저장 — 재수집 없이 rebuild-report.js로 리포트만 다시 만들 수 있게
   fs.mkdirSync(path.dirname(CONFIG.cachePath), { recursive: true });
-  fs.writeFileSync(CONFIG.cachePath, JSON.stringify({
+  const cacheData = {
     startDate: CONFIG.startDate,
     endDate: CONFIG.endDate,
     collectedAt: new Date().toISOString(),
     own,
     competitors,
-  }, null, 2));
+  };
+  fs.writeFileSync(CONFIG.cachePath, JSON.stringify(cacheData, null, 2));
   console.log(`💾 원본 수집 데이터 캐시 저장: ${CONFIG.cachePath}`);
+
+  // 위 cachePath는 "가장 최근 수집"만 남기고 매번 덮어써져서, 기간을 나눠서 여러 번 수집하면
+  // (예: 6/10~13, 6/18~22, 6/27~30을 각각 실행) 예전 기간의 원본은 사라짐 — 나중에 여러 기간을
+  // 나란히 비교(compare-periods.js)하려면 기간별로 따로 남아있어야 해서, 이 파일과 별개로
+  // 기간(시작일_종료일)마다 파일을 하나씩 쌓아둠(같은 기간으로 재실행하면 그 파일만 갱신).
+  fs.mkdirSync(CONFIG.periodCacheDir, { recursive: true });
+  const periodCachePath = path.join(CONFIG.periodCacheDir, `${CONFIG.startDate}_${CONFIG.endDate}.json`);
+  fs.writeFileSync(periodCachePath, JSON.stringify(cacheData, null, 2));
+  console.log(`💾 기간별 원본 캐시 저장(나중에 여러 기간 비교용): ${periodCachePath}`);
 
   const manualMatches = fs.existsSync(CONFIG.manualMatchesPath)
     ? JSON.parse(fs.readFileSync(CONFIG.manualMatchesPath, 'utf-8'))
