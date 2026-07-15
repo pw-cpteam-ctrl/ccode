@@ -2,7 +2,6 @@
 // stateless — 매 요청마다 완전히 새로 시작. ANTHROPIC_API_KEY 환경변수 필요.
 
 import Anthropic from '@anthropic-ai/sdk';
-import { appendToGithubFile, updateGithubJsonFile } from '../lib/github.js';
 
 const PARSE_RULES = `너는 일본어 피규어 상품 원문을 분석해서 아래 JSON 형식 하나만 출력하는 파서야.
 설명, 따옴표, 코드블록 없이 JSON만 출력해라.
@@ -62,60 +61,6 @@ linePrefix(테노히라 등)는 product에 포함하지 말고 linePrefix 필드
 予約開始は N月M日(木) 형식 → "N월 M일"
 없으면 빈 문자열`;
 
-// AI가 새로 인식한 작품/캐릭터의 (일본어→한글) 짝을 계속 기록하고, 같은 짝이
-// 2번째로 나오는 순간 '무료로 채우기'가 읽는 learned-dict.json에 반영한다.
-// GITHUB_TOKEN/OWNER/REPO 환경변수가 없으면 조용히 아무것도 하지 않는다(메인 파싱엔 영향 없음).
-async function recordLearning(parsed, sourceText, gh) {
-  const today = new Date().toISOString().slice(0, 10);
-  await appendToGithubFile({
-    ...gh,
-    path: `insta-gen/logs/${today}.jsonl`,
-    newLine: JSON.stringify({ at: new Date().toISOString(), sourceText, parsed }),
-    message: `insta-gen 파싱 로그 (${today})`,
-  });
-
-  const candidates = [];
-  if (parsed.workJp && parsed.work) candidates.push({ kind: 'works', jp: parsed.workJp.trim(), kr: parsed.work.trim() });
-  const prodLines = (parsed.product || '').split('\n').map(s => s.trim()).filter(Boolean);
-  const prodJpLines = (parsed.productJp || '').split('\n').map(s => s.trim()).filter(Boolean);
-  // product/productJp 줄 수가 다르면 인덱스로 짝지었을 때 엉뚱한 이름끼리 매칭될 수 있어
-  // 캐릭터 학습은 건너뛴다(작품명은 1:1이라 이 문제가 없어 그대로 진행).
-  if (prodLines.length === prodJpLines.length) {
-    prodLines.forEach((kr, i) => { const jp = prodJpLines[i]; if (jp) candidates.push({ kind: 'chars', jp, kr }); });
-  }
-  if (!candidates.length) return;
-
-  const promoted = { works: {}, chars: {} };
-  await updateGithubJsonFile({
-    ...gh,
-    path: 'insta-gen/learned-counts.json',
-    defaultValue: { works: {}, chars: {} },
-    message: 'insta-gen 학습 카운트 갱신',
-    mutate: (counts) => {
-      counts.works = counts.works || {}; counts.chars = counts.chars || {};
-      for (const c of candidates) {
-        const seen = counts[c.kind][c.jp]?.n || 0;
-        counts[c.kind][c.jp] = { kr: c.kr, n: seen + 1 };
-        if (seen + 1 === 2) promoted[c.kind][c.jp] = c.kr; // 반복 등장 2회째 → 승격
-      }
-      return counts;
-    },
-  });
-
-  if (!Object.keys(promoted.works).length && !Object.keys(promoted.chars).length) return;
-
-  await updateGithubJsonFile({
-    ...gh,
-    path: 'insta-gen/learned-dict.json',
-    defaultValue: { works: {}, chars: {} },
-    message: 'insta-gen 무료 사전 자동 학습 반영',
-    mutate: (dict) => ({
-      works: { ...dict.works, ...promoted.works },
-      chars: { ...dict.chars, ...promoted.chars },
-    }),
-  });
-}
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'POST 요청만 지원합니다.' });
@@ -156,17 +101,8 @@ export default async function handler(req, res) {
     if (!jsonMatch) throw new Error('AI 응답에서 JSON을 찾을 수 없습니다.');
     const parsed = JSON.parse(jsonMatch[0]);
 
-    const gh = {
-      token: process.env.GITHUB_TOKEN,
-      owner: process.env.GITHUB_OWNER,
-      repo: process.env.GITHUB_REPO,
-      branch: process.env.GITHUB_BRANCH || 'main',
-    };
-    if (gh.token && gh.owner && gh.repo) {
-      try { await recordLearning(parsed, sourceText.trim(), gh); }
-      catch (learnErr) { console.error('학습 기록 실패(파싱 결과엔 영향 없음):', learnErr.message); }
-    }
-
+    // 학습(무료 사전 자동 반영) 기록은 여기서 하지 않는다 — PNG 다운로드 시점(api/log-download.js)에
+    // 사용자가 실제로 확정한 최종 값을 기준으로만 남긴다.
     res.status(200).json(parsed);
   } catch (err) {
     res.status(502).json({ error: `AI 파싱 실패: ${err.message}` });
