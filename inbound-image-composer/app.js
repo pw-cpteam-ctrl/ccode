@@ -920,11 +920,23 @@ function scaledThumb(canvas) {
 // 검증된 것과 같은 패턴이라 훨씬 안정적이다.
 let customDragCleanup = null; // 현재 진행 중인 카드 드래그의 정리(cleanup) 함수 — 중복 시작 방지용
 
-function startCardDrag(itemId, containerId, opts) {
+// forceSingle이 true면(Alt+드래그 또는 "1개만" 버튼으로 무장한 경우) IP가 같아도 이
+// 카드 하나만 이동한다. 그 외엔 마퀴로 직접 여러 장을 선택해뒀으면 그 선택을 그대로
+// 쓰고, 아니면 같은 IP를 가진 카드 전부를 기본값으로 묶어서 같이 이동시킨다.
+function startCardDrag(itemId, containerId, opts, forceSingle) {
   if (customDragCleanup) customDragCleanup(); // 혹시 이전 드래그가 안 끝났으면 먼저 정리
 
-  const dragIds = (groupSelectedIds.has(itemId) && groupSelectedIds.size > 1)
-    ? Array.from(groupSelectedIds) : [itemId];
+  const draggedItem = state.items.find((it) => it.id === itemId);
+  let dragIds;
+  if (forceSingle) {
+    dragIds = [itemId];
+  } else if (groupSelectedIds.has(itemId) && groupSelectedIds.size > 1) {
+    dragIds = Array.from(groupSelectedIds);
+  } else if (draggedItem && draggedItem.ip) {
+    dragIds = state.items.filter((it) => it.ip === draggedItem.ip).map((it) => it.id);
+  } else {
+    dragIds = [itemId];
+  }
   const dragIdSet = new Set(dragIds);
   let currentTargetEl = null;
   let lastClientY = 0;
@@ -994,6 +1006,10 @@ function startCardDrag(itemId, containerId, opts) {
 // 빈 배경을 마우스로 드래그해서 여러 카드를 한 번에 선택하는 용도 — 체크박스(삭제용
 // pendingDeleteIds)와는 별개의 개념이라 컨테이너별로 따로 관리한다.
 let groupSelectedIds = new Set();
+
+// "1개만" 버튼으로 무장(arm)한 카드의 id — 이 상태는 저장/캐시되지 않는 일회성 값이다.
+// 다음 드래그 한 번에만 적용되고 쓰이자마자(또는 다시 눌러서 취소하면) null로 돌아간다.
+let singleMoveArmedId = null;
 
 // 5열 x 5줄 = 25개 단위로 박스(페이지)를 나눈다. 박스는 항상 2열로 나란히 배치되고,
 // 홀수 개(마지막 박스가 짝이 없을 때)면 빈 박스를 하나 더 붙여 짝을 맞춘다 — 그래야
@@ -1101,17 +1117,29 @@ function renderPreviewGrid(containerId, items, opts) {
 
     pageItems.forEach((item) => {
       const locked = state.textLocked;
+      // 같은 IP가 2개 이상이면 드래그 시 기본적으로 같이 묶여서 이동한다 — "1개만" 버튼은
+      // 그 경우에만 의미가 있으므로 IP가 하나뿐이거나 없으면 아예 표시하지 않는다.
+      const siblingCount = item.ip ? state.items.filter((it) => it.ip === item.ip).length : 0;
+      const armed = singleMoveArmedId === item.id;
       const card = document.createElement('div');
-      card.className = `pcard${groupSelectedIds.has(item.id) ? ' group-selected' : ''}${locked ? ' text-locked' : ''}${opts.draggable ? ' draggable-card' : ''}`;
+      card.className = `pcard${groupSelectedIds.has(item.id) ? ' group-selected' : ''}${locked ? ' text-locked' : ''}${opts.draggable ? ' draggable-card' : ''}${armed ? ' single-move-armed' : ''}`;
       card.dataset.itemId = item.id;
+      card.style.borderLeftColor = colorForIp(item.ip);
 
       const checkboxHtml = opts.selectable
         ? `<input type="checkbox" class="del-check" data-id="${item.id}" ${state.pendingDeleteIds.includes(item.id) ? 'checked' : ''} ${locked ? 'disabled' : ''} />`
+        : '';
+      const singleMoveBtnHtml = (opts.draggable && siblingCount > 1)
+        ? `<button class="single-move-btn${armed ? ' armed' : ''}" data-single-move="${item.id}"
+             title="같은 IP(${siblingCount}개)가 기본으로 같이 이동돼요. 이 버튼을 누르면 다음 드래그는 이 카드 1개만 이동합니다 (Alt+드래그로도 같은 효과)">
+             ${armed ? '✓ 1개만' : '1개만'}
+           </button>`
         : '';
 
       card.innerHTML = `
         ${checkboxHtml}
         <button class="edit-btn" data-edit="${item.id}" ${locked ? 'disabled' : ''}>✎</button>
+        ${singleMoveBtnHtml}
         <div class="thumb-slot"></div>
         <div class="ip">${item.aiUncertain ? '⚠ ' : ''}${item.ip || '<span style=\"color:#c0c4cc\">IP명 없음</span>'}${item.tag ? `<span class="tag">${item.tag}</span>` : ''}</div>
         <div class="price">${item.price || ''}</div>
@@ -1130,12 +1158,26 @@ function renderPreviewGrid(containerId, items, opts) {
         });
       }
 
+      const singleMoveBtn = card.querySelector('.single-move-btn');
+      if (singleMoveBtn) {
+        // 텍스트 잠금과 무관하게 항상 눌러지게 둔다 — 이건 텍스트를 건드리는 게 아니라
+        // 드래그(정렬) 방식만 바꾸는 버튼이라, 드래그 자체가 잠금과 무관한 것과 같은 원칙.
+        singleMoveBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          singleMoveArmedId = armed ? null : item.id; // 다시 누르면 무장 해제(토글)
+          renderPreviewGrid(containerId, state.items, opts);
+        });
+      }
+
       if (opts.draggable) {
         card.addEventListener('mousedown', (e) => {
           if (e.button !== 0) return;
-          if (e.target.closest('.edit-btn') || e.target.closest('.del-check')) return; // 버튼/체크박스 클릭은 그대로 통과
+          // 버튼/체크박스 클릭은 드래그로 이어지지 않고 그대로 통과
+          if (e.target.closest('.edit-btn') || e.target.closest('.del-check') || e.target.closest('.single-move-btn')) return;
           e.preventDefault();
-          startCardDrag(item.id, containerId, opts);
+          const forceSingle = e.altKey || singleMoveArmedId === item.id;
+          if (singleMoveArmedId === item.id) singleMoveArmedId = null; // 무장 상태는 한 번 쓰면 바로 해제
+          startCardDrag(item.id, containerId, opts, forceSingle);
         });
       }
     });
