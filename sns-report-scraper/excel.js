@@ -101,7 +101,7 @@ function writeProductPlatformSection(sheet, platformKey, data) {
     displayFields.forEach(f => row.push(p.own[`total_${f}`], p.competitor[`total_${f}`]));
     row.push(p.pwTime, p.bhTime);
     displayFields.forEach(f => row.push(p.diffText[f]));
-    row.push(`${p.timeDiffMinutes}분`, p.verdict);
+    row.push(`${p.timeDiffMinutes}분`, p.needsReview ? `${p.verdict} (⚠확인필요)` : p.verdict);
     sheet.addRow(row);
   });
 

@@ -113,6 +113,11 @@ function extractCompetitorProductName(text) {
 // 걸러내면 놓치는 경우가 많았음. 실제 매칭 결과 보고 계속 추가해나가면 됨.
 // ⚠️ KNOWN_PRODUCT_LINES(룩업/GEM/컬렉션 등)도 매칭 단계에서는 반드시 같이 제외해야 함 —
 // 여러 프랜차이즈가 같은 상품 라인을 공유해서, 안 그러면 그걸로 전부 하나로 묶여버림.
+// 자동 매칭 그룹 하나에 게시물이 비정상적으로 많이 몰리면(상용구 하나로 서로 다른 상품이
+// 오묶음됐을 가능성) 매칭 로직 자체는 건드리지 않고, 리포트에 "확인 필요" 표시만 달아서
+// 사람이 한 번 더 훑어보게 하는 안전장치.
+const PRODUCT_GROUP_REVIEW_THRESHOLD = 5;
+
 const GENERIC_KEYWORDS = [
   '메가하우스', '프레젠스월드', '프레젠스', '월드', '베스트하비', 'GEM', 'G.E.M', '시리즈', '피규어',
   '액션', '세트', '예약', '판매', '할인', '혜택', '마감', '발매', '캠페인', '공식', '스토어',
@@ -377,7 +382,7 @@ function buildProductComparison(ownPosts, competitorPosts, fields, textField, di
 
 // 게시물 묶음(자동 매칭이든 수동 지정이든) 하나로 "상품별 비교" 행 하나를 만듦.
 // buildProductComparison(자동 매칭)과 applyManualMatches(수동 매칭)가 공통으로 사용.
-function buildProductEntry(ownPosts, competitorPosts, fields, displayFields, titleHint, lineHint) {
+function buildProductEntry(ownPosts, competitorPosts, fields, displayFields, titleHint, lineHint, isManual = false) {
   const ownSummary = summarizeAccount({ platform: null, account: 'PW', posts: ownPosts, fields });
   const competitorSummary = summarizeAccount({ platform: null, account: 'BH', posts: competitorPosts, fields });
   const { ip, line } = splitIpAndLine(titleHint, lineHint);
@@ -397,13 +402,14 @@ function buildProductEntry(ownPosts, competitorPosts, fields, displayFields, tit
   });
   const diffValues = displayFields.map(f => diffs[f]);
   const verdict = diffValues.every(d => d > 0) ? '우세' : diffValues.every(d => d < 0) ? '약세' : '경합';
+  const needsReview = !isManual && (ownPosts.length + competitorPosts.length) >= PRODUCT_GROUP_REVIEW_THRESHOLD;
 
   return {
     ip, line,
     own: ownSummary, competitor: competitorSummary,
     ownPosts, competitorPosts,
     pwTime: formatKstTime(pwTime), bhTime: formatKstTime(bhTime), timeDiffMinutes, timeDiffSignedMinutes,
-    diffText, verdict,
+    diffText, verdict, needsReview,
   };
 }
 
@@ -431,7 +437,7 @@ function extractManualMatches(ownPosts, competitorPosts, manualMatches, linkFiel
     competitor.forEach(p => usedCompetitor.add(p));
     const textField = linkField === 'link' ? 'text' : 'caption';
     const titleHint = entry.label || extractOwnProductName(own[0]?.[textField]) || extractCompetitorProductName(competitor[0]?.[textField]);
-    const product = buildProductEntry(own, competitor, fields, displayFields, titleHint);
+    const product = buildProductEntry(own, competitor, fields, displayFields, titleHint, null, true);
     // label을 사람이 직접 지정했으면 splitIpAndLine의 자동 정리(상용구 제거 등)를 거치지 않고
     // 그대로 사용 — 라벨 안에 우연히 "상품" 같은 제외 단어가 들어있어도 잘려나가면 안 되니까
     if (entry.label) product.ip = entry.label;

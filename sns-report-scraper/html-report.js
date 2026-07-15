@@ -10,9 +10,12 @@ function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-function verdictBadge(verdict) {
+function verdictBadge(verdict, needsReview) {
   const cls = { 우세: 'ok', 경합: 'mid', 약세: 'low' }[verdict] || 'mid';
-  return `<span class="badge ${cls}">${escapeHtml(verdict)}</span>`;
+  const reviewBadge = needsReview
+    ? ` <span class="badge review" title="게시물이 많이 묶여서 서로 다른 상품이 잘못 묶였을 수 있음 — 한 번 확인해보세요">⚠️ 확인 필요</span>`
+    : '';
+  return `<span class="badge ${cls}">${escapeHtml(verdict)}</span>${reviewBadge}`;
 }
 
 function formatRatioCard(pwTotal, bhTotal) {
@@ -209,7 +212,7 @@ function renderPlatformSection(platformKey, data, stockComparison) {
       `<td>${escapeHtml(p.line || '-')}</td>`,
       ...displayFields.map(f => `<td class="metric">${metricBar(p.own[`total_${f}`], p.competitor[`total_${f}`], p.diffText[f])}</td>`),
       `<td class="metric">${timeCell(p.pwTime, p.bhTime, p.timeDiffSignedMinutes)}</td>`,
-      `<td>${verdictBadge(p.verdict)}</td>`,
+      `<td>${verdictBadge(p.verdict, p.needsReview)}</td>`,
       `<td><button class="toggle-btn" onclick="toggleEmbeds('${embedRowId}','${platformKey}',this)">▶ 보기</button></td>`,
       ...(hasStock ? [
         salesBar(findStockMatch(p.ip, p.line, pwStockRanked), findStockMatch(p.ip, p.line, bhStockRanked)),
@@ -345,6 +348,7 @@ td.metric{min-width:170px}
 td.sm-none{color:#c9ced8;font-size:12px}
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
 .badge.ok{background:#ebfbee;color:#2f9e44}.badge.mid{background:#fff4e6;color:#e8590c}.badge.low{background:#fff0f0;color:#c0504d}
+.badge.review{background:#fff9db;color:#997404;cursor:help}
 td.empty{color:#9099a6;padding:24px}
 .toggle-btn{border:1px solid #d0d5e0;background:#fff;color:#3b5bdb;font-size:11px;padding:4px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
 .toggle-btn:hover{background:#eef2ff}
