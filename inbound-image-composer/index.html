@@ -118,6 +118,7 @@
   .ai-buttons-table td:nth-child(2) { white-space: nowrap; color: var(--muted); }
   .ai-buttons-table td:last-child { white-space: nowrap; color: var(--muted); }
   @media (max-width: 640px) { .ai-buttons-table { font-size: 11.5px; } .ai-buttons-table td:nth-child(2), .ai-buttons-table td:last-child { white-space: normal; } }
+  .ship-toggle { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--muted); cursor: pointer; margin-left: 10px; }
   .text-lock-toggle { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; color: var(--muted); background: #f3f5f8; border: 1px solid #e1e5ea; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; cursor: pointer; }
   .text-lock-toggle input { margin-top: 2px; }
   .text-lock-banner { background: #eef2ff; border: 1px solid #c3cdfa; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; color: #33409e; }
@@ -276,6 +277,9 @@
             title="사진은 다시 안 보고, 이미 입력된 IP명 글자만 AI에 보내 성향·분위기만 판단합니다(이미지 인식 아님 → 훨씬 저렴). ip명/가격/태그는 절대 안 바뀌고, 끝나면 자동 정렬까지 자동으로 적용됩니다.">
             🏷️ AI 분류로 정렬 보조
           </button>
+          <label class="ship-toggle" title="꺼도 배송비 데이터는 그대로 남고, 카드 레이아웃도 안 밀립니다 — 글자/아이콘만 안 보이게 됩니다.">
+            <input type="checkbox" id="shipToggle" checked /> 🚚 배송비 표시
+          </label>
         </div>
         <div id="splitPreviewText" style="font-size:12px;color:var(--muted);"></div>
       </div>

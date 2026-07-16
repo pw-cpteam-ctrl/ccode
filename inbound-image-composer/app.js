@@ -24,6 +24,7 @@ const state = {
   orderConfirmed: false,
   finalPages: null, // array of { items, canvas }
   textLocked: false, // true면 IP명/가격/태그 등 글자 수정을 막고 카드 순서 변경만 허용
+  showShipping: true, // false면 배송비(아이콘+글자)를 안 보여줌 — 항목별이 아니라 전체 스위치
 };
 
 // 2단계(표 정리)의 빈 배경 드래그 다중 선택은 3/4단계(카드 그리드)의 group-selected
@@ -1143,7 +1144,7 @@ function renderPreviewGrid(containerId, items, opts) {
         <div class="thumb-slot"></div>
         <div class="ip">${item.aiUncertain ? '⚠ ' : ''}${item.ip || '<span style=\"color:#c0c4cc\">IP명 없음</span>'}${item.tag ? `<span class="tag">${item.tag}</span>` : ''}</div>
         <div class="price">${item.price || ''}</div>
-        <div class="ship">${item.ship || ''}</div>
+        <div class="ship"${state.showShipping ? '' : ' style="visibility:hidden"'}>${item.ship || ''}</div>
       `;
       card.querySelector('.thumb-slot').appendChild(scaledThumb(state.photos[item.photoId]));
       grid.appendChild(card);
@@ -1466,7 +1467,8 @@ async function generatePages() {
 
   // 페이지별 renderPage 호출은 서로 독립적이므로 Promise.all로 병렬 렌더 (순차 대비 체감상 빠름)
   const canvases = await Promise.all(cardGroups.map((cards) => RenderPage.renderPage(
-    cards, header ? header.canvas : null, { cols: 5, rows: 4, pageW: 1080, pageH: 1350, scale: 2 },
+    cards, header ? header.canvas : null,
+    { cols: 5, rows: 4, pageW: 1080, pageH: 1350, scale: 2, showShipping: state.showShipping },
   )));
 
   state.finalPages = canvases.map((canvas, i) => ({ canvas, index: i }));
@@ -1772,6 +1774,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderDataTable();
     updateTextLockBanner();
     if (state.step === 3) renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
+  });
+  document.getElementById('shipToggle').addEventListener('change', (e) => {
+    state.showShipping = e.target.checked;
+    renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
   });
   document.getElementById('confirmOrderBtn').addEventListener('click', () => { state.orderConfirmed = true; goToStep(4); });
 

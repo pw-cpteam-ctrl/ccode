@@ -107,8 +107,12 @@ LAYOUT.cardBlock = LAYOUT.photo + LAYOUT.photoToText + LAYOUT.textH;
  * Draws one product card (photo + ip name + tag badge + price + shipping) with
  * its top-left corner at (cx, cy). Shared by renderPage() and renderContinuousStrip()
  * so the preview and the final export are pixel-identical.
+ *
+ * showShipping=false는 항목 데이터(ship)는 그대로 두고 배송비 줄(아이콘+글자)만 안
+ * 그린다 — 이 줄 아래에 다른 카드/텍스트가 없어서(카드 블록 높이는 LAYOUT.cardBlock으로
+ * 항상 고정) 꺼도 위쪽 IP명/가격 위치나 다음 줄 카드 위치는 전혀 안 밀린다.
  */
-function drawCard(ctx, item, cx, cy) {
+function drawCard(ctx, item, cx, cy, showShipping = true) {
   const { photo, colGap, photoToText, ipSize, priceSize, shipSize, tagSize } = LAYOUT;
   const { photo: photoImg, ip, price, ship, tag } = item;
 
@@ -138,11 +142,13 @@ function drawCard(ctx, item, cx, cy) {
   ctx.font = `500 ${priceSize}px ${FONT}`; // NOTE: price must always render SMALLER + LIGHTER than ip name
   ctx.fillText(price || '', cx + 2, priceY);
 
-  const shipY = priceY + 7 + shipSize;
-  drawCartIcon(ctx, cx + 2, shipY - 12, '#a8adb4');
-  ctx.fillStyle = '#9aa0a8';
-  ctx.font = `500 ${shipSize}px ${FONT}`;
-  ctx.fillText(ship || '', cx + 22, shipY);
+  if (showShipping) {
+    const shipY = priceY + 7 + shipSize;
+    drawCartIcon(ctx, cx + 2, shipY - 12, '#a8adb4');
+    ctx.fillStyle = '#9aa0a8';
+    ctx.font = `500 ${shipSize}px ${FONT}`;
+    ctx.fillText(ship || '', cx + 22, shipY);
+  }
 }
 
 /**
@@ -155,7 +161,7 @@ function drawCard(ctx, item, cx, cy) {
 async function renderPage(items, headerImg, options = {}) {
   await ensureFontsLoaded();
 
-  const { cols = 5, rows = 4, pageW = 1080, pageH = 1350, scale = 2 } = options;
+  const { cols = 5, rows = 4, pageW = 1080, pageH = 1350, scale = 2, showShipping = true } = options;
 
   const canvas = document.createElement('canvas');
   canvas.width = pageW * scale;
@@ -181,7 +187,7 @@ async function renderPage(items, headerImg, options = {}) {
     const r = Math.floor(i / cols), c = i % cols;
     const cx = padX + c * (photo + colGap);
     const cy = headerH + padTop + r * (cardBlock + rowGap);
-    drawCard(ctx, items[i], cx, cy);
+    drawCard(ctx, items[i], cx, cy, showShipping);
   }
 
   return canvas;
@@ -194,7 +200,7 @@ async function renderPage(items, headerImg, options = {}) {
  */
 async function renderContinuousStrip(items, options = {}) {
   await ensureFontsLoaded();
-  const { cols = 5, pageW = 1080, scale = 2, padTop = 24, padBottom = 24 } = options;
+  const { cols = 5, pageW = 1080, scale = 2, padTop = 24, padBottom = 24, showShipping = true } = options;
 
   const { photo, colGap, padX, cardBlock, rowGap } = LAYOUT;
   const usedRows = Math.ceil(items.length / cols) || 1;
@@ -214,7 +220,7 @@ async function renderContinuousStrip(items, options = {}) {
     const r = Math.floor(i / cols), c = i % cols;
     const cx = padX + c * (photo + colGap);
     const cy = padTop + r * (cardBlock + rowGap);
-    drawCard(ctx, items[i], cx, cy);
+    drawCard(ctx, items[i], cx, cy, showShipping);
   }
 
   return canvas;
