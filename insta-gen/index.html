@@ -108,6 +108,58 @@
   #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); max-width:520px; width:calc(100% - 48px); background:#2b2f36; color:#fff; font-size:13px; font-weight:500; line-height:1.5; padding:13px 16px; border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,.28); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:9999; text-align:center; }
   #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
   #toast.warn { background:#8a2f3d; }
+
+  /* ===== 모바일 (≤860px): 반응형 축소가 아니라 PC의 좌·우 2열을 세로 1열로 쌓고,
+     스크롤이 길어지지 않도록 미리보기는 기본 접힘 + 버튼으로 펼치게 한다. ===== */
+  .mobile-preview-toggle { display:none; } /* 데스크톱에선 숨김(미리보기 항상 표시) */
+  @media (max-width: 860px) {
+    body { flex-direction: column; gap: 14px; padding: 14px 12px; align-items: stretch; }
+    /* .left/.panel 박스 자체를 없애(display:contents) 그 안 카드들이 body 세로 흐름에
+       직접 참여하게 만든 뒤, order로 '입력 먼저 → 미리보기 → 원고 → 다운로드' 순서로 재배치.
+       (두 열에 흩어져 있던 카드라 order 없이 그냥 쌓으면 순서가 뒤죽박죽이 됨) */
+    .left, .panel { display: contents; }
+    h1 { order: 1; }
+    .combo12 { order: 2; }   /* 1·사진 + 2·원문입력 + 채우기 버튼 */
+    .box-t { order: 3; }     /* 두 버튼 설명 */
+    .box-y { order: 4; }     /* 3·텍스트 편집 */
+    .mobile-preview-toggle { order: 5; }
+    .imagerow { order: 6; }  /* 미리보기(+이전입력 슬롯) */
+    .hint { order: 7; }
+    .infobar { order: 8; }   /* 이전입력 설명 · 사진 크롭/배경 */
+    .box-b { order: 9; }     /* 원고(캡션) */
+    .dlbar { order: 10; }    /* PNG 다운로드 */
+
+    /* 미리보기 접기 토글 */
+    .mobile-preview-toggle {
+      display:block; width:100%; border:1px solid var(--line2); background:#fff;
+      border-radius:10px; padding:12px; font-size:14px; font-weight:600; color:var(--text);
+      cursor:pointer; text-align:center;
+    }
+    body:not(.preview-open) .imagerow,
+    body:not(.preview-open) .hint { display:none; } /* 펼치기 전엔 미리보기 영역 숨겨 스크롤 절약 */
+
+    /* 미리보기 영역: 세로로(미리보기 위, 이전입력 슬롯 아래) */
+    .imagerow { flex-direction:column-reverse; gap:12px; align-items:center; }
+    .stagewrap { flex:0 0 auto; width:auto; max-width:100%; }
+    /* 좁은 폰에선 '표시 크기'만 화면폭에 맞춰 축소. canvas width/height 속성(1080×1350)은
+       그대로라 다운로드 화질엔 영향 없음. 드래그도 실측 rect 기준이라 자동으로 맞음. */
+    #stage { width:min(324px, 82vw); height:auto; aspect-ratio:1080 / 1350; }
+    /* 이전입력 6칸: 세로 열 → 가로 스크롤 줄 */
+    .slotcol { flex-direction:row; flex-wrap:nowrap; overflow-x:auto; gap:8px; width:100%; padding-bottom:4px; }
+    .slotcol .slotsq { flex:0 0 60px; }
+
+    /* PC의 가로 2열 카드들을 세로로 풀어 터치하기 편하게 */
+    .combo12 { flex-direction:column; gap:14px; }
+    .combo-photo { flex:0 0 auto; height:auto; }
+    .upload.compact { flex-direction:row; padding:14px; gap:12px; font-size:13px; }
+    .combo-text { flex:1 1 auto; }
+    .infobar { flex-direction:column; gap:14px; }
+    .infobar-col:first-child, .infobar-col:last-child { flex:1 1 auto; }
+    .infobar-col + .infobar-col { border-left:none; padding-left:0; border-top:1px solid var(--line); padding-top:14px; }
+    .field-row { flex-direction:column; gap:0; }
+    .field-head { flex:1 1 auto; }
+    .field-row .field { margin-bottom:12px; }
+  }
 </style>
 </head>
 <body>
@@ -118,6 +170,7 @@
         <canvas id="stage" width="1080" height="1350"></canvas>
       </div>
     </div>
+    <button class="mobile-preview-toggle" id="previewToggle" type="button" aria-expanded="false">🖼 미리보기 보기 ▾</button>
     <div class="hint">미리보기만 75% 축소 (다운로드 화질엔 영향 없음) · 드래그로 위치 조정</div>
     <div class="card infobar">
       <div class="infobar-col">
@@ -253,7 +306,7 @@
       <div class="ccount" id="copyCount">0 / 280 (한글 0/140)</div>
     </div>
 
-    <div>
+    <div class="dlbar">
       <button class="btn btn-primary" id="download" disabled>PNG 다운로드 (1080×1350)</button>
       <div class="blockmsg" id="blockmsg"></div>
     </div>
@@ -799,6 +852,13 @@ function logAiLearningOnDownload(){
   fetch('/api/log-download', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).catch(()=>{});
 }
 document.getElementById('download').addEventListener('click',()=>{ if(!runValidation()) return; cv.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='insta-card.png'; a.click(); logAiLearningOnDownload(); },'image/png'); });
+
+// 모바일 미리보기 접기 토글 (데스크톱에선 버튼 자체가 숨겨져 있어 무해)
+document.getElementById('previewToggle').addEventListener('click', function(){
+  const open = document.body.classList.toggle('preview-open');
+  this.setAttribute('aria-expanded', open ? 'true' : 'false');
+  this.textContent = open ? '🖼 미리보기 숨기기 ▴' : '🖼 미리보기 보기 ▾';
+});
 
 window.addEventListener('beforeunload', ()=>{ pushSlot(snapshotWith(appliedSource), true); });  // 닫기 전 현재 작업 보존
 // beforeunload는 모바일 백그라운드 전환·브라우저 강제종료 시 안 불릴 수 있어
