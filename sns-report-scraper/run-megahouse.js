@@ -13,14 +13,22 @@
  * "내 계정으로 로그인한 상태에서 경쟁사의 공개 게시물을 조회"하는 방식이라서 정상임.
  *
  * 기간은 커맨드라인에서 YYYY-MM-DD 두 개(시작일 종료일)로 바로 지정 가능 — 안 주면
- * CONFIG.startDate/endDate 기본값 사용. endDate는 미포함(그 날짜 자정 이전까지)이라
- * 하루치만 보려면 다음날을 endDate로 줄 것(예: 7/10 하루 → 2026-07-10 2026-07-11).
+ * CONFIG.startDate/endDate 기본값 사용. startDate/endDate 둘 다 포함(그 날짜 23:59:59
+ * KST까지) — twitter.js/instagram.js의 실제 필터링 기준(`d >= rangeStart && d <= rangeEnd`)이
+ * 그렇게 돼 있음. (예전엔 이 주석에 "endDate 미포함, 하루만 보려면 다음날을 넣으라"고
+ * 잘못 적혀 있었음 — 실제 코드와 반대였던 문서 버그. 그 설명대로 다음날 날짜까지 넣어서
+ * 돌린 적 있으면 의도한 하루가 아니라 이틀치가 수집됐을 수 있음.)
+ *
+ * 오늘 하루만 보고 싶으면 날짜 두 개 대신 "today"라고만 쓰면 됨(자동으로 오늘 KST 날짜로
+ * 시작=종료 지정) — 서버가 어느 시간대에서 돌든 상관없이 한국 시간 기준 오늘로 계산됨.
  *
  * 사용법: node run-megahouse.js                                — 트위터+인스타, CONFIG 기본 기간
  *        node run-megahouse.js twitter                         — 트위터만, CONFIG 기본 기간
  *        node run-megahouse.js instagram                       — 인스타만, CONFIG 기본 기간
- *        node run-megahouse.js 2026-07-10 2026-07-11            — 트위터+인스타, 지정 기간(7/10 하루)
- *        node run-megahouse.js twitter 2026-07-10 2026-07-11    — 트위터만, 지정 기간
+ *        node run-megahouse.js today                           — 트위터+인스타, 오늘 하루(KST)
+ *        node run-megahouse.js twitter today                   — 트위터만, 오늘 하루(KST)
+ *        node run-megahouse.js 2026-07-10 2026-07-10            — 트위터+인스타, 7/10 하루
+ *        node run-megahouse.js twitter 2026-07-10 2026-07-11    — 트위터만, 7/10~7/11 이틀
  * 한쪽만 수집해도 캐시(cachePath)에 남아있던 다른 플랫폼 데이터는 보존됨(안 지워짐).
  *
  * 기간 사이에 공백(게시글 없는 날)이 있어서 여러 기간을 따로따로 수집해야 하는 경우엔,
@@ -85,6 +93,13 @@ async function collectAll(accounts) {
   return collections;
 }
 
+// 서버가 어느 시간대에서 돌든(UTC 컨테이너 등) 상관없이 "오늘"을 항상 한국 시간(KST)
+// 기준으로 계산 — new Date()에 수동으로 +9시간 더하는 방식은 서버 시간대에 따라 날짜
+// 경계 계산이 꼬일 수 있어서, Intl.DateTimeFormat에 timeZone을 직접 지정하는 방식을 씀.
+function todayKst() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -92,19 +107,31 @@ async function main() {
   const cliDates = [];
   for (const arg of args) {
     if (arg === 'twitter' || arg === 'instagram') platformFilter = arg;
-    else if (DATE_RE.test(arg)) cliDates.push(arg);
-    else {
-      console.error(`❌ 사용법: node run.js [twitter|instagram] [시작일 종료일 (YYYY-MM-DD YYYY-MM-DD)]`);
+    else if (arg === 'today') {
+      if (cliDates.length > 0) {
+        console.error('❌ "today"는 다른 날짜 인자와 같이 못 씀 (단독으로: node run-megahouse.js today)');
+        process.exit(1);
+      }
+      const t = todayKst();
+      cliDates.push(t, t);
+    } else if (DATE_RE.test(arg)) {
+      if (cliDates.length >= 2) {
+        console.error('❌ 날짜는 시작일/종료일 2개까지만 줄 수 있음');
+        process.exit(1);
+      }
+      cliDates.push(arg);
+    } else {
+      console.error(`❌ 사용법: node run-megahouse.js [twitter|instagram] [today | 시작일 종료일 (YYYY-MM-DD YYYY-MM-DD)]`);
       process.exit(1);
     }
   }
   if (cliDates.length === 1) {
-    console.error('❌ 시작일/종료일 둘 다 줘야 함 (예: node run.js 2026-07-10 2026-07-11)');
+    console.error('❌ 시작일/종료일 둘 다 줘야 함 (예: node run-megahouse.js 2026-07-10 2026-07-11, 오늘 하루만이면 node run-megahouse.js today)');
     process.exit(1);
   }
   if (cliDates.length === 2) {
     [CONFIG.startDate, CONFIG.endDate] = cliDates;
-    console.log(`📅 커맨드라인 기간 지정: ${CONFIG.startDate} ~ ${CONFIG.endDate} (미포함)`);
+    console.log(`📅 커맨드라인 기간 지정: ${CONFIG.startDate} ~ ${CONFIG.endDate} (둘 다 포함, KST 기준)`);
   }
 
   const ownToCollect = platformFilter ? CONFIG.own.filter(a => a.platform === platformFilter) : CONFIG.own;
