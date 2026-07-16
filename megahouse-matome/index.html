@@ -915,38 +915,52 @@ function applyRowFontSizes() {
   });
   requestAnimationFrame(fitCellNames);
 }
-// 제품명이 칸 밖으로 넘치거나 뱃지와 겹치지 않도록: 긴 이름은 뱃지를 윗줄로 올리고 글자 크기 자동 축소
+// 제품명 크기 반응형 조정:
+//  - 기본은 뱃지를 이름 옆(인라인)에 두고, 이름이 길면 글자 크기를 줄여 옆에 맞춤
+//  - 옆에 맞추려면 글자가 너무 작아질 정도로 긴 경우에만 뱃지를 윗줄로 올려 이름이 칸 전체 폭 사용
+//  - export(html-to-image)가 화면보다 텍스트를 넓게 그리므로 폭 계산에 여유 마진을 둠
 function fitCellNames() {
+  const EXPORT_MARGIN = 0.82;   // export 여유 (실제 다운로드 시 폭이 커지는 것 대비)
+  const INLINE_MIN = 30;        // 옆에 두기 위해 허용하는 최소 글자 크기(px). 이보다 작아져야 하면 뱃지를 위로
   document.querySelectorAll('.cell .name-text').forEach(txt => {
     const mainRow = txt.parentElement;
     const nm = mainRow ? mainRow.parentElement : null;
     if (!mainRow || !nm || mainRow.clientWidth <= 0) return;
     const rowW = mainRow.clientWidth;
-    // 기준 크기 복원 후 측정
     const base = parseFloat(txt.dataset.baseSize || txt.style.fontSize || '38');
-    txt.style.fontSize = base + 'px';
-    // 현재 인라인 뱃지들
-    let badges = [...mainRow.children].filter(c => c !== txt);
-    let badgeW = badges.reduce((s,b) => s + b.offsetWidth + 5, 0);
-    // 이름+뱃지가 칸의 80%를 넘으면(=이름이 긴 편) 뱃지를 윗줄로 이동 → 이름이 칸 전체 폭 사용
-    if (badges.length && (txt.scrollWidth + badgeW) > rowW * 0.80) {
-      let topRow = (nm.firstElementChild && nm.firstElementChild !== mainRow) ? nm.firstElementChild : null;
-      if (!topRow) {
-        topRow = document.createElement('div');
-        topRow.style.cssText = 'display:flex;align-items:center;gap:5px;flex-wrap:wrap;';
-        nm.insertBefore(topRow, mainRow);
-      }
-      badges.forEach(b => topRow.appendChild(b));
-      badges = []; badgeW = 0;
-    }
-    // export(html-to-image)가 화면보다 텍스트를 약간 넓게 그리므로 여유(10%)를 둠
-    const avail = (rowW - badgeW) * 0.90;
-    if (avail <= 0) return;
-    let size = base;
+    const badges = [...mainRow.children].filter(c => c !== txt);
+    const badgeW = badges.reduce((s,b) => s + b.offsetWidth + 5, 0);
     const minSize = 14;
-    while (txt.scrollWidth > avail && size > minSize) {
-      size -= 1;
+    // 글자 크기를 줄여 목표 폭 안에 맞추는 헬퍼 (맞춘 크기 반환)
+    const shrinkToFit = (availW) => {
+      let size = base;
+      txt.style.width = 'auto';                 // 측정은 항상 콘텐츠 폭 기준
       txt.style.fontSize = size + 'px';
+      while (txt.scrollWidth > availW && size > minSize) { size -= 1; txt.style.fontSize = size + 'px'; }
+      return size;
+    };
+    if (badges.length) {
+      // 1) 우선 뱃지를 옆에 둔 채로 맞춰본다
+      const inlineSize = shrinkToFit((rowW - badgeW) * EXPORT_MARGIN);
+      // 2) 옆에 두려니 글자가 너무 작아지는(=이름이 아주 긴) 경우에만 뱃지를 윗줄로 이동
+      if (inlineSize < INLINE_MIN) {
+        let topRow = (nm.firstElementChild && nm.firstElementChild !== mainRow) ? nm.firstElementChild : null;
+        if (!topRow) {
+          topRow = document.createElement('div');
+          topRow.style.cssText = 'display:flex;align-items:center;gap:5px;flex-wrap:wrap;';
+          nm.insertBefore(topRow, mainRow);
+        }
+        badges.forEach(b => topRow.appendChild(b));
+        shrinkToFit(rowW * EXPORT_MARGIN);       // 뱃지가 빠졌으니 칸 전체 폭 기준으로 다시 맞춤
+        txt.style.width = 'auto';
+      } else {
+        // 뱃지를 옆에 유지: 이름 상자에 10% 여유 폭을 확보해 뱃지를 그만큼 오른쪽으로 밀어둠
+        // → export(html-to-image)가 글자를 넓게 그려도 이 여유 안에 들어와 뱃지 밑으로 안 삐져나감
+        txt.style.width = Math.ceil(txt.scrollWidth * 1.10) + 'px';
+      }
+    } else {
+      shrinkToFit(rowW * EXPORT_MARGIN);
+      txt.style.width = 'auto';
     }
   });
 }
