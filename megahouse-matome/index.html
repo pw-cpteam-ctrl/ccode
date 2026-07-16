@@ -939,9 +939,11 @@ function fitCellNames() {
       while (txt.scrollWidth > availW && size > minSize) { size -= 1; txt.style.fontSize = size + 'px'; }
       return size;
     };
+    let finalSize = base;
     if (badges.length) {
       // 1) 우선 뱃지를 옆에 둔 채로 맞춰본다
       const inlineSize = shrinkToFit((rowW - badgeW) * EXPORT_MARGIN);
+      finalSize = inlineSize;
       // 2) 옆에 두려니 글자가 너무 작아지는(=이름이 아주 긴) 경우에만 뱃지를 윗줄로 이동
       if (inlineSize < INLINE_MIN) {
         let topRow = (nm.firstElementChild && nm.firstElementChild !== mainRow) ? nm.firstElementChild : null;
@@ -951,13 +953,16 @@ function fitCellNames() {
           nm.insertBefore(topRow, mainRow);
         }
         badges.forEach(b => topRow.appendChild(b));
-        shrinkToFit(rowW * EXPORT_MARGIN);       // 뱃지가 빠졌으니 칸 전체 폭 기준으로 다시 맞춤
+        finalSize = shrinkToFit(rowW * EXPORT_MARGIN);   // 뱃지가 빠졌으니 칸 전체 폭 기준으로 다시 맞춤
         txt.style.width = 'auto';
       } else {
         // 뱃지를 옆에 유지: 이름 상자에 10% 여유 폭을 확보해 뱃지를 그만큼 오른쪽으로 밀어둠
         // → export(html-to-image)가 글자를 넓게 그려도 이 여유 안에 들어와 뱃지 밑으로 안 삐져나감
         txt.style.width = Math.ceil(txt.scrollWidth * 1.10) + 'px';
       }
+      // 뱃지 크기를 "실제로 표시되는 이름 크기"에 비례시킴 (슬라이더로 칸 크기를 키워도
+      // 이름이 칸에 맞춰 작게 유지되면 뱃지도 그만큼만 커지도록 — 뱃지만 부풀던 버그 방지)
+      badges.forEach(b => { b.style.fontSize = Math.round(finalSize * 0.72) + 'px'; });
     } else {
       shrinkToFit(rowW * EXPORT_MARGIN);
       txt.style.width = 'auto';
