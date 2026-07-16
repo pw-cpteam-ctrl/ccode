@@ -917,9 +917,29 @@ function applyRowFontSizes() {
       const sz = rowFontSizes[ri] || 38;
       row.querySelectorAll('.name').forEach(nm => {
         nm.style.fontSize = sz + 'px';
-        nm.querySelectorAll('.name-text').forEach(s => s.style.fontSize = sz + 'px');
+        nm.querySelectorAll('.name-text').forEach(s => { s.dataset.baseSize = sz; s.style.fontSize = sz + 'px'; });
       });
     });
+  });
+  requestAnimationFrame(fitCellNames);
+}
+// 제품명이 칸 너비(+뱃지)를 넘으면 잘리지 않도록 글자 크기 자동 축소
+function fitCellNames() {
+  document.querySelectorAll('.cell .name-text').forEach(txt => {
+    const mainRow = txt.parentElement;
+    if (!mainRow || mainRow.clientWidth <= 0) return;
+    // 같은 줄에 있는 뱃지 폭만큼 제외
+    let taken = 0;
+    mainRow.childNodes.forEach(ch => { if (ch !== txt && ch.offsetWidth) taken += ch.offsetWidth + 5; });
+    const avail = mainRow.clientWidth - taken;
+    if (avail <= 0) return;
+    let size = parseFloat(txt.dataset.baseSize || txt.style.fontSize || '38');
+    txt.style.fontSize = size + 'px';        // 기준 크기 복원 후 재측정
+    const minSize = 14;
+    while (txt.scrollWidth > avail && size > minSize) {
+      size -= 1;
+      txt.style.fontSize = size + 'px';
+    }
   });
 }
 
@@ -1477,6 +1497,7 @@ function loadLogoFile(file, ids, isMega) {
 async function _savePng(el, name) {
   if (document.fonts && document.fonts.ready) await document.fonts.ready;
   fitOpenHeaderTitles();            // 캡처 직전 오픈 헤더 글자 크기 재조정
+  fitCellNames();                   // 캡처 직전 제품명 글자 크기 재조정
   await new Promise(r => requestAnimationFrame(r));
   const dataUrl = await htmlToImage.toPng(el, {pixelRatio:1, width:1080, height:1350, cacheBust:true, backgroundColor:'#fff'});
   const a = document.createElement('a'); a.download = name + '.png'; a.href = dataUrl; a.click();
