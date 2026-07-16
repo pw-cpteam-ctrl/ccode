@@ -458,7 +458,7 @@ function extractManualMatches(ownPosts, competitorPosts, manualMatches, linkFiel
  * @param {Array<{platform:string, account:string, posts:object[]}>} input.own       자사 계정(들)
  * @param {Array<{platform:string, account:string, posts:object[]}>} input.competitors 경쟁사 계정(들)
  * @param {object} [input.manualMatches] 플랫폼별 수동 매칭 목록 (예: { twitter: [...], instagram: [...] })
- *   — manual-matches.json 내용을 그대로 넘기면 됨. 파일 읽기는 이 함수를 호출하는 쪽(run.js 등)
+ *   — manual-matches.json 내용을 그대로 넘기면 됨. 파일 읽기는 이 함수를 호출하는 쪽(run-megahouse.js 등)
  *   책임이고, aggregate.js는 순수 함수로 유지.
  * @param {object} [input.ignorePosts] 플랫폼별 "상품 아닌 공지/이벤트" 게시물 목록 (예:
  *   { twitter: {pw:[], bh:[...]}, instagram: {...} }) — ignore-posts.json 내용을 그대로 넘기면 됨.

@@ -1,6 +1,6 @@
 /**
  * twitter.js / instagram.js를 계정 하나만 빠르게 테스트해보는 CLI 도구.
- * run.js 전체 CONFIG를 채우기 전에, 세션 파일이 실제로 통하는지 + 수집 결과가
+ * run-megahouse.js 전체 CONFIG를 채우기 전에, 세션 파일이 실제로 통하는지 + 수집 결과가
  * 화면에 보이는 것과 맞는지 눈으로 확인하기 위한 용도. headless:false로 고정해서
  * 브라우저 창이 뜨는 걸 직접 보면서 확인할 수 있음.
  *

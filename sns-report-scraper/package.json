@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "SNS 성과 리포트 자동화 — 자사/경쟁사 게시물 수집 + 비교표 취합 + 엑셀 저장",
-  "main": "run.js",
+  "main": "run-megahouse.js",
   "scripts": {
     "verify": "node verify-mock.js"
   },

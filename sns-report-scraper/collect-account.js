@@ -1,8 +1,8 @@
 /**
- * PW/BH 비교(run.js)와 무관하게, 임의의 X(트위터) 계정 핸들 하나만 넣으면 그 계정의
+ * PW/BH 비교(run-megahouse.js)와 무관하게, 임의의 X(트위터) 계정 핸들 하나만 넣으면 그 계정의
  * 게시물만 수집해서 순위/합계·평균을 보여주는 단독 성과 리포트. 세션은 기존
  * x-session.json을 그대로 재사용(내 계정으로 로그인한 상태에서 공개 게시물을 조회하는
- * 방식 — run.js가 BH를 수집할 때와 동일한 방식이라 새 로그인 필요 없음).
+ * 방식 — run-megahouse.js가 BH를 수집할 때와 동일한 방식이라 새 로그인 필요 없음).
  *
  * 사용법: node collect-account.js <핸들> <시작일 YYYY-MM-DD> <종료일 YYYY-MM-DD> [plaintext]
  *   예: node collect-account.js GoodsmileP 2026-07-01 2026-07-11
@@ -11,7 +11,7 @@
  * 것부터)으로 나열됨 — "뭐라고 썼는지"만 보고 싶을 때 쓰는 모드. 모드와 무관하게 엑셀
  * (account-report.xlsx, 지표 포함 순위표)은 항상 같이 저장됨.
  *
- * run.js처럼 수집한 원본 게시물을 reports/_account-<핸들>-last-collection.json에 캐시해둠 —
+ * run-megahouse.js처럼 수집한 원본 게시물을 reports/_account-<핸들>-last-collection.json에 캐시해둠 —
  * 나중에 "이번엔 다른 출력 형식으로도 보고 싶다"고 할 때 재수집 없이
  * rebuild-account-report.js로 캐시만 다시 읽어서 출력만 다시 만들 수 있음.
  */
