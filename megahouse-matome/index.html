@@ -128,10 +128,10 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
   padding:24px 36px 30px; pointer-events:none;
 }
 .p-hd-open .oh-top{display:flex;align-items:flex-start;justify-content:space-between;}
-.p-hd-open .oh-title-wrap{display:flex;flex-direction:column;gap:2px;}
+.p-hd-open .oh-title-wrap{display:flex;flex-direction:column;gap:2px;min-width:0;}
 .oh-title{font-family:'Pretendard',sans-serif;font-weight:900;color:#fff;line-height:1.05;letter-spacing:-1px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;}
 .oh-date{font-family:'Paperlogy','Pretendard',sans-serif;font-weight:400;color:#fff;line-height:1.1;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;}
-.oh-store-wrap{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.oh-store-wrap{display:flex;align-items:center;gap:14px;flex-shrink:0;}
 .oh-store{font-family:'Pretendard',sans-serif;background:rgba(0,0,0,.4);color:#fff;font-weight:350;border-radius:999px;padding:8px 20px;white-space:nowrap;}
 .oh-logo{width:52px;height:52px;object-fit:cover;display:block;border-radius:50%;}
 /* 재판 / 특전 스티커 */
@@ -171,7 +171,7 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
   text-shadow:1px 2px 6px rgba(0,0,0,.55),0 1px 3px rgba(0,0,0,.4);
   background:linear-gradient(to bottom,transparent 0%,rgba(0,0,0,0) 20%,rgba(0,0,0,.65) 50%,rgba(0,0,0,.88) 100%);
 }
-.cell .name .name-text{white-space:normal;}
+.cell .name .name-text{white-space:nowrap;}
 .cell.editing{outline:2px solid #4c8dff;outline-offset:-2px;}
 
 /* 푸터 */
@@ -734,12 +734,14 @@ function makeCell(it, ri, pg) {
 
     // mainRow: 상품명 + 뱃지 (짧으면 한 줄 우측, 길면 뱃지가 topRow로 이동)
     const mainRow = document.createElement('div');
-    mainRow.style.cssText = 'display:flex;flex-wrap:nowrap;align-items:flex-end;gap:5px;overflow:hidden;';
+    // overflow:visible — export(html-to-image)가 텍스트를 화면보다 미세하게 넓게 그려도
+    // 강제로 잘리지 않도록. 대신 글자 크기 자동 축소(fitCellNames)로 칸 안에 맞춤.
+    mainRow.style.cssText = 'display:flex;flex-wrap:nowrap;align-items:flex-end;gap:5px;overflow:visible;';
 
     const txtSpan = document.createElement('span');
     txtSpan.className = 'name-text';
     txtSpan.dataset.id = it.id;
-    txtSpan.style.cssText = 'flex:0 1 auto;min-width:0;overflow:hidden;';
+    txtSpan.style.cssText = 'flex:0 1 auto;min-width:0;';
     function setNameHtml(span, name) {
       span.innerHTML = (name||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
     }
@@ -783,17 +785,7 @@ function makeCell(it, ri, pg) {
     if (topRow.children.length) nm.appendChild(topRow);
     nm.appendChild(mainRow);
     cell.appendChild(nm);
-
-    // 메모 없을 때만 overflow 감지 → 뱃지 topRow로 이동
-    if (!hasMemo && badgeEls.length) {
-      requestAnimationFrame(() => {
-        if (mainRow.scrollWidth > mainRow.clientWidth + 1) {
-          badgeEls.forEach(b => topRow.appendChild(b));
-          if (!nm.contains(topRow)) nm.insertBefore(topRow, mainRow);
-          mainRow.style.overflow = '';
-        }
-      });
-    }
+    // 뱃지 배치(윗줄 이동)와 이름 크기 조정은 fitCellNames()가 레이아웃/폰트 확정 후 처리
   }
 
   // 사진 교체 버튼 (삭제 버튼 아래)
@@ -923,18 +915,34 @@ function applyRowFontSizes() {
   });
   requestAnimationFrame(fitCellNames);
 }
-// 제품명이 칸 너비(+뱃지)를 넘으면 잘리지 않도록 글자 크기 자동 축소
+// 제품명이 칸 밖으로 넘치거나 뱃지와 겹치지 않도록: 긴 이름은 뱃지를 윗줄로 올리고 글자 크기 자동 축소
 function fitCellNames() {
   document.querySelectorAll('.cell .name-text').forEach(txt => {
     const mainRow = txt.parentElement;
-    if (!mainRow || mainRow.clientWidth <= 0) return;
-    // 같은 줄에 있는 뱃지 폭만큼 제외
-    let taken = 0;
-    mainRow.childNodes.forEach(ch => { if (ch !== txt && ch.offsetWidth) taken += ch.offsetWidth + 5; });
-    const avail = mainRow.clientWidth - taken;
+    const nm = mainRow ? mainRow.parentElement : null;
+    if (!mainRow || !nm || mainRow.clientWidth <= 0) return;
+    const rowW = mainRow.clientWidth;
+    // 기준 크기 복원 후 측정
+    const base = parseFloat(txt.dataset.baseSize || txt.style.fontSize || '38');
+    txt.style.fontSize = base + 'px';
+    // 현재 인라인 뱃지들
+    let badges = [...mainRow.children].filter(c => c !== txt);
+    let badgeW = badges.reduce((s,b) => s + b.offsetWidth + 5, 0);
+    // 이름+뱃지가 칸의 80%를 넘으면(=이름이 긴 편) 뱃지를 윗줄로 이동 → 이름이 칸 전체 폭 사용
+    if (badges.length && (txt.scrollWidth + badgeW) > rowW * 0.80) {
+      let topRow = (nm.firstElementChild && nm.firstElementChild !== mainRow) ? nm.firstElementChild : null;
+      if (!topRow) {
+        topRow = document.createElement('div');
+        topRow.style.cssText = 'display:flex;align-items:center;gap:5px;flex-wrap:wrap;';
+        nm.insertBefore(topRow, mainRow);
+      }
+      badges.forEach(b => topRow.appendChild(b));
+      badges = []; badgeW = 0;
+    }
+    // export(html-to-image)가 화면보다 텍스트를 약간 넓게 그리므로 여유(10%)를 둠
+    const avail = (rowW - badgeW) * 0.90;
     if (avail <= 0) return;
-    let size = parseFloat(txt.dataset.baseSize || txt.style.fontSize || '38');
-    txt.style.fontSize = size + 'px';        // 기준 크기 복원 후 재측정
+    let size = base;
     const minSize = 14;
     while (txt.scrollWidth > avail && size > minSize) {
       size -= 1;
@@ -1272,19 +1280,33 @@ function syncOpenHeader() {
   pages.forEach((_, i) => { const p = i+1;
     const tEl = $(`#ohTitle${p}`); if (tEl) { tEl.textContent = t; tEl.dataset.baseSize = tSize; tEl.style.fontSize = tSize; tEl.style.fontWeight = tWeight; }
     const dEl = $(`#ohDate${p}`); if (dEl) { dEl.textContent = d; dEl.dataset.baseSize = dSize; dEl.style.fontSize = dSize; }
-    const sEl = $(`#ohStore${p}`); if (sEl) { sEl.textContent = s; sEl.style.fontSize = sSize; }
+    const sEl = $(`#ohStore${p}`); if (sEl) { sEl.textContent = s; sEl.dataset.baseSize = sSize; sEl.style.fontSize = sSize; }
   });
   // 타이틀/날짜가 스토어 배지와 겹치지 않게, 레이아웃 확정 후 공간 부족 시 자동 축소
   requestAnimationFrame(fitOpenHeaderTitles);
   if (_bootDone) saveState();
 }
-// 오픈 헤더의 타이틀·날짜가 스토어 배지 영역을 침범하지 않도록 글자 크기 자동 축소
+// 오픈 헤더의 스토어명/타이틀/날짜가 서로 겹치거나 포스터 밖으로 넘치지 않도록 글자 크기 자동 축소
 function fitOpenHeaderTitles() {
   pages.forEach((_, i) => { const p = i+1;
     const topEl = document.querySelector(`#poster${p} .oh-top`);
     if (!topEl || topEl.clientWidth <= 0) return;
     const storeWrapEl = topEl.querySelector('.oh-store-wrap');
-    const avail = topEl.clientWidth - (storeWrapEl ? storeWrapEl.offsetWidth : 0) - 24;
+    const storeEl = document.querySelector(`#ohStore${p}`);
+    // 1) 스토어명이 헤더 폭의 절반을 넘으면 먼저 축소 (타이틀 자리 확보)
+    if (storeEl && storeWrapEl) {
+      let ss = parseFloat(storeEl.dataset.baseSize || storeEl.style.fontSize || '34');
+      storeEl.style.fontSize = ss + 'px';
+      // export 여유 감안해 헤더폭의 38%로 제한 (스토어+로고가 화면 밖으로 안 밀리게)
+      const storeMax = topEl.clientWidth * 0.38;
+      const minStore = 12;
+      while (storeWrapEl.offsetWidth > storeMax && ss > minStore) {
+        ss -= 1;
+        storeEl.style.fontSize = ss + 'px';
+      }
+    }
+    // 2) 타이틀/날짜를 (헤더폭 - 스토어영역) 안에 맞춤 (export 여유 위해 추가 마진)
+    const avail = (topEl.clientWidth - (storeWrapEl ? storeWrapEl.offsetWidth : 0) - 24) * 0.95;
     if (avail <= 0) return;
     [`#ohTitle${p}`, `#ohDate${p}`].forEach(sel => {
       const el = document.querySelector(sel);
@@ -1890,6 +1912,12 @@ ensurePosterWrap(1);
   // auto-save on any data change — hook into refresh
   const _origRefresh = refresh;
   window.refresh = function(noUndo) { _origRefresh(noUndo); saveState(); };
+
+  // 폰트(프리텐다드/페이퍼로지)는 비동기 로드됨 — 로드 완료 후 글자 크기 재조정
+  // (폰트 로드 전 폴백 폭으로 계산되면 실제 폰트에서 글자가 넘쳐 잘리므로)
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => { fitCellNames(); fitOpenHeaderTitles(); });
+  }
 })();
 
 // 스테이지 패닝 (베이지 배경 드래그)
