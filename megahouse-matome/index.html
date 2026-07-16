@@ -920,15 +920,19 @@ function applyRowFontSizes() {
 //  - 옆에 맞추려면 글자가 너무 작아질 정도로 긴 경우에만 뱃지를 윗줄로 올려 이름이 칸 전체 폭 사용
 //  - export(html-to-image)가 화면보다 텍스트를 넓게 그리므로 폭 계산에 여유 마진을 둠
 function fitCellNames() {
-  const EXPORT_MARGIN = 0.82;   // export 여유 (실제 다운로드 시 폭이 커지는 것 대비)
-  const INLINE_MIN = 30;        // 옆에 두기 위해 허용하는 최소 글자 크기(px). 이보다 작아져야 하면 뱃지를 위로
+  // 다운로드 시 폰트를 박아넣어 화면=다운로드가 동일하므로, 폭 계산에 여유가 거의 불필요(1%만)
+  const MARGIN = 0.99;
   document.querySelectorAll('.cell .name-text').forEach(txt => {
     const mainRow = txt.parentElement;
     const nm = mainRow ? mainRow.parentElement : null;
     if (!mainRow || !nm || mainRow.clientWidth <= 0) return;
     const rowW = mainRow.clientWidth;
     const base = parseFloat(txt.dataset.baseSize || txt.style.fontSize || '38');
-    const badges = [...mainRow.children].filter(c => c !== txt);
+    // 매번 배지 위치를 처음부터 새로 판단하도록, 흩어진 배지를 일단 전부 이름 옆(mainRow)으로 되돌림
+    // (안 그러면 한 번 윗줄로 올라간 배지가 조건이 바뀌어도 계속 위에 남아버림)
+    const allBadges = [...nm.querySelectorAll('.reprint-badge, .special-badge')];
+    allBadges.forEach(b => mainRow.appendChild(b));
+    const badges = allBadges;
     const badgeW = badges.reduce((s,b) => s + b.offsetWidth + 5, 0);
     const minSize = 14;
     // 글자 크기를 줄여 목표 폭 안에 맞추는 헬퍼 (맞춘 크기 반환)
@@ -941,11 +945,18 @@ function fitCellNames() {
     };
     let finalSize = base;
     if (badges.length) {
-      // 1) 우선 뱃지를 옆에 둔 채로 맞춰본다
-      const inlineSize = shrinkToFit((rowW - badgeW) * EXPORT_MARGIN);
-      finalSize = inlineSize;
-      // 2) 옆에 두려니 글자가 너무 작아지는(=이름이 아주 긴) 경우에만 뱃지를 윗줄로 이동
-      if (inlineSize < INLINE_MIN) {
+      // 이름을 슬라이더(기준) 크기 그대로 두고, 뱃지와 함께 한 줄에 들어가는지 본다
+      txt.style.width = 'auto'; txt.style.fontSize = base + 'px';
+      const nameAtBase = txt.scrollWidth;
+      if (nameAtBase + badgeW <= rowW * MARGIN) {
+        // 들어감 → 뱃지 옆에 유지 (글자 크기 그대로, 자연 폭)
+        finalSize = base;
+        txt.style.width = 'auto';
+        // 배지가 옆으로 내려왔으니, 메모 없이 비어버린 윗줄은 제거(불필요한 여백 방지)
+        const topRow = (nm.firstElementChild && nm.firstElementChild !== mainRow) ? nm.firstElementChild : null;
+        if (topRow && !topRow.children.length) topRow.remove();
+      } else {
+        // 안 들어감(이름이 김/크게 확대함) → 뱃지를 윗줄로 올려 이름이 칸 전체 폭 사용
         let topRow = (nm.firstElementChild && nm.firstElementChild !== mainRow) ? nm.firstElementChild : null;
         if (!topRow) {
           topRow = document.createElement('div');
@@ -953,18 +964,13 @@ function fitCellNames() {
           nm.insertBefore(topRow, mainRow);
         }
         badges.forEach(b => topRow.appendChild(b));
-        finalSize = shrinkToFit(rowW * EXPORT_MARGIN);   // 뱃지가 빠졌으니 칸 전체 폭 기준으로 다시 맞춤
+        finalSize = shrinkToFit(rowW * MARGIN);   // 칸 전체 폭 기준으로 맞춤(넘칠 때만 축소)
         txt.style.width = 'auto';
-      } else {
-        // 뱃지를 옆에 유지: 이름 상자에 10% 여유 폭을 확보해 뱃지를 그만큼 오른쪽으로 밀어둠
-        // → export(html-to-image)가 글자를 넓게 그려도 이 여유 안에 들어와 뱃지 밑으로 안 삐져나감
-        txt.style.width = Math.ceil(txt.scrollWidth * 1.10) + 'px';
       }
-      // 뱃지 크기를 "실제로 표시되는 이름 크기"에 비례시킴 (슬라이더로 칸 크기를 키워도
-      // 이름이 칸에 맞춰 작게 유지되면 뱃지도 그만큼만 커지도록 — 뱃지만 부풀던 버그 방지)
+      // 뱃지 크기를 "실제로 표시되는 이름 크기"에 비례시킴 (뱃지만 부풀던 버그 방지)
       badges.forEach(b => { b.style.fontSize = Math.round(finalSize * 0.72) + 'px'; });
     } else {
-      shrinkToFit(rowW * EXPORT_MARGIN);
+      shrinkToFit(rowW * MARGIN);
       txt.style.width = 'auto';
     }
   });
@@ -1535,12 +1541,39 @@ function loadLogoFile(file, ids, isMega) {
 /* ═══════════════════════════════════════
    PNG 다운로드
 ═══════════════════════════════════════ */
+// 다운로드 시 웹폰트를 data URL로 박아넣어야 화면(미리보기)과 100% 동일하게 렌더됨.
+// (html-to-image는 CORS로 CDN 스타일시트를 못 읽어 폰트를 못 박고 폴백폰트로 그리는데,
+//  그러면 글자 폭이 달라져 미리보기와 다운로드 결과가 미묘하게 어긋난다)
+const _FONT_SOURCES = [
+  ['Pretendard', 300, 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/packages/pretendard/dist/web/static/woff2/Pretendard-Light.woff2'],
+  ['Pretendard', 400, 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/packages/pretendard/dist/web/static/woff2/Pretendard-Regular.woff2'],
+  ['Pretendard', 700, 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/packages/pretendard/dist/web/static/woff2/Pretendard-Bold.woff2'],
+  ['Pretendard', 800, 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/packages/pretendard/dist/web/static/woff2/Pretendard-ExtraBold.woff2'],
+  ['Pretendard', 900, 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/packages/pretendard/dist/web/static/woff2/Pretendard-Black.woff2'],
+  ['Paperlogy', 900, 'https://cdn.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-9Black.woff2'],
+];
+let _fontEmbedCSS = null;
+async function getFontEmbedCSS() {
+  if (_fontEmbedCSS != null) return _fontEmbedCSS;
+  const parts = [];
+  for (const [fam, wt, url] of _FONT_SOURCES) {
+    try {
+      const buf = await fetch(url).then(r => r.arrayBuffer());
+      const bytes = new Uint8Array(buf); let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      parts.push(`@font-face{font-family:'${fam}';font-weight:${wt};font-style:normal;src:url(data:font/woff2;base64,${btoa(bin)}) format('woff2');}`);
+    } catch (e) { /* 한 폰트 실패해도 나머지는 진행 */ }
+  }
+  _fontEmbedCSS = parts.join('');
+  return _fontEmbedCSS;
+}
 async function _savePng(el, name) {
   if (document.fonts && document.fonts.ready) await document.fonts.ready;
+  const fontEmbedCSS = await getFontEmbedCSS();
   fitOpenHeaderTitles();            // 캡처 직전 오픈 헤더 글자 크기 재조정
   fitCellNames();                   // 캡처 직전 제품명 글자 크기 재조정
   await new Promise(r => requestAnimationFrame(r));
-  const dataUrl = await htmlToImage.toPng(el, {pixelRatio:1, width:1080, height:1350, cacheBust:true, backgroundColor:'#fff'});
+  const dataUrl = await htmlToImage.toPng(el, {pixelRatio:1, width:1080, height:1350, cacheBust:true, backgroundColor:'#fff', fontEmbedCSS});
   const a = document.createElement('a'); a.download = name + '.png'; a.href = dataUrl; a.click();
   await new Promise(r => setTimeout(r, 400));
 }
