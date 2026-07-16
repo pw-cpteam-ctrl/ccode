@@ -12,20 +12,22 @@
  * 경쟁사 계정도 sessionFile은 자사와 동일한 세션 파일을 씀 — 경쟁사 로그인이 아니라,
  * "내 계정으로 로그인한 상태에서 경쟁사의 공개 게시물을 조회"하는 방식이라서 정상임.
  *
- * 기간은 커맨드라인에서 YYYY-MM-DD 두 개(시작일 종료일)로 바로 지정 가능 — 안 주면
- * CONFIG.startDate/endDate 기본값 사용. startDate/endDate 둘 다 포함(그 날짜 23:59:59
- * KST까지) — twitter.js/instagram.js의 실제 필터링 기준(`d >= rangeStart && d <= rangeEnd`)이
- * 그렇게 돼 있음. (예전엔 이 주석에 "endDate 미포함, 하루만 보려면 다음날을 넣으라"고
- * 잘못 적혀 있었음 — 실제 코드와 반대였던 문서 버그. 그 설명대로 다음날 날짜까지 넣어서
- * 돌린 적 있으면 의도한 하루가 아니라 이틀치가 수집됐을 수 있음.)
+ * 기간은 커맨드라인에서 항상 명시적으로 지정해야 함(필수) — "today" 또는 YYYY-MM-DD 두 개
+ * (시작일 종료일). startDate/endDate 둘 다 포함(그 날짜 23:59:59 KST까지) —
+ * twitter.js/instagram.js의 실제 필터링 기준(`d >= rangeStart && d <= rangeEnd`)이 그렇게
+ * 돼 있음. (예전엔 이 주석에 "endDate 미포함, 하루만 보려면 다음날을 넣으라"고 잘못 적혀
+ * 있었음 — 실제 코드와 반대였던 문서 버그. 그 설명대로 다음날 날짜까지 넣어서 돌린 적 있으면
+ * 의도한 하루가 아니라 이틀치가 수집됐을 수 있음.)
+ *
+ * 예전엔 날짜를 안 주면 CONFIG.startDate/endDate 기본값(옛날에 테스트하던 기간)으로 조용히
+ * 넘어갔는데, 이게 사용자가 날짜 지정을 깜빡하고 실행했을 때 의도하지 않은 옛날 기간을
+ * 통째로 수집해버리는 사고로 이어져서, 날짜를 아예 안 주면 에러 내고 종료하도록 바꿈 —
+ * 날짜 지정은 이제 선택이 아니라 필수.
  *
  * 오늘 하루만 보고 싶으면 날짜 두 개 대신 "today"라고만 쓰면 됨(자동으로 오늘 KST 날짜로
  * 시작=종료 지정) — 서버가 어느 시간대에서 돌든 상관없이 한국 시간 기준 오늘로 계산됨.
  *
- * 사용법: node run-megahouse.js                                — 트위터+인스타, CONFIG 기본 기간
- *        node run-megahouse.js twitter                         — 트위터만, CONFIG 기본 기간
- *        node run-megahouse.js instagram                       — 인스타만, CONFIG 기본 기간
- *        node run-megahouse.js today                           — 트위터+인스타, 오늘 하루(KST)
+ * 사용법: node run-megahouse.js today                           — 트위터+인스타, 오늘 하루(KST)
  *        node run-megahouse.js twitter today                   — 트위터만, 오늘 하루(KST)
  *        node run-megahouse.js 2026-07-10 2026-07-10            — 트위터+인스타, 7/10 하루
  *        node run-megahouse.js twitter 2026-07-10 2026-07-11    — 트위터만, 7/10~7/11 이틀
@@ -52,8 +54,8 @@ const { captureSnapshot, HISTORY_PATH: STOCK_HISTORY_PATH } = require('./naver-s
 const { archiveAndGetPath } = require('./report-archive');
 
 const CONFIG = {
-  startDate: '2026-07-01',
-  endDate: '2026-07-02',
+  // startDate/endDate는 기본값 없이 커맨드라인에서 항상 받아야 함(main()에서 검증) — 아래
+  // main()이 cliDates 파싱 후 채워 넣음.
   outputPath: './reports/sns-report.xlsx',
   // HTML은 매번 새로 만들 때 파일명에 생성 시각을 붙이고, 예전 파일은 reports/old/로 자동
   // 이동함(report-archive.js) — 과거 데이터 보존은 엑셀(outputPath, 시트 누적)이 따로 담당.
@@ -129,6 +131,15 @@ async function main() {
       console.error(`❌ 사용법: node run-megahouse.js [twitter|instagram] [today | 시작일 종료일 (YYYY-MM-DD YYYY-MM-DD)]`);
       process.exit(1);
     }
+  }
+  if (cliDates.length === 0) {
+    console.error(
+      '❌ 날짜 지정은 필수임 — 안 주면 예전 테스트용 기본 기간으로 조용히 실행돼서 의도치 않은 ' +
+      '기간을 수집하는 사고가 있었음(재발 방지로 막아둠).\n' +
+      '   오늘 하루면: node run-megahouse.js today\n' +
+      '   특정 기간이면: node run-megahouse.js 2026-07-10 2026-07-11'
+    );
+    process.exit(1);
   }
   if (cliDates.length === 1) {
     console.error('❌ 시작일/종료일 둘 다 줘야 함 (예: node run-megahouse.js 2026-07-10 2026-07-11, 오늘 하루만이면 node run-megahouse.js today)');
