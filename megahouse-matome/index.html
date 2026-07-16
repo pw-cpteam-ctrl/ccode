@@ -1452,6 +1452,7 @@ function loadLogoFile(file, ids, isMega) {
    PNG 다운로드
 ═══════════════════════════════════════ */
 async function _savePng(el, name) {
+  if (document.fonts && document.fonts.ready) await document.fonts.ready;
   const dataUrl = await htmlToImage.toPng(el, {pixelRatio:1, width:1080, height:1350, cacheBust:true, backgroundColor:'#fff'});
   const a = document.createElement('a'); a.download = name + '.png'; a.href = dataUrl; a.click();
   await new Promise(r => setTimeout(r, 400));
