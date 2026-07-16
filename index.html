@@ -6,51 +6,131 @@
 <title>Presence World 툴킷</title>
 <style>
 *{box-sizing:border-box;}
-body{margin:0;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f0ede7;color:#252018;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:60px 20px;}
+body{margin:0;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f0ede7;color:#252018;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:38px 20px;}
 h1{font-size:22px;font-weight:800;margin:0 0 6px;letter-spacing:-0.5px;}
-p{font-size:13px;color:#7d7568;margin:0 0 40px;}
-.grid{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;max-width:600px;}
-.card{background:#fff;border:1px solid #ddd8ce;border-radius:14px;padding:24px 28px;width:260px;text-decoration:none;color:inherit;transition:box-shadow .15s,transform .15s;}
-.card:hover{box-shadow:0 6px 24px rgba(0,0,0,.1);transform:translateY(-2px);}
-.card .icon{font-size:32px;margin-bottom:12px;}
-.card .name{font-size:15px;font-weight:700;margin-bottom:4px;}
-.card .desc{font-size:12px;color:#7d7568;line-height:1.5;}
+p.sub{font-size:13px;color:#7d7568;margin:0 0 27px;}
+
+.columns{
+  display:flex;
+  gap:15px;
+  width:100%;
+  max-width:800px;
+}
+.column{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  flex:1;
+  min-width:0;
+}
+/* 좁은 화면에서는 2열을 포기하고 세로로 6개 쭉 쌓음 */
+@media (max-width:640px){
+  .columns{ flex-direction:column; max-width:420px; }
+}
+
+.card{
+  display:flex;
+  align-items:center;
+  gap:11px;
+  background:#fff;
+  border:1px solid #ddd8ce;
+  border-radius:14px;
+  padding:8px;
+  text-decoration:none;
+  color:inherit;
+  transition:box-shadow .15s, transform .15s;
+  min-width:0;
+}
+.card:hover{box-shadow:0 6px 20px rgba(0,0,0,.1);transform:translateY(-2px);}
+
+.thumb{
+  flex:0 0 150px;
+  width:150px;height:150px;
+  border-radius:12px;
+  background:linear-gradient(160deg,#efe9df,#e2dbcd);
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;
+}
+.thumb img{width:100%;height:100%;object-fit:cover;object-position:center;}
+.thumb img.pos-bottom{object-position:bottom;}
+.thumb img.pos-top{object-position:top;}
+
+.body{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.name{
+  font-size:14px;
+  font-weight:700;
+  line-height:1.3;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+}
+.desc{
+  font-size:12px;
+  color:#8a8272;
+  line-height:1.4;
+  display:-webkit-box;
+  -webkit-line-clamp:4;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+}
 </style>
 </head>
 <body>
 <h1>Presence World 툴킷</h1>
-<p>내부 제작 도구 모음</p>
-<div class="grid">
-  <a class="card" href="megahouse-matome/index.html">
-    <div class="icon">🏠</div>
+<p class="sub">내부 제작 도구 모음</p>
+<div class="columns">
+  <div class="column">
+    <a class="card" href="megahouse-matome/index.html">
+      <div class="thumb"><img src="assets/thumbs/megahouse-matome.png"/></div>
+      <div class="body">
         <div class="name">메가하우스 마토메 메이커</div>
-    <div class="desc">월별 신제품 예고 포스터 이미지를 만드는 도구 (1080×1350px)</div>
-  </a>
-  <a class="card" href="collage-maker/">
-    <div class="icon">🖼️</div>
-    <div class="name">프리뷰 콜라주 메이커</div>
-    <div class="desc">사각형 그리드 · 캔버스 3종 선택 (2·4·6장)</div>
-  </a>
-  <a class="card" href="https://ccode-omega.vercel.app/">
-    <div class="icon">📸</div>
-    <div class="name">인스타 카드 생성기</div>
-    <div class="desc">사진 1장 → 인스타용 카드 이미지 제작</div>
-  </a>
-  <a class="card" href="text-gradient/index.html">
-    <div class="icon">🌓</div>
-    <div class="name">텍스트 투명 이미지 생성기</div>
-    <div class="desc">배지·타이틀·불릿 텍스트 + 검정 그라데이션 투명 PNG 제작 (1080×1350)</div>
-  </a>
-  <a class="card" href="https://ccode-vbvi.vercel.app/">
-    <div class="icon">📢</div>
-    <div class="name">상품 SNS 포맷터</div>
-    <div class="desc">상품 정보 텍스트를 회사 SNS 포맷으로 자동 변환 (Claude API)</div>
-  </a>
-  <a class="card" href="https://inbound-image-composer.vercel.app/">
-    <div class="icon">🏷️</div>
-    <div class="name">입고안내 이미지 자동 제작</div>
-    <div class="desc">입고안내 스크린샷 → 텍스트 정규화 카드 이미지 생성 (Claude Vision)</div>
-  </a>
+        <div class="desc">월별 신제품 예고 포스터 이미지를 만드는 도구 (1080×1350px)</div>
+      </div>
+    </a>
+    <a class="card" href="collage-maker/">
+      <div class="thumb"><img src="assets/thumbs/collage-maker.jpg"/></div>
+      <div class="body">
+        <div class="name">프리뷰 콜라주 메이커</div>
+        <div class="desc">사각형 그리드 · 캔버스 3종 선택 (2·4·6장)</div>
+      </div>
+    </a>
+    <a class="card" href="https://ccode-omega.vercel.app/">
+      <div class="thumb"><img src="assets/thumbs/insta-gen.jpg"/></div>
+      <div class="body">
+        <div class="name">인스타 카드 생성기</div>
+        <div class="desc">사진 1장 → 인스타용 카드 이미지 제작</div>
+      </div>
+    </a>
+  </div>
+  <div class="column">
+    <a class="card" href="text-gradient/index.html">
+      <div class="thumb"><img class="pos-bottom" src="assets/thumbs/text-gradient.png"/></div>
+      <div class="body">
+        <div class="name">텍스트 투명 이미지 생성기</div>
+        <div class="desc">배지·타이틀·불릿 텍스트 + 검정 그라데이션 투명 PNG 제작 (1080×1350)</div>
+      </div>
+    </a>
+    <a class="card" href="https://ccode-vbvi.vercel.app/">
+      <div class="thumb"><img src="assets/thumbs/product-sns-formatter.jpg"/></div>
+      <div class="body">
+        <div class="name">상품 SNS 포맷터</div>
+        <div class="desc">상품 정보 텍스트를 회사 SNS 포맷으로 자동 변환 (Claude API)</div>
+      </div>
+    </a>
+    <a class="card" href="https://inbound-image-composer.vercel.app/">
+      <div class="thumb"><img class="pos-top" src="assets/thumbs/inbound-image-composer.jpg"/></div>
+      <div class="body">
+        <div class="name">입고안내 이미지 자동 제작</div>
+        <div class="desc">입고안내 스크린샷 → 텍스트 정규화 카드 이미지 생성 (Claude Vision)</div>
+      </div>
+    </a>
+  </div>
 </div>
 </body>
 </html>
