@@ -235,13 +235,19 @@ function renderPlatformSection(platformKey, data, stockComparison) {
   }).join('');
 
   // 번호(PW #1, BH #1...)를 붙여둠 — 수동 매칭 지시할 때 "PW 3번 BH 1번 매칭해줘"처럼
-  // 번호로 바로 가리킬 수 있게.
+  // 번호로 바로 가리킬 수 있게. data-post에 게시물 원본을 그대로 심어둬서, "표에 추가" 버튼을
+  // 눌렀을 때 다시 파싱할 필요 없이(이미 아는 값이라) 바로 표에 넣을 수 있게 함.
   const unmatchedList = (label, posts, textField) => {
     if (posts.length === 0) return `<p class="unmatched-empty">매칭 안 된 ${label} 게시물 없음</p>`;
+    const side = label === 'PW' ? 'pw' : 'bh';
     const items = posts.map((post, i) => {
       const link = post.link || post.url || '';
       const preview = escapeHtml((post[textField] || '').replace(/\n/g, ' ').slice(0, 70));
-      return `<li><b>${label} #${i + 1}</b> <a href="${escapeHtml(link)}" target="_blank" rel="noopener">${preview || '(본문 없음)'}</a></li>`;
+      const postJson = escapeHtml(JSON.stringify(post));
+      return `<li data-post="${postJson}">
+        <b>${label} #${i + 1}</b> <a href="${escapeHtml(link)}" target="_blank" rel="noopener">${preview || '(본문 없음)'}</a>
+        <button class="add-btn" onclick="promoteUnmatched(this,'${platformKey}','${side}')">표에 추가</button>
+      </li>`;
     }).join('');
     return `<ul class="unmatched-list">${items}</ul>`;
   };
@@ -262,7 +268,7 @@ function renderPlatformSection(platformKey, data, stockComparison) {
       <table>
         <colgroup>${headerCells.map((_, i) => i === 1 ? '<col style="width:130px">' : '<col>').join('')}</colgroup>
         <thead><tr>${headerCells.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
-        <tbody>${rows || `<tr><td colspan="${headerCells.length}" class="empty">매칭된 상품 없음</td></tr>`}</tbody>
+        <tbody id="tbody-${platformKey}" data-cols="${headerCells.length}" data-fields="${displayFields.join(',')}" data-has-stock="${hasStock ? '1' : '0'}">${rows || `<tr><td colspan="${headerCells.length}" class="empty">매칭된 상품 없음</td></tr>`}</tbody>
       </table>
     </div>
     <details class="unmatched">
@@ -270,6 +276,36 @@ function renderPlatformSection(platformKey, data, stockComparison) {
       <div class="unmatched-cols">
         <div><h3>PW</h3>${unmatchedList('PW', ownUnmatched, textField)}</div>
         <div><h3>BH</h3>${unmatchedList('BH', competitorUnmatched, textField)}</div>
+      </div>
+    </details>
+    <details class="manual-add">
+      <summary>📋 스크래퍼가 놓친 게시물 — 붙여넣기로 표에 추가</summary>
+      <div class="manual-add-body">
+        <p class="manual-add-help">게시물 상세페이지(트위터는 게시물 클릭해서 들어간 화면)에서 전체 선택 + 복사한 텍스트를 그대로 붙여넣으면, 본문/시각/좋아요·리트윗 수를 자동으로 읽어옵니다. 실패하면 아래 칸에 직접 입력해도 됩니다.
+        ${platformKey === 'instagram' ? ' (인스타그램은 자동 파싱 대상이 아니라 전부 직접 입력해야 함)' : ''}</p>
+        <div class="manual-add-row">
+          <label>어느 쪽? <select id="side-${platformKey}"><option value="pw">PW(자사)</option><option value="bh">BH(경쟁사)</option></select></label>
+          <label>링크 <input type="text" id="link-${platformKey}" placeholder="https://x.com/... 또는 https://www.instagram.com/p/..." /></label>
+        </div>
+        <textarea id="paste-${platformKey}" class="manual-add-textarea" placeholder="게시물 상세페이지에서 복사한 내용을 여기에 붙여넣으세요"></textarea>
+        <div class="manual-add-row">
+          <button class="add-btn primary" onclick="parseAndAddPost('${platformKey}')">붙여넣은 내용 분석해서 추가</button>
+        </div>
+        <div id="manual-add-error-${platformKey}" class="manual-add-error"></div>
+        <details class="manual-add-fallback">
+          <summary>자동 분석이 실패했거나 인스타그램인 경우 — 직접 입력</summary>
+          <div class="manual-add-row">
+            <label>본문 <textarea id="fallback-text-${platformKey}" class="manual-add-textarea small" placeholder="상품 설명이 들어간 본문(첫 줄 또는 링크 위 줄에 상품명이 있어야 자동 인식됨)"></textarea></label>
+          </div>
+          <div class="manual-add-row">
+            <label>게시 시각(KST) <input type="datetime-local" id="fallback-dt-${platformKey}" /></label>
+            <label>좋아요 <input type="text" id="fallback-likes-${platformKey}" placeholder="예: 373 또는 1.2만" /></label>
+            <label>${platformKey === 'twitter' ? '리트윗' : '댓글'} <input type="text" id="fallback-metric2-${platformKey}" placeholder="예: 445" /></label>
+          </div>
+          <div class="manual-add-row">
+            <button class="add-btn primary" onclick="addFallbackPost('${platformKey}')">직접 입력한 값으로 추가</button>
+          </div>
+        </details>
       </div>
     </details>
   </section>`;
@@ -366,9 +402,32 @@ details.unmatched summary{cursor:pointer;color:#6b7280;font-size:13px}
 .unmatched-cols>div{flex:1;min-width:260px}
 .unmatched-cols h3{font-size:13px;color:#6b7280;margin:0 0 6px}
 .unmatched-list{list-style:none;margin:0;padding:0;font-size:12px}
-.unmatched-list li{padding:4px 0;border-bottom:1px solid #f4f6fb}
-.unmatched-list a{color:#374151;text-decoration:none}.unmatched-list a:hover{text-decoration:underline}
+.unmatched-list li{padding:4px 0;border-bottom:1px solid #f4f6fb;display:flex;align-items:center;gap:8px}
+.unmatched-list a{color:#374151;text-decoration:none;flex:1;min-width:0}.unmatched-list a:hover{text-decoration:underline}
 .unmatched-empty{color:#9099a6;font-size:12px}
+.add-btn{border:1px solid #d0d5e0;background:#fff;color:#2f9e44;font-size:11px;padding:3px 8px;border-radius:8px;cursor:pointer;white-space:nowrap;flex:none}
+.add-btn:hover{background:#ebfbee}
+.add-btn.primary{color:#fff;background:#3b5bdb;border-color:#3b5bdb;padding:6px 14px;font-size:12px}
+.add-btn.primary:hover{background:#2f4bc7}
+details.manual-add{margin-top:10px;background:#fff;border-radius:12px;padding:10px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+details.manual-add summary{cursor:pointer;color:#6b7280;font-size:13px}
+.manual-add-body{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.manual-add-help{font-size:12px;color:#6b7280;margin:0}
+.manual-add-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+.manual-add-row label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#374151}
+.manual-add-row input,.manual-add-row select{border:1px solid #d0d5e0;border-radius:8px;padding:6px 8px;font-size:12px;min-width:160px}
+.manual-add-textarea{width:100%;min-height:90px;border:1px solid #d0d5e0;border-radius:8px;padding:8px;font-size:12px;font-family:inherit;resize:vertical}
+.manual-add-textarea.small{min-height:60px;min-width:280px}
+.manual-add-error{color:#c0504d;font-size:12px;white-space:pre-line}
+details.manual-add-fallback{margin-top:4px}
+details.manual-add-fallback summary{cursor:pointer;color:#9099a6;font-size:12px}
+tr.manual-row{background:#f2fbf4}
+tr.manual-row td.name{position:relative}
+.manual-tag{display:inline-block;font-size:10px;font-weight:700;color:#2f9e44;background:#ebfbee;border-radius:999px;padding:1px 6px;margin-right:4px}
+.export-box{margin-top:16px;background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.export-box h3{font-size:14px;margin:0 0 6px}
+.export-box p{font-size:12px;color:#6b7280;margin:0 0 8px}
+.export-box textarea{width:100%;min-height:120px;font-family:monospace;font-size:11px;border:1px solid #d0d5e0;border-radius:8px;padding:8px}
 .foot{margin-top:16px;color:#6b7280;font-size:12px;line-height:1.6;background:#fff;border-radius:10px;padding:14px 16px}
 @media (max-width:860px){
   .wrap{padding:20px 12px}
@@ -389,8 +448,145 @@ ${sections}
 ※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).${stockComparison ? '<br>※ 📦 매출 칸(표 우측 끝, 가로 스크롤): 상품명으로 네이버 재고 데이터와 근사 매칭한 결과를 리트윗/좋아요 칸과 같은 분할 바로 표시 — 막대는 PW/BH 총 판매추정치(개수) 비율, 숫자 뒤 "*"는 현재 재고를 가장 가까운 1000단위로 올려 "초기 판매한도였을 것"으로 가정하고 역산한 추정치라는 표시. "매칭 안 됨"은 그 스토어에서 이름이 비슷한 재고 상품을 못 찾은 경우, "-"는 PW/BH 둘 다 못 찾은 경우. 마우스 올리면 실제로 매칭된 재고 상품명이 보이니 매칭이 맞는지 확인해보세요.' : ''}
 </div>
 ${renderStockSectionHtml(stockComparison)}
+<div class="export-box" id="export-box" style="display:none">
+  <h3>💾 표에 추가한 게시물 저장</h3>
+  <p>아래 내용을 통째로 복사해서 <code>manual-posts.json</code> 파일에 붙여넣으면, 다음에 리포트를 다시 만들 때도(재수집 없이 <code>rebuild-report.js</code>만 돌려도) 계속 반영됩니다. 이 리포트 파일을 다시 열면 지금 추가한 내용은 초기화됩니다 — 저장하지 않으면 이 화면에서만 보인 미리보기일 뿐입니다.</p>
+  <textarea id="export-textarea" readonly onclick="this.select()"></textarea>
+  <div class="manual-add-row" style="margin-top:8px">
+    <button class="add-btn primary" onclick="copyExport()">복사</button>
+  </div>
+</div>
 </div>
 <script>
+${fs.readFileSync(path.join(__dirname, 'matching-core.js'), 'utf-8')}
+${fs.readFileSync(path.join(__dirname, 'paste-parser.js'), 'utf-8')}
+
+// 리포트 안 "붙여넣기로 게시물 추가" 기능 — 브라우저 세션 동안만 유지되는 미리보기용
+// 임시 상태(리포트 파일을 다시 열면 초기화됨). 실제로 다음에도 유지하려면 화면 하단
+// "저장" 박스에서 JSON을 복사해 manual-posts.json에 붙여넣어야 함(run-megahouse.js/
+// rebuild-report.js가 그 파일을 읽어서 실제 수집분에 합쳐줌 — aggregate.js의
+// applyManualPosts 참고).
+window._manualAdditions = { twitter: { pw: [], bh: [] }, instagram: { pw: [], bh: [] } };
+
+function platformTextField(platform) { return platform === 'twitter' ? 'text' : 'caption'; }
+function platformMetric2Label(platform) { return platform === 'twitter' ? '리트윗' : '댓글'; }
+function platformMetric2Field(platform) { return platform === 'twitter' ? 'retweets' : 'comments'; }
+
+function refreshExportBox() {
+  var box = document.getElementById('export-box');
+  var total = window._manualAdditions.twitter.pw.length + window._manualAdditions.twitter.bh.length +
+    window._manualAdditions.instagram.pw.length + window._manualAdditions.instagram.bh.length;
+  if (total === 0) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  document.getElementById('export-textarea').value = JSON.stringify(window._manualAdditions, null, 2);
+}
+function copyExport() {
+  var ta = document.getElementById('export-textarea');
+  ta.select();
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(ta.value).catch(function () { document.execCommand('copy'); });
+  } else {
+    document.execCommand('copy');
+  }
+}
+
+// 게시물 하나(post: {link/url, datetime, likes, retweets 또는 comments, text/caption})를
+// 표에 미리보기로 추가 + window._manualAdditions에 기록(저장 버튼용). 실제 "어느 상품과
+// 같은 건지"는 다음에 rebuild-report.js를 돌릴 때 평소 자동 매칭 로직이 다시 판단하므로,
+// 여기선 그룹화를 흉내내지 않고 "PW만/BH만 아는 새 게시물"이라는 걸 명확히 보여주는
+// 별도 행으로만 추가함(과도하게 복잡해지지 않게 하려는 의도적 단순화).
+function addManualPost(platform, side, post) {
+  var textField = platformTextField(platform);
+  var text = post[textField] || '';
+  var title = side === 'pw' ? extractOwnProductName(text) : extractCompetitorProductName(text);
+  var line = detectProductLine(text);
+  var split = splitIpAndLine(title, line);
+  var ip = split.ip || '(미분류)';
+
+  window._manualAdditions[platform][side].push(post);
+  refreshExportBox();
+
+  var link = post.link || post.url || '';
+  var kst = new Date(new Date(post.datetime).getTime() + 9 * 3600 * 1000);
+  var timeText = (kst.getUTCMonth() + 1) + '/' + kst.getUTCDate() + ' ' + kst.getUTCHours() + ':' + String(kst.getUTCMinutes()).padStart(2, '0');
+  var sideLabel = side === 'pw' ? 'PW' : 'BH';
+  var fieldLabels = { likes: '좋아요', retweets: '리트윗', comments: '댓글' };
+
+  var tbody = document.getElementById('tbody-' + platform);
+  var fields = tbody.dataset.fields.split(',');
+  var hasStock = tbody.dataset.hasStock === '1';
+  var tr = document.createElement('tr');
+  tr.className = 'manual-row';
+  var escName = ip.replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+  var cells = ['<td class="rank">🆕</td>',
+    '<td class="name"><span class="manual-tag">수동추가·' + sideLabel + '만</span>' + escName + '</td>',
+    '<td>' + (split.line || '-') + '</td>'];
+  // 지표 칸(리트윗/좋아요 등)마다 이 게시물이 아는 쪽(PW 또는 BH) 값만 채우고 반대쪽은
+  // "짝 없음"으로 표시 — metricBar처럼 두 값을 나눈 막대로 그리진 않음(그러려면 이 파일의
+  // metricBar 함수를 브라우저 JS로도 그대로 옮겨야 해서 과하게 복잡해짐. 실제 정확한
+  // 비교 막대는 다음에 rebuild-report.js로 다시 만들 때 정식으로 반영됨).
+  fields.forEach(function (f) {
+    var val = parseCount(post[f]);
+    cells.push('<td>' + sideLabel + ' ' + (val !== null ? val.toLocaleString() : '-') + ' ' + (fieldLabels[f] || f) + '<br><span style="color:#9099a6;font-size:11px">(반대쪽 짝 없음)</span></td>');
+  });
+  cells.push('<td>' + timeText + '</td>');
+  cells.push('<td>-</td>');
+  cells.push('<td>' + (link ? '<a href="' + link + '" target="_blank" rel="noopener">링크</a>' : '-') + '</td>');
+  if (hasStock) cells.push('<td>-</td>');
+  tr.innerHTML = cells.join('');
+  var emptyRow = tbody.querySelector('td.empty');
+  if (emptyRow) emptyRow.closest('tr').remove();
+  tbody.insertBefore(tr, tbody.firstChild);
+}
+
+function promoteUnmatched(btn, platform, side) {
+  var li = btn.closest('li');
+  var post = JSON.parse(li.dataset.post);
+  addManualPost(platform, side, post);
+  li.remove();
+}
+
+function parseAndAddPost(platform) {
+  var errorBox = document.getElementById('manual-add-error-' + platform);
+  errorBox.textContent = '';
+  var raw = document.getElementById('paste-' + platform).value;
+  var link = document.getElementById('link-' + platform).value.trim();
+  var side = document.getElementById('side-' + platform).value;
+  if (!link) { errorBox.textContent = '링크를 입력해주세요 — 붙여넣은 본문엔 링크가 없어서 직접 입력해야 합니다.'; return; }
+
+  var result = parsePastedPost(raw);
+  if (!result.ok) { errorBox.textContent = result.error; return; }
+
+  var textField = platformTextField(platform);
+  var post = { link: link, url: link, datetime: result.datetime, likes: String(result.likes), retweets: String(result.retweets) };
+  post[textField] = result.text;
+  addManualPost(platform, side, post);
+  document.getElementById('paste-' + platform).value = '';
+  document.getElementById('link-' + platform).value = '';
+}
+
+function addFallbackPost(platform) {
+  var errorBox = document.getElementById('manual-add-error-' + platform);
+  errorBox.textContent = '';
+  var link = document.getElementById('link-' + platform).value.trim();
+  var side = document.getElementById('side-' + platform).value;
+  var text = document.getElementById('fallback-text-' + platform).value;
+  var dtLocal = document.getElementById('fallback-dt-' + platform).value; // "YYYY-MM-DDTHH:MM", KST로 입력받음
+  var likes = document.getElementById('fallback-likes-' + platform).value;
+  var metric2 = document.getElementById('fallback-metric2-' + platform).value;
+
+  if (!link) { errorBox.textContent = '링크를 입력해주세요.'; return; }
+  if (!dtLocal) { errorBox.textContent = '게시 시각을 입력해주세요.'; return; }
+
+  var datetime = new Date(dtLocal + ':00+09:00').toISOString();
+  var textField = platformTextField(platform);
+  var metric2Field = platformMetric2Field(platform);
+  var post = { link: link, url: link, datetime: datetime, likes: likes };
+  post[metric2Field] = metric2;
+  post[textField] = text;
+  addManualPost(platform, side, post);
+}
+
 // 인스타그램 embed.js는 트위터 widgets.js와 달리 async 로딩이 늦게 끝나면(느린 네트워크 등)
 // 토글을 누른 시점에 window.instgrm이 아직 없어서 조용히 아무 일도 안 일어남 — 예전엔
 // dataset.rendered를 그때 바로 '1'로 찍어버려서 다시 열어도 재시도가 안 됐던 게 "네트워크는

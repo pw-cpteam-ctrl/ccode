@@ -9,7 +9,7 @@
  * 사용법: node rebuild-report.js
  */
 const fs = require('fs');
-const { buildComparisonReport } = require('./aggregate');
+const { buildComparisonReport, applyManualPosts } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
 const { saveHtmlReport } = require('./html-report');
 const { buildStockComparison } = require('./stock-report');
@@ -22,6 +22,7 @@ const HTML_OUTPUT_DIR = './reports';
 const HTML_OUTPUT_BASE_NAME = 'sns-report';
 const MANUAL_MATCHES_PATH = './manual-matches.json';
 const IGNORE_POSTS_PATH = './ignore-posts.json';
+const MANUAL_POSTS_PATH = './manual-posts.json';
 
 async function main() {
   if (!fs.existsSync(CACHE_PATH)) {
@@ -38,12 +39,16 @@ async function main() {
   const ignorePosts = fs.existsSync(IGNORE_POSTS_PATH)
     ? JSON.parse(fs.readFileSync(IGNORE_POSTS_PATH, 'utf-8'))
     : {};
+  const manualPosts = fs.existsSync(MANUAL_POSTS_PATH)
+    ? JSON.parse(fs.readFileSync(MANUAL_POSTS_PATH, 'utf-8'))
+    : {};
+  const { own, competitors } = applyManualPosts(cached.own, cached.competitors, manualPosts);
 
   const report = buildComparisonReport({
     startDate: cached.startDate,
     endDate: cached.endDate,
-    own: cached.own,
-    competitors: cached.competitors,
+    own,
+    competitors,
     manualMatches,
     ignorePosts,
   });

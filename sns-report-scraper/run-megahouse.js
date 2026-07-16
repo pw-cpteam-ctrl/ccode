@@ -46,7 +46,7 @@ const fs = require('fs');
 const path = require('path');
 const { collectTwitter } = require('./twitter');
 const { collectInstagram } = require('./instagram');
-const { buildComparisonReport } = require('./aggregate');
+const { buildComparisonReport, applyManualPosts } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
 const { saveHtmlReport } = require('./html-report');
 const { buildStockComparison } = require('./stock-report');
@@ -73,6 +73,10 @@ const CONFIG = {
   // 상품이 아닌 공지/이벤트/쿠폰 게시물 — "매칭 안 됨" 목록에 안 보이게 걸러내지만, 계정
   // 총계(팔로워/게시물 지표)에는 그대로 포함됨. { twitter: {pw:[], bh:[링크,...]}, ... } 형태.
   ignorePostsPath: './ignore-posts.json',
+  // 스크래퍼가 놓친 게시물을 리포트의 "붙여넣기로 게시물 추가" 기능으로 저장해둔 파일.
+  // { twitter: { pw: [게시물 객체...], bh: [...] }, instagram: {...} } 형태 — 있으면 실제
+  // 수집분에 "(수동 추가)" 계정으로 합쳐진 뒤 평소처럼 자동 매칭이 다시 돌아감.
+  manualPostsPath: './manual-posts.json',
 
   own: [
     { platform: 'twitter', account: 'megahousestore', sessionFile: './x-session.json' },
@@ -194,12 +198,16 @@ async function main() {
   const ignorePosts = fs.existsSync(CONFIG.ignorePostsPath)
     ? JSON.parse(fs.readFileSync(CONFIG.ignorePostsPath, 'utf-8'))
     : {};
+  const manualPosts = fs.existsSync(CONFIG.manualPostsPath)
+    ? JSON.parse(fs.readFileSync(CONFIG.manualPostsPath, 'utf-8'))
+    : {};
+  const { own: ownWithManual, competitors: competitorsWithManual } = applyManualPosts(own, competitors, manualPosts);
 
   const report = buildComparisonReport({
     startDate: CONFIG.startDate,
     endDate: CONFIG.endDate,
-    own,
-    competitors,
+    own: ownWithManual,
+    competitors: competitorsWithManual,
     manualMatches,
     ignorePosts,
   });
