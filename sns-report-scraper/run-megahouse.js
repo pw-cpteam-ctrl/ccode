@@ -34,6 +34,11 @@
  * 기간 사이에 공백(게시글 없는 날)이 있어서 여러 기간을 따로따로 수집해야 하는 경우엔,
  * 그 기간들로 이 스크립트를 각각 실행해두면(예: 6/10~13, 6/18~22, 6/27~30 각각 실행) 자동으로
  * reports/period-cache/에 기간별로 남고, compare-periods.js로 재수집 없이 나란히 비교 가능.
+ *
+ * 이 스크립트를 실행할 때마다 재고 스냅샷(naver-stock-snapshot.js)도 자동으로 하나씩 같이
+ * 찍어서 reports/_stock-history.json에 쌓임 — SNS와 무관하게 매번 찍히므로, 같은 날 여러 번
+ * 돌리면 그만큼 스냅샷도 쌓임(의도된 동작). rebuild-report.js는 캐시만으로 빠르게 재생성하는
+ * 용도라 브라우저를 안 켜서, 여기엔 스냅샷 자동 촬영이 없음(그쪽은 기존 스냅샷만 그대로 사용).
  */
 const fs = require('fs');
 const path = require('path');
@@ -43,7 +48,7 @@ const { buildComparisonReport } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
 const { saveHtmlReport } = require('./html-report');
 const { buildStockComparison } = require('./stock-report');
-const { HISTORY_PATH: STOCK_HISTORY_PATH } = require('./naver-stock-snapshot');
+const { captureSnapshot, HISTORY_PATH: STOCK_HISTORY_PATH } = require('./naver-stock-snapshot');
 const { archiveAndGetPath } = require('./report-archive');
 
 const CONFIG = {
@@ -190,6 +195,17 @@ async function main() {
 
   const sheetName = await saveReportToExcel(report, CONFIG.outputPath);
   console.log(`✅ 엑셀 저장 완료: ${CONFIG.outputPath} (시트: ${sheetName})`);
+
+  // SNS 수집과 별개로, 이 스크립트를 돌릴 때마다 재고 스냅샷도 하나 같이 찍어서 쌓아둠 —
+  // 예전엔 naver-stock-snapshot.js를 사용자가 따로 기억해서 실행해야만 스냅샷이 쌓였는데,
+  // 그러다 보니 며칠씩 안 찍혀서 추이 그래프가 마지막으로 찍은 날짜에서 멈춰있는 문제가
+  // 있었음. 재고 사이트 접속이 실패해도(구조 변경 등) SNS 리포트 저장까지 막으면 안 되므로
+  // 실패해도 여기서 삼키고 경고만 남김 — 데이터 유실 방지가 우선.
+  try {
+    await captureSnapshot();
+  } catch (e) {
+    console.warn(`⚠️ 재고 스냅샷 촬영 실패(SNS 리포트는 정상 진행): ${e.message}`);
+  }
 
   const stockHistory = fs.existsSync(STOCK_HISTORY_PATH)
     ? JSON.parse(fs.readFileSync(STOCK_HISTORY_PATH, 'utf-8'))

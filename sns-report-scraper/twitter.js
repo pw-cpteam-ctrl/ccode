@@ -82,6 +82,12 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
   let stop = false;
   let retries = 0;
   const MAX_RETRIES = 5;
+  // 링크가 여러 개(제품별 상세페이지 링크 등) 붙은 게시물은 그만큼 카드 미리보기도 여러 개
+  // 붙어서 세로로 훨씬 길어짐 — 예전 3000px 점프는 이런 유난히 긴 게시물 하나를 통째로
+  // 건너뛰어서(가상 스크롤 목록이 그 사이에 화면 밖으로 밀려나 다시 렌더링 안 됨) 한 번도
+  // 안 걸리고 누락시키는 사례가 실제로 있었음(회귀 방지). 스크롤 폭을 줄여서 스냅샷 간
+  // 겹치는 구간을 넓혀 이런 누락 확률을 낮춤 — 대신 전체 수집 시간은 늘어남.
+  const SCROLL_STEP_PX = 1500;
   // "인용/멘션으로 옛날 글 끌올" 등 다양한 방식으로 오래된 게시물 하나가 최신 게시물들
   // 사이에 섞여 나올 수 있어서, 그 1건만 보고 바로 멈추면 오탐. 새로 발견된 순서(=피드 순서)
   // 기준으로 연속 N건이 전부 범위 시작일보다 오래돼야 "진짜로 과거로 넘어갔다"고 판단.
@@ -90,7 +96,7 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
   while (!stop) {
     try {
       await collectOnce();
-      await page.mouse.wheel(0, 3000);
+      await page.mouse.wheel(0, SCROLL_STEP_PX);
       await page.waitForTimeout(2500);
 
       const all = await page.evaluate(() => window._tweetData);
