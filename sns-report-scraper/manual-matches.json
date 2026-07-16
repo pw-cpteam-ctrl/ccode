@@ -9,7 +9,22 @@
       "pw": ["https://x.com/MegahouseStore/status/2072594855021396437"],
       "bh": ["https://x.com/Megahouse_BH/status/2072593099357057116"],
       "label": "페르소나5 게임 캐릭터즈 컬렉션 DX 아르센"
+    },
+    {
+      "pw": [
+        "https://x.com/MegahouseStore/status/2077630361660764209",
+        "https://x.com/MegahouseStore/status/2077630333504414135",
+        "https://x.com/MegahouseStore/status/2077604650417860951"
+      ],
+      "bh": ["https://x.com/Megahouse_BH/status/2077606006205677638"],
+      "label": "헌터x헌터 구매인증 이벤트"
     }
   ],
-  "instagram": []
+  "instagram": [
+    {
+      "pw": ["https://www.instagram.com/megahouse_store/p/Da1vI-pkSX2/"],
+      "bh": ["https://www.instagram.com/megahouse_korea_dt_bh/p/Da1u18WgU6o/"],
+      "label": "7월 신제품 안내(특정 IP 아님)"
+    }
+  ]
 }
