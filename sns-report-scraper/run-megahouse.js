@@ -1,6 +1,10 @@
 /**
  * 전체 실행 스크립트: 계정별 수집(twitter.js/instagram.js) → 취합(aggregate.js) → 엑셀 저장(excel.js)
  *
+ * 파일명이 run-megahouse.js인 이유: 항상 메가하우스 자사(PW)/경쟁사(BH) 두 계정을 고정으로
+ * 비교하는 스크립트라서, 임의의 계정 하나만 단독으로 보는 collect-account.js와 헷갈리지
+ * 않게 이름 자체에 용도를 명시함(예전엔 run.js였음).
+ *
  * twitter.js, instagram.js는 실제 계정(megahousestore/megahouse_store)으로 검증 완료
  * (PLAN.md 참고). 아래 CONFIG는 원칙적으로 운용하는 자사/경쟁사 계정 고정 세팅 —
  * 예외적인 계정을 수집해야 할 땐 이 CONFIG를 건드리지 말고 그때그때 따로 요청.
@@ -12,11 +16,11 @@
  * CONFIG.startDate/endDate 기본값 사용. endDate는 미포함(그 날짜 자정 이전까지)이라
  * 하루치만 보려면 다음날을 endDate로 줄 것(예: 7/10 하루 → 2026-07-10 2026-07-11).
  *
- * 사용법: node run.js                                — 트위터+인스타, CONFIG 기본 기간
- *        node run.js twitter                         — 트위터만, CONFIG 기본 기간
- *        node run.js instagram                       — 인스타만, CONFIG 기본 기간
- *        node run.js 2026-07-10 2026-07-11            — 트위터+인스타, 지정 기간(7/10 하루)
- *        node run.js twitter 2026-07-10 2026-07-11    — 트위터만, 지정 기간
+ * 사용법: node run-megahouse.js                                — 트위터+인스타, CONFIG 기본 기간
+ *        node run-megahouse.js twitter                         — 트위터만, CONFIG 기본 기간
+ *        node run-megahouse.js instagram                       — 인스타만, CONFIG 기본 기간
+ *        node run-megahouse.js 2026-07-10 2026-07-11            — 트위터+인스타, 지정 기간(7/10 하루)
+ *        node run-megahouse.js twitter 2026-07-10 2026-07-11    — 트위터만, 지정 기간
  * 한쪽만 수집해도 캐시(cachePath)에 남아있던 다른 플랫폼 데이터는 보존됨(안 지워짐).
  *
  * 기간 사이에 공백(게시글 없는 날)이 있어서 여러 기간을 따로따로 수집해야 하는 경우엔,
