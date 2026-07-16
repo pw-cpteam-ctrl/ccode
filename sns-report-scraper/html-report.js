@@ -409,6 +409,8 @@ details.unmatched summary{cursor:pointer;color:#6b7280;font-size:13px}
 .add-btn:hover{background:#ebfbee}
 .add-btn.primary{color:#fff;background:#3b5bdb;border-color:#3b5bdb;padding:6px 14px;font-size:12px}
 .add-btn.primary:hover{background:#2f4bc7}
+.add-btn.danger{color:#c0504d;border-color:#f3d4d3}
+.add-btn.danger:hover{background:#fff0f0}
 details.manual-add{margin-top:10px;background:#fff;border-radius:12px;padding:10px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 details.manual-add summary{cursor:pointer;color:#6b7280;font-size:13px}
 .manual-add-body{margin-top:10px;display:flex;flex-direction:column;gap:8px}
@@ -478,7 +480,36 @@ function refreshExportBox() {
     window._manualAdditions.instagram.pw.length + window._manualAdditions.instagram.bh.length;
   if (total === 0) { box.style.display = 'none'; return; }
   box.style.display = '';
-  document.getElementById('export-textarea').value = JSON.stringify(window._manualAdditions, null, 2);
+  // _manualId는 화면 안에서 삭제 버튼이 대상을 찾기 위한 임시 표시일 뿐, manual-posts.json에
+  // 저장되는 실제 게시물 데이터엔 필요 없어서 내보낼 때는 빼고 씀.
+  var clean = {};
+  ['twitter', 'instagram'].forEach(function (platform) {
+    clean[platform] = { pw: [], bh: [] };
+    ['pw', 'bh'].forEach(function (side) {
+      clean[platform][side] = window._manualAdditions[platform][side].map(function (p) {
+        var copy = Object.assign({}, p);
+        delete copy._manualId;
+        return copy;
+      });
+    });
+  });
+  document.getElementById('export-textarea').value = JSON.stringify(clean, null, 2);
+}
+function removeManualPost(btn) {
+  var tr = btn.closest('tr');
+  var platform = tr.dataset.platform;
+  var side = tr.dataset.side;
+  var manualId = parseInt(tr.dataset.manualId, 10);
+  window._manualAdditions[platform][side] = window._manualAdditions[platform][side].filter(function (p) {
+    return p._manualId !== manualId;
+  });
+  var tbody = tr.parentElement;
+  tr.remove();
+  if (!tbody.querySelector('tr')) {
+    var cols = parseInt(tbody.dataset.cols, 10);
+    tbody.innerHTML = '<tr><td colspan="' + cols + '" class="empty">매칭된 상품 없음</td></tr>';
+  }
+  refreshExportBox();
 }
 function copyExport() {
   var ta = document.getElementById('export-textarea');
@@ -495,6 +526,8 @@ function copyExport() {
 // 같은 건지"는 다음에 rebuild-report.js를 돌릴 때 평소 자동 매칭 로직이 다시 판단하므로,
 // 여기선 그룹화를 흉내내지 않고 "PW만/BH만 아는 새 게시물"이라는 걸 명확히 보여주는
 // 별도 행으로만 추가함(과도하게 복잡해지지 않게 하려는 의도적 단순화).
+window._manualIdCounter = 0;
+
 function addManualPost(platform, side, post) {
   var textField = platformTextField(platform);
   var text = post[textField] || '';
@@ -503,7 +536,11 @@ function addManualPost(platform, side, post) {
   var split = splitIpAndLine(title, line);
   var ip = split.ip || '(미분류)';
 
-  window._manualAdditions[platform][side].push(post);
+  // _manualId는 화면에서 "삭제" 버튼이 어느 행/어느 배열 항목을 지워야 하는지 찾기 위한
+  // 표시용 태그일 뿐 — 저장(export) 시에는 실제 게시물 데이터가 아니므로 빼고 내보냄.
+  var manualId = ++window._manualIdCounter;
+  var taggedPost = Object.assign({}, post, { _manualId: manualId });
+  window._manualAdditions[platform][side].push(taggedPost);
   refreshExportBox();
 
   var link = post.link || post.url || '';
@@ -517,6 +554,9 @@ function addManualPost(platform, side, post) {
   var hasStock = tbody.dataset.hasStock === '1';
   var tr = document.createElement('tr');
   tr.className = 'manual-row';
+  tr.dataset.platform = platform;
+  tr.dataset.side = side;
+  tr.dataset.manualId = String(manualId);
   var escName = ip.replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
   var cells = ['<td class="rank">🆕</td>',
     '<td class="name"><span class="manual-tag">수동추가·' + sideLabel + '만</span>' + escName + '</td>',
@@ -531,7 +571,8 @@ function addManualPost(platform, side, post) {
   });
   cells.push('<td>' + timeText + '</td>');
   cells.push('<td>-</td>');
-  cells.push('<td>' + (link ? '<a href="' + link + '" target="_blank" rel="noopener">링크</a>' : '-') + '</td>');
+  cells.push('<td>' + (link ? '<a href="' + link + '" target="_blank" rel="noopener">링크</a>' : '') +
+    ' <button class="add-btn danger" onclick="removeManualPost(this)">삭제</button></td>');
   if (hasStock) cells.push('<td>-</td>');
   tr.innerHTML = cells.join('');
   var emptyRow = tbody.querySelector('td.empty');

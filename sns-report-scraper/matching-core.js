@@ -125,6 +125,10 @@ function stripUrlNoise(text) {
 function extractKeywords(text) {
   if (!text) return [];
   let cleaned = stripUrlNoise(text)
+    .replace(/×/g, 'x') // "헌터×헌터"(곱셈 기호)와 "헌터x헌터"(영문 x)가 서로 다른 토큰으로
+                        // 갈라져서 같은 프랜차이즈인데도 겹치는 키워드가 0개로 나오던 문제 —
+                        // 곱셈 기호는 글자(\p{L})가 아니라서 토큰이 "헌터"+"헌터"로 끊겨버림.
+                        // 자사/경쟁사가 표기를 다르게 써도 같은 걸로 보이게 통일.
     .replace(/(?<=[A-Za-z])\.(?=[A-Za-z])/g, '') // "G.E.M." → "GEM"
     .replace(/\[[^\]]*\]/g, ' '); // "[예약시작]", "[채색원형 최초공개]" 같은 브라켓 태그는 통째로
                                   // 제거 — 안 지우면 서로 다른 상품 게시물에 반복돼서 그 브라켓
