@@ -27,16 +27,24 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
   await page.evaluate(() => {
     window._tweetData = [];
     window._seenLinks = new Set();
+    window._loggedSkips = new Set(); // 같은 링크로 스킵 사유를 여러 번 안 찍기 위한 중복 방지용
   });
 
+  // 페르소나3 리로드 게시물처럼 "이유 없이 누락되는" 사례가 반복돼서, 추측으로 또 고치는 대신
+  // 실제로 어느 조건에서 걸러지는지 콘솔에 그대로 남기게 함(원인 확정 전까지 임시 계측용).
+  // skip 사유가 하나도 안 찍히는데 그 트윗이 여전히 안 잡히면, 이 필터들 문제가 아니라
+  // X가 그 카드를 querySelectorAll이 도는 시점에 아예 DOM에 렌더링을 안 해준 것 — 원인이
+  // 완전히 다른 범주(가상 스크롤 타이밍)라는 뜻.
   async function collectOnce() {
-    return page.evaluate(() => {
+    const skipped = await page.evaluate(() => {
+      const skippedThisTick = [];
       document.querySelectorAll('article[data-testid="tweet"]').forEach(article => {
         const timeEl = article.querySelector('time');
         const linkEl = article.querySelector('a[href*="/status/"]');
         if (!timeEl || !linkEl) return;
         const link = 'https://x.com' + linkEl.getAttribute('href');
         if (window._seenLinks.has(link)) return;
+        if (window._loggedSkips.has(link)) return;
 
         // 리트윗/고정 게시물엔 socialContext 라벨("OO님이 리트윗함", "고정된 게시물")이 붙는데,
         // 이 경우 <time>이 "지금 이 계정이 리트윗한 시점"이 아니라 "원본 게시물이 처음 올라간
@@ -52,7 +60,11 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
         // 게시물이 통째로 누락된 사례를 발견함. seenLinks에 안 넣어도 이 카드는 스크롤 중
         // 화면에 남아있는 동안 매 tick마다 다시 스킵될 뿐이라 안전함.
         const socialContext = article.querySelector('[data-testid="socialContext"]');
-        if (socialContext) return;
+        if (socialContext) {
+          window._loggedSkips.add(link);
+          skippedThisTick.push({ link, reason: `socialContext("${socialContext.innerText.replace(/\s+/g, ' ').trim()}")` });
+          return;
+        }
 
         // 인용 트윗(quote tweet) 안에 인용된 원본 게시물이 똑같은 article[data-testid="tweet"]
         // 구조로 중첩 렌더링되는 경우가 있음 — querySelectorAll이 이 중첩 카드까지 별도
@@ -60,6 +72,8 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
         // 로직을 오작동시킴. 최상위 피드 게시물이 아니라 카드 안에 중첩된 것이면 제외.
         // (같은 이유로 여기도 seenLinks에는 추가하지 않음 — 위 socialContext 케이스와 동일)
         if (article.parentElement && article.parentElement.closest('article[data-testid="tweet"]')) {
+          window._loggedSkips.add(link);
+          skippedThisTick.push({ link, reason: 'nested-article(인용 트윗 안에 중첩된 카드로 판단)' });
           return;
         }
 
@@ -76,7 +90,9 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
           text: textEl ? textEl.innerText : '',
         });
       });
+      return skippedThisTick;
     });
+    skipped.forEach(s => console.log(`[twitter:${account}:skip] ${s.reason} — ${s.link}`));
   }
 
   let stop = false;
