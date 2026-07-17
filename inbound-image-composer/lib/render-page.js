@@ -79,7 +79,7 @@ function fitFont(ctx, text, maxWidth, base, min) {
   return size;
 }
 
-// Draws a rounded-rect "sticker" badge (used for 룩업/테노히라/메가캣/홀로라이브
+// Draws a rounded-rect "sticker" badge (used for 테노히라/메가캣/GEM/홀로라이브
 // lineup tags) at (x, baselineY).
 function drawTagBadge(ctx, x, baselineY, text, tagSize = 13) {
   const pad = 5;

@@ -49,7 +49,7 @@ const RESULT_SCHEMA = {
           ip: { type: 'string', description: '추정 IP명 (business-rules.md 표기 가이드 기준으로 축약/정규화)' },
           price: { type: 'string', description: '가격 텍스트 (예: 44,400원). 없으면 빈 문자열' },
           ship: { type: 'string', description: '배송비 텍스트 (예: 무료배송, 3,000원). 없으면 무료배송으로 추정' },
-          tag: { type: 'string', description: 'ip가 "VTuber"면 소속(예: 홀로라이브, 니지산지)을 여기 적는다. 그 외엔 화이트리스트 태그 중 하나(룩업/테노히라/메가캣) 또는 빈 문자열. 확실하지 않으면 빈 문자열' },
+          tag: { type: 'string', description: 'ip가 "VTuber"면 소속(예: 홀로라이브, 니지산지)을 여기 적는다. 그 외엔 화이트리스트 태그 중 하나(테노히라/메가캣/GEM) 또는 빈 문자열. 확실하지 않으면 빈 문자열' },
           moodCluster: { type: 'string', description: '아래 분위기 클러스터 목록 중 이 IP와 가장 어울리는 클러스터명. 애매하거나 목록에 없으면 빈 문자열' },
           uncertain: { type: 'boolean', description: 'IP명 판단이 애매하거나 원문을 명확히 읽지 못했으면 true' },
           genderLean: { type: 'string', enum: ['male', 'female', 'unknown'], description: '이 IP/캐릭터의 주 소비층 성향 추측. 남성향이면 male, 여성향이면 female, 판단이 애매하면 unknown. S/A급으로 이미 유명한 IP라도 상관없이 항상 추측해서 채워라(클라이언트가 필요할 때만 사용한다).' },
@@ -73,7 +73,7 @@ function buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, la
     .slice(0, 60)
     .map(([k, v]) => `- ${k} → ${v}`)
     .join('\n');
-  const whitelist = (tagWhitelist && tagWhitelist.length ? tagWhitelist : ['룩업', '테노히라', '메가캣']).join(', ');
+  const whitelist = (tagWhitelist && tagWhitelist.length ? tagWhitelist : ['테노히라', '메가캣', 'GEM']).join(', ');
   // "⚙ 사전 관리 → 상품 라인명" 탭에서 사용자가 계속 늘려나가는 목록. 프론트가 안 보내면
   // (배포 전 구버전 등) 기본값으로 최소한의 대표 단어만 사용한다.
   const lineNames = (productLineNames && productLineNames.length

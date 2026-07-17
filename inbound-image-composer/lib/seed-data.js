@@ -63,17 +63,17 @@ const SEED_STORE_PROFILES = {
   goodsmile: {
     label: '굿스마일 스토어',
     genderPriority: 'male-first',
-    tagWhitelist: ['룩업', '테노히라', '메가캣'],
+    tagWhitelist: [], // 굿스마일은 라인업 태그를 아예 안 씀
   },
   megahouse: {
     label: '메가하우스 스토어',
     genderPriority: 'female-first',
-    tagWhitelist: ['룩업', '테노히라', '메가캣'],
+    tagWhitelist: ['테노히라', '메가캣', 'GEM'], // 룩업은 폐지, GEM 신설
   },
   bushiroad: {
     label: '부시로드 스토어',
     genderPriority: 'male-first',
-    tagWhitelist: ['룩업', '테노히라', '메가캣'],
+    tagWhitelist: [], // 부시로드도 라인업 태그를 아예 안 씀
     bandNameAsIs: true, // 뱅드림 밴드명(Ave Mujica, MyGO!!!!! 등)은 그대로 표기
   },
 };

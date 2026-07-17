@@ -48,7 +48,7 @@ function buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, pr
     .slice(0, 60)
     .map(([k, v]) => `- ${k} → ${v}`)
     .join('\n');
-  const whitelist = (tagWhitelist && tagWhitelist.length ? tagWhitelist : ['룩업', '테노히라', '메가캣']).join(', ');
+  const whitelist = (tagWhitelist && tagWhitelist.length ? tagWhitelist : ['테노히라', '메가캣', 'GEM']).join(', ');
   const lineNames = (productLineNames && productLineNames.length
     ? productLineNames
     : ['넨도로이드', '피그마', '팝업퍼레이드', '블라인드박스']
