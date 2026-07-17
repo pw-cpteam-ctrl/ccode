@@ -97,6 +97,10 @@
   .copybtns { display:flex; gap:8px; margin-bottom:8px; }
   .btn2 { flex:1; border:1px solid var(--line2); background:#fff; border-radius:8px; padding:9px; font-size:13px; font-weight:600; cursor:pointer; color:var(--text); }
   .btn2:hover { border-color:var(--accent); color:var(--accent); }
+  /* 원고 생성 = 파란 버튼(흰 글씨) · 옆 복사 버튼과 7:3 */
+  #genCopy { flex:7; background:#2f7fd8; border-color:#2f7fd8; color:#fff; font-weight:700; }
+  #genCopy:hover { background:#2569bf; border-color:#2569bf; color:#fff; }
+  #doCopy { flex:3; }
   #t_copy { width:100%; min-height:220px; background:#fff; border:1px solid var(--line2); border-radius:8px; color:var(--text); padding:11px; font-size:13px; line-height:1.6; font-family:'Pretendard',sans-serif; resize:vertical; }
   .ccount { font-size:12px; color:var(--muted); margin-top:7px; font-variant-numeric:tabular-nums; }
   .ccount b { font-weight:700; }
@@ -110,7 +114,7 @@
   #toast.warn { background:#8a2f3d; }
 
   /* ===== 모바일 (≤860px): 반응형 축소가 아니라 PC의 좌·우 2열을 세로 1열로 쌓고,
-     스크롤이 길어지지 않도록 미리보기는 기본 접힘 + 버튼으로 펼치게 한다. ===== */
+     미리보기는 기본 펼침(사진 넣으면 바로 보이게) + 큰 버튼으로 원하면 접을 수 있게 한다. ===== */
   .mobile-preview-toggle { display:none; } /* 데스크톱에선 숨김(미리보기 항상 표시) */
   @media (max-width: 860px) {
     body { flex-direction: column; gap: 14px; padding: 14px 12px; align-items: stretch; }
@@ -121,20 +125,21 @@
     h1 { order: 1; }
     .combo12 { order: 2; }   /* 1·사진 + 2·원문입력 + 채우기 버튼 */
     .box-t { order: 3; }     /* 두 버튼 설명 */
-    .box-y { order: 4; }     /* 3·텍스트 편집 */
-    .mobile-preview-toggle { order: 5; }
-    .imagerow { order: 6; }  /* 미리보기(+이전입력 슬롯) */
-    .hint { order: 7; }
+    .mobile-preview-toggle { order: 4; } /* 미리보기를 설명 카드 바로 밑으로 올림 */
+    .imagerow { order: 5; }  /* 미리보기(+이전입력 슬롯) */
+    .hint { order: 6; }
+    .box-y { order: 7; }     /* 3·텍스트 편집 */
     .infobar { order: 8; }   /* 이전입력 설명 · 사진 크롭/배경 */
     .box-b { order: 9; }     /* 원고(캡션) */
     .dlbar { order: 10; }    /* PNG 다운로드 */
 
-    /* 미리보기 접기 토글 */
+    /* 미리보기 접기 토글 — 눈에 확 띄게 크고 강조색으로 */
     .mobile-preview-toggle {
-      display:block; width:100%; border:1px solid var(--line2); background:#fff;
-      border-radius:10px; padding:12px; font-size:14px; font-weight:600; color:var(--text);
+      display:block; width:100%; border:2px solid var(--accent); background:#fdeef3; color:var(--accent);
+      border-radius:12px; padding:16px; font-size:17px; font-weight:800; letter-spacing:.3px;
       cursor:pointer; text-align:center;
     }
+    .mobile-preview-toggle:active { background:#f9dbe6; }
     body:not(.preview-open) .imagerow,
     body:not(.preview-open) .hint { display:none; } /* 펼치기 전엔 미리보기 영역 숨겨 스크롤 절약 */
 
@@ -162,7 +167,8 @@
   }
 </style>
 </head>
-<body>
+<body class="preview-open"><!-- 모바일 미리보기 기본 펼침(접기는 토글로) -->
+
   <div class="left">
     <div class="imagerow">
       <div class="slotcol" id="slots"></div>
@@ -170,7 +176,7 @@
         <canvas id="stage" width="1080" height="1350"></canvas>
       </div>
     </div>
-    <button class="mobile-preview-toggle" id="previewToggle" type="button" aria-expanded="false">🖼 미리보기 보기 ▾</button>
+    <button class="mobile-preview-toggle" id="previewToggle" type="button" aria-expanded="true">🖼 미리보기 접기 ▲</button>
     <div class="hint">미리보기만 75% 축소 (다운로드 화질엔 영향 없음) · 드래그로 위치 조정</div>
     <div class="card infobar">
       <div class="infobar-col">
@@ -857,7 +863,7 @@ document.getElementById('download').addEventListener('click',()=>{ if(!runValida
 document.getElementById('previewToggle').addEventListener('click', function(){
   const open = document.body.classList.toggle('preview-open');
   this.setAttribute('aria-expanded', open ? 'true' : 'false');
-  this.textContent = open ? '🖼 미리보기 숨기기 ▴' : '🖼 미리보기 보기 ▾';
+  this.textContent = open ? '🖼 미리보기 접기 ▲' : '🖼 미리보기 펼치기 ▼';
 });
 
 window.addEventListener('beforeunload', ()=>{ pushSlot(snapshotWith(appliedSource), true); });  // 닫기 전 현재 작업 보존
