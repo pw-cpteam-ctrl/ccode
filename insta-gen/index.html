@@ -141,7 +141,8 @@
     }
     .mobile-preview-toggle:active { background:#f9dbe6; }
     body:not(.preview-open) .imagerow,
-    body:not(.preview-open) .hint { display:none; } /* 펼치기 전엔 미리보기 영역 숨겨 스크롤 절약 */
+    body:not(.preview-open) .hint,
+    body:not(.preview-open) .box-y { display:none; } /* 접으면 미리보기+노란 편집칸(3·텍스트)까지 같이 숨겨 스크롤 절약(모바일 한정) */
 
     /* 미리보기 영역: 세로로(미리보기 위, 이전입력 슬롯 아래) */
     .imagerow { flex-direction:column-reverse; gap:12px; align-items:center; }
@@ -176,7 +177,7 @@
         <canvas id="stage" width="1080" height="1350"></canvas>
       </div>
     </div>
-    <button class="mobile-preview-toggle" id="previewToggle" type="button" aria-expanded="true">🖼 미리보기 접기 ▲</button>
+    <button class="mobile-preview-toggle" id="previewToggle" type="button" aria-expanded="true">🖼 미리보기·편집칸 접기 ▲</button>
     <div class="hint">미리보기만 75% 축소 (다운로드 화질엔 영향 없음) · 드래그로 위치 조정</div>
     <div class="card infobar">
       <div class="infobar-col">
@@ -863,7 +864,7 @@ document.getElementById('download').addEventListener('click',()=>{ if(!runValida
 document.getElementById('previewToggle').addEventListener('click', function(){
   const open = document.body.classList.toggle('preview-open');
   this.setAttribute('aria-expanded', open ? 'true' : 'false');
-  this.textContent = open ? '🖼 미리보기 접기 ▲' : '🖼 미리보기 펼치기 ▼';
+  this.textContent = open ? '🖼 미리보기·편집칸 접기 ▲' : '🖼 미리보기·편집칸 펼치기 ▼';
 });
 
 window.addEventListener('beforeunload', ()=>{ pushSlot(snapshotWith(appliedSource), true); });  // 닫기 전 현재 작업 보존
