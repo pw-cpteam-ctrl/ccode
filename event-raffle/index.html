@@ -172,7 +172,7 @@ async function runFilter() {
     const planRes = await fetch('/api/plan-filter', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ columns, sampleRows: participants.slice(0, 3), condition }),
+      body: JSON.stringify({ columns, sampleRows: participants.slice(0, 8), condition }),
     });
     const plan = await planRes.json().catch(() => ({}));
     if (!planRes.ok) throw new Error(plan.error || `서버 오류 (${planRes.status})`);
@@ -198,6 +198,15 @@ async function runFilter() {
       candidates = preCandidateRows.map(row => ({ row, reason: '조건 규칙을 코드로 확인함 (AI 판단 없음)' }));
       applyCandidates(true);
       $('#filterStatus').textContent = `"${condition}" 조건으로 ${candidates.length}명 선정됨 (코드 규칙만으로 판별, AI 비용 없음)`;
+      return;
+    }
+
+    if (usedCodeRule && preCandidateRows.length === 0) {
+      // 1차 규칙만으로 후보가 0명이 됨 — 빈 명단을 AI 판단 단계로 넘기면 서버가
+      // 에러를 반환하므로, 여기서 끝내고 원인을 확인할 수 있게 규칙 자체를 보여준다.
+      candidates = [];
+      applyCandidates(true);
+      $('#filterStatus').textContent = `1차 규칙(코드)으로 거른 결과 후보가 0명이에요. 조건에 맞는 사람이 실제로 없거나, 컬럼명이 뒤섞여 있어서(예: 스크래퍼 원본 데이터) 규칙이 엉뚱한 컬럼을 봤을 수 있어요. 적용된 규칙: ${plan.codeRule}`;
       return;
     }
 
@@ -231,7 +240,13 @@ async function runFilter() {
       : `"${condition}" 조건으로 ${candidates.length}명 선정됨`;
   } catch (err) {
     $('#filterStatus').textContent = '';
-    $('#filterFallback').textContent = `필터링 서버에 연결할 수 없어요 (${err.message}). Vercel 배포 + API 키(ANTHROPIC_API_KEY) 설정 전에는 이 버튼이 작동하지 않아요. 그동안은 "전체 참가자로 진행"으로 추첨 기능만 미리 테스트해볼 수 있어요.`;
+    // fetch 자체가 실패(네트워크/배포 문제)한 경우와, 서버는 응답했지만 오류를
+    // 반환한 경우를 구분해서 정확한 원인을 보여준다 — 항상 "API 키 미설정"으로
+    // 뭉뚱그리면 실제 원인(데이터 문제 등)을 오해하게 만든다.
+    const isNetworkErr = err instanceof TypeError;
+    $('#filterFallback').textContent = isNetworkErr
+      ? `필터링 서버에 연결할 수 없어요. Vercel 배포 + API 키(ANTHROPIC_API_KEY) 설정 전에는 이 버튼이 작동하지 않아요. 그동안은 "전체 참가자로 진행"으로 추첨 기능만 미리 테스트해볼 수 있어요.`
+      : `필터링 중 오류가 발생했어요: ${err.message}`;
     $('#filterFallback').style.display = 'block';
   } finally {
     btn.disabled = false;
