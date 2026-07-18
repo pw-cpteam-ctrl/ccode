@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SNS 성과 리포트 대시보드</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:'Malgun Gothic',system-ui,sans-serif;background:#f4f6fb;color:#1f2937}
+.wrap{max-width:900px;margin:0 auto;padding:28px 18px 60px}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:#6b7280;font-size:13px;margin-bottom:6px}
+.notice{background:#fff9db;border:1px solid #ffe066;border-radius:10px;padding:10px 14px;font-size:12px;color:#665500;margin-bottom:20px;line-height:1.6}
+.panel{background:#fff;border-radius:12px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}
+.panel h2{font-size:15px;margin:0 0 4px}
+.panel .desc{font-size:12px;color:#6b7280;margin:0 0 12px;line-height:1.6}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px}
+.row label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#374151}
+.row input,.row select{border:1px solid #d0d5e0;border-radius:8px;padding:7px 9px;font-size:13px;min-width:150px}
+button{border:1px solid #3b5bdb;background:#3b5bdb;color:#fff;font-size:13px;padding:8px 16px;border-radius:8px;cursor:pointer}
+button:hover{background:#2f4bc7}
+button:disabled{background:#c4cbe0;border-color:#c4cbe0;cursor:not-allowed}
+button.secondary{background:#fff;color:#3b5bdb}
+button.secondary:hover{background:#eef2ff}
+.status-line{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px}
+.dot{width:9px;height:9px;border-radius:50%;background:#c9ced8;flex:none}
+.dot.ok{background:#2f9e44}.dot.warn{background:#e8590c}
+.session-check{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+#log{background:#0f1117;color:#d5f5e3;font-family:monospace;font-size:12px;white-space:pre-wrap;border-radius:10px;padding:12px 14px;max-height:320px;overflow-y:auto;margin-top:10px;display:none}
+#jobStatus{font-size:13px;margin-top:6px}
+.report-list{list-style:none;margin:0;padding:0;font-size:13px}
+.report-list li{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f4f6fb}
+.report-list a{color:#3b5bdb;text-decoration:none}
+.report-list a:hover{text-decoration:underline}
+.report-list .meta{color:#9099a6;font-size:11px}
+.period-inputs{display:flex;flex-direction:column;gap:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📊 SNS 성과 리포트 대시보드</h1>
+  <div class="sub">터미널 명령어 대신 이 화면에서 버튼으로 실행할 수 있게 만든 도구</div>
+  <div class="notice">
+    ⚠️ 이 화면은 <b>이 컴퓨터 안에서만</b> 동작해요. 다른 컴퓨터·팀원은 이 주소로 못 들어오고,
+    각자 자기 컴퓨터에서 이 프로그램을 따로 실행해야 해요. 로그인 정보도 이 컴퓨터 밖으로
+    전송되지 않고 여기 파일로만 저장돼요.
+  </div>
+
+  <div class="panel">
+    <h2>1. 로그인 상태 확인</h2>
+    <p class="desc">
+      실적을 수집하려면 트위터/인스타그램에 로그인된 상태(세션)가 필요해요. 한 번 로그인해두면
+      며칠~몇 주 정도는 계속 쓸 수 있고, 풀리면 로그인 화면이 계속 뜨는 식으로 알 수 있어요 —
+      그럴 때 여기서 다시 로그인하면 돼요.
+    </p>
+    <div class="session-check">
+      <div class="status-line"><span class="dot" id="dot-twitter"></span> 트위터: <span id="text-twitter">확인 중...</span>
+        <button class="secondary" onclick="startLogin('twitter')">트위터 로그인하기</button></div>
+      <div class="status-line"><span class="dot" id="dot-instagram"></span> 인스타그램: <span id="text-instagram">확인 중...</span>
+        <button class="secondary" onclick="startLogin('instagram')">인스타그램 로그인하기</button></div>
+    </div>
+    <p class="desc" id="loginHelp" style="display:none">
+      버튼을 누르면 이 컴퓨터에 실제 브라우저 창이 새로 뜰 거예요. 그 창에서 평소처럼 직접
+      로그인(2단계 인증 있으면 그것도 그대로)하고, 다 되면 아래 "로그인 완료했어요" 버튼을
+      눌러주세요.
+    </p>
+    <button id="confirmLoginBtn" style="display:none" onclick="confirmLogin()">로그인 완료했어요</button>
+  </div>
+
+  <div class="panel">
+    <h2>2. 오늘 실적 수집</h2>
+    <p class="desc">
+      자사(PW)·경쟁사(BH)의 오늘 하루 트위터·인스타그램 게시물을 모아서 비교 리포트를
+      만들어요. 실제로 인터넷을 오가며 게시물을 읽어오는 거라 보통 몇 분 정도 걸려요.
+    </p>
+    <div class="row">
+      <label>플랫폼
+        <select id="collectPlatform"><option value="">둘 다</option><option value="twitter">트위터만</option><option value="instagram">인스타그램만</option></select>
+      </label>
+      <button onclick="collect('today')">오늘 하루 수집</button>
+    </div>
+    <details>
+      <summary style="cursor:pointer;font-size:12px;color:#6b7280">특정 기간을 지정하고 싶다면</summary>
+      <div class="row" style="margin-top:8px">
+        <label>시작일 <input type="date" id="rangeStart"></label>
+        <label>종료일(이 날짜도 포함돼요) <input type="date" id="rangeEnd"></label>
+        <button onclick="collect('range')">이 기간으로 수집</button>
+      </div>
+    </details>
+  </div>
+
+  <div class="panel">
+    <h2>3. 방금 수집한 데이터로 리포트만 다시 만들기</h2>
+    <p class="desc">
+      재수집(몇 분) 없이, 방금 수집해둔 원본 데이터로 엑셀·화면 리포트만 몇 초 안에 다시
+      만들어요. 수동으로 매칭을 조정했거나 리포트 형식만 다시 보고 싶을 때 사용해요.
+    </p>
+    <button onclick="rebuild()">캐시로 다시 만들기</button>
+  </div>
+
+  <div class="panel">
+    <h2>4. 날짜가 떨어진 여러 기간 비교하기</h2>
+    <p class="desc">
+      예: 6/10~13, 6/18~22처럼 사이에 공백이 있는 여러 기간을 각각 "오늘 실적 수집"으로
+      미리 모아뒀다면, 그 기간들을 나란히 비교하는 표를 만들어요. 아래에 이미 수집해둔
+      기간을 "시작일_종료일" 형태로 한 줄씩 적어주세요(2개 이상).
+    </p>
+    <div class="period-inputs">
+      <textarea id="periodsInput" rows="3" placeholder="2026-06-10_2026-06-13&#10;2026-06-18_2026-06-22" style="font-family:monospace;font-size:12px;padding:8px;border:1px solid #d0d5e0;border-radius:8px"></textarea>
+    </div>
+    <div class="row" style="margin-top:8px"><button onclick="comparePeriods()">기간별로 비교하기</button></div>
+  </div>
+
+  <div class="panel">
+    <h2>5. 특정 계정 하나만 단독으로 보기</h2>
+    <p class="desc">
+      자사·경쟁사 비교가 아니라, 임의의 트위터 계정 하나만 골라서 그 계정 게시물 성과만
+      순위표로 보고 싶을 때 사용해요.
+    </p>
+    <div class="row">
+      <label>계정 핸들(@ 없이) <input type="text" id="acctHandle" placeholder="예: GoodsmileP"></label>
+      <label>시작일 <input type="date" id="acctStart"></label>
+      <label>종료일 <input type="date" id="acctEnd"></label>
+      <label><input type="checkbox" id="acctPlaintext" style="width:auto;min-width:auto"> 글 내용만(지표 없이)</label>
+      <button onclick="collectAccount()">이 계정 수집</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2 id="jobLabel">진행 상황</h2>
+    <div id="jobStatus">아직 실행한 작업이 없어요.</div>
+    <div class="row" style="margin-top:6px">
+      <button class="secondary" id="cancelBtn" style="display:none" onclick="cancelJob()">작업 취소</button>
+    </div>
+    <div id="log"></div>
+  </div>
+
+  <div class="panel">
+    <h2>만들어진 리포트 다운로드</h2>
+    <p class="desc">여기서 파일을 받아서 메일·메신저로 다른 사람과 그대로 공유할 수 있어요 — 받는 사람은 그냥 파일을 열어보면 돼요(서버 공유 아님).</p>
+    <ul class="report-list" id="reportList"></ul>
+  </div>
+</div>
+
+<script>
+let evtSource = null;
+let jobRunning = false;
+
+function setButtonsDisabled(disabled) {
+  document.querySelectorAll('button').forEach(b => { if (b.id !== 'cancelBtn') b.disabled = disabled; });
+  document.getElementById('cancelBtn').style.display = disabled ? '' : 'none';
+}
+
+async function refreshStatus() {
+  const res = await fetch('/api/status');
+  const data = await res.json();
+  setSession('twitter', data.hasTwitterSession);
+  setSession('instagram', data.hasInstagramSession);
+  if (data.job && data.job.status === 'running') {
+    jobRunning = true;
+    setButtonsDisabled(true);
+    document.getElementById('jobLabel').textContent = data.job.label + ' — 진행 중';
+  }
+}
+
+function setSession(platform, has) {
+  document.getElementById('dot-' + platform).className = 'dot ' + (has ? 'ok' : 'warn');
+  document.getElementById('text-' + platform).textContent = has ? '로그인 있음' : '로그인 필요';
+}
+
+function startEventStream() {
+  if (evtSource) return;
+  evtSource = new EventSource('/api/jobs/stream');
+  const log = document.getElementById('log');
+  log.style.display = 'block';
+  evtSource.addEventListener('init', e => {
+    const data = JSON.parse(e.data);
+    document.getElementById('jobLabel').textContent = data.label + (data.status === 'running' ? ' — 진행 중' : '');
+    log.textContent = data.logs.join('');
+    log.scrollTop = log.scrollHeight;
+  });
+  evtSource.addEventListener('log', e => {
+    const data = JSON.parse(e.data);
+    log.textContent += data.line;
+    log.scrollTop = log.scrollHeight;
+  });
+  evtSource.addEventListener('status', e => {
+    const data = JSON.parse(e.data);
+    if (data.status !== 'running') {
+      jobRunning = false;
+      setButtonsDisabled(false);
+      document.getElementById('jobStatus').textContent = data.status === 'done'
+        ? '✅ 완료됐어요.'
+        : '❌ 실패했거나 도중에 멈췄어요(위 로그 참고).';
+      refreshReports();
+      document.getElementById('loginHelp').style.display = 'none';
+      document.getElementById('confirmLoginBtn').style.display = 'none';
+      refreshStatus();
+    } else {
+      document.getElementById('jobStatus').textContent = '⏳ 실행 중...';
+    }
+  });
+}
+
+async function runOrAlert(fn) {
+  try {
+    const res = await fn();
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || '요청이 실패했어요.'); return; }
+    jobRunning = true;
+    setButtonsDisabled(true);
+    document.getElementById('jobStatus').textContent = '⏳ 실행 중...';
+    startEventStream();
+  } catch (e) {
+    alert('요청 중 오류: ' + e.message);
+  }
+}
+
+function collect(mode) {
+  const platform = document.getElementById('collectPlatform').value;
+  const body = { mode, platform: platform || undefined };
+  if (mode === 'range') {
+    body.startDate = document.getElementById('rangeStart').value;
+    body.endDate = document.getElementById('rangeEnd').value;
+    if (!body.startDate || !body.endDate) { alert('시작일/종료일을 입력해주세요.'); return; }
+  }
+  runOrAlert(() => fetch('/api/collect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
+}
+
+function rebuild() {
+  runOrAlert(() => fetch('/api/rebuild', { method: 'POST' }));
+}
+
+function comparePeriods() {
+  const raw = document.getElementById('periodsInput').value.trim();
+  const periods = raw.split('\n').map(s => s.trim()).filter(Boolean);
+  if (periods.length < 2) { alert('기간을 2개 이상 적어주세요.'); return; }
+  runOrAlert(() => fetch('/api/compare-periods', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ periods }) }));
+}
+
+function collectAccount() {
+  const handle = document.getElementById('acctHandle').value.trim().replace(/^@/, '');
+  const startDate = document.getElementById('acctStart').value;
+  const endDate = document.getElementById('acctEnd').value;
+  const plaintext = document.getElementById('acctPlaintext').checked;
+  if (!handle || !startDate || !endDate) { alert('핸들/시작일/종료일을 모두 입력해주세요.'); return; }
+  runOrAlert(() => fetch('/api/collect-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle, startDate, endDate, plaintext }) }));
+}
+
+function startLogin(platform) {
+  document.getElementById('loginHelp').style.display = '';
+  document.getElementById('confirmLoginBtn').style.display = '';
+  runOrAlert(() => fetch('/api/login-session/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ platform }) }));
+}
+
+function confirmLogin() {
+  fetch('/api/login-session/confirm', { method: 'POST' });
+}
+
+function cancelJob() {
+  fetch('/api/jobs/cancel', { method: 'POST' });
+}
+
+async function refreshReports() {
+  const res = await fetch('/api/reports');
+  const files = await res.json();
+  const ul = document.getElementById('reportList');
+  ul.innerHTML = files.length === 0 ? '<li>아직 만들어진 리포트가 없어요.</li>' : '';
+  files.forEach(f => {
+    const li = document.createElement('li');
+    const sizeKb = Math.round(f.size / 1024).toLocaleString();
+    const date = new Date(f.mtime).toLocaleString('ko-KR');
+    li.innerHTML = '<a href="/reports/' + encodeURIComponent(f.name) + '" download>' + f.name + '</a><span class="meta">' + sizeKb + 'KB · ' + date + '</span>';
+    ul.appendChild(li);
+  });
+}
+
+refreshStatus();
+refreshReports();
+</script>
+</body>
+</html>
