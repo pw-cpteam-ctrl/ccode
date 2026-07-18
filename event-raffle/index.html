@@ -81,6 +81,7 @@ tr:last-child td{border-bottom:none;}
         <select id="selNicknameCol"></select>
       </div>
     </div>
+    <div class="status" id="lengthStats" style="display:none;margin-top:10px;"></div>
   </div>
 
   <div class="step">
@@ -93,6 +94,7 @@ tr:last-child td{border-bottom:none;}
       </div>
     </div>
     <button class="secondary" type="button" onclick="addConditionRow()" style="margin-bottom:12px;">+ 조건 추가</button>
+    <button class="secondary" type="button" onclick="addLengthConditionRow()" style="margin-bottom:12px;">+ 글자 수 조건 추가</button>
     <br/>
     <button onclick="runFilter()" id="btnRunFilter">필터링 실행</button>
     <button class="secondary" onclick="useAllAsFallback()">필터링 없이 전체 참가자로 진행 (테스트용)</button>
@@ -123,6 +125,7 @@ let candidates = [];    // [{ row, reason }]
 let lastWinners = [];   // [{ row, reason }]
 let contentColumn = ''; // 필터링 조건이 적용될 "댓글/후기 본문" 컬럼명
 let nicknameColumn = ''; // 결과 표시용 닉네임 컬럼명 (선택)
+let lengthStats = null; // 본문 글자 수 분포 통계 (파일마다 새로 계산, 고정 구간 아님)
 let lastCombinedCondition = ''; // 마지막으로 실행한 조건(다운로드/저장 기록용)
 
 /* ── 1단계: 파일 업로드 ── */
@@ -189,12 +192,48 @@ function populateColumnSelectors(columns, rows) {
   contentColumn = guessedContent;
   nicknameColumn = guessedNickname;
   $('#colMapWrap').style.display = 'flex';
+  updateLengthStats(rows);
 }
-$('#selContentCol').addEventListener('change', (e) => { contentColumn = e.target.value; });
+$('#selContentCol').addEventListener('change', (e) => { contentColumn = e.target.value; updateLengthStats(participants); });
 $('#selNicknameCol').addEventListener('change', (e) => { nicknameColumn = e.target.value; });
 
 function normalizeRow(row) {
   return { 본문: String(row[contentColumn] ?? '') };
+}
+
+// "정성스럽게 쓴 사람" 같은 조건을 AI 추측에만 맡기지 않고, 실제 업로드된 파일의
+// 글자 수 분포를 직접 보여줘서 사용자가 기준을 스스로 정할 수 있게 한다.
+// 구간은 고정값이 아니라 이번 파일의 최대 글자 수에 맞춰 매번 새로 나눈다(자동 스케일).
+function computeLengthStats(rows) {
+  if (!rows.length) return null;
+  const lengths = rows.map(r => String(r[contentColumn] ?? '').trim().length);
+  const max = Math.max(...lengths);
+  const sorted = [...lengths].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  const mean = lengths.reduce((a, b) => a + b, 0) / lengths.length;
+  const BIN_COUNT = 5;
+  const binWidth = Math.max(1, Math.ceil((max + 1) / BIN_COUNT));
+  const bins = Array.from({ length: BIN_COUNT }, (_, i) => ({
+    lo: i * binWidth,
+    hi: i === BIN_COUNT - 1 ? Infinity : (i + 1) * binWidth,
+    count: 0,
+  }));
+  for (const len of lengths) {
+    bins[Math.min(BIN_COUNT - 1, Math.floor(len / binWidth))].count++;
+  }
+  return { min: sorted[0], max, mean, median, bins, total: lengths.length };
+}
+function updateLengthStats(rows) {
+  lengthStats = computeLengthStats(rows);
+  const el = $('#lengthStats');
+  if (!lengthStats) { el.style.display = 'none'; return; }
+  const binText = lengthStats.bins.map(b => {
+    const label = b.hi === Infinity ? `${b.lo}자~` : `${b.lo}~${b.hi - 1}자`;
+    const pct = Math.round(b.count / lengthStats.total * 100);
+    return `${label} ${b.count}명(${pct}%)`;
+  }).join(' · ');
+  el.innerHTML = `본문 글자 수 분포 (최소 ${lengthStats.min} · 중앙값 ${lengthStats.median} · 평균 ${lengthStats.mean.toFixed(1)} · 최대 ${lengthStats.max}자): ${binText}`;
+  el.style.display = '';
 }
 
 function resetDownstream() {
@@ -257,6 +296,30 @@ function addConditionRow() {
   row.querySelector('.cond-remove').addEventListener('click', () => { row.remove(); renumberConditionRows(); });
   list.appendChild(row);
 }
+// "정성스럽게" 같은 조건을 AI가 알아서 글자 수 기준을 추측하게 두지 않고, 위
+// 글자 수 분포 통계를 보고 사용자가 직접 기준을 입력하는 조건 칸(코드로만 판단,
+// AI 호출 전혀 없음) — 자유 텍스트 조건과 그리고/또는으로 섞어 쓸 수 있다.
+function addLengthConditionRow() {
+  const list = $('#conditionList');
+  const idx = list.children.length;
+  const defaultN = lengthStats ? lengthStats.median : 30;
+  const row = document.createElement('div');
+  row.className = 'cond-row';
+  row.dataset.idx = String(idx);
+  row.dataset.type = 'length';
+  row.innerHTML = `
+    <select class="cond-op">
+      <option value="AND">그리고(모두 만족)</option>
+      <option value="OR">또는(하나만 만족해도 됨)</option>
+    </select>
+    <span class="cond-label">조건${idx + 1}</span>
+    <span style="font-size:13px;white-space:nowrap;">본문 글자 수</span>
+    <input type="number" class="cond-length-input" min="0" value="${defaultN}" style="width:70px;flex:0 0 auto;"/>
+    <span style="font-size:13px;white-space:nowrap;">자 이상</span>
+    <button type="button" class="secondary cond-remove">✕</button>`;
+  row.querySelector('.cond-remove').addEventListener('click', () => { row.remove(); renumberConditionRows(); });
+  list.appendChild(row);
+}
 function renumberConditionRows() {
   [...$('#conditionList').children].forEach((row, i) => {
     row.dataset.idx = String(i);
@@ -264,10 +327,13 @@ function renumberConditionRows() {
   });
 }
 function buildCombinedCondition() {
-  const parts = [...$('#conditionList').children].map(row => ({
-    text: row.querySelector('.cond-input').value.trim(),
-    op: row.querySelector('.cond-op')?.value || null,
-  })).filter(p => p.text);
+  const parts = [...$('#conditionList').children].map(row => {
+    if (row.dataset.type === 'length') {
+      const n = row.querySelector('.cond-length-input').value.trim();
+      return { text: n ? `본문 글자 수가 ${n}자 이상인 사람` : '', op: row.querySelector('.cond-op')?.value || null };
+    }
+    return { text: row.querySelector('.cond-input').value.trim(), op: row.querySelector('.cond-op')?.value || null };
+  }).filter(p => p.text);
   if (!parts.length) return '';
   let combined = parts[0].text;
   for (let i = 1; i < parts.length; i++) {
