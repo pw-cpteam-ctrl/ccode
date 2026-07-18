@@ -30,12 +30,13 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 .warn-box{background:#fbf1e4;border:1px solid #ecd6ac;border-radius:8px;padding:12px 14px;margin-top:10px;font-size:12.5px;color:var(--ui-warn);display:none;}
 .tbl-wrap{overflow-x:auto;margin-top:10px;border:1px solid var(--ui-border);border-radius:8px;}
 table{border-collapse:collapse;width:100%;font-size:12.5px;}
-th,td{padding:6px 10px;border-bottom:1px solid var(--ui-border);text-align:left;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis;}
-th{background:var(--ui-card);position:sticky;top:0;}
+th,td{padding:6px 10px;border-bottom:1px solid var(--ui-border);text-align:left;word-break:break-word;}
+th{background:var(--ui-card);position:sticky;top:0;white-space:nowrap;}
 tr:last-child td{border-bottom:none;}
 tbody tr{cursor:pointer;}
-tbody tr.expanded td{white-space:normal;overflow:visible;text-overflow:clip;max-width:none;word-break:break-word;}
+tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;}
 .tbl-hint{font-size:11.5px;color:var(--ui-sub);margin-top:4px;}
+.tbl-toolbar{margin-top:8px;}
 .winner-detail{margin-top:6px;font-size:12px;}
 .winner-detail summary{cursor:pointer;color:var(--ui-accent);font-weight:600;}
 .winner-detail .kv{margin-top:6px;padding:8px 10px;background:var(--ui-bg);border-radius:6px;}
@@ -118,7 +119,7 @@ tbody tr.expanded td{white-space:normal;overflow:visible;text-overflow:clip;max-
     <div class="field" style="max-width:140px;"><label>당첨 인원수</label><input type="number" id="inWinnerCount" min="1" value="1"/></div>
     <button onclick="drawWinners()">추첨하기</button>
     <div id="winnerResult"></div>
-    <button class="secondary" onclick="downloadResult()" id="btnDownloadResult" style="display:none;margin-top:10px;">결과 다운로드 (명단+조건만, 원본 데이터 제외)</button>
+    <button class="secondary" onclick="downloadResult()" id="btnDownloadResult" style="display:none;margin-top:10px;">결과 다운로드 (엑셀, 명단+조건만)</button>
     <button onclick="saveResultToRepo()" id="btnSaveResult" style="display:none;margin-top:10px;margin-left:6px;">레포에 저장</button>
     <div class="status" id="saveStatus"></div>
   </div>
@@ -262,11 +263,22 @@ function renderTable(wrapSel, rows, columns) {
   const cols = columns.length ? columns : ['reason'];
   const head = '<tr>' + cols.map(c => `<th>${escapeHtml(c)}</th>`).join('') + '</tr>';
   const body = rows.map(r => '<tr>' + cols.map(c => `<td>${escapeHtml(String(r[c] ?? ''))}</td>`).join('') + '</tr>').join('');
-  wrap.innerHTML = `<table><thead>${head}</thead><tbody>${body}</tbody></table><div class="tbl-hint">칸이 길어서 잘렸으면, 행을 클릭하면 전체 내용이 펼쳐져요.</div>`;
+  wrap.innerHTML = `
+    <div class="tbl-toolbar"><button type="button" class="secondary tbl-toggle-all">전체 접기</button></div>
+    <table><thead>${head}</thead><tbody>${body}</tbody></table>
+    <div class="tbl-hint">기본은 전체 펼침 상태예요. 행을 클릭하면 그 줄만 접혔다 펴져요.</div>`;
   wrap.style.display = '';
-  wrap.querySelector('tbody').addEventListener('click', (e) => {
+  const tbody = wrap.querySelector('tbody');
+  tbody.addEventListener('click', (e) => {
     const tr = e.target.closest('tr');
-    if (tr) tr.classList.toggle('expanded');
+    if (tr) tr.classList.toggle('collapsed');
+  });
+  const toggleAllBtn = wrap.querySelector('.tbl-toggle-all');
+  toggleAllBtn.addEventListener('click', () => {
+    const trs = [...tbody.querySelectorAll('tr')];
+    const shouldCollapse = trs.some(tr => !tr.classList.contains('collapsed'));
+    trs.forEach(tr => tr.classList.toggle('collapsed', shouldCollapse));
+    toggleAllBtn.textContent = shouldCollapse ? '전체 펼치기' : '전체 접기';
   });
 }
 function escapeHtml(s) {
@@ -477,8 +489,11 @@ function drawWinners() {
   const pool = [...candidates];
   const winners = [];
   for (let i = 0; i < n; i++) {
-    const idx = Math.floor(Math.random() * pool.length);
-    winners.push(pool.splice(idx, 1)[0]);
+    const poolSizeBefore = pool.length;
+    const random = Math.random();
+    const idx = Math.floor(random * poolSizeBefore);
+    const picked = pool.splice(idx, 1)[0];
+    winners.push({ ...picked, draw: { random, poolSizeBefore, idx } });
   }
   lastWinners = winners;
   renderWinners(winners);
@@ -498,6 +513,7 @@ function renderWinners(winners) {
     <div class="winner-card">
       🎉 ${escapeHtml(winnerLabel(w.row))}
       <div class="reason">${escapeHtml(w.reason || '')}</div>
+      <div class="reason">뽑힌 난수: ${w.draw.random.toFixed(6)} (후보 ${w.draw.poolSizeBefore}명 중 ${w.draw.idx + 1}번째)</div>
       <details class="winner-detail">
         <summary>원본 데이터 보기</summary>
         <div class="kv">${renderRowDetail(w.row)}</div>
@@ -515,17 +531,26 @@ function buildResultPayload() {
   return {
     drawnAt: new Date().toISOString(),
     condition: lastCombinedCondition,
-    winners: lastWinners.map(w => ({ id: winnerLabel(w.row), reason: w.reason })),
+    winners: lastWinners.map(w => ({
+      id: winnerLabel(w.row),
+      reason: w.reason,
+      random: w.draw?.random,
+      poolSizeAtDraw: w.draw?.poolSizeBefore,
+    })),
   };
 }
 
 function downloadResult() {
   if (!lastWinners.length) return;
   const result = buildResultPayload();
-  const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'raffle-result.json'; a.click();
-  URL.revokeObjectURL(url);
+  const sheetRows = result.winners.map(w => ({
+    당첨자: w.id, 판단근거: w.reason, 뽑힌난수: w.random, 추첨시후보수: w.poolSizeAtDraw,
+    조건: result.condition, 추첨일시: result.drawnAt,
+  }));
+  const ws = XLSX.utils.json_to_sheet(sheetRows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '당첨자');
+  XLSX.writeFile(wb, `raffle-result-${result.drawnAt.replace(/[:.]/g, '-')}.xlsx`);
 }
 
 /* ── 레포 저장: 당첨자 명단 + 조건을 GitHub API로 레포 results/ 폴더에 커밋 (원본 데이터 제외) ── */
@@ -540,7 +565,7 @@ async function saveResultToRepo() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
-    $('#saveStatus').textContent = `레포에 저장됨: ${data.path}`;
+    $('#saveStatus').textContent = `레포 누적 기록에 저장됨: ${data.path} (지금까지 총 ${data.totalRecords}건)`;
   } catch (err) {
     $('#saveStatus').textContent = `저장 실패: ${err.message}`;
   }
