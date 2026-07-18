@@ -160,6 +160,7 @@ async function refreshStatus() {
     jobRunning = true;
     setButtonsDisabled(true);
     document.getElementById('jobLabel').textContent = data.job.label + ' — 진행 중';
+    startEventStream();
   }
 }
 
