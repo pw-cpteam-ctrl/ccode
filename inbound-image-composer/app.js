@@ -356,6 +356,7 @@ function renderSourceList() {
           <button class="btn primary" data-action="confirm" data-id="${src.id}" ${src.confirmed ? 'disabled' : ''}>${src.confirmed ? '크롭 완료됨' : '확인 및 크롭'}</button>
           <button class="btn" data-action="ai-fill" data-id="${src.id}" ${src.confirmed ? '' : 'disabled'} title="claude-sonnet-5로 사진과 텍스트를 함께 보고 표를 채웁니다 (유료 API 호출, 장당 약 2~4센트 수준). 결과는 항상 확인 대상으로만 표시됩니다.">🤖 AI로 채우기</button>
           <button class="btn" data-action="ocr-label" data-id="${src.id}" ${src.confirmed ? '' : 'disabled'} title="사진은 안 보내고 사진 아래 텍스트(상품명/가격/태그)만 보고 IP명을 추출합니다 — 'AI로 채우기'와 같은 추출 규칙을 쓰지만 사진이 없어서 글자가 흐릴 때 그림으로 확인하는 기능만 빠집니다. 원본 스크린샷/재수입 둘 다 쓸 수 있고, 사진을 함께 보내는 'AI로 채우기'보다 저렴합니다.">🏷️ 라벨만 재인식</button>
+          <button class="btn danger" data-action="delete-source" data-id="${src.id}" title="실수로 첨부한 사진을 목록에서 완전히 뺍니다. 이미 크롭을 확정한 사진이면 여기서 만들어진 항목·사진·헤더도 함께 삭제됩니다.">🗑 이 사진 삭제</button>
         </div>
       </div>
       <canvas class="overlay" data-canvas="${src.id}"></canvas>
@@ -467,6 +468,34 @@ function confirmSourceCrop(srcId) {
   src.itemCount = state.items.length - src.itemStartIndex;
 
   src.confirmed = true;
+  renderSourceList();
+}
+
+// 실수로 첨부한 사진을 1단계 목록에서 완전히 뺀다. 이미 크롭을 확정해서 항목/사진/헤더가
+// 만들어진 소스라면 그 파생물도 id 기준으로 정확히 같이 지운다(confirmSourceCrop의 재크롭
+// 정리 로직과 동일한 패턴 — 위치가 아니라 id로 지워야 2·3단계에서 순서를 바꿔도 안전함).
+function removeSource(srcId) {
+  const src = state.sources.find((s) => s.id === srcId);
+  if (!src) return;
+
+  if (src.confirmed) {
+    const ok = window.confirm(
+      '이미 크롭이 확정된 사진입니다. 삭제하면 이 사진에서 만든 항목·사진·헤더가 모두 함께 삭제됩니다.\n' +
+      '2단계 이후에서 IP명/가격/태그 등을 직접 고친 내용이 있다면 함께 사라집니다. 계속할까요?'
+    );
+    if (!ok) return;
+  }
+
+  if (src.itemIds && src.itemIds.length) {
+    const idsToRemove = new Set(src.itemIds);
+    state.items.filter((it) => idsToRemove.has(it.id)).forEach((it) => { delete state.photos[it.photoId]; });
+    state.items = state.items.filter((it) => !idsToRemove.has(it.id));
+  }
+  if (src.headerId) {
+    state.headers = state.headers.filter((h) => h.id !== src.headerId);
+  }
+
+  state.sources = state.sources.filter((s) => s.id !== srcId);
   renderSourceList();
 }
 
@@ -1753,6 +1782,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btn.dataset.action === 'confirm') confirmSourceCrop(src.id);
     if (btn.dataset.action === 'ai-fill') aiFillSource(src.id);
     if (btn.dataset.action === 'ocr-label') ocrLabelsForSource(src.id);
+    if (btn.dataset.action === 'delete-source') removeSource(src.id);
   });
 
   document.getElementById('toStep2Btn').addEventListener('click', () => goToStep(2));
