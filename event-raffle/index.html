@@ -70,6 +70,8 @@ tr:last-child td{border-bottom:none;}
     <button onclick="drawWinners()">추첨하기</button>
     <div id="winnerResult"></div>
     <button class="secondary" onclick="downloadResult()" id="btnDownloadResult" style="display:none;margin-top:10px;">결과 다운로드 (명단+조건만, 원본 데이터 제외)</button>
+    <button onclick="saveResultToRepo()" id="btnSaveResult" style="display:none;margin-top:10px;margin-left:6px;">레포에 저장</button>
+    <div class="status" id="saveStatus"></div>
   </div>
 </div>
 
@@ -86,8 +88,10 @@ $('#inFile').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   try {
-    const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: 'array' });
+    const isCsv = /\.csv$/i.test(file.name);
+    const wb = isCsv
+      ? XLSX.read(await file.text(), { type: 'string' })
+      : XLSX.read(await file.arrayBuffer(), { type: 'array' });
     const sheet = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
     if (!rows.length) { $('#uploadStatus').textContent = '파일에서 데이터를 찾지 못했어요. 첫 줄이 헤더인지 확인해주세요.'; return; }
@@ -108,6 +112,8 @@ function resetDownstream() {
   $('#filterStatus').textContent = '';
   $('#winnerResult').innerHTML = '';
   $('#btnDownloadResult').style.display = 'none';
+  $('#btnSaveResult').style.display = 'none';
+  $('#saveStatus').textContent = '';
 }
 
 function renderTable(wrapSel, rows, columns) {
@@ -164,6 +170,8 @@ function applyCandidates(withReason) {
   lastWinners = [];
   $('#winnerResult').innerHTML = '';
   $('#btnDownloadResult').style.display = 'none';
+  $('#btnSaveResult').style.display = 'none';
+  $('#saveStatus').textContent = '';
 }
 
 /* ── 3단계: 추첨 (LLM 관여 없이 코드가 실제 난수로 뽑음) ── */
@@ -179,6 +187,8 @@ function drawWinners() {
   lastWinners = winners;
   renderWinners(winners);
   $('#btnDownloadResult').style.display = '';
+  $('#btnSaveResult').style.display = '';
+  $('#saveStatus').textContent = '';
 }
 
 function winnerLabel(row) {
@@ -195,17 +205,39 @@ function renderWinners(winners) {
 }
 
 /* ── 결과 다운로드: 당첨자 명단 + 조건만 (원본 참가자 데이터는 포함하지 않음) ── */
-function downloadResult() {
-  if (!lastWinners.length) return;
-  const result = {
+function buildResultPayload() {
+  return {
     drawnAt: new Date().toISOString(),
     condition: $('#inCondition').value.trim(),
     winners: lastWinners.map(w => ({ id: winnerLabel(w.row), reason: w.reason })),
   };
+}
+
+function downloadResult() {
+  if (!lastWinners.length) return;
+  const result = buildResultPayload();
   const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = 'raffle-result.json'; a.click();
   URL.revokeObjectURL(url);
+}
+
+/* ── 레포 저장: 당첨자 명단 + 조건을 GitHub API로 레포 results/ 폴더에 커밋 (원본 데이터 제외) ── */
+async function saveResultToRepo() {
+  if (!lastWinners.length) return;
+  $('#saveStatus').textContent = '저장 중...';
+  try {
+    const res = await fetch('/api/save-result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildResultPayload()),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
+    $('#saveStatus').textContent = `레포에 저장됨: ${data.path}`;
+  } catch (err) {
+    $('#saveStatus').textContent = `저장 실패: ${err.message}`;
+  }
 }
 </script>
 </body>
