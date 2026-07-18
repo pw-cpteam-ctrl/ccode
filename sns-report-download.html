@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>SNS 성과 리포트 대시보드 — 다운로드</title>
+<style>
+*{box-sizing:border-box;}
+body{margin:0;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f0ede7;color:#252018;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:50px 20px 80px;}
+.wrap{width:100%;max-width:640px;}
+a.back{font-size:12px;color:#8a8272;text-decoration:none;}
+a.back:hover{text-decoration:underline;}
+h1{font-size:24px;font-weight:800;margin:18px 0 6px;letter-spacing:-0.5px;}
+p.lead{font-size:14px;color:#7d7568;line-height:1.6;margin:0 0 28px;}
+.dl-box{background:#fff;border:1px solid #ddd8ce;border-radius:16px;padding:26px 28px;margin-bottom:28px;text-align:center;}
+.dl-box .btn{display:inline-block;background:#252018;color:#fff;font-size:16px;font-weight:700;padding:14px 40px;border-radius:10px;text-decoration:none;margin-bottom:10px;}
+.dl-box .btn:hover{background:#3a3226;}
+.dl-box .note{font-size:12px;color:#9c9384;}
+.dl-box .already{margin-top:16px;font-size:12px;}
+.dl-box .already a{color:#252018;font-weight:700;}
+section{background:#fff;border:1px solid #ddd8ce;border-radius:16px;padding:22px 26px;margin-bottom:16px;}
+section h2{font-size:15px;margin:0 0 12px;}
+ol{margin:0;padding-left:20px;font-size:13px;line-height:1.9;}
+ol li{margin-bottom:4px;}
+ol b{font-weight:700;}
+.warn{background:#fff9db;border:1px solid #ffe066;border-radius:10px;padding:10px 14px;font-size:12px;color:#665500;line-height:1.6;margin-top:16px;}
+.small{font-size:12px;color:#8a8272;line-height:1.7;}
+code{background:#f0ede7;padding:1px 6px;border-radius:5px;font-size:12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="index.html">← 툴킷 메인으로</a>
+  <h1>📊 SNS 성과 리포트 대시보드</h1>
+  <p class="lead">자사·경쟁사 SNS 실적을 자동으로 모아서 비교 리포트를 만들어주는 도구예요. 설치할 건 없고, 압축 풀고 더블클릭만 하면 됩니다.</p>
+
+  <div class="dl-box">
+    <a class="btn" href="https://github.com/pw-cpteam-ctrl/share/releases/latest" target="_blank" rel="noopener">⬇ 다운로드</a>
+    <div class="note">윈도우용 · 압축 하나로 다 들어있어요 (약 200~300MB)</div>
+    <div class="already">이미 설치했다면 → <a href="http://localhost:4848">대시보드 열기</a></div>
+  </div>
+
+  <section>
+    <h2>처음 설치하는 법</h2>
+    <ol>
+      <li>위 <b>다운로드</b> 버튼 클릭 → 깃허브 릴리스 페이지에서 zip 파일 받기</li>
+      <li>받은 zip을 원하는 위치(예: 바탕화면)에 <b>압축 해제</b></li>
+      <li>압축 푼 폴더 안의 <code>start-dashboard.bat</code> <b>더블클릭</b></li>
+      <li>검은 창이 뜨고 잠시 후 <b>브라우저가 자동으로 열리면서</b> 대시보드 화면이 나와요</li>
+      <li>트위터/인스타그램 각각 <b>"로그인하기"</b> 버튼 클릭 → 뜬 브라우저 창에서 직접 로그인 → <b>"로그인 완료했어요"</b> 클릭 (처음 한 번만)</li>
+    </ol>
+    <div class="warn">⚠️ 검은 창은 도구가 켜져 있는 동안 계속 열어두세요 — 창을 닫으면 도구도 같이 꺼져요.</div>
+  </section>
+
+  <section>
+    <h2>나중에 업데이트할 때</h2>
+    <p class="small">도구가 개선되면, 압축 푼 폴더 안의 <code>update.bat</code>을 더블클릭하기만 하면 돼요. 바뀐 부분만 몇 초 만에 자동으로 받아옵니다 — 다시 다운로드할 필요 없어요.</p>
+  </section>
+
+  <section>
+    <h2>잘 안 될 때</h2>
+    <p class="small">
+      브라우저가 자동으로 안 열리면 주소창에 직접 <code>http://localhost:4848</code>을 입력하세요.<br>
+      검은 창에 빨간 글씨가 뜨거나 멈추면, 그 화면을 캡처해서 관리자에게 보내주세요.
+    </p>
+  </section>
+</div>
+</body>
+</html>
