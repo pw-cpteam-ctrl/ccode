@@ -41,6 +41,13 @@ tr:last-child td{border-bottom:none;}
 .intro ol{margin:0;padding-left:20px;font-size:12.5px;color:var(--ui-sub);}
 .intro ol li{margin-bottom:4px;}
 .intro ol li:last-child{margin-bottom:0;}
+.cond-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.cond-row .cond-label{flex:0 0 44px;font-size:12.5px;color:var(--ui-sub);font-weight:700;}
+.cond-row select.cond-op{flex:0 0 auto;width:auto;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:7px 6px;font-size:13px;font-family:inherit;color:var(--ui-text);}
+.cond-row input.cond-input{flex:1;min-width:0;}
+.cond-row button.cond-remove{flex:0 0 auto;padding:6px 10px;font-size:13px;}
+.col-map{display:flex;gap:14px;margin-top:12px;flex-wrap:wrap;}
+.col-map .field{flex:1;min-width:220px;margin-bottom:0;}
 </style>
 </head>
 <body>
@@ -64,12 +71,29 @@ tr:last-child td{border-bottom:none;}
     <input type="file" id="inFile" accept=".xlsx,.xls,.csv"/>
     <div class="status" id="uploadStatus"></div>
     <div class="tbl-wrap" id="previewWrap" style="display:none;"></div>
+    <div class="col-map" id="colMapWrap" style="display:none;">
+      <div class="field">
+        <label>댓글/후기 "본문" 컬럼 (필터링 조건이 이 컬럼 내용을 기준으로 판단됨)</label>
+        <select id="selContentCol"></select>
+      </div>
+      <div class="field">
+        <label>닉네임 컬럼 (선택, 결과 화면 표시용)</label>
+        <select id="selNicknameCol"></select>
+      </div>
+    </div>
   </div>
 
   <div class="step">
     <h2><span class="num">2</span>이번 회차 조건</h2>
-    <p class="desc">이번에만 적용할 조건을 자유롭게 문장으로 적어주세요. (예: 사진 첨부한 사람 + 나루토를 언급한 사람 + 댓글을 정성스럽게 쓴 사람)</p>
-    <div class="field"><textarea id="inCondition" rows="3" placeholder="사진 첨부한 사람 + 나루토를 언급한 사람 + 정성스럽게 쓴 사람"></textarea></div>
+    <p class="desc">조건을 하나씩 나눠서 입력하세요. 조건이 2개 이상이면 각 조건 사이의 관계(그리고/또는)를 직접 선택합니다 — 문장 하나에 다 적을 때보다 AI가 정확하게 판단해요.</p>
+    <div id="conditionList">
+      <div class="cond-row" data-idx="0">
+        <span class="cond-label">조건1</span>
+        <input type="text" class="cond-input" placeholder="예: 사진 첨부한 사람"/>
+      </div>
+    </div>
+    <button class="secondary" type="button" onclick="addConditionRow()" style="margin-bottom:12px;">+ 조건 추가</button>
+    <br/>
     <button onclick="runFilter()" id="btnRunFilter">필터링 실행</button>
     <button class="secondary" onclick="useAllAsFallback()">필터링 없이 전체 참가자로 진행 (테스트용)</button>
     <div class="status" id="filterStatus"></div>
@@ -97,6 +121,9 @@ const $ = s => document.querySelector(s);
 let participants = [];  // 업로드된 원본 행 (세션 중에만 메모리에 존재, 저장 안 함)
 let candidates = [];    // [{ row, reason }]
 let lastWinners = [];   // [{ row, reason }]
+let contentColumn = ''; // 필터링 조건이 적용될 "댓글/후기 본문" 컬럼명
+let nicknameColumn = ''; // 결과 표시용 닉네임 컬럼명 (선택)
+let lastCombinedCondition = ''; // 마지막으로 실행한 조건(다운로드/저장 기록용)
 
 /* ── 1단계: 파일 업로드 ── */
 $('#inFile').addEventListener('change', async (e) => {
@@ -113,11 +140,62 @@ $('#inFile').addEventListener('change', async (e) => {
     participants = rows;
     $('#uploadStatus').textContent = `${rows.length}명 인식 완료`;
     renderTable('#previewWrap', rows.slice(0, 5), Object.keys(rows[0]));
+    populateColumnSelectors(Object.keys(rows[0]), rows);
     resetDownstream();
   } catch (err) {
     $('#uploadStatus').textContent = `파일을 읽지 못했어요: ${err.message}`;
   }
 });
+
+// 스크래퍼로 수집한 원본 데이터는 컬럼명이 css-1jxf684, __EMPTY 같이 의미 없는
+// 문자열이거나, 한 시트 안에 참가자 댓글과 무관한 집계표가 같이 섞여 있을 수 있다.
+// 컬럼명만으로는 어떤 컬럼이 진짜 "댓글 본문"인지 코드도 AI도 확신할 수 없으므로,
+// 사용자가 직접 지정하게 하고 필터링은 그 컬럼 내용만 기준으로 판단한다.
+function guessContentColumn(columns, rows) {
+  let best = columns[0], bestLen = -1;
+  for (const col of columns) {
+    let total = 0, count = 0;
+    for (const r of rows.slice(0, 20)) {
+      const v = String(r[col] ?? '').trim();
+      if (v) { total += v.length; count++; }
+    }
+    const avg = count ? total / count : 0;
+    if (avg > bestLen) { bestLen = avg; best = col; }
+  }
+  return best;
+}
+function guessNicknameColumn(columns, rows, excludeCol) {
+  for (const col of columns) {
+    if (col === excludeCol) continue;
+    const sample = rows.find(r => String(r[col] ?? '').trim());
+    if (sample && Number.isNaN(Number(sample[col]))) return col;
+  }
+  return '';
+}
+function sampleValueFor(col, rows) {
+  const found = rows.find(r => String(r[col] ?? '').trim());
+  const v = found ? String(found[col]) : '';
+  return v.length > 22 ? v.slice(0, 22) + '…' : v;
+}
+function populateColumnSelectors(columns, rows) {
+  const guessedContent = guessContentColumn(columns, rows);
+  const guessedNickname = guessNicknameColumn(columns, rows, guessedContent);
+  $('#selContentCol').innerHTML = columns.map(c =>
+    `<option value="${escapeHtml(c)}" ${c === guessedContent ? 'selected' : ''}>${escapeHtml(c)} (예: "${escapeHtml(sampleValueFor(c, rows))}")</option>`
+  ).join('');
+  $('#selNicknameCol').innerHTML = '<option value="">(사용 안 함)</option>' + columns.map(c =>
+    `<option value="${escapeHtml(c)}" ${c === guessedNickname ? 'selected' : ''}>${escapeHtml(c)} (예: "${escapeHtml(sampleValueFor(c, rows))}")</option>`
+  ).join('');
+  contentColumn = guessedContent;
+  nicknameColumn = guessedNickname;
+  $('#colMapWrap').style.display = 'flex';
+}
+$('#selContentCol').addEventListener('change', (e) => { contentColumn = e.target.value; });
+$('#selNicknameCol').addEventListener('change', (e) => { nicknameColumn = e.target.value; });
+
+function normalizeRow(row) {
+  return { 본문: String(row[contentColumn] ?? '') };
+}
 
 function resetDownstream() {
   candidates = []; lastWinners = [];
@@ -158,21 +236,63 @@ function escapeHtml(s) {
 const ROW_CONFIRM_THRESHOLD = 200;
 const EST_WON_PER_ROW = 0.9;
 
+/* ── 조건 여러 개 입력 + 그리고/또는을 사용자가 직접 지정 ──
+   "A + B or C" 처럼 자연어 한 문장에 조건을 다 섞으면 그리고/또는이 어디에
+   걸리는지 AI가 오해할 수 있어서, 조건을 칸으로 나누고 관계를 명시적으로
+   고르게 한 뒤 "(A) AND (B) OR (C)" 같은 명확한 문자열로 조합해 서버에 보낸다. */
+function addConditionRow() {
+  const list = $('#conditionList');
+  const idx = list.children.length;
+  const row = document.createElement('div');
+  row.className = 'cond-row';
+  row.dataset.idx = String(idx);
+  row.innerHTML = `
+    <select class="cond-op">
+      <option value="AND">그리고(모두 만족)</option>
+      <option value="OR">또는(하나만 만족해도 됨)</option>
+    </select>
+    <span class="cond-label">조건${idx + 1}</span>
+    <input type="text" class="cond-input" placeholder="예: 정성스럽게 쓴 사람"/>
+    <button type="button" class="secondary cond-remove">✕</button>`;
+  row.querySelector('.cond-remove').addEventListener('click', () => { row.remove(); renumberConditionRows(); });
+  list.appendChild(row);
+}
+function renumberConditionRows() {
+  [...$('#conditionList').children].forEach((row, i) => {
+    row.dataset.idx = String(i);
+    row.querySelector('.cond-label').textContent = `조건${i + 1}`;
+  });
+}
+function buildCombinedCondition() {
+  const parts = [...$('#conditionList').children].map(row => ({
+    text: row.querySelector('.cond-input').value.trim(),
+    op: row.querySelector('.cond-op')?.value || null,
+  })).filter(p => p.text);
+  if (!parts.length) return '';
+  let combined = parts[0].text;
+  for (let i = 1; i < parts.length; i++) {
+    combined = `(${combined}) ${parts[i].op} (${parts[i].text})`;
+  }
+  return combined;
+}
+
 async function runFilter() {
   if (!participants.length) { alert('먼저 참가자 파일을 업로드해주세요.'); return; }
-  const condition = $('#inCondition').value.trim();
-  if (!condition) { alert('이번 조건을 입력해주세요.'); return; }
+  if (!contentColumn) { alert('먼저 "댓글/후기 본문" 컬럼을 선택해주세요.'); return; }
+  const condition = buildCombinedCondition();
+  if (!condition) { alert('조건을 한 개 이상 입력해주세요.'); return; }
+  lastCombinedCondition = condition;
 
   const btn = $('#btnRunFilter');
   btn.disabled = true;
   $('#filterFallback').style.display = 'none';
   $('#filterStatus').textContent = '조건 분석 중...';
   try {
-    const columns = Object.keys(participants[0]);
+    const columns = ['본문'];
     const planRes = await fetch('/api/plan-filter', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ columns, sampleRows: participants.slice(0, 8), condition }),
+      body: JSON.stringify({ columns, sampleRows: participants.slice(0, 8).map(normalizeRow), condition }),
     });
     const plan = await planRes.json().catch(() => ({}));
     if (!planRes.ok) throw new Error(plan.error || `서버 오류 (${planRes.status})`);
@@ -182,7 +302,7 @@ async function runFilter() {
     if (plan.codeRule) {
       try {
         const predicate = new Function(`return (${plan.codeRule});`)();
-        preCandidateRows = participants.filter(row => predicate(row) === true);
+        preCandidateRows = participants.filter(row => predicate(normalizeRow(row)) === true);
         usedCodeRule = true;
       } catch (codeErr) {
         console.warn('코드 규칙 적용 실패, 전체 참가자를 AI 판단으로 대체:', codeErr);
@@ -229,7 +349,7 @@ async function runFilter() {
     const filterRes = await fetch('/api/filter', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rows: preCandidateRows, condition: subjectiveCondition }),
+      body: JSON.stringify({ rows: preCandidateRows.map(normalizeRow), condition: subjectiveCondition }),
     });
     const data = await filterRes.json().catch(() => ({}));
     if (!filterRes.ok) throw new Error(data.error || `서버 오류 (${filterRes.status})`);
@@ -290,6 +410,7 @@ function drawWinners() {
 }
 
 function winnerLabel(row) {
+  if (nicknameColumn && row[nicknameColumn]) return String(row[nicknameColumn]);
   const nameKey = Object.keys(row).find(k => /닉네임|이름|name|nickname/i.test(k));
   return nameKey ? String(row[nameKey]) : JSON.stringify(row);
 }
@@ -306,7 +427,7 @@ function renderWinners(winners) {
 function buildResultPayload() {
   return {
     drawnAt: new Date().toISOString(),
-    condition: $('#inCondition').value.trim(),
+    condition: lastCombinedCondition,
     winners: lastWinners.map(w => ({ id: winnerLabel(w.row), reason: w.reason })),
   };
 }
