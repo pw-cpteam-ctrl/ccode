@@ -55,7 +55,16 @@ async function main() {
   await context.storageState({ path: config.outputPath });
   console.log(`✅ 세션 저장 완료: ${config.outputPath}`);
 
-  await browser.close();
+  // browser.close()가 간혹 안 끝나고 멈추는 경우가 있어서(대시보드에서 이 스크립트를
+  // 자식 프로세스로 띄워두는데, 이러면 세션은 이미 저장됐는데도 프로세스가 안 죽어서
+  // "진행 중" 상태가 영원히 안 풀리는 문제로 이어짐) — 중요한 건 세션 저장이지 브라우저를
+  // 깔끔하게 닫는 게 아니므로, 일정 시간 기다려도 안 끝나면 그냥 넘어가고 프로세스를
+  // 강제로 종료함.
+  await Promise.race([
+    browser.close(),
+    new Promise(resolve => setTimeout(resolve, 5000)),
+  ]);
+  process.exit(0);
 }
 
 main().catch(err => {
