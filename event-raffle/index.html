@@ -150,14 +150,28 @@ $('#inFile').addEventListener('change', async (e) => {
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
     if (!rows.length) { $('#uploadStatus').textContent = '파일에서 데이터를 찾지 못했어요. 첫 줄이 헤더인지 확인해주세요.'; return; }
     participants = rows;
+    const allColumns = Object.keys(rows[0]);
     $('#uploadStatus').textContent = `${rows.length}명 인식 완료`;
-    renderTable('#previewWrap', rows.slice(0, 5), Object.keys(rows[0]));
-    populateColumnSelectors(Object.keys(rows[0]), rows);
+    populateColumnSelectors(allColumns, rows);
+    renderTable('#previewWrap', rows.slice(0, 5), getMeaningfulColumns(rows, allColumns));
     resetDownstream();
   } catch (err) {
     $('#uploadStatus').textContent = `파일을 읽지 못했어요: ${err.message}`;
   }
 });
+
+// 스크래퍼 원본에는 참가자 댓글과 무관한 표(랭킹 집계 등)가 옆에 같이 섞여 있어서,
+// 대부분의 행에서 빈 값인 컬럼(전체의 1% 이하만 값이 있음)이 많다. 이런 컬럼은
+// 미리보기/후보 표에서 보여줘봤자 자리만 차지하고 정보가 없으니 화면에서 뺀다.
+// 어떤 행 집합을 기준으로 볼지(업로드 직후는 전체 참가자, 필터링 후에는 후보만)에
+// 따라 "의미 있는 컬럼"이 달라질 수 있어 호출할 때마다 새로 계산한다.
+function getMeaningfulColumns(rows, columns, threshold = 0.1) {
+  if (!rows.length) return columns;
+  return columns.filter(col => {
+    const filled = rows.filter(r => String(r[col] ?? '').trim() !== '').length;
+    return filled / rows.length > threshold;
+  });
+}
 
 // 스크래퍼로 수집한 원본 데이터는 컬럼명이 css-1jxf684, __EMPTY 같이 의미 없는
 // 문자열이거나, 한 시트 안에 참가자 댓글과 무관한 집계표가 같이 섞여 있을 수 있다.
@@ -261,7 +275,9 @@ function renderTable(wrapSel, rows, columns) {
   const wrap = $(wrapSel);
   if (!rows.length) { wrap.style.display = 'none'; return; }
   const cols = columns.length ? columns : ['reason'];
-  const head = '<tr>' + cols.map(c => `<th>${escapeHtml(c)}</th>`).join('') + '</tr>';
+  const head = '<tr>' + cols.map(c =>
+    `<th${c === contentColumn ? ' style="min-width:260px;"' : ''}>${escapeHtml(c)}</th>`
+  ).join('') + '</tr>';
   const body = rows.map(r => '<tr>' + cols.map(c => `<td>${escapeHtml(String(r[c] ?? ''))}</td>`).join('') + '</tr>').join('');
   wrap.innerHTML = `
     <div class="tbl-toolbar"><button type="button" class="secondary tbl-toggle-all">전체 접기</button></div>
@@ -471,9 +487,11 @@ function useAllAsFallback() {
 }
 
 function applyCandidates(withReason) {
-  const cols = candidates.length ? Object.keys(candidates[0].row) : [];
+  const rawRows = candidates.map(c => c.row);
+  const allColumns = candidates.length ? Object.keys(candidates[0].row) : [];
+  const cols = getMeaningfulColumns(rawRows, allColumns).concat(withReason ? ['__판단근거'] : []);
   const rowsForTable = candidates.map(c => withReason ? { ...c.row, __판단근거: c.reason } : c.row);
-  renderTable('#candidateWrap', rowsForTable, candidates.length ? Object.keys(rowsForTable[0]) : []);
+  renderTable('#candidateWrap', rowsForTable, cols);
   $('#candidateCount').textContent = `후보 ${candidates.length}명`;
   lastWinners = [];
   $('#winnerResult').innerHTML = '';
