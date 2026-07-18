@@ -70,7 +70,7 @@ tr:last-child td{border-bottom:none;}
     <h2><span class="num">2</span>이번 회차 조건</h2>
     <p class="desc">이번에만 적용할 조건을 자유롭게 문장으로 적어주세요. (예: 사진 첨부한 사람 + 나루토를 언급한 사람 + 댓글을 정성스럽게 쓴 사람)</p>
     <div class="field"><textarea id="inCondition" rows="3" placeholder="사진 첨부한 사람 + 나루토를 언급한 사람 + 정성스럽게 쓴 사람"></textarea></div>
-    <button onclick="runFilter()">필터링 실행</button>
+    <button onclick="runFilter()" id="btnRunFilter">필터링 실행</button>
     <button class="secondary" onclick="useAllAsFallback()">필터링 없이 전체 참가자로 진행 (테스트용)</button>
     <div class="status" id="filterStatus"></div>
     <div class="warn-box" id="filterFallback"></div>
@@ -152,11 +152,19 @@ function escapeHtml(s) {
       객관적이면 이 단계 자체가 생략되어 AI 판단 비용이 0
    코드 규칙이 없거나 오류나면 안전하게 전체를 3)으로 보내는 예전 방식으로 대체.
    백엔드 미배포 시 실패 → 안내 후 대체 경로 제공 */
+// AI 판단(3단계)에 넘기는 인원이 이 수를 넘으면, 예상 비용을 보여주고 확인받은
+// 뒤에만 진행 — 코드 규칙 실패로 전체가 넘어가는 등 "실수로 큰 비용" 상황을
+// 사용자가 항상 눈으로 보고 승인하게 만드는 안전장치. 원/명 단가는 어림값.
+const ROW_CONFIRM_THRESHOLD = 200;
+const EST_WON_PER_ROW = 0.9;
+
 async function runFilter() {
   if (!participants.length) { alert('먼저 참가자 파일을 업로드해주세요.'); return; }
   const condition = $('#inCondition').value.trim();
   if (!condition) { alert('이번 조건을 입력해주세요.'); return; }
 
+  const btn = $('#btnRunFilter');
+  btn.disabled = true;
   $('#filterFallback').style.display = 'none';
   $('#filterStatus').textContent = '조건 분석 중...';
   try {
@@ -193,6 +201,18 @@ async function runFilter() {
       return;
     }
 
+    if (preCandidateRows.length > ROW_CONFIRM_THRESHOLD) {
+      const estWon = Math.round(preCandidateRows.length * EST_WON_PER_ROW);
+      const reasonText = usedCodeRule
+        ? `규칙으로 추려도 ${preCandidateRows.length}명이 남았어요.`
+        : `코드 규칙을 못 만들어서 전체 ${preCandidateRows.length}명이 그대로 AI에게 갑니다.`;
+      const ok = confirm(`${reasonText}\nAI 판단 예상 비용은 약 ${estWon}원(어림값)이에요. 계속할까요?`);
+      if (!ok) {
+        $('#filterStatus').textContent = '취소됨 — AI 판단을 진행하지 않았어요.';
+        return;
+      }
+    }
+
     $('#filterStatus').textContent = usedCodeRule
       ? `1차 규칙으로 ${preCandidateRows.length}명 추림 → 나머지 조건 AI 판단 중...`
       : 'AI 판단 중...';
@@ -213,6 +233,8 @@ async function runFilter() {
     $('#filterStatus').textContent = '';
     $('#filterFallback').textContent = `필터링 서버에 연결할 수 없어요 (${err.message}). Vercel 배포 + API 키(ANTHROPIC_API_KEY) 설정 전에는 이 버튼이 작동하지 않아요. 그동안은 "전체 참가자로 진행"으로 추첨 기능만 미리 테스트해볼 수 있어요.`;
     $('#filterFallback').style.display = 'block';
+  } finally {
+    btn.disabled = false;
   }
 }
 

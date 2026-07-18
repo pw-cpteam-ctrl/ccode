@@ -68,7 +68,7 @@ export default async function handler(req, res) {
 
   try {
     const message = await client.messages.create({
-      model: 'claude-opus-4-8',
+      model: 'claude-sonnet-5',
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
       messages: [
@@ -81,7 +81,7 @@ export default async function handler(req, res) {
           ].join('\n'),
         },
       ],
-      output_config: { format: PLAN_OUTPUT_FORMAT },
+      output_config: { effort: 'medium', format: PLAN_OUTPUT_FORMAT },
     });
 
     const textBlock = message.content.find((b) => b.type === 'text');
