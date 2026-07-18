@@ -79,14 +79,12 @@ button.secondary:hover{background:#eef2ff}
       </label>
       <button onclick="collect('today')">오늘 하루 수집</button>
     </div>
-    <details>
-      <summary style="cursor:pointer;font-size:12px;color:#6b7280">특정 기간을 지정하고 싶다면</summary>
-      <div class="row" style="margin-top:8px">
-        <label>시작일 <input type="date" id="rangeStart"></label>
-        <label>종료일(이 날짜도 포함돼요) <input type="date" id="rangeEnd"></label>
-        <button onclick="collect('range')">이 기간으로 수집</button>
-      </div>
-    </details>
+    <div class="sub" style="margin-top:12px">특정 기간을 지정하고 싶다면</div>
+    <div class="row" style="margin-top:8px">
+      <label>시작일 <input type="date" id="rangeStart" onchange="document.getElementById('rangeEnd').value = this.value"></label>
+      <label>종료일(이 날짜도 포함돼요) <input type="date" id="rangeEnd"></label>
+      <button onclick="collect('range')">이 기간으로 수집</button>
+    </div>
   </div>
 
   <div class="panel">
@@ -179,6 +177,13 @@ function startEventStream() {
     document.getElementById('jobLabel').textContent = data.label + (data.status === 'running' ? ' — 진행 중' : '');
     log.textContent = data.logs.join('');
     log.scrollTop = log.scrollHeight;
+    // 재접속(새로고침/탭 재연결) 시점엔 이미 작업이 끝나있을 수 있는데, 그 경우 'status'
+    // 이벤트는 다시 안 오므로(과거에 이미 발생한 전환이라) 여기서도 직접 버튼을 풀어줘야 함
+    // — 안 그러면 재접속 타이밍에 따라 버튼이 영원히 잠긴 채로 남는 문제가 있었음.
+    if (data.status !== 'running') {
+      jobRunning = false;
+      setButtonsDisabled(false);
+    }
   });
   evtSource.addEventListener('log', e => {
     const data = JSON.parse(e.data);
