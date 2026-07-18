@@ -14,7 +14,7 @@ REM ================================================================
 
 echo.
 echo  최신 버전을 받는 중입니다...
-curl -L -o _update.zip "https://codeload.github.com/%OWNER%/%REPO%/zip/refs/heads/%BRANCH%"
+curl -L --ssl-no-revoke -o _update.zip "https://codeload.github.com/%OWNER%/%REPO%/zip/refs/heads/%BRANCH%"
 if errorlevel 1 (
   echo.
   echo  [실패] 다운로드가 안 됐어요. 인터넷 연결을 확인하고 다시 시도해주세요.
