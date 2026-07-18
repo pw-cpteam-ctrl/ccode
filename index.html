@@ -80,6 +80,10 @@ p.sub{font-size:13px;color:#7d7568;margin:0 0 27px;}
   -webkit-box-orient:vertical;
   overflow:hidden;
 }
+.actions{display:flex;gap:6px;margin-top:2px;}
+.actions a{flex:1;text-align:center;font-size:11px;font-weight:700;padding:5px 0;border-radius:6px;text-decoration:none;}
+.actions .primary{background:#252018;color:#fff;}
+.actions .secondary{background:#f0ede7;color:#252018;}
 </style>
 </head>
 <body>
@@ -108,13 +112,17 @@ p.sub{font-size:13px;color:#7d7568;margin:0 0 27px;}
         <div class="desc">사각형 그리드 · 캔버스 3종 선택 (2·4·6장)</div>
       </div>
     </a>
-    <a class="card" href="http://localhost:4848">
+    <div class="card">
       <div class="thumb"></div>
       <div class="body">
         <div class="name">SNS 성과 리포트 대시보드</div>
-        <div class="desc">자사·경쟁사 SNS 실적 수집/비교 도구 — 이 컴퓨터에서 대시보드를 먼저 실행해둬야 열림(sns-report-scraper/start-dashboard.bat 실행)</div>
+        <div class="desc">자사·경쟁사 SNS 실적 수집/비교 도구 — 처음이면 먼저 다운로드해서 압축을 풀고 start-dashboard.bat을 실행하세요. 이미 설치했다면 "열기"로 바로 접속.</div>
+        <div class="actions">
+          <a class="primary" href="https://github.com/pw-cpteam-ctrl/share/releases/latest" target="_blank" rel="noopener">다운로드</a>
+          <a class="secondary" href="http://localhost:4848">열기</a>
+        </div>
       </div>
-    </a>
+    </div>
   </div>
   <div class="column">
     <a class="card" href="https://ccode-vbvi.vercel.app/">
