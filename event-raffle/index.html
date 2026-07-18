@@ -57,6 +57,9 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 .cond-row button.cond-remove{flex:0 0 auto;padding:6px 10px;font-size:13px;}
 .col-map{display:flex;gap:14px;margin-top:12px;flex-wrap:wrap;}
 .col-map .field{flex:1;min-width:220px;margin-bottom:0;}
+.slot-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+.slot-row .slot-load{flex:1;min-width:0;text-align:left;background:var(--ui-card);color:var(--ui-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.slot-row .slot-delete{flex:0 0 auto;}
 </style>
 </head>
 <body>
@@ -70,13 +73,17 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
       <li>참가자 명단(엑셀/CSV)을 업로드합니다.</li>
       <li>"사진 첨부한 사람만" 같은 조건을 문장으로 입력하면 AI가 조건에 맞는 후보를 추려서 근거와 함께 보여줍니다.</li>
       <li>실제 당첨자는 AI가 아니라 코드가 진짜 무작위로 뽑아서 공정성을 보장합니다.</li>
-      <li>업로드한 참가자 원본 데이터는 저장하지 않고, 당첨자 명단과 조건만 기록으로 남습니다.</li>
+      <li>업로드한 참가자 원본 데이터는 서버나 깃허브에는 남지 않고, 이 브라우저(이 PC)에만 최근 5개까지 임시로 남아있어 다음에 다시 열어도 이어서 쓸 수 있습니다. 당첨자 명단과 조건만 깃허브에 기록됩니다.</li>
     </ol>
   </div>
 
   <div class="step">
     <h2><span class="num">1</span>참가자 파일 업로드</h2>
     <p class="desc">엑셀(.xlsx) 또는 CSV 파일. 첫 줄은 헤더(컬럼명)로 인식합니다.</p>
+    <div id="slotListWrap" style="display:none;margin-bottom:12px;">
+      <div class="tbl-hint" style="margin:0 0 6px;">최근 불러온 파일 (이 PC의 브라우저에만 저장, 최대 5개) — 마지막 파일은 자동으로 불러왔어요.</div>
+      <div id="slotList"></div>
+    </div>
     <input type="file" id="inFile" accept=".xlsx,.xls,.csv"/>
     <div class="status" id="uploadStatus"></div>
     <div class="tbl-wrap" id="previewWrap" style="display:none;"></div>
@@ -136,6 +143,100 @@ let contentColumn = ''; // 필터링 조건이 적용될 "댓글/후기 본문" 
 let nicknameColumn = ''; // 결과 표시용 닉네임 컬럼명 (선택)
 let lengthStats = null; // 본문 글자 수 분포 통계 (파일마다 새로 계산, 고정 구간 아님)
 let lastCombinedCondition = ''; // 마지막으로 실행한 조건(다운로드/저장 기록용)
+let lastFileName = ''; // 슬롯 캐시 라벨용 (업로드한 파일명)
+
+/* ── 파일 캐싱: 업로드한 참가자 데이터를 이 브라우저(localStorage)에만 최근 5개까지
+   남겨서, 나중에 다시 열었을 때 매번 새로 업로드하지 않아도 되게 한다. 서버/깃허브에는
+   절대 올라가지 않음 — 이 PC의 이 브라우저 안에서만 유지된다. */
+const SLOT_KEY = 'event-raffle-slots-v1';
+const SLOT_MAX = 5;
+
+function loadSlots() {
+  try { return JSON.parse(localStorage.getItem(SLOT_KEY) || '[]'); } catch (e) { return []; }
+}
+function saveSlots(list) {
+  const trimmed = list.slice(0, SLOT_MAX);
+  try { localStorage.setItem(SLOT_KEY, JSON.stringify(trimmed)); return; } catch (e) { /* 용량 초과 — 아래에서 재시도 */ }
+  // 용량 초과 시 오래된 슬롯부터 참가자 데이터(무거운 필드)를 비우고 요약만 남겨 재시도
+  const stripped = trimmed.map((s) => ({ ...s }));
+  for (let i = stripped.length - 1; i >= 0; i--) {
+    stripped[i] = { ...stripped[i], participants: [] };
+    try { localStorage.setItem(SLOT_KEY, JSON.stringify(stripped)); return; } catch (e) { /* 계속 다음 슬롯도 비우기 */ }
+  }
+}
+// ts(저장 시각)만 다르고 나머지 내용이 전부 같으면 같은 데이터로 보고 중복 저장하지 않음
+function snapshotContentKey(s) {
+  const { ts, ...rest } = s;
+  return JSON.stringify(rest);
+}
+function pushSlot(snap, skipRender) {
+  if (!snap) return;
+  const list = loadSlots();
+  if (list.length && snapshotContentKey(list[0]) === snapshotContentKey(snap)) return;
+  list.unshift(snap);
+  saveSlots(list);
+  if (!skipRender) renderSlots();
+}
+function deleteSlot(i) {
+  const list = loadSlots();
+  list.splice(i, 1);
+  saveSlots(list);
+  renderSlots();
+}
+function snapshotState() {
+  if (!participants.length) return null;
+  return {
+    ts: Date.now(),
+    fileName: lastFileName,
+    participants: JSON.parse(JSON.stringify(participants)),
+    contentColumn,
+    nicknameColumn,
+  };
+}
+function slotLabel(s) {
+  const date = new Date(s.ts).toLocaleString('ko-KR');
+  const count = (s.participants || []).length;
+  return `${s.fileName || '(파일명 없음)'} · ${count}명 · ${date}`;
+}
+function applySlot(s) {
+  if (!s.participants || !s.participants.length) return;
+  participants = JSON.parse(JSON.stringify(s.participants));
+  const allColumns = Object.keys(participants[0]);
+  $('#uploadStatus').textContent = `${participants.length}명 인식 완료 (이 PC에 저장된 최근 파일에서 불러옴)`;
+  populateColumnSelectors(allColumns, participants);
+  if (s.contentColumn && allColumns.includes(s.contentColumn)) {
+    contentColumn = s.contentColumn;
+    $('#selContentCol').value = s.contentColumn;
+    updateLengthStats(participants);
+  }
+  if (s.nicknameColumn && allColumns.includes(s.nicknameColumn)) {
+    nicknameColumn = s.nicknameColumn;
+    $('#selNicknameCol').value = s.nicknameColumn;
+  }
+  renderTable('#previewWrap', participants.slice(0, 5), getMeaningfulColumns(participants, allColumns));
+  resetDownstream();
+}
+function renderSlots() {
+  const list = loadSlots();
+  const wrap = $('#slotListWrap');
+  if (!list.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  $('#slotList').innerHTML = list.map((s, i) => `
+    <div class="slot-row">
+      <button type="button" class="secondary slot-load" data-i="${i}">${escapeHtml(slotLabel(s))}</button>
+      <button type="button" class="secondary slot-delete" data-i="${i}" title="이 캐시 삭제">✕</button>
+    </div>`).join('');
+  $('#slotList').querySelectorAll('.slot-load').forEach((btn) => {
+    btn.addEventListener('click', () => applySlot(loadSlots()[+btn.dataset.i]));
+  });
+  $('#slotList').querySelectorAll('.slot-delete').forEach((btn) => {
+    btn.addEventListener('click', () => deleteSlot(+btn.dataset.i));
+  });
+}
+window.addEventListener('beforeunload', () => { pushSlot(snapshotState(), true); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') pushSlot(snapshotState(), true);
+});
 
 /* ── 1단계: 파일 업로드 ── */
 $('#inFile').addEventListener('change', async (e) => {
@@ -150,15 +251,24 @@ $('#inFile').addEventListener('change', async (e) => {
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
     if (!rows.length) { $('#uploadStatus').textContent = '파일에서 데이터를 찾지 못했어요. 첫 줄이 헤더인지 확인해주세요.'; return; }
     participants = rows;
+    lastFileName = file.name;
     const allColumns = Object.keys(rows[0]);
     $('#uploadStatus').textContent = `${rows.length}명 인식 완료`;
     populateColumnSelectors(allColumns, rows);
     renderTable('#previewWrap', rows.slice(0, 5), getMeaningfulColumns(rows, allColumns));
     resetDownstream();
+    pushSlot(snapshotState());
   } catch (err) {
     $('#uploadStatus').textContent = `파일을 읽지 못했어요: ${err.message}`;
   }
 });
+
+// 페이지를 다시 열었을 때, 이 PC에 캐시된 가장 최근 파일을 자동으로 불러온다.
+renderSlots();
+{
+  const cachedSlots = loadSlots();
+  if (cachedSlots.length) applySlot(cachedSlots[0]);
+}
 
 // 스크래퍼 원본에는 참가자 댓글과 무관한 표(랭킹 집계 등)가 옆에 같이 섞여 있어서,
 // 대부분의 행에서 빈 값인 컬럼(전체의 1% 이하만 값이 있음)이 많다. 이런 컬럼은
@@ -217,8 +327,8 @@ function populateColumnSelectors(columns, rows) {
   $('#colMapWrap').style.display = 'flex';
   updateLengthStats(rows);
 }
-$('#selContentCol').addEventListener('change', (e) => { contentColumn = e.target.value; updateLengthStats(participants); });
-$('#selNicknameCol').addEventListener('change', (e) => { nicknameColumn = e.target.value; });
+$('#selContentCol').addEventListener('change', (e) => { contentColumn = e.target.value; updateLengthStats(participants); pushSlot(snapshotState(), true); });
+$('#selNicknameCol').addEventListener('change', (e) => { nicknameColumn = e.target.value; pushSlot(snapshotState(), true); });
 
 function normalizeRow(row) {
   return { 본문: String(row[contentColumn] ?? '') };
