@@ -36,7 +36,7 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
   // X가 그 카드를 querySelectorAll이 도는 시점에 아예 DOM에 렌더링을 안 해준 것 — 원인이
   // 완전히 다른 범주(가상 스크롤 타이밍)라는 뜻.
   async function collectOnce() {
-    const skipped = await page.evaluate(() => {
+    const skipped = await page.evaluate((account) => {
       const skippedThisTick = [];
       document.querySelectorAll('article[data-testid="tweet"]').forEach(article => {
         const timeEl = article.querySelector('time');
@@ -51,19 +51,30 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
         // 날짜"를 그대로 보여줌. 그래서 오늘 옛날 글을 리트윗하면 실제로는 최신 타임라인인데도
         // 날짜만 보면 옛날 글처럼 보여서, 기간 시작일 판단 로직(아래)이 스크롤을 시작하기도
         // 전에 "범위 벗어남"으로 착각해 멈춰버림. 좋아요/RT수도 이 계정 자신의 성과가 아니라
-        // 원본 게시물 것이라 집계에도 안 맞음 — 그래서 리트윗/고정 게시물은 통째로 제외.
+        // 원본 게시물 것이라 집계에도 안 맞음 — 그래서 리트윗/고정 게시물은 원칙적으로 제외.
         //
-        // 단, 여기서 seenLinks에 추가하면 안 됨: 자사의 예전 주요 게시물을 "다시 리트윗"하면
-        // 피드 맨 위에 이 부스트된 카드로 먼저 마주치는데, 이때 링크를 seenLinks에 넣어버리면
-        // 스크롤이 내려가서 이 게시물의 원래(자연스러운, socialContext 없는) 위치에 도달했을 때도
-        // "이미 처리함"으로 오인해 두 번 다 놓쳐버림 — 실제로 이 버그로 매출 1위 상품의 원본
-        // 게시물이 통째로 누락된 사례를 발견함. seenLinks에 안 넣어도 이 카드는 스크롤 중
-        // 화면에 남아있는 동안 매 tick마다 다시 스킵될 뿐이라 안전함.
+        // 단, 이 계정이 "자기 자신의 글"을 재게시(부스트)한 경우는 예외 — 그건 실제로 이
+        // 계정 자신의 성과라 집계해야 함(사용자 확인 완료). 링크 안 작성자가 지금 수집
+        // 중인 이 계정 본인이고 라벨이 "~재게시함"일 때만 예외로 그대로 집계.
+        // (남의 글을 리트윗한 경우·고정 게시물은 여전히 제외 — 아래에서 계속 스킵)
+        //
+        // 단, 예외에 해당하지 않아 스킵할 때는 seenLinks에 추가하면 안 됨: 자사의 예전 주요
+        // 게시물을 "다시 리트윗"하면 피드 맨 위에 이 부스트된 카드로 먼저 마주치는데, 이때
+        // 링크를 seenLinks에 넣어버리면 스크롤이 내려가서 이 게시물의 원래(자연스러운,
+        // socialContext 없는) 위치에 도달했을 때도 "이미 처리함"으로 오인해 두 번 다
+        // 놓쳐버림 — 실제로 이 버그로 매출 1위 상품의 원본 게시물이 통째로 누락된 사례를
+        // 발견함. seenLinks에 안 넣어도 이 카드는 스크롤 중 화면에 남아있는 동안 매 tick마다
+        // 다시 스킵될 뿐이라 안전함.
         const socialContext = article.querySelector('[data-testid="socialContext"]');
         if (socialContext) {
-          window._loggedSkips.add(link);
-          skippedThisTick.push({ link, reason: `socialContext("${socialContext.innerText.replace(/\s+/g, ' ').trim()}")` });
-          return;
+          const label = socialContext.innerText.replace(/\s+/g, ' ').trim();
+          const linkAccount = (link.match(/x\.com\/([^/]+)\/status\//) || [])[1] || '';
+          const isOwnRepost = /재게시함$/.test(label) && linkAccount.toLowerCase() === account.toLowerCase();
+          if (!isOwnRepost) {
+            window._loggedSkips.add(link);
+            skippedThisTick.push({ link, reason: `socialContext("${label}")` });
+            return;
+          }
         }
 
         // 인용 트윗(quote tweet) 안에 인용된 원본 게시물이 똑같은 article[data-testid="tweet"]
@@ -91,7 +102,7 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
         });
       });
       return skippedThisTick;
-    });
+    }, account);
     skipped.forEach(s => console.log(`[twitter:${account}:skip] ${s.reason} — ${s.link}`));
   }
 
