@@ -103,6 +103,44 @@ const LAYOUT = {
 LAYOUT.textH = LAYOUT.ipSize + 9 + LAYOUT.priceSize + 7 + LAYOUT.shipSize;
 LAYOUT.cardBlock = LAYOUT.photo + LAYOUT.photoToText + LAYOUT.textH;
 
+// IP명이 너무 길어서 한 줄에 우겨넣으면 이 크기 밑으로 줄여야 하는 경우, 억지로 작게
+// 만들지 않고 2줄로 나눠서 IP_TWO_LINE_SIZE(1줄 최소값 15px보다 크고 기본 25px보다는
+// 작은 절충값)로 보여준다. 2줄이 된 카드가 있는 행은 그만큼 행 높이가 늘어나야 다음
+// 행과 안 겹친다 — 이 계산은 rowExtraHeight()가 한다.
+const IP_TWO_LINE_THRESHOLD = 18;
+const IP_TWO_LINE_SIZE = 20;
+
+// 특정 IP명이 photo 폭 안에 1줄로 들어갈지, 2줄로 나눠야 할지 미리 계산만 한다(그리지
+// 않음) — 실제 그리기(drawCard)와 행 높이 계산(rowExtraHeight) 양쪽에서 공용으로 쓴다.
+function ipTextPlan(ctx, item) {
+  const { photo, tagSize, ipSize } = LAYOUT;
+  const ip = item.ip || '';
+  let reserve = 0;
+  if (item.tag) {
+    ctx.font = `700 ${tagSize}px ${FONT}`;
+    reserve = ctx.measureText(item.tag).width + 14;
+  }
+  const maxWidth = photo - 2 - reserve;
+  const oneLineSize = fitFont(ctx, ip, maxWidth, ipSize, 15);
+  if (!ip || oneLineSize >= IP_TWO_LINE_THRESHOLD) return { lines: [ip], size: oneLineSize };
+
+  // 1줄로는 너무 작아지는 경우 → 2줄로 나눠서 더 큰 글자로 보여준다. 띄어쓰기 기준이
+  // 아니라 글자 단위로 자르는 이유: 한글 IP명은 공백이 없거나 애매한 경우가 많아서,
+  // "폭에 맞는 최대 글자수까지" 자르는 방식이 더 안전하다.
+  ctx.font = `800 ${IP_TWO_LINE_SIZE}px ${FONT}`;
+  let splitAt = ip.length;
+  while (splitAt > 1 && ctx.measureText(ip.slice(0, splitAt)).width > maxWidth) splitAt--;
+  return { lines: [ip.slice(0, splitAt), ip.slice(splitAt)], size: IP_TWO_LINE_SIZE };
+}
+
+// 한 행(row)에 속한 카드들 중 하나라도 IP명이 2줄로 넘어가면, 그 행 전체 높이를
+// 한 줄만큼 더 늘려야 한다 — measureCtx는 실제로 그릴 캔버스가 아니어도 되고
+// measureText만 정확하면 된다(폰트가 로드된 뒤라면 임시 캔버스로도 충분).
+function rowExtraHeight(measureCtx, rowItems) {
+  const needsTwoLines = rowItems.some((it) => ipTextPlan(measureCtx, it).lines.length === 2);
+  return needsTwoLines ? IP_TWO_LINE_SIZE + 4 : 0;
+}
+
 /**
  * Draws one product card (photo + ip name + tag badge + price + shipping) with
  * its top-left corner at (cx, cy). Shared by renderPage() and renderContinuousStrip()
@@ -113,31 +151,31 @@ LAYOUT.cardBlock = LAYOUT.photo + LAYOUT.photoToText + LAYOUT.textH;
  * 항상 고정) 꺼도 위쪽 IP명/가격 위치나 다음 줄 카드 위치는 전혀 안 밀린다.
  */
 function drawCard(ctx, item, cx, cy, showShipping = true) {
-  const { photo, colGap, photoToText, ipSize, priceSize, shipSize, tagSize } = LAYOUT;
-  const { photo: photoImg, ip, price, ship, tag } = item;
+  const { photo, photoToText, priceSize, shipSize, tagSize } = LAYOUT;
+  const { photo: photoImg, price, ship, tag } = item;
 
   if (photoImg) ctx.drawImage(photoImg, cx, cy, photo, photo);
 
   ctx.textBaseline = 'alphabetic';
-  const ipY = cy + photo + photoToText + ipSize - 4;
+  const plan = ipTextPlan(ctx, item);
+  const ipY = cy + photo + photoToText + plan.size - 4;
 
-  // reserve horizontal space for the tag badge before sizing the IP text
-  let reserve = 0;
-  if (tag) {
-    ctx.font = `700 ${tagSize}px ${FONT}`;
-    reserve = ctx.measureText(tag).width + 14;
-  }
-  const fs = fitFont(ctx, ip || '', photo - 2 - reserve, ipSize, 15);
   ctx.fillStyle = '#1b1b1f';
-  ctx.font = `800 ${fs}px ${FONT}`;
-  ctx.fillText(ip || '', cx + 2, ipY);
-
-  if (tag) {
-    const ipWidth = ctx.measureText(ip || '').width;
-    drawTagBadge(ctx, cx + 2 + ipWidth + 5, ipY, tag, tagSize);
+  ctx.font = `800 ${plan.size}px ${FONT}`;
+  ctx.fillText(plan.lines[0], cx + 2, ipY);
+  let lastIpLineY = ipY;
+  if (plan.lines.length === 2) {
+    lastIpLineY = ipY + plan.size + 4;
+    ctx.fillText(plan.lines[1], cx + 2, lastIpLineY);
   }
 
-  const priceY = ipY + 9 + priceSize;
+  if (tag) {
+    // ctx.font는 fillText 이후에도 그대로 IP명 폰트라 line1 폭을 그대로 재측정할 수 있다.
+    const line1Width = ctx.measureText(plan.lines[0]).width;
+    drawTagBadge(ctx, cx + 2 + line1Width + 5, ipY, tag, tagSize);
+  }
+
+  const priceY = lastIpLineY + 9 + priceSize;
   ctx.fillStyle = '#3b3b3b';
   ctx.font = `500 ${priceSize}px ${FONT}`; // NOTE: price must always render SMALLER + LIGHTER than ip name
   ctx.fillText(price || '', cx + 2, priceY);
@@ -181,13 +219,27 @@ async function renderPage(items, headerImg, options = {}) {
 
   const { photo, colGap, padX, cardBlock, rowGap } = LAYOUT;
   const usedRows = Math.min(rows, Math.ceil(items.length / cols));
-  const padTop = Math.round((pageH - headerH - usedRows * cardBlock - (usedRows - 1) * rowGap) / 2);
 
-  for (let i = 0; i < items.length; i++) {
-    const r = Math.floor(i / cols), c = i % cols;
-    const cx = padX + c * (photo + colGap);
-    const cy = headerH + padTop + r * (cardBlock + rowGap);
-    drawCard(ctx, items[i], cx, cy, showShipping);
+  // IP명이 2줄로 넘어가는 카드가 있는 행은 기본 카드 높이(cardBlock)보다 실제로 더
+  // 필요할 수 있어서, 행마다 실제 높이를 먼저 계산한다 — 안 그러면 다음 행 카드와 겹치거나
+  // 페이지 아래쪽이 잘린다.
+  const rowHeights = [];
+  for (let r = 0; r < usedRows; r++) {
+    const rowItems = items.slice(r * cols, r * cols + cols);
+    rowHeights.push(cardBlock + rowExtraHeight(ctx, rowItems));
+  }
+  const totalRowsHeight = rowHeights.reduce((a, b) => a + b, 0) + (usedRows - 1) * rowGap;
+  const padTop = Math.round((pageH - headerH - totalRowsHeight) / 2);
+
+  let yCursor = headerH + padTop;
+  for (let r = 0; r < usedRows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      if (i >= items.length) continue;
+      const cx = padX + c * (photo + colGap);
+      drawCard(ctx, items[i], cx, yCursor, showShipping);
+    }
+    yCursor += rowHeights[r] + rowGap;
   }
 
   return canvas;
@@ -204,7 +256,16 @@ async function renderContinuousStrip(items, options = {}) {
 
   const { photo, colGap, padX, cardBlock, rowGap } = LAYOUT;
   const usedRows = Math.ceil(items.length / cols) || 1;
-  const height = padTop + usedRows * cardBlock + (usedRows - 1) * rowGap + padBottom;
+
+  // 실제 출력 캔버스의 세로 길이가 행별 실제 높이(2줄 IP명 포함)에 달려있어서, 캔버스를
+  // 만들기 전에 폭 측정만 가능한 임시 컨텍스트로 행 높이부터 계산한다.
+  const measureCtx = document.createElement('canvas').getContext('2d');
+  const rowHeights = [];
+  for (let r = 0; r < usedRows; r++) {
+    const rowItems = items.slice(r * cols, r * cols + cols);
+    rowHeights.push(cardBlock + rowExtraHeight(measureCtx, rowItems));
+  }
+  const height = padTop + rowHeights.reduce((a, b) => a + b, 0) + (usedRows - 1) * rowGap + padBottom;
 
   const canvas = document.createElement('canvas');
   canvas.width = pageW * scale;
@@ -216,11 +277,15 @@ async function renderContinuousStrip(items, options = {}) {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, pageW, height);
 
-  for (let i = 0; i < items.length; i++) {
-    const r = Math.floor(i / cols), c = i % cols;
-    const cx = padX + c * (photo + colGap);
-    const cy = padTop + r * (cardBlock + rowGap);
-    drawCard(ctx, items[i], cx, cy, showShipping);
+  let yCursor = padTop;
+  for (let r = 0; r < usedRows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      if (i >= items.length) continue;
+      const cx = padX + c * (photo + colGap);
+      drawCard(ctx, items[i], cx, yCursor, showShipping);
+    }
+    yCursor += rowHeights[r] + rowGap;
   }
 
   return canvas;
@@ -235,6 +300,8 @@ if (typeof window !== 'undefined') {
     drawTagBadge,
     drawCartIcon,
     drawCard,
+    ipTextPlan,
+    rowExtraHeight,
     LAYOUT,
   };
 }

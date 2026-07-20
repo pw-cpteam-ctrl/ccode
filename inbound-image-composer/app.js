@@ -683,7 +683,7 @@ async function aiFillSource(srcId) {
         // 모델이 그래도 ip를 비워서 주면 rawText로 대체 — 빈 칸보다는 "확인해서 고칠 글자"가 있는 게 낫다.
         // trim 필수: 사전(gradeTable/ipNameMap) 조회가 문자열 완전일치라서, 앞뒤 공백이 하나라도
         // 남으면 "주술회전"처럼 이미 사전에 있는 IP도 조용히 매칭 실패해서 미분류로 빠진다.
-        item.ip = (result.ip || result.rawText || '').trim();
+        item.ip = resolveBandName((result.ip || result.rawText || '').trim());
         item.price = result.price || '';
         item.ship = result.ship || '무료배송';
         item.tag = result.tag || '';
@@ -763,7 +763,7 @@ async function ocrLabelsForSource(srcId) {
       data.items.slice(0, itemIndicesInBatch.length).forEach((result, j) => {
         const item = state.items[src.itemStartIndex + itemIndicesInBatch[j]];
         if (!item) return;
-        item.ip = (result.ip || result.rawText || '').trim();
+        item.ip = resolveBandName((result.ip || result.rawText || '').trim());
         item.price = result.price || '';
         item.ship = result.ship || '무료배송';
         item.tag = result.tag || '';
@@ -802,6 +802,30 @@ function populateStoreSelects() {
 function tagWhitelistForActiveStore() {
   const profile = state.dict.storeProfiles[state.activeStore];
   return (profile && profile.tagWhitelist) || [];
+}
+
+// 뱅드림(BanG Dream) 서브밴드명 처리 — 부시로드 스토어는 서브밴드명을 그대로 쓰고
+// (Ave Mujica → Ave Mujica), 그 외 스토어는 서브밴드명을 생략하고 "뱅드림" 3글자로
+// 뭉뚱그린다. 키는 AI/사전에서 흔히 나오는 원문 변형, 값은 부시로드에서 실제로 쓸
+// 정확한 표기(오타/띄어쓰기 교정 포함).
+const BANDORI_SUBUNIT_MAP = {
+  '뱅드림': '뱅드림', '밴드림': '뱅드림',
+  'Ave Mujica': 'Ave Mujica', '뱅드림 Ave Mujica': 'Ave Mujica',
+  'MyGO!!!!!': 'MyGO!!!!!',
+  '헬로해피월드': '헬로! 해피 월드', '헬로! 해피 월드': '헬로! 해피 월드',
+  'RAISE A SUILEN': 'RAISE A SUILEN',
+  'Morfonica': 'Morfonica',
+  'Afterglow': 'Afterglow',
+  'Pastel＊Palettes': 'Pastel＊Palettes',
+  'Roselia': 'Roselia',
+  '무겐다이뮤타입': '무겐다이 뮤타입', '무겐다이 뮤타입': '무겐다이 뮤타입',
+};
+
+function resolveBandName(ip) {
+  if (!(ip in BANDORI_SUBUNIT_MAP)) return ip;
+  const profile = state.dict.storeProfiles[state.activeStore];
+  if (profile && profile.bandNameAsIs) return BANDORI_SUBUNIT_MAP[ip]; // 부시로드 등 — 서브밴드명 그대로(오타만 교정)
+  return '뱅드림'; // 그 외 스토어는 서브밴드명 생략
 }
 
 function ipDictSuggestionHtml(ip) {
