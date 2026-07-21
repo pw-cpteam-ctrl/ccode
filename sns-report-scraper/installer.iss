@@ -53,10 +53,11 @@ Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 ;  - *.iss           : 이 스크립트 자신
 ;  - SNS리포트-설치.exe : 빌드 결과물 자신
 ;  - *-session.json  : 개인 로그인 세션 (넘기면 안 됨)
+;  - chrome-profile\* : 로그인용 전용 크롬 프로필(개인 로그인 정보 포함, 넘기면 안 됨)
 ;  - reports\*       : 내가 뽑은 리포트
 ;  - .git, .gitignore, PLAN/WORKLOG 등 개발용 파일
 Source: "*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion; \
-  Excludes: "*.md,*.iss,SNS리포트-설치.exe,x-session.json,instagram-session.json,*-session.json,\reports\*,\.git\*,.gitignore,\verify-output\*"
+  Excludes: "*.md,*.iss,SNS리포트-설치.exe,x-session.json,instagram-session.json,*-session.json,\chrome-profile\*,\reports\*,\.git\*,.gitignore,\verify-output\*"
 
 [Icons]
 ; 바탕화면 바로가기 2개

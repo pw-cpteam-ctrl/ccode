@@ -5,3 +5,4 @@ reports/
 cookies-*.json
 cookie-table*.txt
 curl-*.txt
+chrome-profile/

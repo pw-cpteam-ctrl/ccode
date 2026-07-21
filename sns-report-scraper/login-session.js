@@ -12,13 +12,21 @@
  *   node login-session.js instagram
  *   node login-session.js twitter
  */
+const path = require('path');
 const readline = require('readline');
-const { chromium } = require('playwright');
-const { applyStealth, STEALTH_LAUNCH_ARGS, STEALTH_CONTEXT_OPTIONS } = require('./browser-stealth');
+const { applyStealth, launchLoginBrowser, closeLoginBrowser } = require('./browser-stealth');
 
 const PLATFORMS = {
-  instagram: { url: 'https://www.instagram.com/accounts/login/', outputPath: './instagram-session.json' },
-  twitter: { url: 'https://x.com/login', outputPath: './x-session.json' },
+  instagram: {
+    url: 'https://www.instagram.com/accounts/login/',
+    outputPath: './instagram-session.json',
+    profileDir: path.join(__dirname, 'chrome-profile', 'instagram'),
+  },
+  twitter: {
+    url: 'https://x.com/login',
+    outputPath: './x-session.json',
+    profileDir: path.join(__dirname, 'chrome-profile', 'twitter'),
+  },
 };
 
 function waitForEnter(message) {
@@ -39,12 +47,11 @@ async function main() {
     process.exit(1);
   }
 
-  const browser = await chromium.launch({ headless: false, args: STEALTH_LAUNCH_ARGS });
-  const context = await browser.newContext(STEALTH_CONTEXT_OPTIONS);
-  // 로그인 자체는 사람이 직접 하지만, 브라우저가 Playwright로 뜬 것 자체를 자동화로 감지하면
-  // 이 세션에 처음부터 "의심스러운 기기" 낙인이 찍혀서 나중에 twitter.js/instagram.js에서
-  // 정상 쿠키인데도 재로그인을 요구하는 원인이 될 수 있음 — instagram.js와 같은 위장 적용
-  // (browser-stealth.js).
+  // 로그인은 이 컴퓨터에 설치된 진짜 크롬을(이 프로그램 전용 프로필로) 열어서 진행함 —
+  // Playwright 내장 브라우저보다 실제 사람이 쓰는 브라우저에 훨씬 가까워서, 비번이 맞는데도
+  // 자동화로 의심돼 로그인이 거부되는 문제를 줄여줌(2026-07-20 실제 발생 사례로 확인).
+  // 이 프로필 폴더는 평소 쓰는 크롬 프로필과 완전히 분리돼 있어서 서로 충돌 없음.
+  const { context, browser } = await launchLoginBrowser(config.profileDir);
   await applyStealth(context);
   const page = await context.newPage();
   await page.goto(config.url);
@@ -59,11 +66,9 @@ async function main() {
   // 자식 프로세스로 띄워두는데, 이러면 세션은 이미 저장됐는데도 프로세스가 안 죽어서
   // "진행 중" 상태가 영원히 안 풀리는 문제로 이어짐) — 중요한 건 세션 저장이지 브라우저를
   // 깔끔하게 닫는 게 아니므로, 일정 시간 기다려도 안 끝나면 그냥 넘어가고 프로세스를
-  // 강제로 종료함.
-  await Promise.race([
-    browser.close(),
-    new Promise(resolve => setTimeout(resolve, 5000)),
-  ]);
+  // 강제로 종료함(진짜 크롬 모드는 browser가 없고 context.close()만으로 충분 — closeLoginBrowser가
+  // 내부적으로 분기 처리).
+  await closeLoginBrowser({ context, browser });
   process.exit(0);
 }
 

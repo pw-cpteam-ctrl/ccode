@@ -12,6 +12,8 @@
  * 세션 자체가 만료/플래그된 것일 수 있으니 `login-session.js`로 새로 로그인해서 세션을
  * 다시 만들어야 함(TROUBLESHOOTING-sns-report-scraper.md 참고).
  */
+const { chromium } = require('playwright');
+
 const STEALTH_LAUNCH_ARGS = ['--disable-blink-features=AutomationControlled'];
 
 // 흔한 데스크톱 해상도 + 한국 로케일/시간대 — Playwright 기본 뷰포트(1280x720)는 자동화
@@ -21,6 +23,46 @@ const STEALTH_CONTEXT_OPTIONS = {
   locale: 'ko-KR',
   timezoneId: 'Asia/Seoul',
 };
+
+/**
+ * 로그인 전용 브라우저를 띄움 — 이 컴퓨터에 깔린 진짜 크롬을, 이 프로그램만 쓰는 전용
+ * 프로필 폴더(`profileDir`)로 열어줌. 사람이 평소 쓰는 크롬 프로필과는 폴더 자체가
+ * 분리돼 있어서 서로 충돌하지 않음(둘 다 인스타/X한테는 "진짜 크롬"으로 보임).
+ *
+ * 진짜 크롬이 이 컴퓨터에 안 깔려 있으면(팀원 PC 등) 예전처럼 내장 브라우저로 자동
+ * 대체함 — 이 경우 로그인 벽에 걸릴 가능성은 이전과 동일(악화되지 않음, 개선만 없음).
+ *
+ * @param {string} profileDir 이 로그인 전용으로 쓸 프로필 폴더 경로(계정/플랫폼별로 분리)
+ * @returns {{ context: import('playwright').BrowserContext, browser: import('playwright').Browser|null }}
+ *   browser가 null이면 persistent 모드(진짜 크롬) — context.close()만으로 종료됨.
+ *   browser가 있으면 대체 모드(내장 브라우저) — browser.close()로 종료해야 함.
+ */
+async function launchLoginBrowser(profileDir) {
+  try {
+    const context = await chromium.launchPersistentContext(profileDir, {
+      channel: 'chrome',
+      headless: false,
+      args: STEALTH_LAUNCH_ARGS,
+      viewport: STEALTH_CONTEXT_OPTIONS.viewport,
+      locale: STEALTH_CONTEXT_OPTIONS.locale,
+      timezoneId: STEALTH_CONTEXT_OPTIONS.timezoneId,
+    });
+    return { context, browser: null };
+  } catch (err) {
+    console.log('ℹ️ 이 컴퓨터에 설치된 크롬을 못 찾아서 내장 브라우저로 대신 실행함:', err.message);
+    const browser = await chromium.launch({ headless: false, args: STEALTH_LAUNCH_ARGS });
+    const context = await browser.newContext(STEALTH_CONTEXT_OPTIONS);
+    return { context, browser };
+  }
+}
+
+/** launchLoginBrowser()로 연 걸 안전하게 닫음 — 멈추는 경우 대비 제한 시간 두고 강제 진행 */
+async function closeLoginBrowser({ context, browser }) {
+  await Promise.race([
+    browser ? browser.close() : context.close(),
+    new Promise(resolve => setTimeout(resolve, 5000)),
+  ]);
+}
 
 async function applyStealth(context) {
   await context.addInitScript(() => {
@@ -61,4 +103,10 @@ async function applyStealth(context) {
   });
 }
 
-module.exports = { applyStealth, STEALTH_LAUNCH_ARGS, STEALTH_CONTEXT_OPTIONS };
+module.exports = {
+  applyStealth,
+  STEALTH_LAUNCH_ARGS,
+  STEALTH_CONTEXT_OPTIONS,
+  launchLoginBrowser,
+  closeLoginBrowser,
+};
