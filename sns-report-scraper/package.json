@@ -11,6 +11,7 @@
   "dependencies": {
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
+    "html2canvas": "1.4.1",
     "playwright": "^1.55.0"
   }
 }

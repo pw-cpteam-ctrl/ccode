@@ -254,12 +254,13 @@ function renderPlatformSection(platformKey, data, stockComparison) {
   const textField = platformKey === 'twitter' ? 'text' : 'caption';
 
   return `
-  <section class="platform">
+  <section class="platform" id="platform-${platformKey}">
     <div class="section-head">
       <h2>[${title}] 상품별 비교</h2>
       <div class="toggle-all">
         <button class="toggle-all-btn" onclick="toggleAllEmbeds('${platformKey}',true)">전체 펼치기</button>
         <button class="toggle-all-btn" onclick="toggleAllEmbeds('${platformKey}',false)">전체 접기</button>
+        <button class="toggle-all-btn" onclick="captureSection('${platformKey}','${title}')">📷 스크린샷</button>
       </div>
     </div>
     ${hasStock ? `<div class="sub">📦 재고 매칭 기준 스냅샷: ${escapeHtml(formatTakenAt(stockComparison.latestTakenAt))} (KST) · 초기 판매한도 가정 역산 기준 총 판매추정치(*는 초기 한도 추정임을 표시) — 표 우측 끝(가로 스크롤) 참고</div>` : ''}
@@ -460,8 +461,44 @@ ${renderStockSectionHtml(stockComparison)}
 </div>
 </div>
 <script>
+${fs.readFileSync(path.join(__dirname, 'node_modules/html2canvas/dist/html2canvas.min.js'), 'utf-8')}
+</script>
+<script>
 ${fs.readFileSync(path.join(__dirname, 'matching-core.js'), 'utf-8')}
 ${fs.readFileSync(path.join(__dirname, 'paste-parser.js'), 'utf-8')}
+
+// 트위터/인스타 표 영역만 통째로 이미지(PNG)로 캡처해서 다운로드 — 오프라인 리포트
+// 파일 하나로 완결되게 html2canvas 원본을 그대로 위에 심어둠(인터넷 연결 불필요).
+// 접힌 게시물 임베드(트위터/인스타 위젯 iframe)는 다른 사이트 콘텐츠라 캡처가 안 되거나
+// 빈 칸으로 나올 수 있음 — 표 자체(핵심 내용)는 정상적으로 찍힘.
+function captureSection(platformKey, title) {
+  var el = document.getElementById('platform-' + platformKey);
+  if (!el || typeof html2canvas === 'undefined') {
+    alert('스크린샷 기능을 불러오지 못했습니다.');
+    return;
+  }
+  // 버튼 자체나 원형 그래프(html2canvas가 conic-gradient를 못 그려서 빈 회색 원으로 나옴)가
+  // 스크린샷 안에 같이 찍히지 않게, 캡처 직전에만 잠깐 숨겼다가 끝나면 되돌림.
+  var toggleRow = el.querySelector('.toggle-all');
+  var pies = el.querySelectorAll('.piechart');
+  toggleRow.style.visibility = 'hidden';
+  pies.forEach(function (p) { p.style.visibility = 'hidden'; });
+  html2canvas(el, { backgroundColor: '#f4f6fb', scale: 2 }).then(function (canvas) {
+    canvas.toBlob(function (blob) {
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.download = 'SNS리포트-' + title.replace(/[()]/g, '') + '.png';
+      link.href = url;
+      link.click();
+      URL.revokeObjectURL(url);
+    }, 'image/png');
+  }).catch(function (err) {
+    alert('스크린샷 캡처 중 문제가 생겼어요: ' + err.message);
+  }).finally(function () {
+    toggleRow.style.visibility = '';
+    pies.forEach(function (p) { p.style.visibility = ''; });
+  });
+}
 
 // 리포트 안 "붙여넣기로 게시물 추가" 기능 — 브라우저 세션 동안만 유지되는 미리보기용
 // 임시 상태(리포트 파일을 다시 열면 초기화됨). 실제로 다음에도 유지하려면 화면 하단
