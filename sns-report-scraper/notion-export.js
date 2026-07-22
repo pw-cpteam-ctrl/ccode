@@ -21,7 +21,9 @@ const IGNORE_POSTS_PATH = './ignore-posts.json';
 const MANUAL_POSTS_PATH = './manual-posts.json';
 const NOTION_VERSION = '2022-06-28';
 
-const FIELD_LABELS = { likes: '좋아요', retweets: '리트윗', comments: '댓글' };
+// html-report.js의 FIELD_ICONS와 동일한 이모지 — 노션 표는 칸이 넓어지기 쉬워서 텍스트
+// 대신 이모지 1자로 압축(예: "PW 좋아요" → "PW ♥️")해서 칸 너비 부담을 줄임.
+const FIELD_LABELS = { likes: '♥️', retweets: '♻️', comments: '💬' };
 const PLATFORM_TITLES = { twitter: 'X(트위터)', instagram: '인스타그램' };
 
 function loadJson(p, fallback) {
@@ -65,8 +67,8 @@ function buildPlatformTable(platformReport) {
   const products = productComparison.products;
   const headers = [
     '순위', 'IP', '시리즈',
-    ...fields.flatMap(f => [`PW ${FIELD_LABELS[f] || f}`, `BH ${FIELD_LABELS[f] || f}`, `${FIELD_LABELS[f] || f} 그래프`]),
-    '결과', 'PW 링크', 'BH 링크',
+    ...fields.flatMap(f => [`PW ${FIELD_LABELS[f] || f}`, `BH ${FIELD_LABELS[f] || f}`, `${FIELD_LABELS[f] || f}📊`]),
+    '결과', 'PW🔗', 'BH🔗',
   ];
 
   const headerRow = { object: 'block', type: 'table_row', table_row: { cells: headers.map(h => richText(h)) } };
