@@ -265,6 +265,9 @@ function findFile(map, cellValue){
   if (map.has(noExt)) return map.get(noExt);
   return null;
 }
+function looksLikeFilename(v){
+  return /\.[a-z0-9]{2,5}$/i.test(String(v == null ? '' : v).trim());
+}
 
 function loadImage(file){
   return new Promise((res, rej) => {
@@ -288,9 +291,21 @@ $('#btnMatch').addEventListener('click', async () => {
   const photoMap = buildFileIndex(photoFiles);
   const overlayMap = buildFileIndex(overlayFiles);
 
+  // 첫 줄이 헤더처럼 보이면(파일과 매칭도 안 되고, 확장자 형태도 아니면) 자동으로 건너뜀
+  let dataRows = rows;
+  if (rows.length) {
+    const [c0, c1] = rows[0] || [];
+    const looksHeader = !findFile(photoMap, c0) && !findFile(overlayMap, c1)
+      && !looksLikeFilename(c0) && !looksLikeFilename(c1) && (c0 != null || c1 != null);
+    if (looksHeader) {
+      log(`첫 줄("${c0}" / "${c1}")은 헤더로 보여 자동으로 건너뜀`);
+      dataRows = rows.slice(1);
+    }
+  }
+
   items = [];
   let unmatched = 0;
-  for (const row of rows) {
+  for (const row of dataRows) {
     if (!row || !row.length) continue;
     const [photoCell, overlayCell] = row;
     if (photoCell == null && overlayCell == null) continue;
