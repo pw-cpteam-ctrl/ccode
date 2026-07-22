@@ -127,11 +127,18 @@ button.secondary:hover{background:#eef2ff}
   <div class="panel">
     <h2>6. 노션으로 보내기</h2>
     <p class="desc">
-      방금 만든 리포트의 표를 스크린샷이 아니라 진짜 노션 표로 바로 만들어줘요(검색·정렬·편집
-      가능). 처음 한 번은 노션 연동 설정이 필요해요 — <code>notion-config.json</code> 파일이
-      없으면 아래 버튼을 눌러도 실패 메시지가 뜨니, 그럴 땐 관리자에게 설정을 부탁하세요.
+      방금 만든 리포트의 표를 스크린샷이 아니라 진짜 노션 표로 만들어줘요(검색·정렬·편집 가능).
     </p>
-    <button onclick="exportNotion()">노션으로 보내기</button>
+    <div class="row">
+      <button onclick="copyMarkdownForNotion()">📋 노션용 표 복사하기</button>
+      <button onclick="exportNotion()">노션으로 자동 전송</button>
+    </div>
+    <p class="desc" style="margin-top:6px">
+      <b>복사하기</b>: 버튼 누르면 바로 클립보드에 복사돼요 — 노션 페이지에서 <b>Ctrl+V</b>만
+      누르면 끝(연동 설정 필요 없음).<br>
+      <b>자동 전송</b>: 노션 연동을 미리 설정해뒀다면 클릭 한 번으로 지정한 페이지에 바로
+      생성돼요 — <code>notion-config.json</code> 파일이 없으면 실패 메시지가 떠요.
+    </p>
   </div>
 
   <div class="panel">
@@ -249,6 +256,18 @@ function rebuild() {
 
 function exportNotion() {
   runOrAlert(() => fetch('/api/export-notion', { method: 'POST' }));
+}
+
+async function copyMarkdownForNotion() {
+  try {
+    const res = await fetch('/api/export-markdown');
+    const data = await res.json();
+    if (!res.ok) { alert('실패: ' + (data.error || '알 수 없는 오류')); return; }
+    await navigator.clipboard.writeText(data.markdown);
+    alert('복사됐어요! 노션 페이지로 가서 Ctrl+V로 붙여넣으세요.');
+  } catch (e) {
+    alert('복사 중 문제가 생겼어요: ' + e.message);
+  }
 }
 
 function comparePeriods() {

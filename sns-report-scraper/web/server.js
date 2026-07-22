@@ -158,6 +158,17 @@ app.post('/api/export-notion', (req, res) => {
   }
 });
 
+// ── 노션용 마크다운 표(복사-붙여넣기용) — 연동/토큰 필요 없이 바로 계산해서 반환 ──
+app.get('/api/export-markdown', (req, res) => {
+  try {
+    const { loadReport, buildMarkdownExport } = require(path.join(ROOT, 'notion-export'));
+    const report = loadReport();
+    res.json({ markdown: buildMarkdownExport(report) });
+  } catch (e) {
+    badRequest(res, e.message);
+  }
+});
+
 // ── 기간별 비교 (compare-periods.js) ──
 app.post('/api/compare-periods', (req, res) => {
   const { periods } = req.body || {};

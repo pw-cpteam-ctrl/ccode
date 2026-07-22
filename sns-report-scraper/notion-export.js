@@ -79,6 +79,56 @@ async function notionRequest(urlPath, token, body) {
   return json;
 }
 
+// rebuild-report.js와 동일한 방식으로 최근 수집 캐시를 읽어서 report 객체로 취합.
+// API 방식(main)과 복사-붙여넣기용 마크다운 방식(buildMarkdownExport) 둘 다 여기서 시작함.
+function loadReport() {
+  if (!fs.existsSync(CACHE_PATH)) {
+    throw new Error(`캐시 파일이 없음: ${CACHE_PATH} — 먼저 수집을 한 번 해야 함`);
+  }
+  const cached = JSON.parse(fs.readFileSync(CACHE_PATH, 'utf-8'));
+  const manualMatches = loadJson(MANUAL_MATCHES_PATH, {});
+  const ignorePosts = loadJson(IGNORE_POSTS_PATH, {});
+  const manualPosts = loadJson(MANUAL_POSTS_PATH, {});
+  const { own, competitors } = applyManualPosts(cached.own, cached.competitors, manualPosts);
+  return buildComparisonReport({ startDate: cached.startDate, endDate: cached.endDate, own, competitors, manualMatches, ignorePosts });
+}
+
+// 표준 마크다운 표(파이프 구분)로 변환 — 노션에 붙여넣으면(Ctrl+V) 자동으로 진짜 표로
+// 바뀜(연동/토큰/관리자 승인 전혀 필요 없는 방식). "|"가 본문에 섞이면 표가 깨지므로 이스케이프.
+function escapeMdCell(v) {
+  return String(v ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+}
+
+function buildPlatformMarkdown(platformReport) {
+  const { fields, productComparison } = platformReport;
+  const products = productComparison.products;
+  const headers = ['순위', 'IP', '시리즈', ...fields.flatMap(f => [`PW ${FIELD_LABELS[f] || f}`, `BH ${FIELD_LABELS[f] || f}`]), '결과'];
+  const lines = [
+    `| ${headers.join(' | ')} |`,
+    `|${headers.map(() => '---').join('|')}|`,
+  ];
+  products.forEach((p, i) => {
+    const cells = [i + 1, p.ip, p.line || '-'];
+    fields.forEach(f => {
+      cells.push(p.own[`total_${f}`] ?? 0);
+      cells.push(p.competitor[`total_${f}`] ?? 0);
+    });
+    cells.push(p.verdict + (p.needsReview ? ' ⚠️확인필요' : ''));
+    lines.push(`| ${cells.map(escapeMdCell).join(' | ')} |`);
+  });
+  return lines.join('\n');
+}
+
+function buildMarkdownExport(report) {
+  const parts = [`**수집 기간**: ${report.startDate} ~ ${report.endDate} · 생성: ${report.generatedAt} · PW=자사, BH=경쟁사`];
+  for (const platformKey of Object.keys(report.platforms)) {
+    const title = PLATFORM_TITLES[platformKey] || platformKey;
+    parts.push(`\n### [${title}] 상품별 비교\n`);
+    parts.push(buildPlatformMarkdown(report.platforms[platformKey]));
+  }
+  return parts.join('\n');
+}
+
 async function main() {
   if (!fs.existsSync(CONFIG_PATH)) {
     console.error(`❌ ${CONFIG_PATH} 파일이 없음 — 파일 맨 위 주석의 사전 준비 단계부터 먼저 해야 함.`);
@@ -89,17 +139,8 @@ async function main() {
     console.error('❌ notion-config.json 안에 token과 parentPageId가 둘 다 있어야 함');
     process.exit(1);
   }
-  if (!fs.existsSync(CACHE_PATH)) {
-    console.error(`❌ 캐시 파일이 없음: ${CACHE_PATH} — 먼저 수집을 한 번 해야 함`);
-    process.exit(1);
-  }
 
-  const cached = JSON.parse(fs.readFileSync(CACHE_PATH, 'utf-8'));
-  const manualMatches = loadJson(MANUAL_MATCHES_PATH, {});
-  const ignorePosts = loadJson(IGNORE_POSTS_PATH, {});
-  const manualPosts = loadJson(MANUAL_POSTS_PATH, {});
-  const { own, competitors } = applyManualPosts(cached.own, cached.competitors, manualPosts);
-  const report = buildComparisonReport({ startDate: cached.startDate, endDate: cached.endDate, own, competitors, manualMatches, ignorePosts });
+  const report = loadReport();
 
   const children = [
     { object: 'block', type: 'paragraph', paragraph: { rich_text: richText(`수집 기간: ${report.startDate} ~ ${report.endDate} · 생성: ${report.generatedAt} · PW=자사, BH=경쟁사`) } },
@@ -127,4 +168,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { buildPlatformTable, richText };
+module.exports = { buildPlatformTable, richText, loadReport, buildMarkdownExport };
