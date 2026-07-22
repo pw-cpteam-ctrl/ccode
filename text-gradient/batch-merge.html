@@ -70,9 +70,11 @@ button:disabled{opacity:.4;cursor:default;}
 
 <div class="panel" id="gridPanel" style="display:none;">
   <h2>2. 미리보기 (클릭해서 조정)</h2>
+  <div id="restoreNote" style="display:none;font-size:12px;color:#3a7d3a;margin-bottom:8px;">저장된 작업을 자동으로 불러왔어요.</div>
   <div id="grid"></div>
   <div style="margin-top:14px;">
     <button class="primary" id="btnExportAll">전체 ZIP 다운로드</button>
+    <button id="btnStartOver">새로 시작 (캐시 지우기)</button>
     <span id="exportStatus"></span>
   </div>
 </div>
@@ -110,6 +112,120 @@ let curItem = null;
 const $ = s => document.querySelector(s);
 const logEl = $('#log');
 function log(msg){ logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; }
+
+// ---------- IndexedDB 캐싱 (원본 파일은 매칭 직후 1회만, 조정값은 디바운스로 자주) ----------
+function idbOpen(){
+  return new Promise((res, rej) => {
+    const req = indexedDB.open('batch_merge_db', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+function idbSet(key, val){
+  return idbOpen().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').put(val, key);
+    tx.oncomplete = () => { db.close(); res(); };
+    tx.onerror = () => { db.close(); rej(tx.error); };
+  }));
+}
+function idbGet(key){
+  return idbOpen().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readonly');
+    const rq = tx.objectStore('kv').get(key);
+    rq.onsuccess = () => { db.close(); res(rq.result); };
+    rq.onerror = () => { db.close(); rej(rq.error); };
+  }));
+}
+function idbDel(key){
+  return idbOpen().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').delete(key);
+    tx.oncomplete = () => { db.close(); res(); };
+    tx.onerror = () => { db.close(); rej(tx.error); };
+  }));
+}
+
+// 저장 호출 직렬화 (연속 호출 시 순서 뒤바뀜 방지)
+let _saveQueue = Promise.resolve();
+function queueIdbSet(key, val){
+  _saveQueue = _saveQueue.then(() => idbSet(key, val)).catch(e => console.error('저장 실패:', e));
+  return _saveQueue;
+}
+
+function itemsMetaSnapshot(){
+  return items.map(it => ({
+    photoName: it.photoName, overlayName: it.overlayName,
+    scaleMul: it.scaleMul, ox: it.ox, oy: it.oy, bg: it.bg
+  }));
+}
+async function saveFilesToCache(){
+  const photoBlobs = {}, overlayBlobs = {};
+  for (const it of items) { photoBlobs[it.photoName] = it.photoFile; overlayBlobs[it.overlayName] = it.overlayFile; }
+  try { await queueIdbSet('files', { photoBlobs, overlayBlobs }); }
+  catch (e) { log('원본 파일 캐시 저장 실패 — 브라우저 저장공간이 부족할 수 있음'); }
+}
+async function saveMetaToCache(){
+  try { localStorage.setItem('batch_merge_meta_backup', JSON.stringify(itemsMetaSnapshot())); } catch(e) {}
+  await queueIdbSet('items_meta', itemsMetaSnapshot());
+}
+let _saveMetaT;
+function saveMetaSoon(){
+  clearTimeout(_saveMetaT);
+  _saveMetaT = setTimeout(saveMetaToCache, 400);
+}
+
+function loadImageFromBlob(blob){
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
+async function restoreFromCache(){
+  const filesData = await idbGet('files').catch(() => null);
+  let itemsMeta = await idbGet('items_meta').catch(() => null);
+  if (!itemsMeta) {
+    const backup = localStorage.getItem('batch_merge_meta_backup');
+    if (backup) itemsMeta = JSON.parse(backup);
+  }
+  if (!filesData || !itemsMeta || !itemsMeta.length) return false;
+
+  log('저장된 작업 불러오는 중...');
+  items = [];
+  for (const m of itemsMeta) {
+    const photoBlob = filesData.photoBlobs[m.photoName];
+    const overlayBlob = filesData.overlayBlobs[m.overlayName];
+    if (!photoBlob || !overlayBlob) continue;
+    const photoImg = await loadImageFromBlob(photoBlob);
+    const overlayImg = await loadImageFromBlob(overlayBlob);
+    items.push({
+      photoName: m.photoName, overlayName: m.overlayName,
+      photoFile: photoBlob, overlayFile: overlayBlob, photoImg, overlayImg,
+      scaleMul: m.scaleMul, ox: m.ox, oy: m.oy, bg: m.bg
+    });
+  }
+  if (!items.length) return false;
+  $('#gridPanel').style.display = '';
+  $('#restoreNote').style.display = '';
+  renderGrid();
+  log(`캐시에서 ${items.length}장 복원함`);
+  return true;
+}
+
+$('#btnStartOver').addEventListener('click', async () => {
+  if (!confirm('저장된 작업을 지우고 새로 시작할까요?')) return;
+  await idbDel('files').catch(() => {});
+  await idbDel('items_meta').catch(() => {});
+  localStorage.removeItem('batch_merge_meta_backup');
+  items = [];
+  $('#gridPanel').style.display = 'none';
+  $('#restoreNote').style.display = 'none';
+  logEl.textContent = '';
+});
 
 // ---------- 업로드 UI ----------
 function setupDrop(dropId, inputId, onFiles){
@@ -202,7 +318,13 @@ $('#btnMatch').addEventListener('click', async () => {
   log('로딩 완료. 미리보기 생성 중...');
 
   $('#gridPanel').style.display = '';
+  $('#restoreNote').style.display = 'none';
   renderGrid();
+
+  log('작업 캐시에 저장 중...');
+  await saveFilesToCache();
+  await saveMetaToCache();
+  log('캐시 저장 완료 — 이제 새로고침해도 안 날아감');
 });
 
 // ---------- 합성 로직 (1080x1350 논리 좌표, ctx는 호출부에서 scale 적용) ----------
@@ -287,16 +409,19 @@ $('#btnCloseEditor').addEventListener('click', () => {
   editOverlay.classList.remove('open');
   refreshThumb(curItem);
   curItem = null;
+  saveMetaToCache(); // 닫을 때는 디바운스 없이 바로 확정 저장
 });
 $('#btnResetItem').addEventListener('click', () => {
   curItem.scaleMul = 1; curItem.ox = 0; curItem.oy = 0;
   updateEditorGeom();
+  saveMetaSoon();
 });
-$('#bgWhite').addEventListener('click', () => { curItem.bg = '#ffffff'; editBg.style.background = curItem.bg; });
-$('#bgCustom').addEventListener('input', e => { curItem.bg = e.target.value; editBg.style.background = curItem.bg; });
+$('#bgWhite').addEventListener('click', () => { curItem.bg = '#ffffff'; editBg.style.background = curItem.bg; saveMetaSoon(); });
+$('#bgCustom').addEventListener('input', e => { curItem.bg = e.target.value; editBg.style.background = curItem.bg; saveMetaSoon(); });
 $('#bgAuto').addEventListener('click', () => {
   curItem.bg = extractDominantColor(curItem.photoImg);
   editBg.style.background = curItem.bg;
+  saveMetaSoon();
 });
 
 function extractDominantColor(img){
@@ -318,6 +443,7 @@ $('#editClip').addEventListener('wheel', e => {
   const delta = e.deltaY < 0 ? 0.06 : -0.06;
   curItem.scaleMul = Math.max(0.3, Math.min(3, (curItem.scaleMul || 1) + delta));
   updateEditorGeom();
+  saveMetaSoon();
 }, { passive: false });
 
 // 드래그 이동 (전역 리스너 1개로 처리 — 리스너 누수 방지)
@@ -336,6 +462,7 @@ window.addEventListener('mousemove', e => {
   updateEditorGeom();
 });
 window.addEventListener('mouseup', () => {
+  if (_drag) saveMetaSoon();
   _drag = null;
   editPhoto.style.cursor = 'grab';
 });
@@ -385,6 +512,9 @@ $('#btnExportAll').addEventListener('click', async () => {
   statusEl.textContent = `완료 (${items.length}장)`;
   btn.disabled = false;
 });
+
+// ---------- 부팅: 저장된 작업 있으면 자동 복원 ----------
+restoreFromCache();
 </script>
 </body>
 </html>
