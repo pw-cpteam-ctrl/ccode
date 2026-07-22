@@ -78,6 +78,7 @@ app.get('/api/status', (req, res) => {
   res.json({
     hasTwitterSession: fs.existsSync(path.join(ROOT, 'x-session.json')),
     hasInstagramSession: fs.existsSync(path.join(ROOT, 'instagram-session.json')),
+    hasNotionConfig: fs.existsSync(path.join(ROOT, 'notion-config.json')),
     job: currentJob ? { id: currentJob.id, label: currentJob.label, status: currentJob.status } : null,
   });
 });
@@ -141,6 +142,16 @@ app.post('/api/collect', (req, res) => {
 app.post('/api/rebuild', (req, res) => {
   try {
     const id = startJob('캐시로 리포트 재생성', 'rebuild-report.js', []);
+    res.json({ jobId: id });
+  } catch (e) {
+    badRequest(res, e.message);
+  }
+});
+
+// ── 노션으로 보내기 (notion-export.js) ──
+app.post('/api/export-notion', (req, res) => {
+  try {
+    const id = startJob('노션으로 리포트 보내기', 'notion-export.js', []);
     res.json({ jobId: id });
   } catch (e) {
     badRequest(res, e.message);

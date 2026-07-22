@@ -125,6 +125,16 @@ button.secondary:hover{background:#eef2ff}
   </div>
 
   <div class="panel">
+    <h2>6. 노션으로 보내기</h2>
+    <p class="desc">
+      방금 만든 리포트의 표를 스크린샷이 아니라 진짜 노션 표로 바로 만들어줘요(검색·정렬·편집
+      가능). 처음 한 번은 노션 연동 설정이 필요해요 — <code>notion-config.json</code> 파일이
+      없으면 아래 버튼을 눌러도 실패 메시지가 뜨니, 그럴 땐 관리자에게 설정을 부탁하세요.
+    </p>
+    <button onclick="exportNotion()">노션으로 보내기</button>
+  </div>
+
+  <div class="panel">
     <h2 id="jobLabel">진행 상황</h2>
     <div id="jobStatus">아직 실행한 작업이 없어요.</div>
     <div class="row" style="margin-top:6px">
@@ -235,6 +245,10 @@ function collect(mode) {
 
 function rebuild() {
   runOrAlert(() => fetch('/api/rebuild', { method: 'POST' }));
+}
+
+function exportNotion() {
+  runOrAlert(() => fetch('/api/export-notion', { method: 'POST' }));
 }
 
 function comparePeriods() {
