@@ -230,3 +230,50 @@
 - **배포 저장소 분리**
   - 팀 공유용 릴리스를 내부 개발 문서가 없는 별도 저장소로 분리해서 배포
     (기술: 개발은 기존 저장소에서 계속하되, 배포용 zip/설치 파일만 별도 저장소의 릴리스에 업로드)
+
+---
+
+## 2026-07-21 ~ 2026-07-22 (V6.0 노션 연동 + 스크린샷 내보내기 — 대규모 변경)
+- **로그인 안정성**
+  - 트위터 로그인 시 정상 비밀번호도 거부되던 문제 수정(자동화 전용 브라우저를 봇으로
+    의심해 차단하던 것이 원인)
+    (기술: `browser-stealth.js`에 `launchLoginBrowser`/`closeLoginBrowser` 추가 —
+    `chromium.launchPersistentContext(profileDir, {channel:'chrome', ...})`로 시스템 설치
+    크롬을 전용 프로필로 실행, 크롬 미설치 시 기존 `chromium.launch()`로 자동 폴백)
+  - 로그인 세션 저장 로직을 위 방식에 맞게 재작성, 플랫폼별 전용 크롬 프로필 폴더 분리
+    (기술: `login-session.js`의 `PLATFORMS` 설정에 `profileDir: chrome-profile/{platform}`
+    추가, `.gitignore`에 `chrome-profile/` 추가)
+
+- **스크린샷 내보내기 (신규 기능)**
+  - 리포트의 트위터/인스타 표를 각각 이미지 파일로 저장하는 버튼 추가
+    (기술: `html2canvas` 라이브러리 추가, 캡처 직전 버튼/`.piechart` 요소
+    `visibility:hidden` 처리 후 캡처, `canvas.toBlob()` + `URL.createObjectURL()`로 다운로드)
+
+- **배포 안정성**
+  - `update.bat`이 코드만 갱신하고 새로 추가된 라이브러리는 설치하지 않던 문제 수정
+    (기술: robocopy 이후 `npm install` 단계 추가, 포터블/시스템 Node 감지 분기)
+
+- **노션 연동 (신규 기능)**
+  - 리포트를 노션 페이지에 자동으로 표로 전송하는 기능 추가
+    (기술: `notion-export.js` 신설 — Notion REST API(`Notion-Version: 2022-06-28`) 호출,
+    개인/팀 계정 단위 내부 통합 연결 필요)
+  - 연동 설정 없이도 바로 쓸 수 있는 복사-붙여넣기용 마크다운 표 생성 기능 추가
+    (기술: `buildMarkdownExport()`, 대시보드에 클립보드 복사 버튼 연결)
+  - 표에 자사(PW)=파랑/경쟁사(BH)=빨강 배경색, 우세/경합/약세 결과 색상 추가
+    (기술: rich_text `annotations.color`(`blue_background`/`red_background`/
+    `green_background`/`yellow_background`) 활용)
+  - PW/BH 수치 비율을 막대그래프 형태로 보여주는 셀 추가
+    (기술: 블록 문자(`█`)를 두 색상으로 나눠 채우는 `buildBarCell()`, 비율이 0에
+    가까워도 최소 1칸은 보이도록 안전장치)
+  - 칸 이름을 이모지 1자로 압축해 칸 너비 부담 축소
+    (기술: `FIELD_LABELS`를 텍스트에서 이모지로 교체)
+  - 전송할 때마다 새 페이지를 만드는 대신, 처음 한 번만 페이지를 만들고 이후엔 같은
+    페이지를 갱신하는 방식으로 전환 — 노션에서 손으로 맞춘 칸 너비가 유지되도록
+    (기술: 최초 생성 시 `GET /blocks/{id}/children` 재조회로 블록 ID 확보 후
+    `notion-config.json`에 저장, 이후엔 표 블록은 유지한 채 `table_row` 자식만
+    `DELETE`+`PATCH`로 교체 — 실제 API 재검증은 다음 실사용 확인 예정)
+
+- **기타**
+  - 노션의 "진짜 트윗 카드" 임베드(2칸 나열 등)는 노션이 화면에서 직접 붙여넣을 때만
+    만들어주는 형태라, 프로그램을 통한 자동 전송 방식으로는 재현 불가능함을 실측으로
+    확인 — 현재 미지원으로 확정
