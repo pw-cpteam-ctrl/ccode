@@ -678,7 +678,13 @@ async function aiFillSource(srcId) {
       if (!r.ok) throw new Error(data.error || 'AI 인식 실패');
 
       data.items.slice(0, itemIndicesInBatch.length).forEach((result, j) => {
-        const item = state.items[src.itemStartIndex + itemIndicesInBatch[j]];
+        // itemStartIndex(고정 숫자 오프셋)로 찾으면, 다른 소스를 재크롭해서 state.items
+        // 배열이 통째로 밀리는 순간 이 오프셋이 stale해져서 엉뚱한 소스의 항목에 결과가
+        // 써지거나(항목 자체는 안 밀렸는데 위치만 밀린 경우) 조용히 아무 데도 안 써지는
+        // (undefined라 return되는) 문제가 있었다 — id 기준(src.itemIds)으로 찾으면 배열
+        // 순서가 어떻게 바뀌어도 항상 이 소스의 진짜 항목을 정확히 찾는다.
+        const itemId = src.itemIds[itemIndicesInBatch[j]];
+        const item = state.items.find((it) => it.id === itemId);
         if (!item) return;
         // 모델이 그래도 ip를 비워서 주면 rawText로 대체 — 빈 칸보다는 "확인해서 고칠 글자"가 있는 게 낫다.
         // trim 필수: 사전(gradeTable/ipNameMap) 조회가 문자열 완전일치라서, 앞뒤 공백이 하나라도
@@ -761,7 +767,13 @@ async function ocrLabelsForSource(srcId) {
       if (!r.ok) throw new Error(data.error || '라벨 인식 실패');
 
       data.items.slice(0, itemIndicesInBatch.length).forEach((result, j) => {
-        const item = state.items[src.itemStartIndex + itemIndicesInBatch[j]];
+        // itemStartIndex(고정 숫자 오프셋)로 찾으면, 다른 소스를 재크롭해서 state.items
+        // 배열이 통째로 밀리는 순간 이 오프셋이 stale해져서 엉뚱한 소스의 항목에 결과가
+        // 써지거나(항목 자체는 안 밀렸는데 위치만 밀린 경우) 조용히 아무 데도 안 써지는
+        // (undefined라 return되는) 문제가 있었다 — id 기준(src.itemIds)으로 찾으면 배열
+        // 순서가 어떻게 바뀌어도 항상 이 소스의 진짜 항목을 정확히 찾는다.
+        const itemId = src.itemIds[itemIndicesInBatch[j]];
+        const item = state.items.find((it) => it.id === itemId);
         if (!item) return;
         item.ip = resolveBandName((result.ip || result.rawText || '').trim());
         item.price = result.price || '';
