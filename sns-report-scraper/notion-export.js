@@ -1,6 +1,10 @@
 /**
  * 리포트 랭킹표를 스크린샷이 아니라 진짜 노션 표로 직접 만들어서 지정한 노션 페이지 밑에
- * 새 하위 페이지로 생성함. 노션 안에서 그대로 검색/정렬/편집까지 가능해짐.
+ * 하위 페이지로 생성함. 노션 안에서 그대로 검색/정렬/편집까지 가능해짐.
+ *
+ * 처음 실행할 때만 새 페이지를 만들고, 그 페이지/표 블록 ID를 notion-config.json에 저장해둠
+ * — 그다음부터는 같은 페이지의 내용(문단/표의 행)만 갱신함(표 블록 자체는 안 건드려서, 노션에서
+ * 손으로 맞춘 칸 너비가 계속 유지됨). "매번 새 페이지가 쌓이는" 게 싫으면 이 방식이 나음.
  *
  * 사전 준비 (한 번만, 배포-패키지-만들기.md 참고):
  *  1. https://www.notion.so/my-integrations 에서 연동 만들고 "Internal Integration Secret" 복사
@@ -62,7 +66,9 @@ function buildBarCell(pw, bh) {
   return runs;
 }
 
-function buildPlatformTable(platformReport) {
+// 표 헤더/행만 따로 만듦 — 표 블록을 새로 만들 때(buildPlatformTable)와 기존 표의 행만
+// 교체할 때(갱신 모드, 표 블록 자체는 유지해서 칸 너비가 안 날아가게) 둘 다 이걸 씀.
+function buildTableRows(platformReport) {
   const { fields, productComparison } = platformReport;
   const products = productComparison.products;
   const headers = [
@@ -90,20 +96,25 @@ function buildPlatformTable(platformReport) {
     return { object: 'block', type: 'table_row', table_row: { cells } };
   });
 
+  return { width: headers.length, children: [headerRow, ...rows] };
+}
+
+function buildPlatformTable(platformReport) {
+  const { width, children } = buildTableRows(platformReport);
   return {
     object: 'block',
     type: 'table',
-    table: { table_width: headers.length, has_column_header: true, has_row_header: false, children: [headerRow, ...rows] },
+    table: { table_width: width, has_column_header: true, has_row_header: false, children },
   };
 }
 
-async function notionRequest(urlPath, token, body) {
+async function notionRequest(method, urlPath, token, body) {
   const res = await fetch(`https://api.notion.com/v1${urlPath}`, {
-    method: 'POST',
+    method,
     headers: { Authorization: `Bearer ${token}`, 'Notion-Version': NOTION_VERSION, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: body ? JSON.stringify(body) : undefined,
   });
-  const json = await res.json();
+  const json = res.status === 204 ? {} : await res.json();
   if (!res.ok) throw new Error(`노션 API 오류(${res.status}): ${json.message || JSON.stringify(json)}`);
   return json;
 }
@@ -158,6 +169,98 @@ function buildMarkdownExport(report) {
   return parts.join('\n');
 }
 
+function saveConfig(config) {
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+}
+
+function summaryText(report) {
+  return `수집 기간: ${report.startDate} ~ ${report.endDate} · 생성: ${report.generatedAt} · PW=자사, BH=경쟁사`;
+}
+
+function pageTitle(report) {
+  return `SNS 성과 비교 (${report.startDate}~${report.endDate})`;
+}
+
+// 최초 1회: 새 페이지를 만들고, 다음부터 갱신할 수 있게 문단/표 블록 ID를 config에 저장해둠
+// (표 블록 자체는 이후로 다시 안 만들어서, 사람이 노션에서 손으로 맞춘 칸 너비가 안 날아감).
+async function createPage(config, report) {
+  const children = [{ object: 'block', type: 'paragraph', paragraph: { rich_text: richText(summaryText(report)) } }];
+  const platformKeys = Object.keys(report.platforms);
+  for (const platformKey of platformKeys) {
+    const title = PLATFORM_TITLES[platformKey] || platformKey;
+    children.push({ object: 'block', type: 'heading_2', heading_2: { rich_text: richText(`[${title}] 상품별 비교`) } });
+    children.push(buildPlatformTable(report.platforms[platformKey]));
+  }
+
+  console.log('노션에 페이지 생성 중...');
+  const page = await notionRequest('POST', '/pages', config.token, {
+    parent: { page_id: config.parentPageId },
+    icon: { type: 'emoji', emoji: '📊' },
+    properties: { title: { title: richText(pageTitle(report)) } },
+    children,
+  });
+
+  // 방금 만든 블록들의 실제 ID를 순서대로 가져옴(노션은 보낸 순서 그대로 반환함) — 다음
+  // 갱신 때 "표 블록 자체는 그대로 두고 안의 행만 교체"하려면 이 ID들이 필요함.
+  const created = await notionRequest('GET', `/blocks/${page.id}/children?page_size=100`, config.token);
+  config.pageId = page.id;
+  config.paragraphBlockId = created.results[0].id;
+  config.tableBlockIds = {};
+  let idx = 1;
+  for (const platformKey of platformKeys) {
+    idx++; // heading_2 블록 — 건너뜀
+    config.tableBlockIds[platformKey] = created.results[idx].id;
+    idx++;
+  }
+  saveConfig(config);
+  console.log(`✅ 노션 페이지 생성 완료: ${page.url}`);
+  console.log('ℹ️ 이제부터는 이 페이지를 계속 갱신합니다 — 칸 너비를 한 번 맞춰두면 계속 유지돼요.');
+}
+
+// 두 번째부터: 페이지/표 블록은 그대로 두고 내용(요약 문단, 표의 행)만 최신으로 교체.
+async function updatePage(config, report) {
+  console.log('기존 노션 페이지 갱신 중...');
+  await notionRequest('PATCH', `/pages/${config.pageId}`, config.token, {
+    properties: { title: { title: richText(pageTitle(report)) } },
+  });
+  if (config.paragraphBlockId) {
+    await notionRequest('PATCH', `/blocks/${config.paragraphBlockId}`, config.token, {
+      paragraph: { rich_text: richText(summaryText(report)) },
+    });
+  }
+
+  config.tableBlockIds = config.tableBlockIds || {};
+  let configChanged = false;
+  for (const platformKey of Object.keys(report.platforms)) {
+    const { width, children: newRows } = buildTableRows(report.platforms[platformKey]);
+    let tableBlockId = config.tableBlockIds[platformKey];
+
+    if (!tableBlockId) {
+      // 이전엔 없던 플랫폼이 새로 생긴 경우 — 페이지 맨 끝에 새로 추가
+      const title = PLATFORM_TITLES[platformKey] || platformKey;
+      const appended = await notionRequest('PATCH', `/blocks/${config.pageId}/children`, config.token, {
+        children: [
+          { object: 'block', type: 'heading_2', heading_2: { rich_text: richText(`[${title}] 상품별 비교`) } },
+          { object: 'block', type: 'table', table: { table_width: width, has_column_header: true, has_row_header: false, children: newRows } },
+        ],
+      });
+      config.tableBlockIds[platformKey] = appended.results[1].id;
+      configChanged = true;
+      continue;
+    }
+
+    // 기존 표는 그대로 두고, 안의 행(헤더+데이터)만 지웠다가 새로 채움 — 표 블록 자체를
+    // 안 건드리니 사람이 손으로 맞춘 칸 너비가 유지됨.
+    const existingRows = await notionRequest('GET', `/blocks/${tableBlockId}/children?page_size=100`, config.token);
+    for (const row of existingRows.results) {
+      await notionRequest('DELETE', `/blocks/${row.id}`, config.token);
+    }
+    await notionRequest('PATCH', `/blocks/${tableBlockId}/children`, config.token, { children: newRows });
+  }
+  if (configChanged) saveConfig(config);
+  console.log(`✅ 노션 페이지 갱신 완료: https://notion.so/${String(config.pageId).replace(/-/g, '')}`);
+}
+
 async function main() {
   if (!fs.existsSync(CONFIG_PATH)) {
     console.error(`❌ ${CONFIG_PATH} 파일이 없음 — 파일 맨 위 주석의 사전 준비 단계부터 먼저 해야 함.`);
@@ -171,23 +274,11 @@ async function main() {
 
   const report = loadReport();
 
-  const children = [
-    { object: 'block', type: 'paragraph', paragraph: { rich_text: richText(`수집 기간: ${report.startDate} ~ ${report.endDate} · 생성: ${report.generatedAt} · PW=자사, BH=경쟁사`) } },
-  ];
-  for (const platformKey of Object.keys(report.platforms)) {
-    const title = PLATFORM_TITLES[platformKey] || platformKey;
-    children.push({ object: 'block', type: 'heading_2', heading_2: { rich_text: richText(`[${title}] 상품별 비교`) } });
-    children.push(buildPlatformTable(report.platforms[platformKey]));
+  if (config.pageId) {
+    await updatePage(config, report);
+  } else {
+    await createPage(config, report);
   }
-
-  console.log('노션에 페이지 생성 중...');
-  const page = await notionRequest('/pages', config.token, {
-    parent: { page_id: config.parentPageId },
-    icon: { type: 'emoji', emoji: '📊' },
-    properties: { title: { title: richText(`SNS 성과 비교 (${report.startDate}~${report.endDate})`) } },
-    children,
-  });
-  console.log(`✅ 노션 페이지 생성 완료: ${page.url}`);
 }
 
 if (require.main === module) {
@@ -197,4 +288,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { buildPlatformTable, richText, loadReport, buildMarkdownExport };
+module.exports = { buildPlatformTable, buildTableRows, richText, loadReport, buildMarkdownExport };
