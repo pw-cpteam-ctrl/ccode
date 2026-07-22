@@ -32,6 +32,15 @@ for /d %%D in (%REPO%-*) do (
 del _update.zip >nul 2>&1
 
 echo.
+echo Checking for new dependencies...
+if exist node\node.exe (
+  set "PLAYWRIGHT_BROWSERS_PATH=0"
+  node\npm.cmd install
+) else (
+  call npm install
+)
+
+echo.
 echo Done! Run start-dashboard.bat now.
 echo.
 pause
