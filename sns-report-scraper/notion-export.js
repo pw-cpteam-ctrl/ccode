@@ -40,13 +40,32 @@ function richText(content, url, color) {
 }
 
 const VERDICT_COLOR = { 우세: 'green_background', 경합: 'yellow_background', 약세: 'red_background' };
+const BAR_WIDTH = 10;
+
+// html-report.js의 분할 막대(.metricbar-pw/.metricbar-bh)와 같은 개념을 노션 표 셀 안에서
+// 색깔 있는 블록 문자(█)로 흉내냄 — 셀 하나에 파란 글자 런 + 빨간 글자 런을 이어붙이는 방식
+// (richText 하나가 아니라 리치 텍스트 "배열"을 직접 만듦, 셀 하나에 여러 색 허용됨).
+function buildBarCell(pw, bh) {
+  const total = pw + bh;
+  if (total <= 0) return richText('-');
+  let pwChars = Math.round((pw / total) * BAR_WIDTH);
+  let bhChars = BAR_WIDTH - pwChars;
+  // 값이 있는데 비율상 0칸이 되면(예: 355:1) 있다는 사실 자체가 안 보이니 최소 1칸은
+  // 보장 — 그만큼을 반대쪽에서 가져와서 합이 항상 BAR_WIDTH를 넘지 않게 함.
+  if (pw > 0 && pwChars === 0) { pwChars = 1; bhChars = BAR_WIDTH - 1; }
+  else if (bh > 0 && bhChars === 0) { bhChars = 1; pwChars = BAR_WIDTH - 1; }
+  const runs = [];
+  if (pwChars > 0) runs.push({ type: 'text', text: { content: '█'.repeat(pwChars) }, annotations: { color: 'blue' } });
+  if (bhChars > 0) runs.push({ type: 'text', text: { content: '█'.repeat(bhChars) }, annotations: { color: 'red' } });
+  return runs;
+}
 
 function buildPlatformTable(platformReport) {
   const { fields, productComparison } = platformReport;
   const products = productComparison.products;
   const headers = [
     '순위', 'IP', '시리즈',
-    ...fields.flatMap(f => [`PW ${FIELD_LABELS[f] || f}`, `BH ${FIELD_LABELS[f] || f}`]),
+    ...fields.flatMap(f => [`PW ${FIELD_LABELS[f] || f}`, `BH ${FIELD_LABELS[f] || f}`, `${FIELD_LABELS[f] || f} 그래프`]),
     '결과', 'PW 링크', 'BH 링크',
   ];
 
@@ -55,8 +74,11 @@ function buildPlatformTable(platformReport) {
   const rows = products.map((p, i) => {
     const cells = [richText(i + 1), richText(p.ip), richText(p.line || '-')];
     fields.forEach(f => {
-      cells.push(richText(p.own[`total_${f}`] ?? 0, null, 'blue_background'));
-      cells.push(richText(p.competitor[`total_${f}`] ?? 0, null, 'red_background'));
+      const pw = p.own[`total_${f}`] ?? 0;
+      const bh = p.competitor[`total_${f}`] ?? 0;
+      cells.push(richText(pw, null, 'blue_background'));
+      cells.push(richText(bh, null, 'red_background'));
+      cells.push(buildBarCell(pw, bh));
     });
     cells.push(richText(p.verdict + (p.needsReview ? ' ⚠️확인필요' : ''), null, VERDICT_COLOR[p.verdict]));
     const pwLink = p.ownPosts && p.ownPosts[0] ? p.ownPosts[0].link : null;
