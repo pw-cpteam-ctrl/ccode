@@ -29,12 +29,17 @@ function loadJson(p, fallback) {
 }
 
 // 노션 표 셀은 리치 텍스트 배열만 담을 수 있음(이미지/버튼/막대그래프 불가) — url을 주면
-// 그 텍스트가 클릭 가능한 링크가 됨(게시물 원문 바로가기 용도).
-function richText(content, url) {
+// 그 텍스트가 클릭 가능한 링크가 되고, color를 주면 셀 배경색이 칠해짐(html-report.js와
+// 같은 규칙: PW=파랑, BH=빨강 — 노션 공식 배경색 이름만 써야 함, 예: "blue_background").
+function richText(content, url, color) {
   const text = { content: String(content ?? '') };
   if (url) text.link = { url };
-  return [{ type: 'text', text }];
+  const item = { type: 'text', text };
+  if (color) item.annotations = { color };
+  return [item];
 }
+
+const VERDICT_COLOR = { 우세: 'green_background', 경합: 'yellow_background', 약세: 'red_background' };
 
 function buildPlatformTable(platformReport) {
   const { fields, productComparison } = platformReport;
@@ -50,14 +55,14 @@ function buildPlatformTable(platformReport) {
   const rows = products.map((p, i) => {
     const cells = [richText(i + 1), richText(p.ip), richText(p.line || '-')];
     fields.forEach(f => {
-      cells.push(richText(p.own[`total_${f}`] ?? 0));
-      cells.push(richText(p.competitor[`total_${f}`] ?? 0));
+      cells.push(richText(p.own[`total_${f}`] ?? 0, null, 'blue_background'));
+      cells.push(richText(p.competitor[`total_${f}`] ?? 0, null, 'red_background'));
     });
-    cells.push(richText(p.verdict + (p.needsReview ? ' ⚠️확인필요' : '')));
+    cells.push(richText(p.verdict + (p.needsReview ? ' ⚠️확인필요' : ''), null, VERDICT_COLOR[p.verdict]));
     const pwLink = p.ownPosts && p.ownPosts[0] ? p.ownPosts[0].link : null;
     const bhLink = p.competitorPosts && p.competitorPosts[0] ? p.competitorPosts[0].link : null;
-    cells.push(pwLink ? richText('보기', pwLink) : richText('-'));
-    cells.push(bhLink ? richText('보기', bhLink) : richText('-'));
+    cells.push(pwLink ? richText('보기', pwLink, 'blue_background') : richText('-'));
+    cells.push(bhLink ? richText('보기', bhLink, 'red_background') : richText('-'));
     return { object: 'block', type: 'table_row', table_row: { cells } };
   });
 
