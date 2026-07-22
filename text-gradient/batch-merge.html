@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>사진 일괄 합성 (프로토타입)</title>
+<style>
+*{box-sizing:border-box;}
+body{margin:0;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f0ede7;color:#252018;padding:24px;}
+h1{font-size:20px;margin:0 0 4px;}
+p.desc{font-size:13px;color:#7d7568;margin:0 0 20px;}
+.panel{background:#fff;border:1px solid #ddd8ce;border-radius:12px;padding:16px;margin-bottom:16px;}
+.panel h2{font-size:14px;margin:0 0 10px;}
+.drop{border:2px dashed #ccc4b4;border-radius:10px;padding:18px;text-align:center;font-size:13px;color:#7d7568;cursor:pointer;transition:.15s;}
+.drop.over{border-color:#4a7cff;background:#eef3ff;color:#3a5dcc;}
+.drop input{display:none;}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+#log{font-size:12px;color:#555;margin-top:10px;white-space:pre-wrap;max-height:120px;overflow:auto;background:#faf9f6;border-radius:8px;padding:8px;}
+button{font-size:13px;padding:8px 16px;border-radius:8px;border:1px solid #ccc4b4;background:#fff;cursor:pointer;}
+button.primary{background:#252018;color:#fff;border-color:#252018;}
+button:disabled{opacity:.4;cursor:default;}
+#grid{display:flex;flex-wrap:wrap;gap:10px;}
+.thumb{width:120px;cursor:pointer;position:relative;}
+.thumb canvas{width:120px;height:150px;border-radius:6px;border:1px solid #ddd8ce;display:block;background:#eee;}
+.thumb .name{font-size:10px;color:#7d7568;margin-top:2px;word-break:break-all;text-align:center;}
+.thumb.warn canvas{border-color:#e05d5d;}
+#editorOverlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:100;}
+#editorOverlay.open{display:flex;}
+#editorBox{background:#fff;border-radius:12px;padding:16px;display:flex;gap:16px;}
+#editClip{width:432px;height:540px;overflow:hidden;border-radius:8px;background:#ddd;position:relative;}
+#editCanvasWrap{width:1080px;height:1350px;transform:scale(0.4);transform-origin:top left;position:relative;}
+#editBg{position:absolute;inset:0;}
+#editPhoto{position:absolute;user-select:none;-webkit-user-drag:none;cursor:grab;}
+#editOverlay{position:absolute;inset:0;pointer-events:none;}
+#editControls{width:180px;display:flex;flex-direction:column;gap:8px;}
+#editControls .hint{font-size:11px;color:#7d7568;line-height:1.5;}
+.swatch{width:24px;height:24px;border-radius:50%;border:1px solid #ccc;cursor:pointer;display:inline-block;}
+#exportStatus{font-size:12px;color:#555;margin-top:8px;}
+.hidden{display:none !important;}
+</style>
+</head>
+<body>
+<h1>사진 일괄 합성 (프로토타입)</h1>
+<p class="desc">엑셀 매칭표 + 사진 + 투명 이미지를 올리면 1080×1350으로 자동 합성. 기본은 꽉 채워 중앙 자르기, 필요한 것만 확대/축소·드래그로 조정.</p>
+
+<div class="panel">
+  <h2>1. 업로드</h2>
+  <div class="row3">
+    <div class="drop" id="dropExcel">
+      <div>엑셀/CSV 매칭표</div>
+      <div style="font-size:11px;margin-top:4px;">(사진파일명 | 투명파일명, 헤더 없이)</div>
+      <input type="file" id="inExcel" accept=".xlsx,.xls,.csv"/>
+    </div>
+    <div class="drop" id="dropPhotos">
+      <div>사진 파일들</div>
+      <div style="font-size:11px;margin-top:4px;" id="photoCount">0개 선택됨</div>
+      <input type="file" id="inPhotos" accept="image/*" multiple/>
+    </div>
+    <div class="drop" id="dropOverlays">
+      <div>투명 이미지들</div>
+      <div style="font-size:11px;margin-top:4px;" id="overlayCount">0개 선택됨</div>
+      <input type="file" id="inOverlays" accept="image/*" multiple/>
+    </div>
+  </div>
+  <div style="margin-top:12px;">
+    <button class="primary" id="btnMatch">매칭 실행</button>
+  </div>
+  <div id="log"></div>
+</div>
+
+<div class="panel" id="gridPanel" style="display:none;">
+  <h2>2. 미리보기 (클릭해서 조정)</h2>
+  <div id="grid"></div>
+  <div style="margin-top:14px;">
+    <button class="primary" id="btnExportAll">전체 ZIP 다운로드</button>
+    <span id="exportStatus"></span>
+  </div>
+</div>
+
+<div id="editorOverlay">
+  <div id="editorBox">
+    <div id="editClip">
+      <div id="editCanvasWrap">
+        <div id="editBg"></div>
+        <img id="editPhoto"/>
+        <img id="editOverlay"/>
+      </div>
+    </div>
+    <div id="editControls">
+      <div class="hint">마우스 휠: 확대/축소<br/>드래그: 위치 이동</div>
+      <div>배경색</div>
+      <div>
+        <span class="swatch" id="bgWhite" style="background:#fff;"></span>
+        <span class="swatch" id="bgAuto" style="background:linear-gradient(135deg,#f90,#09f);"></span>
+        <input type="color" id="bgCustom" value="#ffffff"/>
+      </div>
+      <button id="btnResetItem">위치/배율 초기화</button>
+      <button class="primary" id="btnCloseEditor">닫기</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script>
+const CW = 1080, CH = 1350;
+let items = []; // {photoName, overlayName, photoFile, overlayFile, photoImg, overlayImg, scaleMul, ox, oy, bg}
+let curItem = null;
+
+const $ = s => document.querySelector(s);
+const logEl = $('#log');
+function log(msg){ logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; }
+
+// ---------- 업로드 UI ----------
+function setupDrop(dropId, inputId, onFiles){
+  const drop = $(dropId), input = $(inputId);
+  drop.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => onFiles(Array.from(input.files)));
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault(); drop.classList.remove('over');
+    onFiles(Array.from(e.dataTransfer.files));
+  });
+}
+
+let excelFile = null, photoFiles = [], overlayFiles = [];
+
+setupDrop('#dropExcel', '#inExcel', files => { excelFile = files[0] || null; log('엑셀 선택: ' + (excelFile ? excelFile.name : '없음')); });
+setupDrop('#dropPhotos', '#inPhotos', files => { photoFiles = files; $('#photoCount').textContent = files.length + '개 선택됨'; });
+setupDrop('#dropOverlays', '#inOverlays', files => { overlayFiles = files; $('#overlayCount').textContent = files.length + '개 선택됨'; });
+
+// ---------- 파일명 매칭 ----------
+function buildFileIndex(files){
+  const map = new Map();
+  for (const f of files) {
+    const lower = f.name.toLowerCase();
+    const noExt = lower.replace(/\.[^.]+$/, '');
+    map.set(lower, f);
+    if (!map.has(noExt)) map.set(noExt, f);
+  }
+  return map;
+}
+function findFile(map, cellValue){
+  const v = String(cellValue == null ? '' : cellValue).trim().toLowerCase();
+  if (!v) return null;
+  if (map.has(v)) return map.get(v);
+  const noExt = v.replace(/\.[^.]+$/, '');
+  if (map.has(noExt)) return map.get(noExt);
+  return null;
+}
+
+function loadImage(file){
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+$('#btnMatch').addEventListener('click', async () => {
+  if (!excelFile) { log('엑셀 파일을 먼저 올려줘.'); return; }
+  if (!photoFiles.length || !overlayFiles.length) { log('사진/투명 이미지를 먼저 올려줘.'); return; }
+
+  log('엑셀 읽는 중...');
+  const buf = await excelFile.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array' });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+  const photoMap = buildFileIndex(photoFiles);
+  const overlayMap = buildFileIndex(overlayFiles);
+
+  items = [];
+  let unmatched = 0;
+  for (const row of rows) {
+    if (!row || !row.length) continue;
+    const [photoCell, overlayCell] = row;
+    if (photoCell == null && overlayCell == null) continue;
+    const photoFile = findFile(photoMap, photoCell);
+    const overlayFile = findFile(overlayMap, overlayCell);
+    if (!photoFile || !overlayFile) {
+      unmatched++;
+      log(`매칭 실패: "${photoCell}" / "${overlayCell}" (건너뜀)`);
+      continue;
+    }
+    items.push({
+      photoName: photoFile.name, overlayName: overlayFile.name,
+      photoFile, overlayFile, photoImg: null, overlayImg: null,
+      scaleMul: 1, ox: 0, oy: 0, bg: '#ffffff'
+    });
+  }
+  log(`매칭 완료: ${items.length}개 성공, ${unmatched}개 실패`);
+  if (!items.length) return;
+
+  log('이미지 로딩 중...');
+  for (const it of items) {
+    it.photoImg = await loadImage(it.photoFile);
+    it.overlayImg = await loadImage(it.overlayFile);
+  }
+  log('로딩 완료. 미리보기 생성 중...');
+
+  $('#gridPanel').style.display = '';
+  renderGrid();
+});
+
+// ---------- 합성 로직 (1080x1350 논리 좌표, ctx는 호출부에서 scale 적용) ----------
+function drawItem(ctx, it){
+  ctx.fillStyle = it.bg;
+  ctx.fillRect(0, 0, CW, CH);
+
+  const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
+  const base = Math.max(CW / pw, CH / ph);
+  const eff = base * (it.scaleMul || 1);
+  const dw = pw * eff, dh = ph * eff;
+  const dx = (CW - dw) / 2 + (it.ox || 0);
+  const dy = (CH - dh) / 2 + (it.oy || 0);
+  ctx.drawImage(it.photoImg, dx, dy, dw, dh);
+
+  ctx.drawImage(it.overlayImg, 0, 0, CW, CH);
+}
+
+function computeGeom(it){
+  const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
+  const base = Math.max(CW / pw, CH / ph);
+  const eff = base * (it.scaleMul || 1);
+  const dw = pw * eff, dh = ph * eff;
+  const dx = (CW - dw) / 2 + (it.ox || 0);
+  const dy = (CH - dh) / 2 + (it.oy || 0);
+  return { dx, dy, dw, dh };
+}
+
+// ---------- 그리드(썸네일) ----------
+function renderGrid(){
+  const grid = $('#grid');
+  grid.innerHTML = '';
+  items.forEach((it, idx) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'thumb';
+    const canvas = document.createElement('canvas');
+    canvas.width = 120; canvas.height = 150;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(120 / CW, 150 / CH);
+    drawItem(ctx, it);
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = it.photoName;
+    wrap.appendChild(canvas);
+    wrap.appendChild(name);
+    wrap.addEventListener('click', () => openEditor(idx));
+    grid.appendChild(wrap);
+    it._thumbCanvas = canvas;
+  });
+}
+function refreshThumb(it){
+  if (!it._thumbCanvas) return;
+  const ctx = it._thumbCanvas.getContext('2d');
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.scale(120 / CW, 150 / CH);
+  drawItem(ctx, it);
+}
+
+// ---------- 개별 조정 에디터 ----------
+const editOverlay = $('#editorOverlay');
+const editPhoto = $('#editPhoto');
+const editOverlayImg = $('#editOverlay');
+const editBg = $('#editBg');
+
+function openEditor(idx){
+  curItem = items[idx];
+  editPhoto.src = curItem.photoImg.src;
+  editOverlayImg.src = curItem.overlayImg.src;
+  editBg.style.background = curItem.bg;
+  updateEditorGeom();
+  editOverlay.classList.add('open');
+}
+function updateEditorGeom(){
+  const { dx, dy, dw, dh } = computeGeom(curItem);
+  editPhoto.style.left = dx + 'px';
+  editPhoto.style.top = dy + 'px';
+  editPhoto.style.width = dw + 'px';
+  editPhoto.style.height = dh + 'px';
+}
+
+$('#btnCloseEditor').addEventListener('click', () => {
+  editOverlay.classList.remove('open');
+  refreshThumb(curItem);
+  curItem = null;
+});
+$('#btnResetItem').addEventListener('click', () => {
+  curItem.scaleMul = 1; curItem.ox = 0; curItem.oy = 0;
+  updateEditorGeom();
+});
+$('#bgWhite').addEventListener('click', () => { curItem.bg = '#ffffff'; editBg.style.background = curItem.bg; });
+$('#bgCustom').addEventListener('input', e => { curItem.bg = e.target.value; editBg.style.background = curItem.bg; });
+$('#bgAuto').addEventListener('click', () => {
+  curItem.bg = extractDominantColor(curItem.photoImg);
+  editBg.style.background = curItem.bg;
+});
+
+function extractDominantColor(img){
+  const c = document.createElement('canvas');
+  c.width = 24; c.height = 24;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0, 24, 24);
+  const data = ctx.getImageData(0, 0, 24, 24).data;
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < data.length; i += 4) { r += data[i]; g += data[i+1]; b += data[i+2]; n++; }
+  r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+// 휠 확대/축소
+$('#editClip').addEventListener('wheel', e => {
+  if (!curItem) return;
+  e.preventDefault();
+  const delta = e.deltaY < 0 ? 0.06 : -0.06;
+  curItem.scaleMul = Math.max(0.3, Math.min(3, (curItem.scaleMul || 1) + delta));
+  updateEditorGeom();
+}, { passive: false });
+
+// 드래그 이동 (전역 리스너 1개로 처리 — 리스너 누수 방지)
+let _drag = null;
+editPhoto.addEventListener('mousedown', e => {
+  if (!curItem) return;
+  e.preventDefault();
+  _drag = { sx: e.clientX, sy: e.clientY, sox: curItem.ox || 0, soy: curItem.oy || 0 };
+  editPhoto.style.cursor = 'grabbing';
+});
+window.addEventListener('mousemove', e => {
+  if (!_drag || !curItem) return;
+  const previewScale = 0.4; // #editCanvasWrap의 transform:scale 값과 일치해야 함
+  curItem.ox = _drag.sox + (e.clientX - _drag.sx) / previewScale;
+  curItem.oy = _drag.soy + (e.clientY - _drag.sy) / previewScale;
+  updateEditorGeom();
+});
+window.addEventListener('mouseup', () => {
+  _drag = null;
+  editPhoto.style.cursor = 'grab';
+});
+
+// ---------- 전체 ZIP 내보내기 ----------
+$('#btnExportAll').addEventListener('click', async () => {
+  const statusEl = $('#exportStatus');
+  const btn = $('#btnExportAll');
+  btn.disabled = true;
+  const zip = new JSZip();
+  const exportCanvas = document.createElement('canvas');
+  exportCanvas.width = CW; exportCanvas.height = CH;
+  const ctx = exportCanvas.getContext('2d');
+
+  const usedNames = new Map();
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    statusEl.textContent = `${i + 1}/${items.length} 처리 중...`;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, CW, CH);
+    drawItem(ctx, it);
+
+    let base = it.photoName.replace(/\.[^.]+$/, '');
+    let name = base + '.png';
+    if (usedNames.has(name)) {
+      const n = usedNames.get(name) + 1;
+      usedNames.set(name, n);
+      name = base + '_' + n + '.png';
+    } else {
+      usedNames.set(name, 0);
+    }
+
+    const blob = await new Promise(res => exportCanvas.toBlob(res, 'image/png'));
+    zip.file(name, blob);
+    // 다음 반복에서 UI가 멈춘 것처럼 안 보이게 렌더 틈 주기
+    await new Promise(r => setTimeout(r, 0));
+  }
+
+  statusEl.textContent = '압축하는 중...';
+  const zipBlob = await zip.generateAsync({ type: 'blob' }, meta => {
+    statusEl.textContent = `압축 중... ${Math.round(meta.percent)}%`;
+  });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(zipBlob);
+  a.download = '합성결과_' + items.length + '장.zip';
+  a.click();
+  statusEl.textContent = `완료 (${items.length}장)`;
+  btn.disabled = false;
+});
+</script>
+</body>
+</html>
