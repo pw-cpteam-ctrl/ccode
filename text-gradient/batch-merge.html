@@ -19,9 +19,10 @@ p.desc{font-size:13px;color:#7d7568;margin:0 0 20px;}
 button{font-size:13px;padding:8px 16px;border-radius:8px;border:1px solid #ccc4b4;background:#fff;cursor:pointer;}
 button.primary{background:#252018;color:#fff;border-color:#252018;}
 button:disabled{opacity:.4;cursor:default;}
+.previewToolbar{font-size:12px;color:#555;margin-bottom:10px;display:flex;align-items:center;}
 #grid{display:flex;flex-wrap:wrap;gap:10px;}
-.thumb{width:120px;cursor:pointer;position:relative;}
-.thumb canvas{width:120px;height:150px;border-radius:6px;border:1px solid #ddd8ce;display:block;background:#eee;}
+.thumb{cursor:pointer;position:relative;}
+.thumb canvas{border-radius:6px;border:1px solid #ddd8ce;display:block;background:#eee;}
 .thumb .name{font-size:10px;color:#7d7568;margin-top:2px;word-break:break-all;text-align:center;}
 .thumb.warn canvas{border-color:#e05d5d;}
 #editorOverlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:100;}
@@ -57,34 +58,18 @@ button:disabled{opacity:.4;cursor:default;}
 <p class="desc">엑셀 매칭표 + 사진 + 투명 이미지를 올리면 1080×1350으로 자동 합성. 기본은 꽉 채워 중앙 자르기, 필요한 것만 확대/축소·드래그로 조정.</p>
 
 <div class="panel">
-  <h2>1. 업로드</h2>
-  <div class="row3">
-    <div class="drop" id="dropExcel">
-      <div>엑셀/CSV 매칭표</div>
-      <div style="font-size:11px;margin-top:4px;">(사진파일명 | 투명파일명, 헤더 없이)</div>
-      <input type="file" id="inExcel" accept=".xlsx,.xls,.csv"/>
-    </div>
-    <div class="drop" id="dropPhotos">
-      <div>사진 파일들</div>
-      <div style="font-size:11px;margin-top:4px;" id="photoCount">0개 선택됨</div>
-      <input type="file" id="inPhotos" accept="image/*" multiple/>
-    </div>
-    <div class="drop" id="dropOverlays">
-      <div>투명 이미지들</div>
-      <div style="font-size:11px;margin-top:4px;" id="overlayCount">0개 선택됨</div>
-      <input type="file" id="inOverlays" accept="image/*" multiple/>
-    </div>
+  <h2>0. 투명 이미지 올리기 (공통 — 아래 방법 A/B 둘 다 여기서 씀)</h2>
+  <div class="drop" id="dropOverlays">
+    <div>투명 이미지들</div>
+    <div style="font-size:11px;margin-top:4px;" id="overlayCount">0개 선택됨</div>
+    <input type="file" id="inOverlays" accept="image/*" multiple/>
   </div>
-  <div style="margin-top:12px;">
-    <button class="primary" id="btnMatch">매칭 실행</button>
-  </div>
-  <div id="log"></div>
 </div>
 
 <div class="panel">
-  <h2>1-B. (선택) 폴더로 빠르게 시작 — 엑셀 없이</h2>
+  <h2>방법 B. 폴더로 빠르게 시작 (추천, 엑셀 필요 없음)</h2>
   <p style="font-size:12px;color:#7d7568;margin:0 0 10px;">
-    사진 폴더를 통째로 불러오면 아트보드 + 아래 리스트에 자동으로 채워져. 투명 이미지는 위 "투명 이미지들"에 먼저 올려두면 리스트 2번 칸에서 후보로 나와.
+    사진 폴더를 통째로 불러오면 아트보드 + 아래 리스트에 자동으로 채워져. 위에서 투명 이미지를 먼저 올려두면 리스트 2번 칸에서 후보로 나와.
   </p>
   <button id="btnPickFolder">사진 폴더 선택 (크롬/엣지)</button>
   <input type="file" id="inPhotoFolder" webkitdirectory multiple style="display:none;"/>
@@ -98,9 +83,33 @@ button:disabled{opacity:.4;cursor:default;}
   </div>
 </div>
 
+<div class="panel">
+  <h2>방법 A. 엑셀로 매칭 (엑셀 파일이 이미 준비된 경우만)</h2>
+  <div class="row3" style="grid-template-columns:1fr 1fr;">
+    <div class="drop" id="dropExcel">
+      <div>엑셀/CSV 매칭표</div>
+      <div style="font-size:11px;margin-top:4px;">(사진파일명 | 투명파일명, 헤더 없이)</div>
+      <input type="file" id="inExcel" accept=".xlsx,.xls,.csv"/>
+    </div>
+    <div class="drop" id="dropPhotos">
+      <div>사진 파일들</div>
+      <div style="font-size:11px;margin-top:4px;" id="photoCount">0개 선택됨</div>
+      <input type="file" id="inPhotos" accept="image/*" multiple/>
+    </div>
+  </div>
+  <div style="margin-top:12px;">
+    <button class="primary" id="btnMatch">매칭 실행</button>
+  </div>
+  <div id="log"></div>
+</div>
+
 <div class="panel" id="gridPanel" style="display:none;">
-  <h2>2. 미리보기 (클릭해서 조정)</h2>
+  <h2>미리보기 (클릭해서 조정)</h2>
   <div id="restoreNote" style="display:none;font-size:12px;color:#3a7d3a;margin-bottom:8px;">저장된 작업을 자동으로 불러왔어요.</div>
+  <div class="previewToolbar">
+    <label>미리보기 크기: <input type="range" id="thumbSizeSlider" min="70" max="240" value="120"/></label>
+    <label style="margin-left:16px;"><input type="checkbox" id="thumbZoomToggle"/> 미리보기에서 마우스 휠로 개별 확대/축소</label>
+  </div>
   <div id="grid"></div>
   <div style="margin-top:14px;">
     <button class="primary" id="btnExportAll">전체 ZIP 다운로드</button>
@@ -576,16 +585,23 @@ function computeGeom(it){
 }
 
 // ---------- 그리드(썸네일) ----------
+let THUMB_W = 120;
+function thumbH(){ return Math.round(THUMB_W * CH / CW); }
+
 function renderGrid(){
   const grid = $('#grid');
   grid.innerHTML = '';
+  const h = thumbH();
   items.forEach((it, idx) => {
     const wrap = document.createElement('div');
     wrap.className = 'thumb';
+    wrap.dataset.idx = idx;
     const canvas = document.createElement('canvas');
-    canvas.width = 120; canvas.height = 150;
+    canvas.width = THUMB_W; canvas.height = h;
+    canvas.style.width = THUMB_W + 'px';
+    canvas.style.height = h + 'px';
     const ctx = canvas.getContext('2d');
-    ctx.scale(120 / CW, 150 / CH);
+    ctx.scale(THUMB_W / CW, h / CH);
     drawItem(ctx, it);
     const name = document.createElement('div');
     name.className = 'name';
@@ -599,11 +615,31 @@ function renderGrid(){
 }
 function refreshThumb(it){
   if (!it._thumbCanvas) return;
+  const h = thumbH();
   const ctx = it._thumbCanvas.getContext('2d');
   ctx.setTransform(1,0,0,1,0,0);
-  ctx.scale(120 / CW, 150 / CH);
+  ctx.scale(THUMB_W / CW, h / CH);
   drawItem(ctx, it);
 }
+
+$('#thumbSizeSlider').addEventListener('input', e => {
+  THUMB_W = Number(e.target.value);
+  renderGrid();
+});
+
+// 미리보기에서 마우스 휠로 개별 아트보드 확대/축소 (체크박스 켜졌을 때만)
+$('#grid').addEventListener('wheel', e => {
+  if (!$('#thumbZoomToggle').checked) return;
+  const wrap = e.target.closest('.thumb');
+  if (!wrap) return;
+  e.preventDefault();
+  const idx = Number(wrap.dataset.idx);
+  const it = items[idx];
+  const delta = e.deltaY < 0 ? 0.06 : -0.06;
+  it.scaleMul = Math.max(0.3, Math.min(3, (it.scaleMul || 1) + delta));
+  refreshThumb(it);
+  saveMetaSoon();
+}, { passive: false });
 
 // ---------- 개별 조정 에디터 ----------
 const editOverlay = $('#editorOverlay');
