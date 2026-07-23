@@ -170,9 +170,13 @@ function drawCard(ctx, item, cx, cy, showShipping = true) {
   }
 
   if (tag) {
-    // ctx.font는 fillText 이후에도 그대로 IP명 폰트라 line1 폭을 그대로 재측정할 수 있다.
-    const line1Width = ctx.measureText(plan.lines[0]).width;
-    drawTagBadge(ctx, cx + 2 + line1Width + 5, ipY, tag, tagSize);
+    // 태그 배지는 항상 "마지막 줄" 옆에 붙인다. 2줄로 나뉜 경우 첫 줄 끝(줄바꿈 지점)에
+    // 붙이면 IP명이 잘려 보이는 중간에 배지가 끼어든 것처럼 보인다 — IP명이 실제로
+    // 끝나는 마지막 줄 옆에 붙어야 자연스럽다. ctx.font는 fillText 이후에도 그대로
+    // IP명 폰트라 마지막 줄 폭을 그대로 재측정할 수 있다.
+    const lastLineText = plan.lines[plan.lines.length - 1];
+    const lastLineWidth = ctx.measureText(lastLineText).width;
+    drawTagBadge(ctx, cx + 2 + lastLineWidth + 5, lastIpLineY, tag, tagSize);
   }
 
   const priceY = lastIpLineY + 9 + priceSize;
