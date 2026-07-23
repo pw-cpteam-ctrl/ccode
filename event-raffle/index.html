@@ -60,6 +60,7 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 .slot-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
 .slot-row .slot-load{flex:1;min-width:0;text-align:left;background:var(--ui-card);color:var(--ui-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .slot-row .slot-delete{flex:0 0 auto;}
+.row-delete{padding:4px 10px;font-size:12px;white-space:nowrap;}
 </style>
 </head>
 <body>
@@ -118,6 +119,7 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     <div class="warn-box" id="filterFallback"></div>
     <div class="tbl-wrap" id="candidateWrap" style="display:none;"></div>
     <div class="count-badge" id="candidateCount"></div>
+    <button class="secondary" onclick="downloadCandidates()" id="btnDownloadCandidates" style="display:none;margin-top:10px;">후보 명단 다운로드 (엑셀)</button>
   </div>
 
   <div class="step">
@@ -381,24 +383,35 @@ function resetDownstream() {
   $('#saveStatus').textContent = '';
 }
 
-function renderTable(wrapSel, rows, columns) {
+function renderTable(wrapSel, rows, columns, opts = {}) {
   const wrap = $(wrapSel);
   if (!rows.length) { wrap.style.display = 'none'; return; }
   const cols = columns.length ? columns : ['reason'];
   const head = '<tr>' + cols.map(c =>
     `<th${c === contentColumn ? ' style="min-width:260px;"' : ''}>${escapeHtml(c)}</th>`
-  ).join('') + '</tr>';
-  const body = rows.map(r => '<tr>' + cols.map(c => `<td>${escapeHtml(String(r[c] ?? ''))}</td>`).join('') + '</tr>').join('');
+  ).join('') + (opts.onDelete ? '<th></th>' : '') + '</tr>';
+  const body = rows.map((r, i) => '<tr>' + cols.map(c => `<td>${escapeHtml(String(r[c] ?? ''))}</td>`).join('')
+    + (opts.onDelete ? `<td><button type="button" class="secondary row-delete" data-i="${i}">삭제</button></td>` : '')
+    + '</tr>').join('');
   wrap.innerHTML = `
     <div class="tbl-toolbar"><button type="button" class="secondary tbl-toggle-all">전체 접기</button></div>
     <table><thead>${head}</thead><tbody>${body}</tbody></table>
-    <div class="tbl-hint">기본은 전체 펼침 상태예요. 행을 클릭하면 그 줄만 접혔다 펴져요.</div>`;
+    <div class="tbl-hint">기본은 전체 펼침 상태예요. 행을 클릭하면 그 줄만 접혔다 펴져요.${opts.onDelete ? ' "삭제" 버튼으로 후보에서 개별 제외할 수 있어요.' : ''}</div>`;
   wrap.style.display = '';
   const tbody = wrap.querySelector('tbody');
   tbody.addEventListener('click', (e) => {
+    if (e.target.closest('.row-delete')) return;
     const tr = e.target.closest('tr');
     if (tr) tr.classList.toggle('collapsed');
   });
+  if (opts.onDelete) {
+    tbody.querySelectorAll('.row-delete').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        opts.onDelete(+btn.dataset.i);
+      });
+    });
+  }
   const toggleAllBtn = wrap.querySelector('.tbl-toggle-all');
   toggleAllBtn.addEventListener('click', () => {
     const trs = [...tbody.querySelectorAll('tr')];
@@ -596,18 +609,39 @@ function useAllAsFallback() {
   $('#filterStatus').textContent = `필터링 없이 전체 ${candidates.length}명을 후보로 사용 중`;
 }
 
+let lastWithReason = true; // 후보 삭제 후 같은 방식(판단근거 포함 여부)으로 다시 그리기 위해 기억해둠
+
 function applyCandidates(withReason) {
+  lastWithReason = withReason;
   const rawRows = candidates.map(c => c.row);
   const allColumns = candidates.length ? Object.keys(candidates[0].row) : [];
   const cols = getMeaningfulColumns(rawRows, allColumns).concat(withReason ? ['__판단근거'] : []);
   const rowsForTable = candidates.map(c => withReason ? { ...c.row, __판단근거: c.reason } : c.row);
-  renderTable('#candidateWrap', rowsForTable, cols);
+  renderTable('#candidateWrap', rowsForTable, cols, { onDelete: removeCandidate });
   $('#candidateCount').textContent = `후보 ${candidates.length}명`;
+  $('#btnDownloadCandidates').style.display = candidates.length ? '' : 'none';
   lastWinners = [];
   $('#winnerResult').innerHTML = '';
   $('#btnDownloadResult').style.display = 'none';
   $('#btnSaveResult').style.display = 'none';
   $('#saveStatus').textContent = '';
+}
+
+// 후보 표에서 "삭제" 버튼을 눌러 특정 후보를 명단에서 직접 제외한다 (예: AI가
+// 잘못 포함시킨 사람, 이미 다른 이벤트로 당첨된 사람 등을 사람이 최종 조정).
+function removeCandidate(i) {
+  candidates.splice(i, 1);
+  applyCandidates(lastWithReason);
+}
+
+// 추첨 전에 후보 명단 자체(필터링 결과 + 수동 삭제 반영본)를 엑셀로 받아볼 수 있게 한다.
+function downloadCandidates() {
+  if (!candidates.length) return;
+  const sheetRows = candidates.map(c => ({ ...c.row, 판단근거: c.reason }));
+  const ws = XLSX.utils.json_to_sheet(sheetRows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '후보명단');
+  XLSX.writeFile(wb, `raffle-candidates-${new Date().toISOString().replace(/[:.]/g, '-')}.xlsx`);
 }
 
 /* ── 3단계: 추첨 (LLM 관여 없이 코드가 실제 난수로 뽑음) ── */
