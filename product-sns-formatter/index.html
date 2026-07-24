@@ -1,4 +1,4 @@
-<!-- deploy-marker: 2026-07-10T-after-verified-commits-disabled -->
+<!-- deploy-marker: 2026-07-24T-multi-product-workbench -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -9,21 +9,24 @@
 :root{
   --ui-bg:#f0ede7; --ui-panel:#faf8f4; --ui-border:#ddd8ce;
   --ui-text:#252018; --ui-sub:#7d7568; --ui-accent:#1452c0; --ui-card:#fff; --ui-warn:#b3661a;
+  --ui-ok:#1e7e34; --ui-ok-bg:#e6f6ea; --ui-pending:#b3661a; --ui-pending-bg:#fbf1e4;
+  --ui-mono:'SF Mono',ui-monospace,'D2Coding',Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box;}html,body{margin:0;padding:0;}
 body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Malgun Gothic',sans-serif;display:flex;justify-content:center;padding:40px 20px 100px;}
-.wrap{width:100%;max-width:760px;}
+.wrap{width:100%;max-width:1080px;}
 h1{font-size:22px;font-weight:800;margin:0 0 6px;}
-.sub{font-size:13px;color:var(--ui-sub);margin:0 0 28px;}
+.sub{font-size:13px;color:var(--ui-sub);margin:0 0 24px;}
 .step{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:20px 22px;margin-bottom:18px;}
 .step h2{font-size:14.5px;font-weight:800;margin:0 0 4px;display:flex;align-items:center;gap:8px;}
-.step h2 .num{background:var(--ui-accent);color:#fff;border-radius:999px;width:20px;height:20px;font-size:12px;display:inline-flex;align-items:center;justify-content:center;}
+.step h2 .num{background:var(--ui-accent);color:#fff;border-radius:999px;min-width:20px;height:20px;font-size:12px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;}
 .step .desc{font-size:12.5px;color:var(--ui-sub);margin:0 0 14px;}
 .field{margin-bottom:10px;}
 .field label{display:block;font-size:13px;color:var(--ui-sub);margin-bottom:4px;font-weight:600;}
-.field textarea{width:100%;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit;color:var(--ui-text);resize:vertical;}
-button{padding:10px 16px;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;border:1px solid var(--ui-border);font-family:inherit;background:var(--ui-accent);color:#fff;}
+.field textarea,.field input[type=text]{width:100%;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit;color:var(--ui-text);resize:vertical;}
+button{padding:9px 15px;border-radius:7px;font-size:13.5px;font-weight:700;cursor:pointer;border:1px solid var(--ui-border);font-family:inherit;background:var(--ui-accent);color:#fff;}
 button.secondary{background:var(--ui-card);color:var(--ui-text);}
+button.sm{padding:6px 11px;font-size:12.5px;}
 button:disabled{opacity:.5;cursor:not-allowed;}
 .status{font-size:12.5px;color:var(--ui-sub);margin-top:8px;}
 .warn-box{background:#fbf1e4;border:1px solid #ecd6ac;border-radius:8px;padding:12px 14px;margin-top:10px;font-size:12.5px;color:var(--ui-warn);display:none;white-space:pre-line;}
@@ -38,21 +41,13 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 .guide-box .tip{background:#fff;border:1px solid #f0c96b;border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.7;color:#5a4a2a;margin-bottom:8px;}
 .guide-box .tip:last-child{margin-bottom:0;}
 .guide-box .tip b{color:#b3661a;}
-.slot-box{margin-top:14px;background:#f5f3ee;border:1px solid var(--ui-border);border-radius:8px;padding:10px 12px;}
-.slot-box .slot-title{font-size:12px;font-weight:700;color:var(--ui-sub);margin-bottom:4px;}
-.slot-box .slot-note{font-size:11.5px;color:var(--ui-sub);margin-bottom:8px;line-height:1.5;}
-.slots{display:flex;flex-direction:column;gap:6px;}
-.slot-item{display:flex;align-items:center;gap:8px;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:8px 10px;font-size:12.5px;cursor:pointer;}
-.slot-item:hover{border-color:var(--ui-accent);}
-.slot-item .s-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.slot-item .s-meta{color:var(--ui-sub);font-size:11px;white-space:nowrap;}
-.slot-item .s-del{color:var(--ui-sub);font-weight:700;padding:0 2px 0 4px;}
-.slot-item .s-del:hover{color:var(--ui-warn);}
 .slot-empty{color:var(--ui-sub);font-size:12px;}
 .correction-box{margin-top:8px;padding:10px 12px;background:#fdecea;border:1px solid #f3b8b0;border-radius:8px;font-size:12.5px;color:#c0392b;display:none;}
 .correction-box .c-title{font-weight:700;margin-bottom:4px;}
 .correction-box ul{margin:0;padding-left:18px;}
 .correction-box li{margin-bottom:2px;}
+.charcount{font-size:11.5px;color:var(--ui-sub);margin-top:7px;}
+.charcount b{color:var(--ui-text);}
 .diff-wrap{margin-top:10px;}
 .diff-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;}
 .diff-head .diff-label{font-size:12.5px;color:var(--ui-sub);font-weight:700;}
@@ -60,7 +55,7 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 .diff-cols{display:flex;gap:10px;}
 .diff-col{flex:1;min-width:0;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:10px 12px;}
 .diff-col-title{font-size:11.5px;font-weight:700;color:var(--ui-sub);margin-bottom:6px;}
-.diff-content{font-size:13.5px;white-space:pre-wrap;word-break:break-word;min-height:40px;}
+.diff-content{font-size:13px;white-space:pre-wrap;word-break:break-word;min-height:40px;font-family:var(--ui-mono);line-height:1.55;}
 .diff-empty{color:var(--ui-sub);}
 del.diffdel{background:#fdecea;color:#c0392b;text-decoration:line-through;text-decoration-color:#c0392b;}
 ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
@@ -70,6 +65,7 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .brand-opt{display:flex;align-items:center;justify-content:center;padding:10px 22px;font-size:14px;font-weight:700;cursor:pointer;background:var(--ui-card);color:var(--ui-text);border:1px solid var(--ui-border);border-radius:8px;transition:background .15s,color .15s,border-color .15s;user-select:none;}
 .brand-opt input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
 .brand-opt.selected{background:var(--ui-accent);color:#fff;border-color:var(--ui-accent);}
+.brand-opt.sm{padding:5px 12px;font-size:12.5px;}
 .anomaly-details{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:14px 22px;margin-bottom:18px;}
 .anomaly-details summary{cursor:pointer;font-size:14.5px;font-weight:800;list-style:none;}
 .anomaly-details summary::-webkit-details-marker{display:none;}
@@ -101,74 +97,128 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .rd-raw{margin-top:6px;}
 .rd-raw summary{font-size:11px;font-weight:700;color:var(--ui-sub);cursor:pointer;list-style:revert;}
 .rd-raw pre{white-space:pre-wrap;word-break:break-word;font-size:12px;background:var(--ui-panel);border-radius:6px;padding:8px;margin:6px 0 0;font-family:inherit;}
+.rd-pick{margin-top:6px;padding:4px 9px;font-size:11px;}
+
+/* ── 오늘 상품 목록 (좌) · 상세 (우) ── */
+.dayhead{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+.dayhead .daylabel{font-weight:800;font-size:14px;}
+.dayhead .brand-toggle{margin-left:auto;}
+.dayhead .dayprog{font-size:12.5px;color:var(--ui-sub);width:100%;}
+.md-wrap{display:grid;grid-template-columns:250px 1fr;gap:14px;align-items:start;}
+@media(max-width:820px){.md-wrap{grid-template-columns:1fr;}}
+.leftcol{display:flex;flex-direction:column;gap:10px;position:sticky;top:16px;}
+.md-list{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:8px;min-height:60px;}
+.md-row{display:flex;align-items:center;gap:9px;padding:10px 11px;border-radius:8px;cursor:pointer;font-size:13px;}
+.md-row:hover{background:rgba(20,82,192,.06);}
+.md-row.sel{background:var(--ui-accent);color:#fff;}
+.md-row.sel .md-sub{color:rgba(255,255,255,.82);}
+.md-row .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;background:var(--ui-pending);}
+.md-row .dot.done{background:var(--ui-ok);}
+.md-row.sel .dot{outline:2px solid rgba(255,255,255,.6);}
+.md-row .md-t{flex:1;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.md-row .md-sub{font-size:10.5px;color:var(--ui-sub);font-weight:600;}
+.md-row .md-del{color:var(--ui-sub);font-weight:800;padding:0 2px;}
+.md-row .md-del:hover{color:var(--ui-warn);}
+.md-row.sel .md-del{color:rgba(255,255,255,.85);}
+.md-detail{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:18px 20px;min-height:300px;}
+.md-empty{color:var(--ui-sub);font-size:13.5px;text-align:center;padding:60px 10px;}
+.d-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+.d-title-input{font-size:16px;font-weight:800;border:none;background:transparent;color:var(--ui-text);flex:1;min-width:120px;padding:2px 0;}
+.d-title-input:focus{outline:none;border-bottom:1px solid var(--ui-accent);}
+.stage{border-top:1px dashed var(--ui-border);padding:14px 0 4px;}
+.stage:first-of-type{border-top:none;}
+.stage-h{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:800;margin-bottom:10px;flex-wrap:wrap;}
+.snum{background:var(--ui-accent);color:#fff;border-radius:6px;min-width:19px;height:19px;font-size:11px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;}
+.snum.o{background:#f07d1e;}
+.chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;}
+.chip.done{background:var(--ui-ok-bg);color:var(--ui-ok);}
+.chip.pending{background:var(--ui-pending-bg);color:var(--ui-pending);}
+.badge-x{background:#222;color:#fff;border-radius:5px;padding:1px 7px;font-size:10.5px;font-weight:800;}
+.dbsearch-row{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;}
+.dbchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+.dbchip{font-size:11px;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:4px 9px;color:var(--ui-text);cursor:pointer;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dbchip:hover{border-color:var(--ui-accent);}
+.mini-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center;}
+.ins-note{font-size:11.5px;color:var(--ui-sub);}
+
+/* ── ③ 캐러셀 이미지 (실제 canvas 합성) ── */
+.dropzone{border:2px dashed var(--ui-border);border-radius:10px;padding:14px;text-align:center;font-size:12.5px;color:var(--ui-sub);cursor:pointer;}
+.dropzone:hover{border-color:var(--ui-accent);color:var(--ui-accent);}
+.dropzone input{display:none;}
+.thumbrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+.thumbwrap{position:relative;}
+.thumbwrap canvas{width:60px;height:75px;border-radius:5px;cursor:pointer;display:block;background:var(--ui-card);}
+.thumbwrap canvas.sel{outline:2px solid var(--ui-accent);outline-offset:1px;}
+.thumbwrap .th-star{position:absolute;top:-5px;left:-5px;font-size:11px;background:#fff;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--ui-border);}
+.thumbwrap .th-star.on{color:#f07d1e;}
+.thumbwrap .th-del{position:absolute;top:-5px;right:-5px;font-size:10px;background:#fff;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--ui-border);color:var(--ui-sub);}
+.thumbwrap .th-del:hover{color:var(--ui-warn);}
+.composer{display:grid;grid-template-columns:210px 1fr;gap:16px;margin-top:12px;align-items:start;}
+@media(max-width:560px){.composer{grid-template-columns:1fr;}}
+#composerCanvas{width:210px;height:262.5px;border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.12);cursor:grab;background:var(--ui-card);}
+#composerCanvas:active{cursor:grabbing;}
+.composer-ctl .hint{font-size:11px;color:var(--ui-sub);margin:2px 0 6px;line-height:1.5;}
+.ctl-block{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:9px 11px;margin-bottom:8px;}
+.ctl-block .cl{font-size:11px;font-weight:800;margin-bottom:6px;}
+.ctl-block input[type=range]{width:100%;}
+.ctl-block textarea{width:100%;background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;font-size:12.5px;color:var(--ui-text);font-family:inherit;resize:none;}
+.harvest{background:var(--ui-panel);border:1px solid var(--ui-accent);border-radius:12px;padding:15px 18px;margin-top:18px;}
+.harvest h3{margin:0 0 4px;font-size:13.5px;font-weight:800;display:flex;align-items:center;gap:8px;}
+.harvest p{margin:0 0 11px;font-size:12px;color:var(--ui-sub);}
+.harvest .row{display:flex;gap:8px;flex-wrap:wrap;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>상품 SNS 포맷터</h1>
-  <p class="sub">상품 정보 텍스트를 붙여넣으면 회사 SNS 포맷으로 변환해줍니다. (대화 기억 없음 — 매 요청 새로 시작)</p>
+  <p class="sub">오늘 작업할 상품을 목록에 담고, 상품마다 ① 정보 입력 → ② 원고 생성 → ③ 캐러셀 이미지 합성까지 한 화면에서 끝내는 도구예요.</p>
 
   <div class="guide-box">
-    <h2>📌 필독! 처음 쓰시는 분은 여기부터 읽어주세요</h2>
-    <p style="font-size:13px;margin:0 0 14px;">이 도구는 "상품 정보를 그냥 텍스트로 붙여넣으면, AI가 알아서 우리 회사 SNS 올리는 포맷으로 바꿔주는 도구"예요. 사용법은 딱 3단계예요.</p>
+    <h2>📌 처음 쓰시는 분은 여기부터 읽어주세요</h2>
     <ol>
-      <li><b>①</b> 브랜드(부시로드/메가하우스/굿스마일)를 먼저 선택하세요. 브랜드마다 규칙이 달라서 꼭 골라야 해요.</li>
-      <li><b>②</b> 아래 "상품정보 입력" 칸에 상품 정보를 그냥 복사해서 붙여넣으세요. (형식 신경 안 써도 돼요, 아무렇게나 써도 AI가 알아서 정리해줘요)</li>
-      <li><b>③</b> "변환하기" 버튼을 누르면 몇 초 안에 완성된 SNS 원고가 나와요.</li>
-      <li><b>④</b> "결과 복사" 버튼을 눌러서 그대로 SNS에 붙여넣으면 끝!</li>
+      <li><b>①</b> 왼쪽 <b>"+ 상품 추가"</b>로 오늘 작업할 상품을 목록에 담으세요. 상품마다 상단에서 브랜드를 고를 수 있어요.</li>
+      <li><b>②</b> 오른쪽 상세에서 상품정보/캐릭터 메모를 입력하고 <b>"원고 생성"</b>을 누르면 몇 초 안에 SNS 원고(X용, 실제 링크 포함)가 나와요.</li>
+      <li><b>③</b> "인스타용 복사"는 그 원고에서 <b>링크 줄만</b> 안내문구로 자동 치환해서 복사해줘요. 미리보기 없이 바로 클립보드에 담겨요.</li>
+      <li><b>④</b> 아래로 내려가면 캐러셀 이미지 칸이 있어요. 사진을 올리면 자동으로 4:5 비율로 채워 잘리고, 실제 주황 틀을 얹은 완성본을 만들 수 있어요.</li>
     </ol>
-    <div class="tip"><b>💡 알아두면 좋은 것 1</b> — 이 도구는 "기억력"이 없어요. 버튼 누를 때마다 완전히 처음 상태로 시작해요. 그래서 "이전에 말한 거 기억해서 이번에도 그렇게 해줘" 같은 건 안 통해요. 매번 새로 다 알려줘야 해요.</div>
-    <div class="tip"><b>💡 알아두면 좋은 것 2</b> — "추가지시" 칸에 뭔가 적으면 <b>이번 한 번만</b> 적용돼요. 다음에 또 쓸 때는 다시 안 써도 되는 게 아니라, 매번 새로 써줘야 해요. (예: "이모지 빼줘"라고 한 번 적었다고 다음부터 계속 빠지지 않아요)</div>
-    <div class="tip"><b>💡 알아두면 좋은 것 3</b> — 결과물 포맷이 마음에 안 들면, 그냥 넘어가지 말고 <b>아래 "개선사항 메모장"</b>에 적어주세요! 이 메모는 AI한테 전달되는 게 아니라, 사람이 나중에 확인하고 규칙을 고칠지 판단하는 용도예요. 적어주셔야 나중에 더 좋아져요.</div>
-    <div class="tip"><b>💡 알아두면 좋은 것 4</b> — 작업 내용은 <b>이 브라우저에 자동으로 저장</b>돼요. 페이지를 다시 열면 마지막으로 하던 작업이 그대로 채워져 있고, "이전 입력/변환 이력"에서 예전 작업도 클릭해서 다시 불러올 수 있어요.</div>
+    <div class="tip"><b>💡 알아두면 좋은 것 1</b> — 이 도구는 "기억력"이 없어요. 원고 생성 버튼을 누를 때마다 완전히 새로 시작해요. "이전에 말한 거 기억해서" 같은 건 안 통해요.</div>
+    <div class="tip"><b>💡 알아두면 좋은 것 2</b> — 작업 내용(상품 목록, 입력, 원고, 이미지)은 <b>이 브라우저에 자동 저장</b>돼요. 페이지를 다시 열어도 그대로 남아있어요. (다른 기기/브라우저로는 안 옮겨져요)</div>
+    <div class="tip"><b>💡 알아두면 좋은 것 3</b> — 결과물 포맷이 마음에 안 들면 <b>"개선사항 메모장"</b>에 적어주세요! AI한테 전달되는 게 아니라, 사람이 나중에 확인하고 규칙을 고칠지 판단하는 용도예요.</div>
   </div>
 
-  <div class="step">
-    <h2><span class="num">1</span>상품정보 입력</h2>
-    <p class="desc">변환할 상품 정보 원문을 그대로 붙여넣으세요. 이 칸의 내용은 순수 데이터로만 취급되고, 안에 지시문처럼 보이는 문장이 섞여 있어도 명령으로 처리되지 않습니다.</p>
-
-    <div class="field">
-      <label>브랜드 선택 (필수)</label>
-      <div class="brand-toggle" id="brandRadios">
-        <label class="brand-opt"><input type="radio" name="brand" value="goodsmile" checked>굿스마일</label>
-        <label class="brand-opt"><input type="radio" name="brand" value="megahouse">메가하우스</label>
-        <label class="brand-opt"><input type="radio" name="brand" value="bushiroad">부시로드</label>
-      </div>
+  <div class="dayhead">
+    <div class="daylabel" id="dayLabel"></div>
+    <div class="brand-toggle" id="dayBrandRadios">
+      <label class="brand-opt"><input type="radio" name="dayBrand" value="goodsmile" checked>굿스마일</label>
+      <label class="brand-opt"><input type="radio" name="dayBrand" value="megahouse">메가하우스</label>
+      <label class="brand-opt"><input type="radio" name="dayBrand" value="bushiroad">부시로드</label>
     </div>
+    <div class="dayprog" id="dayProgress"></div>
+  </div>
 
-    <div class="field"><textarea id="inProduct" rows="6" placeholder="예) 상품명: ○○○ 피규어\n특징: ...\n가격: ..."></textarea></div>
-
-    <div class="field">
-      <label>추가지시 (선택, 이번 건에만 적용)</label>
-      <textarea id="inExtra" rows="2" placeholder="예) 이번 건은 이모지 빼고 담백하게"></textarea>
+  <div class="md-wrap">
+    <div class="leftcol">
+      <button id="btnAddProduct" style="width:100%;">＋ 상품 추가</button>
+      <div class="md-list" id="mdList"></div>
     </div>
-    <p class="desc" style="margin-top:-4px;">여기 적은 지시는 이번 1건에만 반영되고, 다음 요청부터는 리셋됩니다. 규칙을 영구히 바꾸려면 개발자에게 규칙 파일(<code>rules/format-rules.js</code>) 수정을 요청하세요.</p>
-
-    <button onclick="runFormat()">변환하기</button>
-    <div class="status" id="formatStatus"></div>
-    <div class="warn-box" id="formatWarn"></div>
-    <div class="diff-wrap" id="diffWrap" style="display:none;">
-      <div class="diff-head">
-        <span class="diff-label">원문 vs 변환 결과 비교</span>
-        <button type="button" class="secondary diff-toggle-btn" id="btnDiffToggle" onclick="toggleDiffColor()">색깔 없이 보기</button>
-      </div>
-      <div class="diff-cols">
-        <div class="diff-col"><div class="diff-col-title">원문</div><div class="diff-content" id="diffOld"></div></div>
-        <div class="diff-col"><div class="diff-col-title">변환 결과</div><div class="diff-content" id="diffNew"></div></div>
-      </div>
-    </div>
-    <div class="correction-box" id="correctionBox"></div>
-    <button class="secondary" onclick="copyResult()" id="btnCopy" style="display:none;margin-top:8px;">결과 복사</button>
-
-    <div class="slot-box">
-      <div class="slot-title">↺ 이전 입력/변환 이력 (최근 10개 · 자동 저장)</div>
-      <div class="slot-note">변환하거나 페이지를 벗어나면 현재 작업이 자동 저장됩니다. 클릭하면 그 내용으로 되돌립니다.</div>
-      <div id="slots" class="slots"></div>
+    <div class="md-detail" id="mdDetail">
+      <div class="md-empty">왼쪽에서 "+ 상품 추가"를 눌러 시작하세요.</div>
     </div>
   </div>
 
-  <div class="step">
-    <h2><span class="num">2</span>개선사항 메모장</h2>
+  <div class="harvest">
+    <h3>✓ 오늘 작업 전체 내려받기</h3>
+    <p>담아둔 상품들의 완성 이미지를 한 번에 ZIP으로, 원고는 한 번에 복사해서 가져갈 수 있어요.</p>
+    <div class="row">
+      <button class="secondary" id="btnHarvestZip">📦 완성 이미지 전체 ZIP</button>
+      <button class="secondary" id="btnHarvestCopyX">📋 X 원고 전체 복사</button>
+      <button class="secondary" id="btnHarvestCopyIns">📋 인스타용 원고 전체 복사</button>
+    </div>
+    <div class="status" id="harvestStatus"></div>
+  </div>
+
+  <div class="step" style="margin-top:18px;">
+    <h2><span class="num">✎</span>개선사항 메모장</h2>
     <p class="desc">여기 적는 내용은 <b>LLM에 절대 전송되지 않습니다.</b> 사람이 나중에 훑어보고 규칙 파일에 반영할지 판단하는 용도예요.</p>
     <div class="field"><textarea id="inMemo" rows="2" placeholder="예) 가격 표기가 자꾸 원 단위를 빼먹음"></textarea></div>
     <button onclick="saveMemo()">메모 저장</button>
@@ -186,7 +236,7 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 
   <details class="refdb-details" id="refdbDetails">
     <summary>📚 참고 DB · 실제 업로드물 157건 (작품·캐릭터로 검색)</summary>
-    <p class="desc">지금까지 실제로 올라간 굿스마일 게시물이야. 작품명·캐릭터·키워드로 검색해서 "이 캐릭터는 예전에 어떻게 썼더라?"를 바로 찾아볼 수 있어 (판매형 / 원형공개형 구분). 캐릭터 설명·대사 초안을 잡을 때 참고용.</p>
+    <p class="desc">지금까지 실제로 올라간 굿스마일 게시물이야. 작품명·캐릭터·키워드로 검색해서 "이 캐릭터는 예전에 어떻게 썼더라?"를 바로 찾아볼 수 있어. 상품 상세의 "캐릭터 메모"에서도 같은 DB를 바로 검색해서 가져다 쓸 수 있어요.</p>
     <input type="text" class="refdb-search" id="refdbSearch" placeholder="예: 하츠네 미쿠 / 넨도로이드 / 히로아카 / 재판..."/>
     <div class="status" id="refdbStatus"></div>
     <div id="refdbList" class="refdb-list"></div>
@@ -196,96 +246,20 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 <script>
 const $ = s => document.querySelector(s);
 const MEMO_STORAGE_KEY = 'product-sns-formatter:memos';
-const SLOT_KEY = 'product-sns-formatter:slots';
-const SLOT_MAX = 10;
+const PRODUCTS_KEY = 'product-sns-formatter:products:v1';
+const BRAND_LABELS = { bushiroad: '부시로드', megahouse: '메가하우스', goodsmile: '굿스마일' };
+const DEFAULT_BRAND = 'goodsmile';
 
-let lastResult = '';
-let lastCorrections = [];
-
-/* ── 1단계: 변환 (LLM 호출, 백엔드 미배포/키 미설정 시 안내 후 실패) ── */
-const DEFAULT_BRAND = 'goodsmile'; // 굿스마일 건수가 제일 많아서 기본값
-function getSelectedBrand() {
-  return document.querySelector('input[name="brand"]:checked')?.value || '';
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
-function setSelectedBrand(brand) {
-  const el = document.querySelector(`input[name="brand"][value="${brand || DEFAULT_BRAND}"]`);
-  if (el) el.checked = true;
-  refreshBrandUI();
-}
-function refreshBrandUI() {
-  document.querySelectorAll('.brand-opt').forEach(opt => {
-    opt.classList.toggle('selected', opt.querySelector('input').checked);
-  });
-}
-document.querySelectorAll('#brandRadios input[name="brand"]').forEach(el => {
-  el.addEventListener('change', refreshBrandUI);
-});
-
-async function runFormat() {
-  const productText = $('#inProduct').value.trim();
-  const extraInstruction = $('#inExtra').value.trim();
-  const brand = getSelectedBrand();
-  if (!brand) { alert('브랜드를 먼저 선택해주세요.'); return; }
-  if (!productText) { alert('상품정보를 입력해주세요.'); return; }
-
-  $('#formatWarn').style.display = 'none';
-  $('#diffWrap').style.display = 'none';
-  $('#correctionBox').style.display = 'none';
-  $('#btnCopy').style.display = 'none';
-  $('#formatStatus').textContent = '변환 중...';
-
-  try {
-    const res = await fetch('/api/format', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productText, extraInstruction, brand }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
-
-    lastResult = data.result || '';
-    lastCorrections = data.corrections || [];
-    renderDiffView(productText, lastResult);
-    $('#diffWrap').style.display = '';
-    renderCorrections(lastCorrections);
-    $('#btnCopy').style.display = '';
-    $('#formatStatus').textContent = '변환 완료';
-    pushSlot(snapshotNow());
-
-    // 입력 로그 저장은 최선 노력(fire-and-forget) — 비공개 로그 레포 연결 전에는 실패해도 무시.
-    fetch('/api/save-log', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productText, extraInstruction, brand, result: lastResult }),
-    }).then(async r => {
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) console.warn('입력 로그 저장 안 됨:', d.error);
-    }).catch(() => {});
-  } catch (err) {
-    $('#formatStatus').textContent = '';
-    const hint = /ANTHROPIC_API_KEY/i.test(err.message)
-      ? '\n\nVercel 프로젝트 환경변수에 ANTHROPIC_API_KEY를 등록해주세요. 자세한 내용은 PLAN.md / README.md 참고.'
-      : '';
-    $('#formatWarn').textContent = `변환에 실패했어요: ${err.message}${hint}`;
-    $('#formatWarn').style.display = 'block';
-  }
-}
-
-function renderCorrections(corrections) {
-  const box = $('#correctionBox');
-  if (!corrections || !corrections.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
-  box.innerHTML = '<div class="c-title">⚠️ 맞춤법/표현 교정 내역</div><ul>' +
-    corrections.map(c => `<li>${boldKeyParts(c)}</li>`).join('') + '</ul>';
-  box.style.display = 'block';
-}
-
 // 교정 내역에서 "무엇을 무엇으로" 부분(따옴표/괄호로 감싼 부분)만 볼드 처리 — 많을 때 훑어보기 쉽게.
 function boldKeyParts(text) {
   const parts = String(text).split(/("[^"]*"|'[^']*'|「[^」]*」|『[^』]*』)/g);
   return parts.map((p, i) => (i % 2 === 1 ? `<b>${escapeHtml(p)}</b>` : escapeHtml(p))).join('');
 }
 
-/* ── 원문 vs 결과 단어 단위 비교 (위키/코드 리뷰 스타일 좌우 diff) ── */
+/* ── 원문 vs 결과 단어 단위 비교 (좌우 diff, LCS 기반) ── */
 function tokenizeForDiff(s) {
   return String(s || '').split(/(\s+)/).filter(t => t.length > 0);
 }
@@ -309,7 +283,7 @@ function computeDiff(oldText, newText) {
   while (j < m) { ops.push({ type: 'ins', text: b[j] }); j++; }
   return ops;
 }
-function renderDiffView(oldText, newText) {
+function diffHtmlPair(oldText, newText) {
   const ops = computeDiff(oldText, newText);
   let oldHtml = '', newHtml = '';
   for (const op of ops) {
@@ -318,29 +292,621 @@ function renderDiffView(oldText, newText) {
     else if (op.type === 'del') { oldHtml += `<del class="diffdel">${esc}</del>`; }
     else { newHtml += `<ins class="diffins">${esc}</ins>`; }
   }
-  $('#diffOld').innerHTML = oldHtml || '<span class="diff-empty">(내용 없음)</span>';
-  $('#diffNew').innerHTML = newHtml || '<span class="diff-empty">(내용 없음)</span>';
-}
-function toggleDiffColor() {
-  const plain = $('#diffWrap').classList.toggle('plain');
-  $('#btnDiffToggle').textContent = plain ? '색깔 보기' : '색깔 없이 보기';
+  return { oldHtml: oldHtml || '<span class="diff-empty">(내용 없음)</span>', newHtml: newHtml || '<span class="diff-empty">(내용 없음)</span>' };
 }
 
-function copyResult() {
-  if (!lastResult) return;
-  navigator.clipboard.writeText(lastResult)
-    .then(() => { $('#formatStatus').textContent = '클립보드에 복사했어요.'; })
-    .catch(() => { alert('복사에 실패했어요. 직접 선택해서 복사해주세요.'); });
+/* ── 인스타용 = X 원고에서 🛒 링크 줄만 안내문으로 치환 (그 외 완전히 동일) ── */
+function insVersion(text) {
+  return text.replace(/🛒\s*:\s*.+/, '🛒 : 구매는 프로필 링크를 참고해 주세요!');
 }
 
-/* ── 2단계: 개선사항 메모장 (LLM 미전송, 값 변경 → 화면 반영 → 저장 3단계) ── */
+/* ══════════════════ 상품 데이터 모델 ══════════════════
+   PRODUCTS: 오늘 작업 중인 상품 목록. 텍스트 필드는 localStorage에,
+   업로드한 사진 원본(Blob)은 용량 때문에 IndexedDB에 따로 저장하고
+   불러올 때 다시 합친다. */
+let PRODUCTS = [];
+let currentProductId = null;
+let diffPlain = false; // "색깔 없이 보기" 토글 상태 (상품 전환해도 유지)
+
+function newProductId() {
+  return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+function newImageKey(productId) {
+  return 'img-' + productId + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+function getSelectedDayBrand() {
+  return document.querySelector('input[name="dayBrand"]:checked')?.value || DEFAULT_BRAND;
+}
+function makeBlankProduct() {
+  return {
+    id: newProductId(),
+    brand: getSelectedDayBrand(),
+    title: '',
+    officialText: '',
+    memoText: '',
+    extraInstruction: '',
+    result: '',
+    corrections: [],
+    resultSourceText: '', // diff의 "원문" 쪽 = 원고 생성 당시 상품정보(공식+메모)
+    images: [], // [{key, scale, ox, oy}]
+    mainIndex: 0,
+    textTitle: '',
+    textSub: '',
+    gradStart: 0.55,
+    gradIntensity: 0.75,
+  };
+}
+function getActiveProduct() {
+  return PRODUCTS.find(p => p.id === currentProductId) || null;
+}
+function stripForStorage(p) {
+  const { ...rest } = p; // images는 메타(key/scale/ox/oy)만 들어있어 그대로 저장해도 가벼움
+  return rest;
+}
+function saveProducts() {
+  try { localStorage.setItem(PRODUCTS_KEY, JSON.stringify(PRODUCTS.map(stripForStorage))); } catch (e) { /* 용량 초과 시 무시 */ }
+}
+function loadProductsFromStorage() {
+  try { return JSON.parse(localStorage.getItem(PRODUCTS_KEY) || '[]'); } catch { return []; }
+}
+let _saveSoonT;
+function saveProductsSoon() {
+  clearTimeout(_saveSoonT);
+  _saveSoonT = setTimeout(saveProducts, 350);
+}
+
+/* ── IndexedDB: 업로드한 사진 원본 Blob 저장 (키 = product.images[].key) ── */
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open('product_sns_formatter_db', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('blobs');
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+function idbSet(key, val) {
+  return idbOpen().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('blobs', 'readwrite');
+    tx.objectStore('blobs').put(val, key);
+    tx.oncomplete = () => { db.close(); res(); };
+    tx.onerror = () => { db.close(); rej(tx.error); };
+  }));
+}
+function idbGet(key) {
+  return idbOpen().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('blobs', 'readonly');
+    const rq = tx.objectStore('blobs').get(key);
+    rq.onsuccess = () => { db.close(); res(rq.result); };
+    rq.onerror = () => { db.close(); rej(rq.error); };
+  }));
+}
+function idbDel(key) {
+  return idbOpen().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('blobs', 'readwrite');
+    tx.objectStore('blobs').delete(key);
+    tx.oncomplete = () => { db.close(); res(); };
+    tx.onerror = () => { db.close(); rej(tx.error); };
+  }));
+}
+function loadImageFromBlob(blob) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = URL.createObjectURL(blob);
+  });
+}
+const imgCache = new Map(); // key -> HTMLImageElement (메모리 캐시, 상품 전환할 때마다 다시 불러오지 않게)
+
+/* ══════════════════ 캐러셀 이미지 합성 (실제 canvas) ══════════════════
+   1080x1350(4:5) 해상도로 그리고 화면에는 CSS로 축소해서 보여준다.
+   레이어 순서: 사진(cover-fit) → 검정 그라데이션 → 흰 텍스트(중앙정렬, 대표 슬라이드만) → 실제 틀 PNG. */
+const CW = 1080, CH = 1350;
+let frameImgEl = null;
+function loadFrameImage() {
+  if (frameImgEl) return Promise.resolve(frameImgEl);
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => { frameImgEl = img; res(img); };
+    img.onerror = rej;
+    img.src = './assets/frame-orange.png';
+  });
+}
+function drawSlide(ctx, slide, withText, textTitle, textSub, gradStart, gradIntensity) {
+  ctx.clearRect(0, 0, CW, CH);
+  const img = slide && imgCache.get(slide.key);
+  if (img) {
+    const pw = img.naturalWidth, ph = img.naturalHeight;
+    const base = Math.max(CW / pw, CH / ph); // cover-fit: 짧은 변 기준으로 꽉 채움
+    const eff = base * (slide.scale || 1);
+    const dw = pw * eff, dh = ph * eff;
+    const dx = (CW - dw) / 2 + (slide.ox || 0);
+    const dy = (CH - dh) / 2 + (slide.oy || 0);
+    ctx.drawImage(img, dx, dy, dw, dh);
+  } else {
+    ctx.fillStyle = '#e7e2d6';
+    ctx.fillRect(0, 0, CW, CH);
+  }
+  if (withText) {
+    const gs = CH * (gradStart != null ? gradStart : 0.55);
+    const grad = ctx.createLinearGradient(0, gs, 0, CH);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, `rgba(0,0,0,${gradIntensity != null ? gradIntensity : 0.75})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, gs, CW, CH - gs);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 7; ctx.shadowOffsetY = 2;
+    const cx = CW / 2;
+    let ty = CH - 130; // 실측한 아래쪽 틀 두께(28px≈2%)보다 충분히 위에서 시작
+    if (textSub) {
+      ctx.font = '600 27px -apple-system,"Malgun Gothic",sans-serif';
+      ctx.fillText(textSub, cx, ty);
+      ty -= 46;
+    }
+    ctx.font = '800 44px -apple-system,"Malgun Gothic",sans-serif';
+    ctx.fillText(textTitle || '', cx, ty);
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  }
+  if (frameImgEl) ctx.drawImage(frameImgEl, 0, 0, CW, CH);
+}
+function exportSlidePng(p, idx) {
+  const slide = p.images[idx];
+  const c = document.createElement('canvas');
+  c.width = CW; c.height = CH;
+  drawSlide(c.getContext('2d'), slide, idx === p.mainIndex, p.textTitle, p.textSub, p.gradStart, p.gradIntensity);
+  return new Promise(res => c.toBlob(res, 'image/png'));
+}
+
+/* ── 상품 상세: ③ 캐러셀 이미지 단(썸네일 + 편집 컴포저) ── */
+let composerScale = 1; // #composerCanvas CSS 표시폭 / CW (드래그 이동량 환산용)
+
+function renderImageStage(p) {
+  const stageEl = $('#stage3');
+  if (!stageEl) return;
+  loadFrameImage().catch(() => {}).then(() => {
+    stageEl.innerHTML = imageStageHtml(p);
+    wireImageStage(p);
+    drawAllThumbs(p);
+    drawComposer(p);
+  });
+}
+function imageStageHtml(p) {
+  const doneChip = (p.mainIndex != null && p.images[p.mainIndex]) ? '<span class="chip done">✓ 대표 슬라이드 지정됨</span>' : '<span class="chip pending">대표 슬라이드 없음</span>';
+  return `
+    <div class="stage-h"><span class="snum o">③</span> 캐러셀 이미지 <span class="chip">4:5 자동크롭</span> ${doneChip}</div>
+    <div class="dropzone" id="dropZone">＋ 사진 올리기 (여러 장 가능) · 올리면 1080×1350(4:5)로 꽉 채워 자동 크롭됩니다
+      <input type="file" id="fileInput" accept="image/*" multiple/>
+    </div>
+    <div class="thumbrow" id="thumbRow"></div>
+    <div class="composer" id="composerWrap" style="${p.images.length ? '' : 'display:none;'}">
+      <div>
+        <canvas id="composerCanvas" width="${CW}" height="${CH}"></canvas>
+        <div class="status" id="composerHint" style="margin-top:6px;">휠: 확대/축소 · 드래그: 사진 위치 이동</div>
+      </div>
+      <div class="composer-ctl">
+        <div class="ctl-block" id="mainOnlyBlock">
+          <div class="cl">★ 표시된 대표 슬라이드에만 그라데이션·텍스트가 들어가요 (나머지는 틀+사진만 — 글자가 피규어를 가리지 않도록)</div>
+        </div>
+        <div class="ctl-block">
+          <div class="cl">검정 그라데이션</div>
+          <label class="flabel" style="font-size:11px;color:var(--ui-sub);">시작 위치</label>
+          <input type="range" id="gradStartRange" min="0" max="100" value="${Math.round((p.gradStart ?? 0.55) * 100)}"/>
+          <label class="flabel" style="font-size:11px;color:var(--ui-sub);">농도</label>
+          <input type="range" id="gradIntensityRange" min="0" max="100" value="${Math.round((p.gradIntensity ?? 0.75) * 100)}"/>
+        </div>
+        <div class="ctl-block">
+          <div class="cl">흰 텍스트 (중앙정렬 · 대표 슬라이드에만 표시)</div>
+          <label class="flabel" style="font-size:11px;color:var(--ui-sub);">제목 (큰 글자)</label>
+          <textarea id="textTitleInput" rows="1">${escapeHtml(p.textTitle || '')}</textarea>
+          <label class="flabel" style="font-size:11px;color:var(--ui-sub);margin-top:6px;">부제 (작은 글자)</label>
+          <textarea id="textSubInput" rows="1">${escapeHtml(p.textSub || '')}</textarea>
+        </div>
+        <div class="mini-actions">
+          <button class="sm secondary" id="btnResetSlide">위치/배율 초기화</button>
+          <button class="sm" id="btnExportSlide">이 슬라이드 PNG 저장</button>
+          <button class="sm secondary" id="btnExportProductZip">이 상품 전체 ZIP</button>
+        </div>
+        <div class="status" id="imgExportStatus"></div>
+      </div>
+    </div>
+  `;
+}
+let editingIdx = 0; // composer가 지금 보여주고 있는 슬라이드 인덱스
+function wireImageStage(p) {
+  editingIdx = Math.min(editingIdx, Math.max(0, p.images.length - 1));
+
+  const dropZone = $('#dropZone'), fileInput = $('#fileInput');
+  dropZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => handleFiles(p, Array.from(fileInput.files)));
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = 'var(--ui-accent)'; });
+  dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = ''; });
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.style.borderColor = '';
+    handleFiles(p, Array.from(e.dataTransfer.files).filter(f => /^image\//.test(f.type)));
+  });
+
+  const gs = $('#gradStartRange'), gi = $('#gradIntensityRange');
+  if (gs) gs.addEventListener('input', () => { p.gradStart = Number(gs.value) / 100; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
+  if (gi) gi.addEventListener('input', () => { p.gradIntensity = Number(gi.value) / 100; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
+  const tt = $('#textTitleInput'), ts = $('#textSubInput');
+  if (tt) tt.addEventListener('input', () => { p.textTitle = tt.value; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
+  if (ts) ts.addEventListener('input', () => { p.textSub = ts.value; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
+
+  const btnReset = $('#btnResetSlide');
+  if (btnReset) btnReset.addEventListener('click', () => {
+    const s = p.images[editingIdx]; if (!s) return;
+    s.scale = 1; s.ox = 0; s.oy = 0;
+    drawComposer(p); drawAllThumbs(p); saveProductsSoon();
+  });
+  const btnExportSlide = $('#btnExportSlide');
+  if (btnExportSlide) btnExportSlide.addEventListener('click', async () => {
+    const blob = await exportSlidePng(p, editingIdx);
+    downloadBlob(blob, `${safeFileName(p.title || '상품')}_${editingIdx + 1}.png`);
+  });
+  const btnExportZip = $('#btnExportProductZip');
+  if (btnExportZip) btnExportZip.addEventListener('click', () => exportProductZip(p));
+
+  wireComposerInteraction(p);
+}
+async function handleFiles(p, files) {
+  for (const f of files) {
+    const key = newImageKey(p.id);
+    await idbSet(key, f);
+    const img = await loadImageFromBlob(f);
+    imgCache.set(key, img);
+    p.images.push({ key, scale: 1, ox: 0, oy: 0 });
+  }
+  if (p.images.length && (p.mainIndex == null || p.mainIndex >= p.images.length)) p.mainIndex = 0;
+  saveProducts();
+  renderImageStage(p);
+  renderList();
+}
+function safeFileName(s) {
+  return String(s).replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) || '상품';
+}
+function downloadBlob(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+}
+async function exportProductZip(p) {
+  const statusEl = $('#imgExportStatus');
+  if (!p.images.length) { if (statusEl) statusEl.textContent = '사진이 없어요.'; return; }
+  if (typeof JSZip === 'undefined') { if (statusEl) statusEl.textContent = 'ZIP 라이브러리 로딩 실패 — 새로고침 후 다시 시도해주세요.'; return; }
+  if (statusEl) statusEl.textContent = '만드는 중...';
+  const zip = new JSZip();
+  for (let i = 0; i < p.images.length; i++) {
+    const blob = await exportSlidePng(p, i);
+    zip.file(`${safeFileName(p.title || '상품')}_${i + 1}.png`, blob);
+  }
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  downloadBlob(zipBlob, `${safeFileName(p.title || '상품')}.zip`);
+  if (statusEl) statusEl.textContent = '완료';
+}
+
+function drawAllThumbs(p) {
+  const row = $('#thumbRow');
+  if (!row) return;
+  row.innerHTML = '';
+  p.images.forEach((slide, idx) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'thumbwrap';
+    const canvas = document.createElement('canvas');
+    canvas.width = 60; canvas.height = 75;
+    if (idx === editingIdx) canvas.classList.add('sel');
+    const ctx = canvas.getContext('2d');
+    ctx.scale(60 / CW, 75 / CH);
+    drawSlide(ctx, slide, idx === p.mainIndex, p.textTitle, p.textSub, p.gradStart, p.gradIntensity);
+    canvas.addEventListener('click', () => { editingIdx = idx; drawAllThumbs(p); drawComposer(p); });
+    const star = document.createElement('div');
+    star.className = 'th-star' + (idx === p.mainIndex ? ' on' : '');
+    star.textContent = '★';
+    star.title = '대표 슬라이드로 지정(그라데이션+텍스트)';
+    star.addEventListener('click', e => { e.stopPropagation(); p.mainIndex = idx; drawAllThumbs(p); drawComposer(p); saveProductsSoon(); });
+    const del = document.createElement('div');
+    del.className = 'th-del';
+    del.textContent = '✕';
+    del.addEventListener('click', async e => {
+      e.stopPropagation();
+      await idbDel(slide.key).catch(() => {});
+      imgCache.delete(slide.key);
+      p.images.splice(idx, 1);
+      if (p.mainIndex >= p.images.length) p.mainIndex = Math.max(0, p.images.length - 1);
+      editingIdx = Math.min(editingIdx, Math.max(0, p.images.length - 1));
+      saveProducts();
+      renderImageStage(p);
+      renderList();
+    });
+    wrap.appendChild(canvas); wrap.appendChild(star); wrap.appendChild(del);
+    row.appendChild(wrap);
+  });
+}
+function drawComposer(p) {
+  const canvas = $('#composerCanvas');
+  if (!canvas) return;
+  const slide = p.images[editingIdx];
+  drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, p.gradStart, p.gradIntensity);
+  const rect = canvas.getBoundingClientRect();
+  composerScale = (rect.width || canvas.clientWidth || 210) / CW;
+}
+function wireComposerInteraction(p) {
+  const canvas = $('#composerCanvas');
+  if (!canvas) return;
+  canvas.addEventListener('wheel', e => {
+    const slide = p.images[editingIdx]; if (!slide) return;
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.06 : -0.06;
+    slide.scale = Math.max(0.3, Math.min(3, (slide.scale || 1) + delta));
+    drawComposer(p); drawAllThumbs(p); saveProductsSoon();
+  }, { passive: false });
+  let drag = null;
+  canvas.addEventListener('mousedown', e => {
+    const slide = p.images[editingIdx]; if (!slide) return;
+    drag = { sx: e.clientX, sy: e.clientY, sox: slide.ox || 0, soy: slide.oy || 0 };
+  });
+  window.addEventListener('mousemove', e => {
+    if (!drag) return;
+    const slide = p.images[editingIdx]; if (!slide) return;
+    const scale = composerScale || (210 / CW);
+    slide.ox = drag.sox + (e.clientX - drag.sx) / scale;
+    slide.oy = drag.soy + (e.clientY - drag.sy) / scale;
+    drawComposer(p);
+  });
+  window.addEventListener('mouseup', () => {
+    if (drag) { drawAllThumbs($activeProductSafe()); saveProductsSoon(); }
+    drag = null;
+  });
+}
+function $activeProductSafe() { return getActiveProduct() || { images: [] }; }
+
+/* ══════════════════ 상품 목록 (좌) ══════════════════ */
+function productStatus(p) {
+  const hasDraft = !!p.result;
+  const hasImage = p.images.length > 0 && p.mainIndex != null;
+  return { hasDraft, hasImage, done: hasDraft && hasImage };
+}
+function renderList() {
+  const box = $('#mdList');
+  if (!PRODUCTS.length) { box.innerHTML = '<div class="slot-empty">아직 담긴 상품이 없어요.</div>'; updateDayProgress(); return; }
+  box.innerHTML = PRODUCTS.map(p => {
+    const st = productStatus(p);
+    const label = (p.title || '').trim() || (p.officialText || '').split('\n').map(s => s.trim()).find(Boolean) || '(제목 없음)';
+    return `
+    <div class="md-row${p.id === currentProductId ? ' sel' : ''}" data-id="${p.id}">
+      <span class="dot ${st.done ? 'done' : ''}"></span>
+      <span class="md-t">${escapeHtml(label.length > 22 ? label.slice(0, 22) + '…' : label)}<div class="md-sub">${BRAND_LABELS[p.brand] || p.brand} · 원고 ${st.hasDraft ? '✓' : '·'} / 이미지 ${st.hasImage ? '✓' : '·'}</div></span>
+      <span class="md-del" data-del="${p.id}">✕</span>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('.md-row').forEach(el => {
+    el.addEventListener('click', e => {
+      const del = e.target.closest('[data-del]');
+      if (del) { removeProduct(del.dataset.del); return; }
+      selectProduct(el.dataset.id);
+    });
+  });
+  updateDayProgress();
+}
+function updateDayProgress() {
+  const total = PRODUCTS.length;
+  const done = PRODUCTS.filter(p => productStatus(p).done).length;
+  $('#dayProgress').textContent = total ? `원고 ${PRODUCTS.filter(p=>productStatus(p).hasDraft).length}/${total} · 이미지 ${PRODUCTS.filter(p=>productStatus(p).hasImage).length}/${total}` : '';
+}
+function addProduct() {
+  const p = makeBlankProduct();
+  PRODUCTS.push(p);
+  saveProducts();
+  renderList();
+  selectProduct(p.id);
+}
+function removeProduct(id) {
+  if (!confirm('이 상품을 오늘 목록에서 지울까요? (사진도 함께 삭제돼요)')) return;
+  const p = PRODUCTS.find(x => x.id === id);
+  if (p) p.images.forEach(s => { idbDel(s.key).catch(() => {}); imgCache.delete(s.key); });
+  PRODUCTS = PRODUCTS.filter(x => x.id !== id);
+  saveProducts();
+  if (currentProductId === id) currentProductId = PRODUCTS[0]?.id || null;
+  renderList();
+  renderDetail();
+}
+async function selectProduct(id) {
+  currentProductId = id;
+  editingIdx = 0;
+  renderList();
+  renderDetail();
+  const p = getActiveProduct();
+  if (!p) return;
+  for (const slide of p.images) {
+    if (!imgCache.has(slide.key)) {
+      const blob = await idbGet(slide.key).catch(() => null);
+      if (blob) { try { imgCache.set(slide.key, await loadImageFromBlob(blob)); } catch {} }
+    }
+  }
+  if (currentProductId === id) renderImageStage(p); // 로딩 중 다른 상품으로 전환했으면 다시 그리지 않음
+}
+
+/* ══════════════════ 상품 상세 (우) ══════════════════ */
+function renderDetail() {
+  const box = $('#mdDetail');
+  const p = getActiveProduct();
+  if (!p) { box.innerHTML = '<div class="md-empty">왼쪽에서 "+ 상품 추가"를 눌러 시작하세요.</div>'; return; }
+  const st = productStatus(p);
+  box.innerHTML = `
+    <div class="d-head">
+      <input class="d-title-input" id="titleInput" placeholder="상품 제목 (예: 고죠 와카나 넨도로이드)" value="${escapeHtml(p.title || '')}"/>
+      <div class="brand-toggle" id="prodBrandRadios">
+        ${['goodsmile','megahouse','bushiroad'].map(b => `<label class="brand-opt sm"><input type="radio" name="prodBrand" value="${b}"${p.brand===b?' checked':''}>${BRAND_LABELS[b]}</label>`).join('')}
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="stage-h"><span class="snum">①</span> 상품정보 <span style="font-weight:600;color:var(--ui-sub);font-size:11px;">(지금은 직접 입력 · 추후 B2B 자동수집 예정)</span></div>
+      <div class="field"><label>공식정보 (발매일·사이즈·가격 등)</label><textarea id="officialInput" rows="5" placeholder="예) 상품명: ○○○ 피규어\n발매: 27년 3월\n사이즈: 논스케일 약 100mm">${escapeHtml(p.officialText)}</textarea></div>
+      <div class="field">
+        <label>캐릭터 메모 (관계설명·대사 등 가변정보)</label>
+        <textarea id="memoInput" rows="3" placeholder="예) 키타가와 마린의 코스프레를 돕는 같은 반 남고생">${escapeHtml(p.memoText)}</textarea>
+        <div class="dbsearch-row">
+          <input type="text" id="dbSearchInput" class="refdb-search" style="margin:0;flex:1;min-width:160px;" placeholder="참고 DB에서 작품/캐릭터 검색..."/>
+        </div>
+        <div class="dbchips" id="dbChips"></div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="stage-h"><span class="snum">②</span> 원고 <span class="badge-x">X 기준</span> ${st.hasDraft ? '<span class="chip done">완료</span>' : '<span class="chip pending">미완</span>'}</div>
+      <div class="field"><label>추가지시 (선택, 이번 1건에만 적용)</label><textarea id="extraInput" rows="1" placeholder="예) 이번 건은 이모지 빼고 담백하게">${escapeHtml(p.extraInstruction)}</textarea></div>
+      <button id="btnGenerate">${st.hasDraft ? '↻ 재생성' : '✍ 원고 생성'}</button>
+      <div class="status" id="genStatus"></div>
+      <div class="warn-box" id="genWarn"></div>
+      ${p.result ? draftResultHtml(p) : ''}
+    </div>
+
+    <div class="stage" id="stage3"></div>
+  `;
+  wireDetail(p);
+  if (p.result) { renderDiffInto(p); }
+  renderImageStage(p);
+}
+function draftResultHtml(p) {
+  return `
+    <div class="correction-box" id="correctionBox" style="display:${p.corrections.length ? 'block' : 'none'};">
+      ${p.corrections.length ? '<div class="c-title">⚠️ 맞춤법/표현 교정 내역</div><ul>' + p.corrections.map(c => `<li>${boldKeyParts(c)}</li>`).join('') + '</ul>' : ''}
+    </div>
+    <div class="charcount">글자수 <b>${p.result.length}자</b></div>
+    <div class="diff-wrap${diffPlain ? ' plain' : ''}" id="diffWrap">
+      <div class="diff-head">
+        <span class="diff-label">원문 vs 변환 결과 비교</span>
+        <button type="button" class="secondary diff-toggle-btn" id="btnDiffToggle">${diffPlain ? '색깔 보기' : '색깔 없이 보기'}</button>
+      </div>
+      <div class="diff-cols">
+        <div class="diff-col"><div class="diff-col-title">원문</div><div class="diff-content" id="diffOld"></div></div>
+        <div class="diff-col"><div class="diff-col-title">결과 (X용)</div><div class="diff-content" id="diffNew"></div></div>
+      </div>
+    </div>
+    <div class="mini-actions">
+      <button class="secondary" id="btnCopyX">📋 X 복사</button>
+      <button class="secondary" id="btnCopyIns">📋 인스타용 복사 (링크만 자동 교체)</button>
+      <span class="ins-note" id="copyStatus"></span>
+    </div>
+  `;
+}
+function renderDiffInto(p) {
+  const { oldHtml, newHtml } = diffHtmlPair(p.resultSourceText, p.result);
+  if ($('#diffOld')) $('#diffOld').innerHTML = oldHtml;
+  if ($('#diffNew')) $('#diffNew').innerHTML = newHtml;
+}
+function wireDetail(p) {
+  const titleInput = $('#titleInput');
+  titleInput.addEventListener('input', () => { p.title = titleInput.value; renderList(); saveProductsSoon(); });
+
+  document.querySelectorAll('#prodBrandRadios input[name="prodBrand"]').forEach(el => {
+    el.addEventListener('change', () => {
+      document.querySelectorAll('#prodBrandRadios .brand-opt').forEach(o => o.classList.toggle('selected', o.querySelector('input').checked));
+      if (el.checked) { p.brand = el.value; renderList(); saveProductsSoon(); }
+    });
+  });
+  document.querySelectorAll('#prodBrandRadios .brand-opt').forEach(o => o.classList.toggle('selected', o.querySelector('input').checked));
+
+  const officialInput = $('#officialInput'), memoInput = $('#memoInput'), extraInput = $('#extraInput');
+  officialInput.addEventListener('input', () => { p.officialText = officialInput.value; saveProductsSoon(); });
+  memoInput.addEventListener('input', () => { p.memoText = memoInput.value; saveProductsSoon(); });
+  extraInput.addEventListener('input', () => { p.extraInstruction = extraInput.value; saveProductsSoon(); });
+
+  const dbSearchInput = $('#dbSearchInput');
+  dbSearchInput.addEventListener('input', () => renderDbChips(dbSearchInput.value.trim()));
+
+  $('#btnGenerate').addEventListener('click', () => runFormat(p));
+
+  const btnCopyX = $('#btnCopyX'), btnCopyIns = $('#btnCopyIns'), btnDiffToggle = $('#btnDiffToggle');
+  if (btnCopyX) btnCopyX.addEventListener('click', () => copyDraft(p, 'x'));
+  if (btnCopyIns) btnCopyIns.addEventListener('click', () => copyDraft(p, 'ins'));
+  if (btnDiffToggle) btnDiffToggle.addEventListener('click', () => {
+    diffPlain = !diffPlain;
+    $('#diffWrap').classList.toggle('plain', diffPlain);
+    btnDiffToggle.textContent = diffPlain ? '색깔 보기' : '색깔 없이 보기';
+  });
+}
+function copyDraft(p, kind) {
+  const text = kind === 'ins' ? insVersion(p.result) : p.result;
+  const statusEl = $('#copyStatus');
+  const say = msg => { if (statusEl) { statusEl.textContent = msg; setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ''; }, 2500); } };
+  navigator.clipboard.writeText(text)
+    .then(() => say(kind === 'ins' ? '✓ 인스타용 복사됨 (링크 문구만 자동 교체)' : '✓ X용 복사됨'))
+    .catch(() => say('복사 실패 — 직접 선택해서 복사해주세요.'));
+}
+
+/* ── ② 원고 생성 (실제 /api/format 호출, 기존 백엔드 그대로 재사용) ── */
+async function runFormat(p) {
+  const productText = [p.officialText, p.memoText].map(s => s.trim()).filter(Boolean).join('\n\n');
+  if (!productText) { alert('상품정보나 캐릭터 메모를 입력해주세요.'); return; }
+  $('#genWarn').style.display = 'none';
+  $('#genStatus').textContent = '변환 중...';
+  try {
+    const res = await fetch('/api/format', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productText, extraInstruction: p.extraInstruction, brand: p.brand }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
+    p.result = data.result || '';
+    p.corrections = data.corrections || [];
+    p.resultSourceText = productText;
+    saveProducts();
+    renderDetail();
+    $('#genStatus').textContent = '변환 완료';
+    renderList();
+
+    fetch('/api/save-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productText, extraInstruction: p.extraInstruction, brand: p.brand, result: p.result }),
+    }).catch(() => {});
+  } catch (err) {
+    $('#genStatus').textContent = '';
+    const hint = /ANTHROPIC_API_KEY/i.test(err.message)
+      ? '\n\nVercel 프로젝트 환경변수에 ANTHROPIC_API_KEY를 등록해주세요.'
+      : '';
+    $('#genWarn').textContent = `변환에 실패했어요: ${err.message}${hint}`;
+    $('#genWarn').style.display = 'block';
+  }
+}
+
+/* ── ① 참고 DB 검색 칩 (기존 refDB JSON 재사용, 클릭하면 캐릭터 메모에 덧붙임) ── */
+function renderDbChips(query) {
+  const box = $('#dbChips');
+  if (!box) return;
+  if (!query) { box.innerHTML = ''; return; }
+  ensureRefDb().then(all => {
+    const q = query.toLowerCase();
+    const matches = all.filter(e => [e.title, e.work, e.blurb, e.dialogue].join(' ').toLowerCase().includes(q)).slice(0, 6);
+    if (!matches.length) { box.innerHTML = '<span class="slot-empty">일치하는 참고 게시물이 없어요.</span>'; return; }
+    box.innerHTML = matches.map((e, i) => {
+      const label = [e.work ? `『${e.work}』` : '', e.dialogue || e.blurb || e.title || ''].filter(Boolean).join(' ');
+      return `<span class="dbchip" data-i="${i}" title="${escapeHtml(label)}">${escapeHtml(label.slice(0, 40))}${label.length > 40 ? '…' : ''}</span>`;
+    }).join('');
+    box.querySelectorAll('.dbchip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const e = matches[Number(chip.dataset.i)];
+        const memoInput = $('#memoInput');
+        const add = [e.dialogue, e.blurb].filter(Boolean).join('\n');
+        memoInput.value = (memoInput.value ? memoInput.value.trim() + '\n' : '') + add;
+        const p = getActiveProduct();
+        if (p) { p.memoText = memoInput.value; saveProductsSoon(); }
+      });
+    });
+  });
+}
+
+/* ══════════════════ 개선사항 메모장 (day-독립, 기존 로직 그대로) ══════════════════ */
 function loadMemos() {
   try { return JSON.parse(localStorage.getItem(MEMO_STORAGE_KEY) || '[]'); }
   catch { return []; }
 }
-function persistMemos(memos) {
-  localStorage.setItem(MEMO_STORAGE_KEY, JSON.stringify(memos));
-}
+function persistMemos(memos) { localStorage.setItem(MEMO_STORAGE_KEY, JSON.stringify(memos)); }
 function renderMemos(memos) {
   $('#memoList').innerHTML = memos.slice().reverse().map(m => `
     <div class="memo-item">
@@ -348,14 +914,9 @@ function renderMemos(memos) {
       <div class="sync">${m.synced ? '깃허브 저장됨' : '브라우저에만 임시 저장됨 (깃허브 연결 전)'}</div>
     </div>`).join('');
 }
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-}
-
 async function saveMemo() {
   const text = $('#inMemo').value.trim();
   if (!text) { alert('메모 내용을 입력해주세요.'); return; }
-
   const memos = loadMemos();
   const entry = { at: new Date().toISOString(), text, synced: false };
   memos.push(entry);
@@ -363,7 +924,6 @@ async function saveMemo() {
   renderMemos(memos);
   $('#inMemo').value = '';
   $('#memoStatus').textContent = '브라우저에 저장했어요. 깃허브에도 저장을 시도합니다...';
-
   try {
     const res = await fetch('/api/save-memo', {
       method: 'POST',
@@ -377,123 +937,11 @@ async function saveMemo() {
     renderMemos(memos);
     $('#memoStatus').textContent = '메모를 깃허브에도 저장했어요.';
   } catch (err) {
-    $('#memoStatus').textContent = `깃허브 저장은 실패했지만 브라우저에는 남아있어요 (${err.message}). GITHUB_TOKEN 등 설정 전까지는 정상입니다.`;
+    $('#memoStatus').textContent = `깃허브 저장은 실패했지만 브라우저에는 남아있어요 (${err.message}).`;
   }
 }
 
-/* ── 이전 입력/변환 이력 슬롯 (자동 저장, 클릭 시 복원) ── */
-function loadSlots() {
-  try { return JSON.parse(localStorage.getItem(SLOT_KEY) || '[]'); }
-  catch { return []; }
-}
-function saveSlots(a) {
-  try { localStorage.setItem(SLOT_KEY, JSON.stringify(a)); }
-  catch { /* 용량 초과 시 조용히 무시 — 텍스트뿐이라 용량 부담은 거의 없음 */ }
-}
-function snapshotNow() {
-  return {
-    at: new Date().toISOString(),
-    brand: getSelectedBrand(),
-    productText: $('#inProduct').value,
-    extraInstruction: $('#inExtra').value,
-    result: lastResult,
-    corrections: lastCorrections,
-  };
-}
-const BRAND_LABELS = { bushiroad: '부시로드', megahouse: '메가하우스', goodsmile: '굿스마일' };
-function slotLabel(s) {
-  const p = (s.productText || '').trim();
-  const prefix = s.brand && BRAND_LABELS[s.brand] ? `[${BRAND_LABELS[s.brand]}] ` : '';
-  if (!p) return prefix + '(빈 입력)';
-  const firstLine = p.split('\n').map(x => x.trim()).find(Boolean) || p;
-  const trimmed = firstLine.length > 30 ? firstLine.slice(0, 30) + '…' : firstLine;
-  return prefix + trimmed;
-}
-function pushSlot(snap, skipRender) {
-  if (!snap.productText.trim() && !snap.result) return; // 빈 작업은 저장 안 함
-  const a = loadSlots();
-  const top = a[0];
-  if (top && top.brand === snap.brand && top.productText === snap.productText && top.extraInstruction === snap.extraInstruction && top.result === snap.result) {
-    return; // 직전 슬롯과 내용이 같으면 중복 저장 안 함
-  }
-  a.unshift(snap);
-  saveSlots(a.slice(0, SLOT_MAX));
-  if (!skipRender) renderSlots();
-}
-function applySlot(s) {
-  pushSlot(snapshotNow()); // 지금 작업 먼저 보존
-  setSelectedBrand(s.brand || '');
-  $('#inProduct').value = s.productText || '';
-  $('#inExtra').value = s.extraInstruction || '';
-  lastResult = s.result || '';
-  lastCorrections = s.corrections || [];
-  if (lastResult) {
-    renderDiffView(s.productText || '', lastResult);
-    $('#diffWrap').style.display = '';
-    $('#btnCopy').style.display = '';
-  } else {
-    $('#diffWrap').style.display = 'none';
-    $('#btnCopy').style.display = 'none';
-  }
-  renderCorrections(lastCorrections);
-  $('#formatStatus').textContent = '이전 입력을 불러왔어요.';
-  renderSlots();
-}
-function deleteSlot(i) {
-  const a = loadSlots();
-  a.splice(i, 1);
-  saveSlots(a);
-  renderSlots();
-}
-function renderSlots() {
-  const box = $('#slots');
-  const a = loadSlots();
-  if (!a.length) { box.innerHTML = '<div class="slot-empty">아직 저장된 이력이 없습니다.</div>'; return; }
-  box.innerHTML = a.map((s, i) => `
-    <div class="slot-item" data-i="${i}">
-      <span class="s-title">${escapeHtml(slotLabel(s))}</span>
-      <span class="s-meta">${s.result ? '변환됨 · ' : ''}${escapeHtml(new Date(s.at).toLocaleString())}</span>
-      <span class="s-del" data-del="${i}">✕</span>
-    </div>`).join('');
-  box.querySelectorAll('.slot-item').forEach(el => {
-    el.addEventListener('click', e => {
-      const delTarget = e.target.closest('[data-del]');
-      const i = Number(el.dataset.i);
-      if (delTarget) { deleteSlot(i); return; }
-      applySlot(loadSlots()[i]);
-    });
-  });
-}
-// 탭을 닫거나 다른 탭/창으로 전환할 때 현재 작업을 자동 보존
-window.addEventListener('beforeunload', () => { pushSlot(snapshotNow(), true); });
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') pushSlot(snapshotNow(), true);
-});
-
-/* ── 초기 로드: 마지막 작업 자동 복원 + 목록 렌더 ── */
-(function initSlots() {
-  const slots = loadSlots();
-  if (slots.length) {
-    const s = slots[0];
-    setSelectedBrand(s.brand || '');
-    $('#inProduct').value = s.productText || '';
-    $('#inExtra').value = s.extraInstruction || '';
-    lastResult = s.result || '';
-    lastCorrections = s.corrections || [];
-    if (lastResult) {
-      renderDiffView(s.productText || '', lastResult);
-      $('#diffWrap').style.display = '';
-      $('#btnCopy').style.display = '';
-      renderCorrections(lastCorrections);
-    }
-  }
-  refreshBrandUI();
-  renderSlots();
-})();
-
-renderMemos(loadMemos());
-
-/* ── 이상 감지 로그 (details 토글 열릴 때 서버에서 불러와서 렌더) ── */
+/* ══════════════════ 이상 감지 로그 / 참고 DB (day-독립, 기존 로직 그대로) ══════════════════ */
 async function loadAnomalyLog() {
   $('#anomalyStatus').textContent = '불러오는 중...';
   try {
@@ -523,34 +971,29 @@ function renderAnomalyLog(entries) {
     </div>
   `).join('');
 }
-$('#anomalyDetails').addEventListener('toggle', function () {
-  if (this.open) loadAnomalyLog();
-});
+$('#anomalyDetails').addEventListener('toggle', function () { if (this.open) loadAnomalyLog(); });
 
-/* ── 참고 DB (실제 업로드물 157건, 정적 JSON) ── */
 let _refdbAll = null;
+function ensureRefDb() {
+  if (_refdbAll) return Promise.resolve(_refdbAll);
+  return fetch('./data/goodsmile-reference.json').then(r => r.json()).then(d => { _refdbAll = d.entries || []; return _refdbAll; }).catch(() => []);
+}
 async function loadRefDb() {
-  if (_refdbAll) return _refdbAll;
   $('#refdbStatus').textContent = '불러오는 중...';
   try {
-    const res = await fetch('./data/goodsmile-reference.json');
-    if (!res.ok) throw new Error(`파일 로드 실패 (${res.status})`);
-    const data = await res.json();
-    _refdbAll = data.entries || [];
-    const sale = _refdbAll.filter(e => e.type === 'sale').length;
-    $('#refdbStatus').textContent = `총 ${_refdbAll.length}건 (판매형 ${sale} / 원형공개형 ${_refdbAll.length - sale})`;
-    renderRefDb(_refdbAll);
-    return _refdbAll;
+    const all = await ensureRefDb();
+    const sale = all.filter(e => e.type === 'sale').length;
+    $('#refdbStatus').textContent = `총 ${all.length}건 (판매형 ${sale} / 원형공개형 ${all.length - sale})`;
+    renderRefDb(all);
   } catch (err) {
     $('#refdbStatus').textContent = `불러오기 실패: ${err.message}`;
-    return [];
   }
 }
 function renderRefDb(entries) {
   const box = $('#refdbList');
   if (!entries.length) { box.innerHTML = '<div class="slot-empty">검색 결과가 없어요.</div>'; return; }
   const shown = entries.slice(0, 200);
-  box.innerHTML = shown.map(e => `
+  box.innerHTML = shown.map((e, i) => `
     <div class="refdb-item">
       <div class="refdb-head">
         <span class="rd-type ${e.type}">${e.type === 'sale' ? '판매형' : '원형공개형'}</span>
@@ -562,24 +1005,95 @@ function renderRefDb(entries) {
       ${e.blurb ? `<div class="rd-blurb">${escapeHtml(e.blurb)}</div>` : ''}
       ${e.hashtags && e.hashtags.length ? `<div class="rd-tags">${e.hashtags.map(escapeHtml).join(' ')}</div>` : ''}
       <details class="rd-raw"><summary>원문 보기</summary><pre>${escapeHtml(e.raw || '')}</pre></details>
+      ${currentProductId ? `<button class="rd-pick secondary" data-i="${i}">캐릭터 메모에 담기</button>` : ''}
     </div>
   `).join('') + (entries.length > 200 ? `<div class="slot-empty">…외 ${entries.length - 200}건 (검색으로 좁혀보세요)</div>` : '');
-}
-$('#refdbDetails').addEventListener('toggle', function () {
-  if (this.open) loadRefDb();
-});
-$('#refdbSearch').addEventListener('input', function () {
-  if (!_refdbAll) { loadRefDb(); return; }
-  const q = this.value.trim().toLowerCase();
-  if (!q) { renderRefDb(_refdbAll); $('#refdbStatus').textContent = `총 ${_refdbAll.length}건`; return; }
-  const terms = q.split(/\s+/);
-  const filtered = _refdbAll.filter(e => {
-    const hay = [e.title, e.work, e.blurb, e.dialogue, (e.hashtags || []).join(' ')].join(' ').toLowerCase();
-    return terms.every(t => hay.includes(t));
+  box.querySelectorAll('.rd-pick').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const e = shown[Number(btn.dataset.i)];
+      const p = getActiveProduct(); if (!p) return;
+      const add = [e.dialogue, e.blurb].filter(Boolean).join('\n');
+      p.memoText = (p.memoText ? p.memoText.trim() + '\n' : '') + add;
+      saveProducts();
+      if (currentProductId === p.id) renderDetail();
+    });
   });
-  renderRefDb(filtered);
-  $('#refdbStatus').textContent = `${filtered.length}건 검색됨`;
+}
+$('#refdbDetails').addEventListener('toggle', function () { if (this.open) loadRefDb(); });
+$('#refdbSearch').addEventListener('input', function () {
+  ensureRefDb().then(all => {
+    const q = this.value.trim().toLowerCase();
+    if (!q) { renderRefDb(all); $('#refdbStatus').textContent = `총 ${all.length}건`; return; }
+    const terms = q.split(/\s+/);
+    const filtered = all.filter(e => {
+      const hay = [e.title, e.work, e.blurb, e.dialogue, (e.hashtags || []).join(' ')].join(' ').toLowerCase();
+      return terms.every(t => hay.includes(t));
+    });
+    renderRefDb(filtered);
+    $('#refdbStatus').textContent = `${filtered.length}건 검색됨`;
+  });
 });
+
+/* ══════════════════ 하루 전체 내려받기 ══════════════════ */
+async function harvestZip() {
+  const statusEl = $('#harvestStatus');
+  const withImages = PRODUCTS.filter(p => p.images.length);
+  if (!withImages.length) { statusEl.textContent = '아직 이미지가 있는 상품이 없어요.'; return; }
+  if (typeof JSZip === 'undefined') { statusEl.textContent = 'ZIP 라이브러리 로딩 실패 — 새로고침 후 다시 시도해주세요.'; return; }
+  statusEl.textContent = '만드는 중...';
+  const zip = new JSZip();
+  for (const p of withImages) {
+    for (const slide of p.images) {
+      if (!imgCache.has(slide.key)) {
+        const blob = await idbGet(slide.key).catch(() => null);
+        if (blob) { try { imgCache.set(slide.key, await loadImageFromBlob(blob)); } catch {} }
+      }
+    }
+    const folder = zip.folder(safeFileName(p.title || '상품'));
+    for (let i = 0; i < p.images.length; i++) {
+      const blob = await exportSlidePng(p, i);
+      folder.file(`${i + 1}.png`, blob);
+    }
+  }
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  downloadBlob(zipBlob, `오늘작업_${new Date().toISOString().slice(0, 10)}.zip`);
+  statusEl.textContent = '완료';
+}
+function harvestCopy(kind) {
+  const withDraft = PRODUCTS.filter(p => p.result);
+  const statusEl = $('#harvestStatus');
+  if (!withDraft.length) { statusEl.textContent = '아직 완료된 원고가 없어요.'; return; }
+  const text = withDraft.map(p => {
+    const t = kind === 'ins' ? insVersion(p.result) : p.result;
+    return `[${p.title || '(제목 없음)'}]\n${t}`;
+  }).join('\n\n---\n\n');
+  navigator.clipboard.writeText(text)
+    .then(() => { statusEl.textContent = `✓ ${withDraft.length}건 복사됨 (${kind === 'ins' ? '인스타용' : 'X용'})`; })
+    .catch(() => { statusEl.textContent = '복사 실패'; });
+}
+$('#btnHarvestZip').addEventListener('click', harvestZip);
+$('#btnHarvestCopyX').addEventListener('click', () => harvestCopy('x'));
+$('#btnHarvestCopyIns').addEventListener('click', () => harvestCopy('ins'));
+
+/* ══════════════════ 초기화 ══════════════════ */
+$('#dayLabel').textContent = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' }) + ' 작업';
+document.querySelectorAll('#dayBrandRadios input[name="dayBrand"]').forEach(el => {
+  el.addEventListener('change', () => {
+    document.querySelectorAll('#dayBrandRadios .brand-opt').forEach(o => o.classList.toggle('selected', o.querySelector('input').checked));
+  });
+});
+document.querySelectorAll('#dayBrandRadios .brand-opt').forEach(o => o.classList.toggle('selected', o.querySelector('input').checked));
+
+$('#btnAddProduct').addEventListener('click', addProduct);
+
+(function init() {
+  PRODUCTS = loadProductsFromStorage().map(p => ({ ...makeBlankProduct(), ...p }));
+  renderList();
+  if (PRODUCTS.length) selectProduct(PRODUCTS[0].id);
+  else renderDetail();
+})();
+renderMemos(loadMemos());
 </script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 </body>
 </html>
