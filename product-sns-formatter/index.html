@@ -155,6 +155,8 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .thumbwrap .th-del:hover{color:var(--ui-warn);}
 .thumbwrap.dragover canvas{outline:2px dashed var(--ui-accent);outline-offset:2px;}
 .thumbwrap.drag-source{opacity:.4;}
+.thumbwrap .th-frame{position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;background:#fff;border-radius:8px;padding:0 5px;height:14px;line-height:14px;cursor:pointer;border:1px solid var(--ui-border);color:var(--ui-accent);white-space:nowrap;}
+.thumbwrap .th-frame.off{color:var(--ui-sub);text-decoration:line-through;}
 .composer{display:grid;grid-template-columns:210px 1fr;gap:16px;margin-top:12px;align-items:start;}
 @media(max-width:560px){.composer{grid-template-columns:1fr;}}
 #composerCanvas{width:210px;height:262.5px;border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.12);cursor:grab;background:var(--ui-card);}
@@ -684,7 +686,12 @@ function drawAllThumbs(p) {
     star.className = 'th-star' + (idx === p.mainIndex ? ' on' : '');
     star.textContent = '★';
     star.title = '대표 슬라이드로 지정(그라데이션+텍스트)';
-    star.addEventListener('click', e => { e.stopPropagation(); p.mainIndex = idx; drawAllThumbs(p); drawComposer(p); saveProductsSoon(); });
+    star.addEventListener('click', e => {
+      e.stopPropagation();
+      p.mainIndex = idx;
+      slide.noFrame = false; // 대표는 항상 틀이 있어야 하므로, 예전에 꺼져 있었어도 여기서 강제로 되살림
+      drawAllThumbs(p); drawComposer(p); saveProductsSoon();
+    });
     const del = document.createElement('div');
     del.className = 'th-del';
     del.textContent = '✕';
@@ -699,11 +706,20 @@ function drawAllThumbs(p) {
       renderImageStage(p);
       renderList();
     });
-    wrap.appendChild(canvas); wrap.appendChild(star); wrap.appendChild(del);
-    // 드래그로 순서 재정렬 — ★/✕ 위에서 누르면 드래그 시작 안 함
+    const frameToggle = document.createElement('div');
+    frameToggle.className = 'th-frame' + (slide.noFrame ? ' off' : '');
+    frameToggle.textContent = '틀';
+    frameToggle.title = slide.noFrame ? '틀 켜기' : '틀 끄기';
+    frameToggle.addEventListener('click', e => {
+      e.stopPropagation();
+      slide.noFrame = !slide.noFrame;
+      drawAllThumbs(p); drawComposer(p); saveProductsSoon();
+    });
+    wrap.appendChild(canvas); wrap.appendChild(star); wrap.appendChild(del); wrap.appendChild(frameToggle);
+    // 드래그로 순서 재정렬 — ★/✕/틀토글 위에서 누르면 드래그 시작 안 함
     wrap.addEventListener('mousedown', e => {
       if (e.button !== 0) return;
-      if (e.target.closest('.th-star') || e.target.closest('.th-del')) return;
+      if (e.target.closest('.th-star') || e.target.closest('.th-del') || e.target.closest('.th-frame')) return;
       e.preventDefault();
       startThumbDrag(p, slide.key);
     });
