@@ -146,17 +146,15 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .dropzone:hover{border-color:var(--ui-accent);color:var(--ui-accent);}
 .dropzone input{display:none;}
 .thumbrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
-.thumbwrap{position:relative;}
+.thumbwrap{position:relative;cursor:grab;}
 .thumbwrap canvas{width:60px;height:75px;border-radius:5px;cursor:pointer;display:block;background:var(--ui-card);}
 .thumbwrap canvas.sel{outline:2px solid var(--ui-accent);outline-offset:1px;}
 .thumbwrap .th-star{position:absolute;top:-5px;left:-5px;font-size:11px;background:#fff;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--ui-border);}
 .thumbwrap .th-star.on{color:#f07d1e;}
 .thumbwrap .th-del{position:absolute;top:-5px;right:-5px;font-size:10px;background:#fff;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--ui-border);color:var(--ui-sub);}
 .thumbwrap .th-del:hover{color:var(--ui-warn);}
-.thumbwrap .th-move{position:absolute;bottom:-5px;font-size:9px;background:#fff;border-radius:50%;width:15px;height:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--ui-border);color:var(--ui-sub);}
-.thumbwrap .th-move:hover{color:var(--ui-accent);border-color:var(--ui-accent);}
-.thumbwrap .th-move-l{left:-5px;}
-.thumbwrap .th-move-r{right:-5px;}
+.thumbwrap.dragover canvas{outline:2px dashed var(--ui-accent);outline-offset:2px;}
+.thumbwrap.drag-source{opacity:.4;}
 .composer{display:grid;grid-template-columns:210px 1fr;gap:16px;margin-top:12px;align-items:start;}
 @media(max-width:560px){.composer{grid-template-columns:1fr;}}
 #composerCanvas{width:210px;height:262.5px;border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.12);cursor:grab;background:var(--ui-card);}
@@ -461,7 +459,7 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradStart, gradInte
     ctx.fillText(textTitle || '', cx, ty);
     ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
   }
-  if (frameImgEl) ctx.drawImage(frameImgEl, 0, 0, CW, CH);
+  if (frameImgEl && !(slide && slide.noFrame)) ctx.drawImage(frameImgEl, 0, 0, CW, CH);
 }
 function exportSlidePng(p, idx) {
   const slide = p.images[idx];
@@ -492,7 +490,7 @@ function imageStageHtml(p) {
       <input type="file" id="fileInput" accept="image/*" multiple/>
     </div>
     <div class="thumbrow" id="thumbRow"></div>
-    ${p.images.length > 1 ? `<div class="mini-actions"><button class="sm secondary" id="btnClearNonMain">★ 대표만 남기고 나머지 사진 삭제</button></div>` : ''}
+    ${p.images.length > 1 ? `<div class="mini-actions"><button class="sm secondary" id="btnRemoveFrameNonMain">★ 대표만 남기고 나머지 사진 틀 제거</button></div>` : ''}
     <div class="composer" id="composerWrap" style="${p.images.length ? '' : 'display:none;'}">
       <div>
         <canvas id="composerCanvas" width="${CW}" height="${CH}"></canvas>
@@ -561,36 +559,74 @@ function wireImageStage(p) {
   const btnExportZip = $('#btnExportProductZip');
   if (btnExportZip) btnExportZip.addEventListener('click', () => exportProductZip(p));
 
-  const btnClearNonMain = $('#btnClearNonMain');
-  if (btnClearNonMain) btnClearNonMain.addEventListener('click', () => clearNonMainImages(p));
+  const btnRemoveFrameNonMain = $('#btnRemoveFrameNonMain');
+  if (btnRemoveFrameNonMain) btnRemoveFrameNonMain.addEventListener('click', () => removeFrameFromNonMain(p));
 
   wireComposerInteraction(p);
 }
-async function clearNonMainImages(p) {
-  if (!confirm('대표 슬라이드를 제외한 나머지 사진을 모두 지울까요?')) return;
-  const keep = p.images[p.mainIndex];
-  const toDelete = p.images.filter((_, i) => i !== p.mainIndex);
-  for (const s of toDelete) { await idbDel(s.key).catch(() => {}); imgCache.delete(s.key); }
-  p.images = keep ? [keep] : [];
-  p.mainIndex = 0;
-  editingIdx = 0;
-  saveProducts();
-  renderImageStage(p);
-  renderList();
-}
-function moveSlide(p, idx, dir) {
-  const newIdx = idx + dir;
-  if (newIdx < 0 || newIdx >= p.images.length) return;
-  const tmp = p.images[idx];
-  p.images[idx] = p.images[newIdx];
-  p.images[newIdx] = tmp;
-  if (p.mainIndex === idx) p.mainIndex = newIdx;
-  else if (p.mainIndex === newIdx) p.mainIndex = idx;
-  if (editingIdx === idx) editingIdx = newIdx;
-  else if (editingIdx === newIdx) editingIdx = idx;
+// 사진은 그대로 두고, 대표 슬라이드가 아닌 나머지의 "틀"만 제거한다(삭제 아님) — 틀이 상품을 가리는 게 문제였지 사진 자체는 필요하니까.
+function removeFrameFromNonMain(p) {
+  p.images.forEach((s, i) => { s.noFrame = i !== p.mainIndex; });
   saveProducts();
   drawAllThumbs(p);
   drawComposer(p);
+}
+
+// ── 썸네일 드래그 재정렬 (네이티브 HTML5 draggable 대신 mousedown/mousemove/mouseup 직접 구현 —
+// 인덱스가 아니라 slide.key 기준으로 이동해서 계산이 항상 정확함) ──
+let thumbDragCleanup = null;
+function moveImagesBeforeTarget(p, movingKeys, targetKey) {
+  const idSet = new Set(movingKeys);
+  if (idSet.has(targetKey)) return;
+  const mainKey = p.images[p.mainIndex] ? p.images[p.mainIndex].key : null;
+  const editingKey = p.images[editingIdx] ? p.images[editingIdx].key : null;
+  const moving = p.images.filter(im => idSet.has(im.key));
+  const remaining = p.images.filter(im => !idSet.has(im.key));
+  const targetPos = remaining.findIndex(im => im.key === targetKey);
+  const insertAt = targetPos === -1 ? remaining.length : targetPos;
+  remaining.splice(insertAt, 0, ...moving);
+  p.images = remaining;
+  if (mainKey != null) p.mainIndex = Math.max(0, p.images.findIndex(im => im.key === mainKey));
+  if (editingKey != null) editingIdx = Math.max(0, p.images.findIndex(im => im.key === editingKey));
+  saveProducts();
+}
+function startThumbDrag(p, key) {
+  if (thumbDragCleanup) thumbDragCleanup();
+  const dragIdSet = new Set([key]);
+  let currentTargetEl = null;
+
+  document.querySelectorAll('.thumbwrap[data-key]').forEach(c => { if (dragIdSet.has(c.dataset.key)) c.classList.add('drag-source'); });
+
+  function findCardUnder(x, y) {
+    const el = document.elementFromPoint(x, y);
+    return el ? el.closest('.thumbwrap') : null;
+  }
+  function onMouseMove(e) {
+    const card = findCardUnder(e.clientX, e.clientY);
+    if (currentTargetEl && currentTargetEl !== card) currentTargetEl.classList.remove('dragover');
+    if (card && !dragIdSet.has(card.dataset.key)) { card.classList.add('dragover'); currentTargetEl = card; }
+    else currentTargetEl = null;
+  }
+  function cleanup() {
+    document.querySelectorAll('.thumbwrap.drag-source').forEach(c => c.classList.remove('drag-source'));
+    if (currentTargetEl) currentTargetEl.classList.remove('dragover');
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+    thumbDragCleanup = null;
+  }
+  function onMouseUp(e) {
+    const card = findCardUnder(e.clientX, e.clientY);
+    const targetKey = card && !dragIdSet.has(card.dataset.key) ? card.dataset.key : null;
+    cleanup();
+    if (targetKey) {
+      moveImagesBeforeTarget(p, [key], targetKey);
+      drawAllThumbs(p);
+      drawComposer(p);
+    }
+  }
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
+  thumbDragCleanup = cleanup;
 }
 async function handleFiles(p, files) {
   for (const f of files) {
@@ -636,6 +672,7 @@ function drawAllThumbs(p) {
   p.images.forEach((slide, idx) => {
     const wrap = document.createElement('div');
     wrap.className = 'thumbwrap';
+    wrap.dataset.key = slide.key;
     const canvas = document.createElement('canvas');
     canvas.width = 60; canvas.height = 75;
     if (idx === editingIdx) canvas.classList.add('sel');
@@ -663,22 +700,13 @@ function drawAllThumbs(p) {
       renderList();
     });
     wrap.appendChild(canvas); wrap.appendChild(star); wrap.appendChild(del);
-    if (idx > 0) {
-      const moveL = document.createElement('div');
-      moveL.className = 'th-move th-move-l';
-      moveL.textContent = '◀';
-      moveL.title = '앞으로 이동';
-      moveL.addEventListener('click', e => { e.stopPropagation(); moveSlide(p, idx, -1); });
-      wrap.appendChild(moveL);
-    }
-    if (idx < p.images.length - 1) {
-      const moveR = document.createElement('div');
-      moveR.className = 'th-move th-move-r';
-      moveR.textContent = '▶';
-      moveR.title = '뒤로 이동';
-      moveR.addEventListener('click', e => { e.stopPropagation(); moveSlide(p, idx, 1); });
-      wrap.appendChild(moveR);
-    }
+    // 드래그로 순서 재정렬 — ★/✕ 위에서 누르면 드래그 시작 안 함
+    wrap.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      if (e.target.closest('.th-star') || e.target.closest('.th-del')) return;
+      e.preventDefault();
+      startThumbDrag(p, slide.key);
+    });
     row.appendChild(wrap);
   });
 }
