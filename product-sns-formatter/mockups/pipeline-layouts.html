@@ -4,6 +4,7 @@
   --bg:#f0ede7; --panel:#faf8f4; --card:#fff; --border:#ddd8ce;
   --text:#252018; --sub:#7d7568; --accent:#1452c0; --warn:#b3661a;
   --ok:#1e7e34; --ok-bg:#e6f6ea; --pending:#b3661a; --pending-bg:#fbf1e4;
+  --orange:#f07d1e; --orange-2:#e26a10;
   --shadow:0 1px 2px rgba(0,0,0,.04);
   --mono:'SF Mono',ui-monospace,'D2Coding',Menlo,Consolas,monospace;
 }
@@ -12,6 +13,7 @@
     --bg:#201d18; --panel:#2a251e; --card:#322c24; --border:#453e33;
     --text:#ece7de; --sub:#a79c8b; --accent:#6ea0ff; --warn:#e0a35a;
     --ok:#6fce8a; --ok-bg:#1e3324; --pending:#e0a35a; --pending-bg:#3a2e1c;
+    --orange:#f07d1e; --orange-2:#c85f10;
     --shadow:0 1px 2px rgba(0,0,0,.3);
   }
 }
@@ -19,40 +21,37 @@
   --bg:#f0ede7; --panel:#faf8f4; --card:#fff; --border:#ddd8ce;
   --text:#252018; --sub:#7d7568; --accent:#1452c0; --warn:#b3661a;
   --ok:#1e7e34; --ok-bg:#e6f6ea; --pending:#b3661a; --pending-bg:#fbf1e4;
-  --shadow:0 1px 2px rgba(0,0,0,.04);
+  --orange:#f07d1e; --orange-2:#e26a10; --shadow:0 1px 2px rgba(0,0,0,.04);
 }
 :root[data-theme="dark"]{
   --bg:#201d18; --panel:#2a251e; --card:#322c24; --border:#453e33;
   --text:#ece7de; --sub:#a79c8b; --accent:#6ea0ff; --warn:#e0a35a;
   --ok:#6fce8a; --ok-bg:#1e3324; --pending:#e0a35a; --pending-bg:#3a2e1c;
-  --shadow:0 1px 2px rgba(0,0,0,.3);
+  --orange:#f07d1e; --orange-2:#c85f10; --shadow:0 1px 2px rgba(0,0,0,.3);
 }
 *{box-sizing:border-box;}
 body{margin:0;background:var(--bg);color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,'Malgun Gothic','Apple SD Gothic Neo',sans-serif;
   line-height:1.55;padding:0 0 80px;}
-.container{max-width:1040px;margin:0 auto;padding:0 20px;}
+.container{max-width:1060px;margin:0 auto;padding:0 20px;}
 .page-head{padding:34px 0 8px;}
 .page-head h1{font-size:23px;font-weight:800;margin:0 0 6px;letter-spacing:-.01em;}
-.page-head p{font-size:13.5px;color:var(--sub);margin:0;max-width:66ch;}
+.page-head p{font-size:13.5px;color:var(--sub);margin:0;max-width:70ch;}
 .page-head .tag{display:inline-block;background:color-mix(in srgb,var(--accent) 14%,transparent);
   color:var(--accent);font-size:11.5px;font-weight:800;border-radius:6px;padding:2px 9px;margin-bottom:10px;}
 .themebtn{position:fixed;top:16px;right:16px;z-index:50;background:var(--card);color:var(--text);
-  border:1px solid var(--border);border-radius:999px;padding:7px 13px;font-size:12px;font-weight:700;
-  cursor:pointer;box-shadow:var(--shadow);}
+  border:1px solid var(--border);border-radius:999px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:var(--shadow);}
 
 .dayhead{background:var(--panel);border:1px solid var(--border);border-radius:12px;
   padding:14px 18px;margin:18px 0 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
 .daypills{display:flex;gap:6px;}
-.pill{border:1px solid var(--border);background:var(--card);color:var(--sub);border-radius:999px;
-  padding:5px 13px;font-size:13px;font-weight:700;cursor:pointer;}
+.pill{border:1px solid var(--border);background:var(--card);color:var(--sub);border-radius:999px;padding:5px 13px;font-size:13px;font-weight:700;cursor:pointer;}
 .pill.on{background:var(--accent);color:#fff;border-color:var(--accent);}
 .brandbtns{display:flex;gap:6px;margin-left:auto;}
-.brandbtn{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:8px;
-  padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer;}
+.brandbtn{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer;}
 .brandbtn.on{background:var(--accent);color:#fff;border-color:var(--accent);}
-.progress{font-size:12.5px;color:var(--sub);width:100%;display:flex;align-items:center;gap:10px;}
-.pbar{flex:1;height:6px;background:var(--border);border-radius:999px;overflow:hidden;max-width:260px;}
+.progress{font-size:12.5px;color:var(--sub);width:100%;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.pbar{flex:1;height:6px;background:var(--border);border-radius:999px;overflow:hidden;max-width:240px;}
 .pbar i{display:block;height:100%;background:var(--ok);border-radius:999px;}
 
 .chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;}
@@ -60,10 +59,19 @@ body{margin:0;background:var(--bg);color:var(--text);
 .chip.pending{background:var(--pending-bg);color:var(--pending);}
 .chip.type{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);}
 
-/* 좌목록·우작업 */
-.md-wrap{display:grid;grid-template-columns:236px 1fr;gap:14px;align-items:start;}
-@media(max-width:760px){.md-wrap{grid-template-columns:1fr;}}
-.md-list{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:8px;position:sticky;top:16px;}
+.md-wrap{display:grid;grid-template-columns:250px 1fr;gap:14px;align-items:start;}
+@media(max-width:820px){.md-wrap{grid-template-columns:1fr;}}
+
+/* ── ① B2B 불러오기 + 목록 ── */
+.leftcol{display:flex;flex-direction:column;gap:12px;position:sticky;top:16px;}
+.b2b{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:13px 14px;}
+.b2b .b2b-h{font-size:12.5px;font-weight:800;display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.b2b .snum{background:var(--accent);}
+.b2b button{width:100%;}
+.b2b .b2b-st{font-size:11px;color:var(--sub);margin-top:8px;line-height:1.5;}
+.b2b .b2b-st b{color:var(--ok);}
+.md-list{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:8px;}
+.md-cap{font-size:10.5px;font-weight:800;color:var(--sub);letter-spacing:.04em;padding:5px 8px 4px;text-transform:uppercase;}
 .md-row{display:flex;align-items:center;gap:9px;padding:10px 11px;border-radius:8px;cursor:pointer;font-size:13px;}
 .md-row:hover{background:color-mix(in srgb,var(--accent) 6%,transparent);}
 .md-row.sel{background:var(--accent);color:#fff;}
@@ -76,6 +84,7 @@ body{margin:0;background:var(--bg);color:var(--text);
 .md-row .md-sub{font-size:10.5px;color:var(--sub);font-weight:600;}
 .md-add{color:var(--sub);}
 .md-add .dot{background:var(--border);}
+
 .md-detail{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 18px;min-height:340px;}
 .md-detail .d-title{font-size:15.5px;font-weight:800;margin:0 0 3px;}
 .md-detail .d-work{font-size:12px;color:var(--sub);margin-bottom:4px;}
@@ -83,47 +92,54 @@ body{margin:0;background:var(--bg);color:var(--text);
 .stage{border-top:1px dashed var(--border);padding:14px 0 4px;}
 .stage:first-of-type{border-top:none;}
 .stage-h{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:800;margin-bottom:10px;flex-wrap:wrap;}
-.snum{background:var(--accent);color:#fff;border-radius:6px;min-width:19px;height:19px;font-size:11px;
-  display:inline-flex;align-items:center;justify-content:center;font-weight:800;}
+.snum{background:var(--accent);color:#fff;border-radius:6px;min-width:19px;height:19px;font-size:11px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;}
+.snum.o{background:var(--orange);}
+.b2b-src{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:8px;padding:11px 13px;}
 .spec-grid{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12.5px;}
 .spec-grid dt{color:var(--sub);}
 .spec-grid dd{margin:0;font-weight:600;}
 .stage-row{display:flex;gap:12px;}
-.thumb{width:64px;height:80px;border-radius:6px;background:linear-gradient(135deg,var(--border),var(--panel));
-  border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:var(--sub);flex-shrink:0;}
-.dbchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;}
+.thumb{width:60px;height:75px;border-radius:6px;background:linear-gradient(135deg,var(--border),var(--panel));border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:var(--sub);flex-shrink:0;}
+.dbchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}
 .dbchip{font-size:11px;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--sub);cursor:pointer;}
-.draft{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:11px 13px;font-size:12.5px;
-  white-space:pre-wrap;word-break:break-word;font-family:var(--mono);line-height:1.6;}
 label.flabel{display:block;font-size:11.5px;color:var(--sub);font-weight:600;margin:8px 0 3px;}
-textarea.fake{width:100%;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;
-  font-size:12.5px;color:var(--text);font-family:var(--mono);resize:vertical;line-height:1.55;}
+.draft{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;white-space:pre-wrap;word-break:break-word;font-family:var(--mono);line-height:1.55;}
 .mini-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
 button.b{padding:7px 13px;border-radius:7px;font-size:12.5px;font-weight:700;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#fff;font-family:inherit;}
 button.b.ghost{background:var(--card);color:var(--text);border-color:var(--border);}
 button.b.sm{padding:5px 10px;font-size:11.5px;}
 
-/* ③ 이미지 합성 (프로토타입 로직 내장) */
-.dropzone{border:2px dashed var(--border);border-radius:10px;padding:16px;text-align:center;font-size:12.5px;color:var(--sub);cursor:pointer;}
+/* ② 2열 INS/X */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+@media(max-width:560px){.two{grid-template-columns:1fr;}}
+.col-h{font-size:11.5px;font-weight:800;margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+.badge-ins{background:#e6f0ff;color:#2b5dbd;border-radius:5px;padding:1px 7px;font-size:10.5px;font-weight:800;}
+.badge-x{background:#222;color:#fff;border-radius:5px;padding:1px 7px;font-size:10.5px;font-weight:800;}
+:root[data-theme="dark"] .badge-x,@media(prefers-color-scheme:dark){.badge-x{background:#e9e9e9;color:#111;}}
+.linkline{font-family:var(--mono);font-size:11px;color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent);border-radius:5px;padding:5px 8px;margin-top:6px;word-break:break-all;}
+
+/* ③ 주황 배너형 캐러셀 */
+.dropzone{border:2px dashed var(--border);border-radius:10px;padding:14px;text-align:center;font-size:12px;color:var(--sub);cursor:pointer;}
 .dropzone:hover{border-color:var(--accent);color:var(--accent);}
 .thumbrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
-.t45{width:60px;height:75px;border-radius:6px;border:1px solid var(--border);position:relative;overflow:hidden;cursor:pointer;flex-shrink:0;}
+.t45{width:56px;height:70px;border-radius:6px;border:1px solid var(--border);position:relative;overflow:hidden;cursor:pointer;flex-shrink:0;background:var(--card);}
 .t45.sel{outline:2px solid var(--accent);outline-offset:1px;}
-.t45 .ph{position:absolute;inset:0;}
-.t45 .tt{position:absolute;left:0;right:0;bottom:0;padding:3px 4px;font-size:6px;color:#fff;line-height:1.2;
-  background:linear-gradient(transparent,rgba(0,0,0,.72));font-weight:700;}
-.t45 .badge{position:absolute;top:2px;left:2px;font-size:5.5px;background:rgba(255,255,255,.9);color:#111;border-radius:2px;padding:0 3px;font-weight:800;}
-.composer{display:grid;grid-template-columns:200px 1fr;gap:14px;margin-top:12px;align-items:start;}
+.t45 .ph{position:absolute;left:0;right:0;top:14px;bottom:11px;}
+.t45 .ob-t{position:absolute;top:0;left:0;right:0;height:14px;background:var(--orange);color:#fff;font-size:5px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+.t45 .ob-b{position:absolute;bottom:0;left:0;right:0;height:11px;background:var(--orange-2);color:#fff;font-size:4.5px;display:flex;align-items:center;justify-content:center;}
+.composer{display:grid;grid-template-columns:190px 1fr;gap:14px;margin-top:12px;align-items:start;}
 @media(max-width:560px){.composer{grid-template-columns:1fr;}}
-.preview45{width:200px;aspect-ratio:4/5;border-radius:10px;border:1px solid var(--border);position:relative;overflow:hidden;}
-.preview45 .ph{position:absolute;inset:0;}
-.preview45 .badge{position:absolute;top:10px;left:10px;background:rgba(255,255,255,.92);color:#111;
-  font-size:11px;font-weight:800;border-radius:5px;padding:3px 8px;}
-.preview45 .tt{position:absolute;left:0;right:0;bottom:0;padding:34px 12px 12px;color:#fff;
-  background:linear-gradient(transparent,rgba(0,0,0,.78));white-space:pre-wrap;}
-.preview45 .tt .big{font-size:16px;font-weight:800;line-height:1.2;}
-.preview45 .tt .sm{font-size:11px;opacity:.9;margin-top:3px;}
+.preview45{width:190px;aspect-ratio:4/5;border-radius:10px;border:1px solid var(--border);position:relative;overflow:hidden;background:#d9d4cc;}
+.preview45 .ph{position:absolute;left:0;right:0;top:52px;bottom:40px;background:linear-gradient(135deg,#8ea8d8,#c9b6d8);}
+.preview45 .ob-top{position:absolute;top:0;left:0;right:0;height:52px;background:var(--orange);color:#fff;padding:8px 12px;display:flex;flex-direction:column;justify-content:center;}
+.preview45 .ob-top .k{font-size:9px;font-weight:700;opacity:.92;}
+.preview45 .ob-top .big{font-size:15px;font-weight:800;line-height:1.15;}
+.preview45 .ob-bot{position:absolute;bottom:0;left:0;right:0;height:40px;background:var(--orange-2);color:#fff;padding:0 12px;display:flex;align-items:center;font-size:11px;font-weight:700;}
+.preview45 .marker{position:absolute;inset:0;pointer-events:none;}
+.preview45 .marker span{position:absolute;font-size:8px;background:rgba(0,0,0,.4);color:#fff;padding:0 4px;border-radius:3px;}
+.orange-note{font-size:10.5px;color:var(--warn);margin-top:6px;}
 .composer-ctl .hint{font-size:11px;color:var(--sub);margin:2px 0 6px;line-height:1.5;}
+textarea.fake{width:100%;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;color:var(--text);font-family:var(--mono);resize:vertical;line-height:1.5;}
 .swatches{display:flex;gap:6px;align-items:center;margin-top:6px;}
 .sw{width:22px;height:22px;border-radius:50%;border:1px solid var(--border);cursor:pointer;}
 
@@ -131,18 +147,15 @@ button.b.sm{padding:5px 10px;font-size:11.5px;}
 .harvest h3{margin:0 0 4px;font-size:13.5px;font-weight:800;display:flex;align-items:center;gap:8px;}
 .harvest p{margin:0 0 11px;font-size:12px;color:var(--sub);}
 .harvest .row{display:flex;gap:8px;flex-wrap:wrap;}
-.ph-a{background:linear-gradient(135deg,#8ea8d8,#c9b6d8);}
-.ph-b{background:linear-gradient(135deg,#7fc4c0,#bfe0a8);}
-.ph-c{background:linear-gradient(135deg,#e0a878,#d88b8b);}
 </style>
 
 <button class="themebtn" onclick="toggleTheme()">◑ 테마</button>
 
 <div class="container">
   <div class="page-head">
-    <span class="tag">확정: 안 3 · 좌목록 · 우작업</span>
+    <span class="tag">안 3 · 좌목록 · 우작업</span>
     <h1>원고 파이프라인 작업대</h1>
-    <p>한 페이지에서 그날 하루치 업로드 루틴을 끝내. 왼쪽 상품 목록에서 고르면 오른쪽에 ①공식정보 → ②원고 → ③캐러셀 이미지가 펼쳐져. ③은 사진을 올리면 4:5로 자동 크롭하고, 텍스트까지 이 안에서 얹어 편집해서 완성 이미지를 바로 뽑아. (그라디언트 도구는 안 씀)</p>
+    <p>한 페이지에서 그날 하루치 업로드 루틴을 끝내. <b>①</b> B2B에서 오늘 상품을 불러오면 왼쪽 목록이 채워지고, 상품을 고르면 오른쪽에 공식정보 → <b>②</b> 원고(INS·X) → <b>③</b> 캐러셀 이미지가 펼쳐져. ③은 사진을 올려 4:5로 자동 크롭하고 주황 헤더 위 흰 텍스트까지 이 안에서 합성해 완성본을 뽑아.</p>
   </div>
 
   <div class="dayhead">
@@ -157,23 +170,31 @@ button.b.sm{padding:5px 10px;font-size:11.5px;}
       <span class="brandbtn">부시로드</span>
     </div>
     <div class="progress">
-      <span>원고 <b style="color:var(--text)">2 / 3</b> · 이미지 <b style="color:var(--text)">1 / 3</b></span>
+      <span>원고 <b style="color:var(--text)">2/3</b> · 이미지 <b style="color:var(--text)">1/3</b></span>
       <span class="pbar"><i style="width:50%"></i></span>
       <span>· 상품 3개</span>
     </div>
   </div>
 
   <div class="md-wrap">
-    <div class="md-list" id="mdList"></div>
+    <div class="leftcol">
+      <div class="b2b">
+        <div class="b2b-h"><span class="snum">①</span> B2B에서 오늘 상품 불러오기</div>
+        <button class="b">🔄 07-24 상품목록 가져오기</button>
+        <div class="b2b-st">굿스마일 <b>3건</b> 불러옴 · 공식정보(발매·사이즈·가격·재판)·사진 자동 수집<br><span style="color:var(--sub)">지금은 수동 붙여넣기, 이후 자동 스크랩</span></div>
+      </div>
+      <div class="md-list" id="mdList"></div>
+    </div>
     <div class="md-detail" id="mdDetail"></div>
   </div>
 
   <div class="harvest">
-    <h3><span class="snum">✓</span> 하루 마무리 · 완성 이미지 내려받기</h3>
-    <p>세 상품의 캐러셀 이미지가 다 되면 여기서 한 번에. 이 도구가 4:5 크롭 + 텍스트 합성까지 끝낸 완성본을 그대로 뽑아줘 — 바로 인스타/X에 올리면 끝.</p>
+    <h3><span class="snum">✓</span> 하루 마무리 · 완성본 내려받기</h3>
+    <p>세 상품이 다 되면 여기서 한 번에. 이 도구가 4:5 크롭 + 주황 헤더 텍스트 합성까지 끝낸 완성 이미지와 원고(INS·X)를 그대로 뽑아줘.</p>
     <div class="row">
       <button class="b">📦 완성 이미지 ZIP (07-24)</button>
-      <button class="b ghost">📋 원고 3건 한 번에 복사</button>
+      <button class="b ghost">📋 INS 원고 3건 복사</button>
+      <button class="b ghost">📋 X 원고 3건 복사</button>
     </div>
   </div>
 </div>
@@ -181,28 +202,34 @@ button.b.sm{padding:5px 10px;font-size:11.5px;}
 <script>
 const PRODUCTS = [
   {
-    id:'gojo', done:true, imgDone:true, type:'넨도로이드', rerelease:true, ph:'ph-a', nphotos:4,
+    id:'gojo', done:true, imgDone:true, type:'넨도로이드', rerelease:true, nphotos:4,
     title:'고죠 와카나 넨도로이드 (재판)', work:'그 비스크 돌은 사랑을 한다',
     spec:{'발매':'27년 3월','사이즈':'논스케일 · 약 100mm','제조사':'굿스마일컴퍼니','재판':'재판 (Rerelease 3/2027)'},
     dbhits:['『비스크돌』 관계설명 1건','대사 후보 2건','#비스크돌'],
-    draft:'"키...키타가와 양?"\n\n🛒 : 구매는 프로필 링크 참고 해주세요\n▪️ 발매: 27년 3월\n\n📺 애니『그 비스크 돌은 사랑을 한다』\n키타가와 마린의 코스프레를 전적으로 돕고 있는\n같은 반 남고생 고죠 와카나가 넨도로이드로 재등장!\n\n#비스크돌 #넨도로이드 #굿스마일컴퍼니PW',
-    cardbig:'고죠 와카나', cardsm:'넨도로이드 · 재판'
+    ins:'"키...키타가와 양?"\n\n🛒 : 구매는 프로필 링크 참고 해주세요\n▪️ 발매: 27년 3월\n\n📺 애니『그 비스크 돌은 사랑을 한다』\n키타가와 마린의 코스프레를 전적으로 돕고 있는\n같은 반 남고생 고죠 와카나가 넨도로이드로 재등장!\n\n#비스크돌 #넨도로이드 #굿스마일컴퍼니PW',
+    x:'"키...키타가와 양?"\n\n📺 애니『그 비스크 돌은 사랑을 한다』\n키타가와 마린의 코스프레를 돕는\n같은 반 남고생 고죠 와카나 넨도로이드 재등장!\n▪️ 발매: 27년 3월\n\n#비스크돌 #넨도로이드',
+    xlink:'🛒 https://naver.me/2bcqXXXX',
+    cardTop:'고죠 와카나', cardBot:'넨도로이드 · 재판'
   },
   {
-    id:'miku', done:true, imgDone:false, type:'스케일 1/7', rerelease:false, ph:'ph-b', nphotos:3,
+    id:'miku', done:true, imgDone:false, type:'스케일 1/7', rerelease:false, nphotos:3,
     title:'하츠네 미쿠 2025 랩소디 삿포로콘서트 Ver. 1/7', work:'하츠네 미쿠',
     spec:{'발매':'27년 9월','사이즈':'높이 278mm','제조사':'굿스마일컴퍼니','재판':'신제품'},
     dbhits:['캐릭터 보컬 시리즈 01 표기','#하츠네미쿠'],
-    draft:'【하츠네 미쿠 2025 랩소디 삿포로콘서트 Ver. 1/7】\n\n🛒 : 구매는 프로필 링크 참고 해주세요\n📏 높이: 278mm  📅 발매: 27년 9월\n\n캐릭터 보컬 시리즈 01『하츠네 미쿠』\n하츠네 미쿠 심포니 삿포로 콘서트 Ver.\nGS 컬렉션 1/7 스케일 피규어가 등장!\n\n#하츠네미쿠 #굿스마일컴퍼니PW',
-    cardbig:'하츠네 미쿠', cardsm:'GS컬렉션 1/7 · 삿포로 Ver.'
+    ins:'【하츠네 미쿠 2025 랩소디 삿포로콘서트 Ver. 1/7】\n\n🛒 : 구매는 프로필 링크 참고 해주세요\n📏 높이: 278mm  📅 발매: 27년 9월\n\n캐릭터 보컬 시리즈 01『하츠네 미쿠』\n하츠네 미쿠 심포니 삿포로 콘서트 Ver.\nGS 컬렉션 1/7 스케일 피규어가 등장!\n\n#하츠네미쿠 #굿스마일컴퍼니PW',
+    x:'【하츠네 미쿠 2025 랩소디 삿포로콘서트 Ver.】\n\n캐릭터 보컬 시리즈 01『하츠네 미쿠』\nGS 컬렉션 1/7 스케일 피규어 등장!\n📏 278mm  📅 발매: 27년 9월\n\n#하츠네미쿠',
+    xlink:'🛒 https://naver.me/6a4649XX',
+    cardTop:'하츠네 미쿠', cardBot:'GS컬렉션 1/7 · 삿포로 Ver.'
   },
   {
-    id:'bakugo', done:false, imgDone:false, type:'넨도로이드', rerelease:false, ph:'ph-c', nphotos:0,
+    id:'bakugo', done:false, imgDone:false, type:'넨도로이드', rerelease:false, nphotos:0,
     title:'바쿠고 카츠키 UA 교복 Ver. 넨도로이드', work:'나의 히어로 아카데미아',
     spec:{'발매':'26년 10월','사이즈':'약 100mm','제조사':'굿스마일컴퍼니','재판':'신제품'},
     dbhits:['『히로아카』 관계설명 3건','대사 후보 1건','#히로아카'],
-    draft:'(아직 원고 생성 전 — ①공식정보 + 캐릭터 메모 넣고 [원고 생성])',
-    cardbig:'바쿠고 카츠키', cardsm:'넨도로이드 · UA 교복 Ver.'
+    ins:'(아직 원고 생성 전 — 공식정보 + 캐릭터 메모 넣고 [원고 생성])',
+    x:'(아직 원고 생성 전)',
+    xlink:'🛒 (네이버 스토어 링크 대기)',
+    cardTop:'바쿠고 카츠키', cardBot:'넨도로이드 · UA 교복 Ver.'
   }
 ];
 
@@ -216,32 +243,36 @@ function specHtml(p){
 function imageStage(p){
   if(p.nphotos===0){
     return `<div class="stage">
-      <div class="stage-h"><span class="snum">③</span> 캐러셀 이미지 <span class="chip pending">사진 없음</span></div>
+      <div class="stage-h"><span class="snum o">③</span> 캐러셀 이미지 <span class="chip pending">사진 없음</span></div>
       <div class="dropzone">＋ 사진 올리기 (여러 장) · 올리면 1080×1350(4:5)로 꽉 채워 자동 크롭</div>
     </div>`;
   }
   const thumbs = Array.from({length:p.nphotos}).map((_,i)=>`
     <div class="t45${i===0?' sel':''}">
-      <div class="ph ${p.ph}"></div>
-      ${i===0?`<div class="badge">07.24</div><div class="tt">${esc(p.cardbig)}</div>`:''}
+      <div class="ob-t">${i===0?'07.24':''}</div>
+      <div class="ph"></div>
+      <div class="ob-b">${i===0?esc(p.cardTop):''}</div>
     </div>`).join('');
   return `<div class="stage">
-    <div class="stage-h"><span class="snum">③</span> 캐러셀 이미지 <span class="chip type">4:5 자동크롭</span> ${p.imgDone?'<span class="chip done">✓ 완성</span>':'<span class="chip pending">편집 중</span>'}</div>
+    <div class="stage-h"><span class="snum o">③</span> 캐러셀 이미지 <span class="chip type">4:5 자동크롭</span> ${p.imgDone?'<span class="chip done">✓ 완성</span>':'<span class="chip pending">편집 중</span>'}</div>
     <div class="dropzone">＋ 사진 더 올리기 · 자동 4:5 크롭</div>
-    <div class="thumbrow">${thumbs}<div class="t45" style="display:flex;align-items:center;justify-content:center;color:var(--sub);border-style:dashed;font-size:18px;">＋</div></div>
+    <div class="thumbrow">${thumbs}<div class="t45" style="display:flex;align-items:center;justify-content:center;color:var(--sub);border-style:dashed;font-size:16px;">＋</div></div>
     <div class="composer">
-      <div class="preview45">
-        <div class="ph ${p.ph}"></div>
-        <div class="badge">07.24 신제품</div>
-        <div class="tt"><div class="big">${esc(p.cardbig)}</div><div class="sm">${esc(p.cardsm)}</div></div>
+      <div>
+        <div class="preview45">
+          <div class="ob-top"><span class="k">07.24 신제품 · 굿스마일컴퍼니</span><span class="big">${esc(p.cardTop)}</span></div>
+          <div class="ph"></div>
+          <div class="ob-bot">${esc(p.cardBot)}</div>
+          <div class="marker"><span style="top:18px;left:8px;">↑ 흰 텍스트(위)</span><span style="bottom:12px;left:8px;">↓ 흰 텍스트(아래)</span></div>
+        </div>
+        <div class="orange-note">※ 주황 헤더 배경은 자리만 잡아둠 — 네가 보내줄 실제 이미지로 교체 예정</div>
       </div>
       <div class="composer-ctl">
-        <div class="hint">선택한 썸네일을 이 안에서 편집 — 휠=확대/축소, 드래그=사진 위치, 아래 텍스트는 이미지에 얹혀.</div>
-        <label class="flabel">캐러셀 텍스트 (스펙에서 자동 가공 · 편집 가능)</label>
-        <textarea class="fake" rows="3">07.24 신제품\n${p.cardbig}\n${p.cardsm}</textarea>
-        <div class="swatches"><span style="font-size:11px;color:var(--sub)">배경색</span>
-          <span class="sw" style="background:#fff"></span><span class="sw" style="background:#222"></span>
-          <span class="sw" style="background:linear-gradient(135deg,#f90,#09f)"></span></div>
+        <div class="hint">가운데 사진: 휠=확대/축소, 드래그=위치. 주황 헤더 위 흰 글자(위/아래)는 아래 칸에서 편집.</div>
+        <label class="flabel">헤더 텍스트 — 위 (스펙에서 자동 가공 · 편집 가능)</label>
+        <textarea class="fake" rows="2">${esc(p.cardTop)}</textarea>
+        <label class="flabel">헤더 텍스트 — 아래</label>
+        <textarea class="fake" rows="1">${esc(p.cardBot)}</textarea>
         <div class="mini-actions"><button class="b sm ghost">위치/배율 초기화</button><button class="b sm">이 상품 이미지 확정</button></div>
       </div>
     </div>
@@ -251,34 +282,45 @@ function imageStage(p){
 function stagesHtml(p){
   return `
   <div class="stage">
-    <div class="stage-h"><span class="snum">①</span> 공식정보 (B2B · 안 바뀜)</div>
+    <div class="stage-h"><span class="snum">①</span> B2B 공식정보 <span class="chip type" style="font-weight:700">자동 수집 · 안 바뀜</span></div>
     <div class="stage-row">
       <div class="thumb">사진</div>
-      <div style="flex:1">${specHtml(p)}
-        <label class="flabel">캐릭터 메모 (가변 · DB 자동조회)</label>
-        <div class="dbchips">${p.dbhits.map(h=>`<span class="dbchip">${esc(h)}</span>`).join('')}</div>
-      </div>
+      <div class="b2b-src" style="flex:1">${specHtml(p)}</div>
     </div>
+    <label class="flabel">캐릭터 메모 (가변 · DB 자동조회, 사람이 손봄)</label>
+    <div class="dbchips">${p.dbhits.map(h=>`<span class="dbchip">${esc(h)}</span>`).join('')}</div>
   </div>
   <div class="stage">
     <div class="stage-h"><span class="snum">②</span> 원고 (게시물 캡션) ${p.done?'<span class="chip done">완료</span>':'<span class="chip pending">미완</span>'}</div>
-    <div class="draft">${esc(p.draft)}</div>
+    <div class="two">
+      <div>
+        <div class="col-h"><span class="badge-ins">INS</span> 인스타그램용</div>
+        <div class="draft">${esc(p.ins)}</div>
+      </div>
+      <div>
+        <div class="col-h"><span class="badge-x">X</span> 엑스용 (네이버 스토어 링크 포함)</div>
+        <div class="draft">${esc(p.x)}</div>
+        <div class="linkline">${esc(p.xlink)}</div>
+      </div>
+    </div>
     <div class="mini-actions">
       <button class="b sm">${p.done?'↻ 재생성':'✍ 원고 생성'}</button>
       <button class="b sm ghost">원문/결과 비교</button>
-      <button class="b sm ghost">📋 복사</button>
+      <button class="b sm ghost">📋 INS 복사</button>
+      <button class="b sm ghost">📋 X 복사</button>
     </div>
   </div>
   ${imageStage(p)}`;
 }
 
 function renderList(){
-  document.getElementById('mdList').innerHTML = PRODUCTS.map((p,i)=>`
+  document.getElementById('mdList').innerHTML =
+    '<div class="md-cap">오늘 상품 (B2B)</div>'+PRODUCTS.map((p,i)=>`
     <div class="md-row${i===0?' sel':''}" data-id="${p.id}" onclick="mdSelect('${p.id}')">
       <span class="dot ${p.done&&p.imgDone?'done':'pending'}"></span>
       <span class="md-t">${esc(p.title.replace(/ \(재판\)/,''))}<div class="md-sub">원고 ${p.done?'✓':'·'} / 이미지 ${p.imgDone?'✓':'·'}</div></span>
     </div>`).join('')
-    +`<div class="md-row md-add"><span class="dot"></span><span class="md-t" style="font-weight:700">＋ 상품 추가</span></div>`;
+    +`<div class="md-row md-add"><span class="dot"></span><span class="md-t" style="font-weight:700">＋ 상품 수동 추가</span></div>`;
 }
 function mdSelect(id){
   document.querySelectorAll('.md-row').forEach(r=>r.classList.toggle('sel',r.dataset.id===id));
