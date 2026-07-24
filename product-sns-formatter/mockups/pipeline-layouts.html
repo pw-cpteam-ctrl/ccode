@@ -1,0 +1,391 @@
+<title>원고 파이프라인 · 레이아웃 후보</title>
+<style>
+:root{
+  --bg:#f0ede7; --panel:#faf8f4; --card:#fff; --border:#ddd8ce;
+  --text:#252018; --sub:#7d7568; --accent:#1452c0; --warn:#b3661a;
+  --ok:#1e7e34; --ok-bg:#e6f6ea; --pending:#b3661a; --pending-bg:#fbf1e4;
+  --shadow:0 1px 2px rgba(0,0,0,.04);
+  --mono:'SF Mono',ui-monospace,'D2Coding',Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#201d18; --panel:#2a251e; --card:#322c24; --border:#453e33;
+    --text:#ece7de; --sub:#a79c8b; --accent:#6ea0ff; --warn:#e0a35a;
+    --ok:#6fce8a; --ok-bg:#1e3324; --pending:#e0a35a; --pending-bg:#3a2e1c;
+    --shadow:0 1px 2px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#f0ede7; --panel:#faf8f4; --card:#fff; --border:#ddd8ce;
+  --text:#252018; --sub:#7d7568; --accent:#1452c0; --warn:#b3661a;
+  --ok:#1e7e34; --ok-bg:#e6f6ea; --pending:#b3661a; --pending-bg:#fbf1e4;
+  --shadow:0 1px 2px rgba(0,0,0,.04);
+}
+:root[data-theme="dark"]{
+  --bg:#201d18; --panel:#2a251e; --card:#322c24; --border:#453e33;
+  --text:#ece7de; --sub:#a79c8b; --accent:#6ea0ff; --warn:#e0a35a;
+  --ok:#6fce8a; --ok-bg:#1e3324; --pending:#e0a35a; --pending-bg:#3a2e1c;
+  --shadow:0 1px 2px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+  line-height:1.55;padding:0 0 80px;}
+.container{max-width:1000px;margin:0 auto;padding:0 20px;}
+
+/* ── 페이지 헤더 ── */
+.page-head{padding:34px 0 18px;}
+.page-head h1{font-size:23px;font-weight:800;margin:0 0 6px;letter-spacing:-.01em;}
+.page-head p{font-size:13.5px;color:var(--sub);margin:0;max-width:62ch;}
+.themebtn{position:fixed;top:16px;right:16px;z-index:50;background:var(--card);color:var(--text);
+  border:1px solid var(--border);border-radius:999px;padding:7px 13px;font-size:12px;font-weight:700;
+  cursor:pointer;box-shadow:var(--shadow);}
+
+/* ── 탭 스위처 ── */
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:22px 0 14px;position:sticky;top:0;z-index:40;
+  background:var(--bg);padding:12px 0;border-bottom:1px solid var(--border);}
+.tab{flex:1;min-width:180px;text-align:left;background:var(--card);color:var(--text);
+  border:1px solid var(--border);border-radius:10px;padding:11px 15px;cursor:pointer;
+  font-family:inherit;box-shadow:var(--shadow);transition:.15s;}
+.tab:hover{border-color:var(--accent);}
+.tab.active{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset;}
+.tab .t-k{font-size:11px;font-weight:800;color:var(--accent);letter-spacing:.04em;}
+.tab .t-n{font-size:14.5px;font-weight:800;margin-top:1px;}
+.tab .t-d{font-size:11.5px;color:var(--sub);margin-top:2px;}
+
+/* ── 안 설명 카드 ── */
+.explain{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+  padding:15px 18px;margin-bottom:18px;font-size:13px;}
+.explain b{color:var(--accent);}
+.explain .pm{display:flex;gap:22px;flex-wrap:wrap;margin-top:8px;font-size:12.5px;}
+.explain .pm div{max-width:44ch;}
+.explain .pro::before{content:"장점 ";color:var(--ok);font-weight:800;}
+.explain .con::before{content:"아쉬움 ";color:var(--warn);font-weight:800;}
+
+/* ── 공통: 하루 헤더 (모든 안 상단) ── */
+.dayhead{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+  padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+.daypills{display:flex;gap:6px;}
+.pill{border:1px solid var(--border);background:var(--card);color:var(--sub);border-radius:999px;
+  padding:5px 13px;font-size:13px;font-weight:700;cursor:pointer;}
+.pill.on{background:var(--accent);color:#fff;border-color:var(--accent);}
+.brandbtns{display:flex;gap:6px;margin-left:auto;}
+.brandbtn{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:8px;
+  padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer;}
+.brandbtn.on{background:var(--accent);color:#fff;border-color:var(--accent);}
+.progress{font-size:12.5px;color:var(--sub);width:100%;display:flex;align-items:center;gap:10px;}
+.pbar{flex:1;height:6px;background:var(--border);border-radius:999px;overflow:hidden;max-width:260px;}
+.pbar i{display:block;height:100%;background:var(--ok);border-radius:999px;}
+
+/* ── status chips ── */
+.chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;
+  font-size:11px;font-weight:700;}
+.chip.done{background:var(--ok-bg);color:var(--ok);}
+.chip.pending{background:var(--pending-bg);color:var(--pending);}
+.chip.type{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);}
+
+/* ── 상품 스테이지 (①②③) 공통 내부 ── */
+.stage{border-top:1px dashed var(--border);padding:13px 0 3px;}
+.stage:first-child{border-top:none;}
+.stage-h{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:800;margin-bottom:9px;}
+.snum{background:var(--accent);color:#fff;border-radius:6px;min-width:19px;height:19px;
+  font-size:11px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;}
+.spec-grid{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12.5px;}
+.spec-grid dt{color:var(--sub);}
+.spec-grid dd{margin:0;font-weight:600;}
+.thumb{width:64px;height:80px;border-radius:6px;background:linear-gradient(135deg,var(--border),var(--panel));
+  border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;
+  font-size:10px;color:var(--sub);flex-shrink:0;}
+.stage-row{display:flex;gap:12px;}
+.draft{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:11px 13px;
+  font-size:12.5px;white-space:pre-wrap;word-break:break-word;font-family:var(--mono);line-height:1.6;}
+.mini-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+.dbchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;}
+.dbchip{font-size:11px;background:var(--panel);border:1px solid var(--border);border-radius:6px;
+  padding:3px 8px;color:var(--sub);cursor:pointer;}
+.dbchip b{color:var(--text);}
+.batchline{font-family:var(--mono);font-size:12px;background:var(--panel);border:1px solid var(--border);
+  border-radius:6px;padding:8px 10px;white-space:pre-wrap;}
+textarea.fake,input.fake{width:100%;background:var(--card);border:1px solid var(--border);border-radius:6px;
+  padding:8px 10px;font-size:12.5px;color:var(--text);font-family:inherit;resize:vertical;}
+label.flabel{display:block;font-size:11.5px;color:var(--sub);font-weight:600;margin:6px 0 3px;}
+
+button.b{padding:7px 13px;border-radius:7px;font-size:12.5px;font-weight:700;cursor:pointer;
+  border:1px solid var(--accent);background:var(--accent);color:#fff;font-family:inherit;}
+button.b.ghost{background:var(--card);color:var(--text);border-color:var(--border);}
+button.b.sm{padding:5px 10px;font-size:11.5px;}
+
+/* ── 하루 산출 푸터 ── */
+.harvest{background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:15px 18px;margin-top:18px;}
+.harvest h3{margin:0 0 4px;font-size:13.5px;font-weight:800;display:flex;align-items:center;gap:8px;}
+.harvest p{margin:0 0 10px;font-size:12px;color:var(--sub);}
+.harvest .row{display:flex;gap:8px;flex-wrap:wrap;}
+
+.layout{display:none;}
+.layout.active{display:block;}
+
+/* ══ 안 1: 세로 아코디언 ══ */
+.acc-item{background:var(--panel);border:1px solid var(--border);border-radius:12px;margin-bottom:10px;overflow:hidden;}
+.acc-head{display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none;}
+.acc-head:hover{background:color-mix(in srgb,var(--accent) 5%,transparent);}
+.acc-head .arw{color:var(--sub);transition:transform .15s;font-size:12px;}
+.acc-item.open .acc-head .arw{transform:rotate(90deg);}
+.acc-head .a-title{font-weight:800;font-size:14px;flex:1;min-width:0;}
+.acc-head .a-work{font-size:11.5px;color:var(--sub);font-weight:600;}
+.acc-body{display:none;padding:0 16px 14px;}
+.acc-item.open .acc-body{display:block;}
+
+/* ══ 안 2: 카드 워크벤치 ══ */
+.cardgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}
+@media(max-width:720px){.cardgrid{grid-template-columns:1fr;}}
+.wbcard{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 15px;display:flex;flex-direction:column;}
+.wbcard .c-top{display:flex;gap:10px;align-items:flex-start;}
+.wbcard .c-title{font-weight:800;font-size:13.5px;line-height:1.35;}
+.wbcard .c-work{font-size:11px;color:var(--sub);margin-top:2px;}
+.wbcard .c-chips{display:flex;gap:5px;flex-wrap:wrap;margin:9px 0;}
+.wbcard .c-preview{font-family:var(--mono);font-size:11px;color:var(--sub);background:var(--card);
+  border:1px solid var(--border);border-radius:7px;padding:9px;max-height:74px;overflow:hidden;
+  white-space:pre-wrap;position:relative;}
+.wbcard .c-preview::after{content:"";position:absolute;left:0;right:0;bottom:0;height:26px;
+  background:linear-gradient(transparent,var(--card));}
+.wbcard .c-detail{display:none;margin-top:11px;}
+.wbcard.open .c-detail{display:block;}
+.wbcard.open .c-preview{display:none;}
+.wbcard .c-foot{margin-top:auto;padding-top:11px;}
+
+/* ══ 안 3: 마스터-디테일 ══ */
+.md-wrap{display:grid;grid-template-columns:230px 1fr;gap:14px;align-items:start;}
+@media(max-width:720px){.md-wrap{grid-template-columns:1fr;}}
+.md-list{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:8px;position:sticky;top:74px;}
+.md-row{display:flex;align-items:center;gap:9px;padding:10px 11px;border-radius:8px;cursor:pointer;font-size:13px;}
+.md-row:hover{background:color-mix(in srgb,var(--accent) 6%,transparent);}
+.md-row.sel{background:var(--accent);color:#fff;}
+.md-row.sel .md-sub{color:rgba(255,255,255,.8);}
+.md-row .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.md-row .dot.done{background:var(--ok);}
+.md-row .dot.pending{background:var(--pending);}
+.md-row .md-t{flex:1;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.md-row .md-sub{font-size:10.5px;color:var(--sub);}
+.md-detail{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 18px;min-height:300px;}
+.md-detail .d-title{font-size:15px;font-weight:800;margin:0 0 3px;}
+.md-detail .d-work{font-size:12px;color:var(--sub);margin-bottom:10px;}
+</style>
+
+<button class="themebtn" onclick="toggleTheme()">◑ 테마</button>
+
+<div class="container">
+  <div class="page-head">
+    <h1>원고 파이프라인 · 레이아웃 후보</h1>
+    <p>한 페이지에서 페이지 이동 없이, 그 날 하루치 업로드 루틴(①공식정보 → ②원고 → ③이미지용 산출)을 펼침형으로 끝내는 작업대. 같은 하루(2026-07-24, 굿스마일, 상품 3개) 샘플로 세 가지 구성을 비교해봐. 탭을 눌러 전환하고, 상품을 펼쳐서 동작 감을 확인해줘.</p>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-l="acc" onclick="pick('acc')">
+      <div class="t-k">안 1</div><div class="t-n">세로 아코디언</div>
+      <div class="t-d">상품을 위→아래로 쌓고 펼침</div>
+    </button>
+    <button class="tab" data-l="wb" onclick="pick('wb')">
+      <div class="t-k">안 2</div><div class="t-n">카드 워크벤치</div>
+      <div class="t-d">하루 상품을 카드로 한눈에</div>
+    </button>
+    <button class="tab" data-l="md" onclick="pick('md')">
+      <div class="t-k">안 3</div><div class="t-n">좌목록 · 우작업</div>
+      <div class="t-d">왼쪽 목록에서 골라 오른쪽 작업</div>
+    </button>
+  </div>
+
+  <div class="explain" id="explain"></div>
+
+  <!-- 공통 하루 헤더 -->
+  <div class="dayhead">
+    <div class="daypills">
+      <span class="pill">07-23</span>
+      <span class="pill on">07-24</span>
+      <span class="pill" style="border-style:dashed;color:var(--sub);">+ 날짜</span>
+    </div>
+    <div class="brandbtns">
+      <span class="brandbtn on">굿스마일</span>
+      <span class="brandbtn">메가하우스</span>
+      <span class="brandbtn">부시로드</span>
+    </div>
+    <div class="progress">
+      <span>원고 <b style="color:var(--text)">2 / 3</b> 완료</span>
+      <span class="pbar"><i style="width:66%"></i></span>
+      <span>· 상품 3개</span>
+    </div>
+  </div>
+
+  <div id="mount"></div>
+
+  <!-- 하루 산출 (모든 안 공통 하단) -->
+  <div class="harvest">
+    <h3><span class="snum">③</span> 하루 산출물 (이미지 도구로 넘기기)</h3>
+    <p>원고가 다 되면 여기서 한 번에. 이미지 합성 자체는 TEXT GRADIENT + 사진 일괄 합성 도구가 하고, 여기선 걔들이 먹는 재료만 만들어줘.</p>
+    <div class="batchline" style="margin-bottom:10px;">**📺 그 비스크 돌은 사랑을 한다 | 넨도로이드**
+- 고죠 와카나 (재판)
+
+**🎤 하츠네 미쿠 | GS컬렉션 1/7**
+- 하츠네 미쿠 심포니 삿포로 콘서트 Ver.
+
+**📺 나의 히어로 아카데미아 | 넨도로이드**
+- 바쿠고 카츠키 UA 교복 Ver.</div>
+    <div class="row">
+      <button class="b">📋 _batch.md 복사</button>
+      <button class="b ghost">🖼 사진·매칭 CSV 내려받기</button>
+      <button class="b ghost">📦 하루 폴더 ZIP</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const PRODUCTS = [
+  {
+    id:'gojo', done:true, type:'넨도로이드', rerelease:true,
+    title:'고죠 와카나 넨도로이드 (재판)', work:'그 비스크 돌은 사랑을 한다',
+    spec:{'발매':'27년 3월','사이즈':'논스케일 · 약 100mm','제조사':'굿스마일컴퍼니','재판':'재판 (Rerelease 3/2027)'},
+    dialogue:'"키...키타가와 양?"',
+    dbhits:['『비스크돌』 관계설명 1건','대사 후보 2건','해시태그 #비스크돌'],
+    draft:'"키...키타가와 양?"\n\n🛒 : 구매는 프로필 링크 참고 해주세요\n▪️ 발매: 27년 3월\n\n📺 애니『그 비스크 돌은 사랑을 한다』\n키타가와 마린의 코스프레를 전적으로 돕고 있는\n같은 반 남고생 고죠 와카나가 넨도로이드로 재등장!\n\n#비스크돌 #넨도로이드 #굿스마일컴퍼니PW',
+    batch:'**📺 그 비스크 돌은 사랑을 한다 | 넨도로이드**\n- 고죠 와카나 (재판)',
+    photo:'01_고죠와카나.jpg'
+  },
+  {
+    id:'miku', done:true, type:'스케일 1/7', rerelease:false,
+    title:'하츠네 미쿠 2025 랩소디 삿포로콘서트 Ver. 1/7', work:'하츠네 미쿠',
+    spec:{'발매':'27년 9월','사이즈':'높이 278mm','제조사':'굿스마일컴퍼니','재판':'신제품'},
+    dialogue:null,
+    dbhits:['캐릭터 보컬 시리즈 01 표기','#하츠네미쿠'],
+    draft:'【하츠네 미쿠 2025 랩소디 삿포로콘서트 Ver. 1/7】\n\n🛒 : 구매는 프로필 링크 참고 해주세요\n📏 높이: 278mm  📅 발매: 27년 9월\n\n캐릭터 보컬 시리즈 01『하츠네 미쿠』\n하츠네 미쿠 심포니 삿포로 콘서트 Ver.\nGS 컬렉션 1/7 스케일 피규어가 등장!\n\n#하츠네미쿠 #굿스마일컴퍼니PW',
+    batch:'**🎤 하츠네 미쿠 | GS컬렉션 1/7**\n- 하츠네 미쿠 심포니 삿포로 콘서트 Ver.',
+    photo:'02_하츠네미쿠.jpg'
+  },
+  {
+    id:'bakugo', done:false, type:'넨도로이드', rerelease:false,
+    title:'바쿠고 카츠키 UA 교복 Ver. 넨도로이드', work:'나의 히어로 아카데미아',
+    spec:{'발매':'26년 10월','사이즈':'약 100mm','제조사':'굿스마일컴퍼니','재판':'신제품'},
+    dialogue:'"나한테 뒤쳐지지 말라고 이즈쿠...!"',
+    dbhits:['『히로아카』 관계설명 3건','대사 후보 1건','#히로아카'],
+    draft:'(아직 원고 생성 전 — 공식정보·캐릭터 메모 넣고 [원고 생성] 눌러줘)',
+    batch:'**📺 나의 히어로 아카데미아 | 넨도로이드**\n- 바쿠고 카츠키 UA 교복 Ver.',
+    photo:'03_바쿠고.jpg'
+  }
+];
+
+const EXPLAIN = {
+  acc:'<b>세로 아코디언</b> — 상품을 위에서 아래로 쭉 쌓고, 각 상품을 클릭하면 그 안에서 ①공식정보 → ②원고 → ③이미지가 세로로 펼쳐져. 네가 말한 "펼침형, 페이지 안 옮김"에 가장 그대로 맞는 형태.<div class="pm"><div class="pro">한 흐름으로 위→아래만 따라가면 끝. 모바일에서도 편하고, 필요 없는 상품은 접어두면 됨.</div><div class="con">상품이 많은 날은 세로로 길어져서 전체 진행 상황을 한눈에 보긴 어려움.</div></div>',
+  wb:'<b>카드 워크벤치</b> — 하루 상품을 카드로 나란히 깔아 하루 전체를 한눈에. 카드마다 원고 미리보기가 살짝 보이고, "펼치기"를 누르면 그 카드가 그 자리에서 ①②③ 전체로 커져.<div class="pm"><div class="pro">오늘 뭐가 몇 개 남았는지 조망이 좋음. 상품 간 이동이 짧음.</div><div class="con">카드 안에서 긴 원고·스펙을 다루면 폭이 좁게 느껴질 수 있음.</div></div>',
+  md:'<b>좌목록 · 우작업</b> — 왼쪽에 하루 상품 목록(완료=초록/미완=주황 점), 클릭하면 오른쪽에 그 상품의 ①②③이 펼쳐져. 페이지 이동 없이 목록↔작업이 한 화면.<div class="pm"><div class="pro">상품이 많아도 왼쪽 목록으로 진행 상황이 또렷하고, 오른쪽은 넓게 씀.</div><div class="con">"펼침"보다 "골라서 보기"에 가까움. 좁은 화면에선 위아래로 접힘.</div></div>'
+};
+
+const esc = s => (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function specHtml(p){
+  return '<dl class="spec-grid">'+Object.entries(p.spec).map(([k,v])=>
+    `<dt>${k}</dt><dd>${k==='재판'&&p.rerelease?'<b style="color:var(--accent)">'+esc(v)+' → 재등장!</b>':esc(v)}</dd>`).join('')+'</dl>';
+}
+function stagesHtml(p){
+  return `
+  <div class="stage">
+    <div class="stage-h"><span class="snum">①</span> 공식정보 (B2B · 안 바뀜)</div>
+    <div class="stage-row">
+      <div class="thumb">사진</div>
+      <div style="flex:1">${specHtml(p)}
+        <label class="flabel">캐릭터 메모 (가변 · DB 자동조회)</label>
+        <div class="dbchips">${p.dbhits.map(h=>`<span class="dbchip">${esc(h)}</span>`).join('')}</div>
+      </div>
+    </div>
+  </div>
+  <div class="stage">
+    <div class="stage-h"><span class="snum">②</span> 원고 ${p.done?'<span class="chip done">완료</span>':'<span class="chip pending">미완</span>'}</div>
+    <div class="draft">${esc(p.draft)}</div>
+    <div class="mini-actions">
+      <button class="b sm">${p.done?'↻ 재생성':'✍ 원고 생성'}</button>
+      <button class="b sm ghost">원문/결과 비교</button>
+      <button class="b sm ghost">📋 복사</button>
+    </div>
+  </div>
+  <div class="stage">
+    <div class="stage-h"><span class="snum">③</span> 이미지용 조각</div>
+    <div class="batchline">${esc(p.batch)}</div>
+    <div style="font-size:11.5px;color:var(--sub);margin-top:6px;">사진 파일명: <b style="color:var(--text)">${esc(p.photo)}</b> → slot 자동매칭</div>
+  </div>`;
+}
+
+/* 안 1: 아코디언 */
+function renderAcc(){
+  return PRODUCTS.map((p,i)=>`
+    <div class="acc-item${i===0?' open':''}" data-id="${p.id}">
+      <div class="acc-head" onclick="this.parentElement.classList.toggle('open')">
+        <span class="arw">▶</span>
+        <span class="a-title">${esc(p.title)}</span>
+        <span class="a-work">『${esc(p.work)}』</span>
+        <span class="chip type">${esc(p.type)}</span>
+        ${p.done?'<span class="chip done">✓ 원고</span>':'<span class="chip pending">미완</span>'}
+      </div>
+      <div class="acc-body">${stagesHtml(p)}</div>
+    </div>`).join('')
+    +`<div class="acc-item"><div class="acc-head" style="color:var(--sub)"><span class="arw" style="opacity:.4">＋</span><span class="a-title" style="font-weight:700;color:var(--sub)">상품 추가 (지금은 붙여넣기 · 나중엔 B2B 자동)</span></div></div>`;
+}
+/* 안 2: 카드 워크벤치 */
+function renderWb(){
+  return '<div class="cardgrid">'+PRODUCTS.map((p,i)=>`
+    <div class="wbcard${i===0?' open':''}" data-id="${p.id}">
+      <div class="c-top">
+        <div class="thumb">사진</div>
+        <div style="flex:1;min-width:0">
+          <div class="c-title">${esc(p.title)}</div>
+          <div class="c-work">『${esc(p.work)}』</div>
+        </div>
+      </div>
+      <div class="c-chips">
+        <span class="chip type">${esc(p.type)}</span>
+        ${p.rerelease?'<span class="chip type">재판</span>':''}
+        ${p.done?'<span class="chip done">✓ 원고</span>':'<span class="chip pending">원고 미완</span>'}
+      </div>
+      <div class="c-preview">${esc(p.draft)}</div>
+      <div class="c-detail">${stagesHtml(p)}</div>
+      <div class="c-foot">
+        <button class="b sm ghost" onclick="this.closest('.wbcard').classList.toggle('open')">펼치기 / 접기</button>
+      </div>
+    </div>`).join('')
+    +`<div class="wbcard" style="align-items:center;justify-content:center;color:var(--sub);border-style:dashed;cursor:pointer;min-height:120px;">＋ 상품 추가</div>`
+    +'</div>';
+}
+/* 안 3: 마스터-디테일 */
+function renderMd(){
+  const rows = PRODUCTS.map((p,i)=>`
+    <div class="md-row${i===0?' sel':''}" data-id="${p.id}" onclick="mdSelect('${p.id}')">
+      <span class="dot ${p.done?'done':'pending'}"></span>
+      <span class="md-t">${esc(p.title.replace(/ \(재판\)/,''))}<div class="md-sub">『${esc(p.work)}』</div></span>
+    </div>`).join('');
+  return `<div class="md-wrap">
+    <div class="md-list">${rows}
+      <div class="md-row" style="color:var(--sub)"><span class="dot" style="background:var(--border)"></span><span class="md-t" style="font-weight:700">＋ 상품 추가</span></div>
+    </div>
+    <div class="md-detail" id="mdDetail"></div>
+  </div>`;
+}
+function mdSelect(id){
+  document.querySelectorAll('.md-row').forEach(r=>r.classList.toggle('sel',r.dataset.id===id));
+  const p = PRODUCTS.find(x=>x.id===id);
+  document.getElementById('mdDetail').innerHTML =
+    `<div class="d-title">${esc(p.title)}</div><div class="d-work">『${esc(p.work)}』</div>`+stagesHtml(p);
+}
+
+let cur='acc';
+function pick(l){
+  cur=l;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.l===l));
+  document.getElementById('explain').innerHTML = EXPLAIN[l];
+  const m=document.getElementById('mount');
+  if(l==='acc') m.innerHTML=renderAcc();
+  else if(l==='wb') m.innerHTML=renderWb();
+  else { m.innerHTML=renderMd(); mdSelect(PRODUCTS[0].id); }
+}
+function toggleTheme(){
+  const r=document.documentElement;
+  const now=r.getAttribute('data-theme')|| (matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
+  r.setAttribute('data-theme', now==='dark'?'light':'dark');
+}
+pick('acc');
+</script>
