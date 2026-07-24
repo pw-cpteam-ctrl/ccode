@@ -153,6 +153,10 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .thumbwrap .th-star.on{color:#f07d1e;}
 .thumbwrap .th-del{position:absolute;top:-5px;right:-5px;font-size:10px;background:#fff;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--ui-border);color:var(--ui-sub);}
 .thumbwrap .th-del:hover{color:var(--ui-warn);}
+.thumbwrap .th-move{position:absolute;bottom:-5px;font-size:9px;background:#fff;border-radius:50%;width:15px;height:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--ui-border);color:var(--ui-sub);}
+.thumbwrap .th-move:hover{color:var(--ui-accent);border-color:var(--ui-accent);}
+.thumbwrap .th-move-l{left:-5px;}
+.thumbwrap .th-move-r{right:-5px;}
 .composer{display:grid;grid-template-columns:210px 1fr;gap:16px;margin-top:12px;align-items:start;}
 @media(max-width:560px){.composer{grid-template-columns:1fr;}}
 #composerCanvas{width:210px;height:262.5px;border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.12);cursor:grab;background:var(--ui-card);}
@@ -198,6 +202,7 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 
   <div class="md-wrap">
     <div class="leftcol">
+      <button id="btnB2BImport" class="secondary" style="width:100%;">🔄 B2B에서 오늘 상품 가져오기</button>
       <button id="btnAddProduct" style="width:100%;">＋ 상품 추가</button>
       <div class="md-list" id="mdList"></div>
     </div>
@@ -412,34 +417,41 @@ function loadFrameImage() {
     img.src = './assets/frame-orange.png';
   });
 }
+// 틀 PNG의 투명 창(사진이 실제로 보이는 영역)을 실측한 좌표. 알파 채널을 픽셀 단위로
+// 스캔해서 얻은 값 — 위 117px(로고띠)/좌 32px/우 31px/아래 29px가 불투명 테두리다.
+const FRAME_INNER = { x0: 32, y0: 117, x1: 1049, y1: 1321 };
+const FIW = FRAME_INNER.x1 - FRAME_INNER.x0;
+const FIH = FRAME_INNER.y1 - FRAME_INNER.y0;
 function drawSlide(ctx, slide, withText, textTitle, textSub, gradStart, gradIntensity) {
   ctx.clearRect(0, 0, CW, CH);
   const img = slide && imgCache.get(slide.key);
   if (img) {
     const pw = img.naturalWidth, ph = img.naturalHeight;
-    const base = Math.max(CW / pw, CH / ph); // cover-fit: 짧은 변 기준으로 꽉 채움
+    // 캔버스 전체(1080x1350)가 아니라 틀의 투명 창(FIW x FIH)에 맞춰 cover-fit —
+    // 그래야 사진이 불투명한 로고띠/테두리 뒤로 숨는 부분 없이 보이는 만큼만 계산된다.
+    const base = Math.max(FIW / pw, FIH / ph);
     const eff = base * (slide.scale || 1);
     const dw = pw * eff, dh = ph * eff;
-    const dx = (CW - dw) / 2 + (slide.ox || 0);
-    const dy = (CH - dh) / 2 + (slide.oy || 0);
+    const dx = FRAME_INNER.x0 + (FIW - dw) / 2 + (slide.ox || 0);
+    const dy = FRAME_INNER.y0 + (FIH - dh) / 2 + (slide.oy || 0);
     ctx.drawImage(img, dx, dy, dw, dh);
   } else {
     ctx.fillStyle = '#e7e2d6';
     ctx.fillRect(0, 0, CW, CH);
   }
   if (withText) {
-    const gs = CH * (gradStart != null ? gradStart : 0.55);
-    const grad = ctx.createLinearGradient(0, gs, 0, CH);
+    const gs = FRAME_INNER.y0 + FIH * (gradStart != null ? gradStart : 0.55);
+    const grad = ctx.createLinearGradient(0, gs, 0, FRAME_INNER.y1);
     grad.addColorStop(0, 'rgba(0,0,0,0)');
     grad.addColorStop(1, `rgba(0,0,0,${gradIntensity != null ? gradIntensity : 0.75})`);
     ctx.fillStyle = grad;
-    ctx.fillRect(0, gs, CW, CH - gs);
+    ctx.fillRect(0, gs, CW, FRAME_INNER.y1 - gs);
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
     ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 7; ctx.shadowOffsetY = 2;
     const cx = CW / 2;
-    let ty = CH - 130; // 실측한 아래쪽 틀 두께(28px≈2%)보다 충분히 위에서 시작
+    let ty = FRAME_INNER.y1 - 26; // 투명 창 하단에서 살짝 띄운 기준선(테두리에 안 붙게)
     if (textSub) {
       ctx.font = '600 27px -apple-system,"Malgun Gothic",sans-serif';
       ctx.fillText(textSub, cx, ty);
@@ -480,6 +492,7 @@ function imageStageHtml(p) {
       <input type="file" id="fileInput" accept="image/*" multiple/>
     </div>
     <div class="thumbrow" id="thumbRow"></div>
+    ${p.images.length > 1 ? `<div class="mini-actions"><button class="sm secondary" id="btnClearNonMain">★ 대표만 남기고 나머지 사진 삭제</button></div>` : ''}
     <div class="composer" id="composerWrap" style="${p.images.length ? '' : 'display:none;'}">
       <div>
         <canvas id="composerCanvas" width="${CW}" height="${CH}"></canvas>
@@ -548,7 +561,36 @@ function wireImageStage(p) {
   const btnExportZip = $('#btnExportProductZip');
   if (btnExportZip) btnExportZip.addEventListener('click', () => exportProductZip(p));
 
+  const btnClearNonMain = $('#btnClearNonMain');
+  if (btnClearNonMain) btnClearNonMain.addEventListener('click', () => clearNonMainImages(p));
+
   wireComposerInteraction(p);
+}
+async function clearNonMainImages(p) {
+  if (!confirm('대표 슬라이드를 제외한 나머지 사진을 모두 지울까요?')) return;
+  const keep = p.images[p.mainIndex];
+  const toDelete = p.images.filter((_, i) => i !== p.mainIndex);
+  for (const s of toDelete) { await idbDel(s.key).catch(() => {}); imgCache.delete(s.key); }
+  p.images = keep ? [keep] : [];
+  p.mainIndex = 0;
+  editingIdx = 0;
+  saveProducts();
+  renderImageStage(p);
+  renderList();
+}
+function moveSlide(p, idx, dir) {
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= p.images.length) return;
+  const tmp = p.images[idx];
+  p.images[idx] = p.images[newIdx];
+  p.images[newIdx] = tmp;
+  if (p.mainIndex === idx) p.mainIndex = newIdx;
+  else if (p.mainIndex === newIdx) p.mainIndex = idx;
+  if (editingIdx === idx) editingIdx = newIdx;
+  else if (editingIdx === newIdx) editingIdx = idx;
+  saveProducts();
+  drawAllThumbs(p);
+  drawComposer(p);
 }
 async function handleFiles(p, files) {
   for (const f of files) {
@@ -621,6 +663,22 @@ function drawAllThumbs(p) {
       renderList();
     });
     wrap.appendChild(canvas); wrap.appendChild(star); wrap.appendChild(del);
+    if (idx > 0) {
+      const moveL = document.createElement('div');
+      moveL.className = 'th-move th-move-l';
+      moveL.textContent = '◀';
+      moveL.title = '앞으로 이동';
+      moveL.addEventListener('click', e => { e.stopPropagation(); moveSlide(p, idx, -1); });
+      wrap.appendChild(moveL);
+    }
+    if (idx < p.images.length - 1) {
+      const moveR = document.createElement('div');
+      moveR.className = 'th-move th-move-r';
+      moveR.textContent = '▶';
+      moveR.title = '뒤로 이동';
+      moveR.addEventListener('click', e => { e.stopPropagation(); moveSlide(p, idx, 1); });
+      wrap.appendChild(moveR);
+    }
     row.appendChild(wrap);
   });
 }
@@ -1085,6 +1143,9 @@ document.querySelectorAll('#dayBrandRadios input[name="dayBrand"]').forEach(el =
 document.querySelectorAll('#dayBrandRadios .brand-opt').forEach(o => o.classList.toggle('selected', o.querySelector('input').checked));
 
 $('#btnAddProduct').addEventListener('click', addProduct);
+$('#btnB2BImport').addEventListener('click', () => {
+  alert('아직 B2B 자동 연동 전이에요.\n\n지금은 "+ 상품 추가"로 상품을 만들고, ①상품정보 칸에 B2B 페이지 내용을 직접 복사해서 붙여넣어 주세요.\n(다음 단계로 B2B 사이트 자동 스크래핑 연결을 논의 후 진행할 예정입니다.)');
+});
 
 (function init() {
   PRODUCTS = loadProductsFromStorage().map(p => ({ ...makeBlankProduct(), ...p }));
