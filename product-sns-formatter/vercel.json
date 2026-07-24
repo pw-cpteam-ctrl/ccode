@@ -4,6 +4,7 @@
     "deploymentEnabled": {
       "main": true,
       "claude/sns-formatter-verified-commits-test": true,
+      "claude/product-sns-formatter-xy7kpo": true,
       "**": false
     }
   }

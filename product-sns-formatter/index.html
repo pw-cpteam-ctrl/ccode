@@ -82,6 +82,25 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .an-block{margin-top:6px;}
 .an-label{font-size:11px;font-weight:700;color:var(--ui-sub);margin-bottom:2px;}
 .an-text{white-space:pre-wrap;word-break:break-word;}
+.refdb-details{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:14px 22px;margin-bottom:18px;}
+.refdb-details summary{cursor:pointer;font-size:14.5px;font-weight:800;list-style:none;}
+.refdb-details summary::-webkit-details-marker{display:none;}
+.refdb-details[open] summary{margin-bottom:10px;}
+.refdb-search{width:100%;padding:9px 12px;font-size:14px;border:1px solid var(--ui-border);border-radius:8px;background:var(--ui-card);color:var(--ui-text);margin-bottom:10px;box-sizing:border-box;}
+.refdb-list{display:flex;flex-direction:column;gap:10px;max-height:520px;overflow-y:auto;}
+.refdb-item{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:10px 12px;font-size:13px;}
+.refdb-head{display:flex;gap:6px;align-items:center;margin-bottom:5px;flex-wrap:wrap;}
+.rd-type{border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;}
+.rd-type.sale{background:#e6f0ff;color:#2b5dbd;}
+.rd-type.dev{background:#f0ecff;color:#6a4bbd;}
+.rd-work{font-size:11.5px;color:var(--ui-sub);font-weight:700;}
+.rd-title{font-weight:700;margin-bottom:3px;}
+.rd-dlg{color:#1e7e34;font-style:italic;margin-bottom:3px;}
+.rd-blurb{white-space:pre-wrap;word-break:break-word;margin-bottom:4px;}
+.rd-tags{font-size:11.5px;color:var(--ui-accent);}
+.rd-raw{margin-top:6px;}
+.rd-raw summary{font-size:11px;font-weight:700;color:var(--ui-sub);cursor:pointer;list-style:revert;}
+.rd-raw pre{white-space:pre-wrap;word-break:break-word;font-size:12px;background:var(--ui-panel);border-radius:6px;padding:8px;margin:6px 0 0;font-family:inherit;}
 </style>
 </head>
 <body>
@@ -163,6 +182,14 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
     <button type="button" class="secondary" onclick="loadAnomalyLog()">새로고침</button>
     <div class="status" id="anomalyStatus"></div>
     <div id="anomalyList" class="anomaly-list"></div>
+  </details>
+
+  <details class="refdb-details" id="refdbDetails">
+    <summary>📚 참고 DB · 실제 업로드물 157건 (작품·캐릭터로 검색)</summary>
+    <p class="desc">지금까지 실제로 올라간 굿스마일 게시물이야. 작품명·캐릭터·키워드로 검색해서 "이 캐릭터는 예전에 어떻게 썼더라?"를 바로 찾아볼 수 있어 (판매형 / 원형공개형 구분). 캐릭터 설명·대사 초안을 잡을 때 참고용.</p>
+    <input type="text" class="refdb-search" id="refdbSearch" placeholder="예: 하츠네 미쿠 / 넨도로이드 / 히로아카 / 재판..."/>
+    <div class="status" id="refdbStatus"></div>
+    <div id="refdbList" class="refdb-list"></div>
   </details>
 </div>
 
@@ -498,6 +525,60 @@ function renderAnomalyLog(entries) {
 }
 $('#anomalyDetails').addEventListener('toggle', function () {
   if (this.open) loadAnomalyLog();
+});
+
+/* ── 참고 DB (실제 업로드물 157건, 정적 JSON) ── */
+let _refdbAll = null;
+async function loadRefDb() {
+  if (_refdbAll) return _refdbAll;
+  $('#refdbStatus').textContent = '불러오는 중...';
+  try {
+    const res = await fetch('./data/goodsmile-reference.json');
+    if (!res.ok) throw new Error(`파일 로드 실패 (${res.status})`);
+    const data = await res.json();
+    _refdbAll = data.entries || [];
+    const sale = _refdbAll.filter(e => e.type === 'sale').length;
+    $('#refdbStatus').textContent = `총 ${_refdbAll.length}건 (판매형 ${sale} / 원형공개형 ${_refdbAll.length - sale})`;
+    renderRefDb(_refdbAll);
+    return _refdbAll;
+  } catch (err) {
+    $('#refdbStatus').textContent = `불러오기 실패: ${err.message}`;
+    return [];
+  }
+}
+function renderRefDb(entries) {
+  const box = $('#refdbList');
+  if (!entries.length) { box.innerHTML = '<div class="slot-empty">검색 결과가 없어요.</div>'; return; }
+  const shown = entries.slice(0, 200);
+  box.innerHTML = shown.map(e => `
+    <div class="refdb-item">
+      <div class="refdb-head">
+        <span class="rd-type ${e.type}">${e.type === 'sale' ? '판매형' : '원형공개형'}</span>
+        ${e.work ? `<span class="rd-work">『${escapeHtml(e.work)}』</span>` : ''}
+        ${e.ending ? `<span class="rd-work">${escapeHtml(e.ending)}!</span>` : ''}
+      </div>
+      ${e.title ? `<div class="rd-title">【${escapeHtml(e.title)}】</div>` : ''}
+      ${e.dialogue ? `<div class="rd-dlg">${escapeHtml(e.dialogue)}</div>` : ''}
+      ${e.blurb ? `<div class="rd-blurb">${escapeHtml(e.blurb)}</div>` : ''}
+      ${e.hashtags && e.hashtags.length ? `<div class="rd-tags">${e.hashtags.map(escapeHtml).join(' ')}</div>` : ''}
+      <details class="rd-raw"><summary>원문 보기</summary><pre>${escapeHtml(e.raw || '')}</pre></details>
+    </div>
+  `).join('') + (entries.length > 200 ? `<div class="slot-empty">…외 ${entries.length - 200}건 (검색으로 좁혀보세요)</div>` : '');
+}
+$('#refdbDetails').addEventListener('toggle', function () {
+  if (this.open) loadRefDb();
+});
+$('#refdbSearch').addEventListener('input', function () {
+  if (!_refdbAll) { loadRefDb(); return; }
+  const q = this.value.trim().toLowerCase();
+  if (!q) { renderRefDb(_refdbAll); $('#refdbStatus').textContent = `총 ${_refdbAll.length}건`; return; }
+  const terms = q.split(/\s+/);
+  const filtered = _refdbAll.filter(e => {
+    const hay = [e.title, e.work, e.blurb, e.dialogue, (e.hashtags || []).join(' ')].join(' ').toLowerCase();
+    return terms.every(t => hay.includes(t));
+  });
+  renderRefDb(filtered);
+  $('#refdbStatus').textContent = `${filtered.length}건 검색됨`;
 });
 </script>
 </body>
