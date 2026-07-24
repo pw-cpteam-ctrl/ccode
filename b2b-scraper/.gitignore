@@ -1,0 +1,5 @@
+node_modules/
+chrome-profile/
+output/
+recon-output/
+goodsmile-session.json

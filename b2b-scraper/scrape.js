@@ -1,28 +1,35 @@
 /**
  * GoodSmile B2B에서 오늘 상품을 긁어 product-sns-formatter가 가져올 수 있는
- * output.json + photos/*.jpg로 만드는 메인 스크립트.
+ * output.json + photos/*.jpg로 만드는 단일 진입점.
+ *
+ * 팀원은 이 파일(정확히는 run.bat/run.command)만 더블클릭하면 된다:
+ *   - 전용 크롬 프로필(chrome-profile/goodsmile)이 로그인을 며칠간 기억하고 있으면 →
+ *     로그인 단계 없이 바로 스크래핑.
+ *   - 세션이 없거나 만료됐으면 → 크롬 창이 뜨고, 거기서 로그인만 하면(엔터 불필요, URL
+ *     변화로 자동 감지) 곧바로 이어서 스크래핑.
  *
  * ⚠️ 이 파일의 TODO(recon) 표시된 부분은 recon.js 실행 결과를 봐야 채울 수 있다 —
  * 목록 페이지 URL, 상품 상세 링크 셀렉터, 임베디드 JSON 안의 실제 필드 경로,
  * 사진 URL 뽑는 방법은 전부 GoodSmile 실제 페이지 구조에 달려있기 때문.
- * 지금은 그 부분만 비워두고, 세션 재사용/이미지 다운로드/출력 조립 등 나머지 배관은
- * 전부 실제로 동작하게 짜여있다.
+ * 지금은 그 부분만 비워두고, 세션 기억/자동 로그인 감지/이미지 다운로드/출력 조립 등
+ * 나머지 배관은 전부 실제로 동작하게 짜여있다.
  *
- * 사용법: node scrape.js
+ * ⚠️ 반드시 화면 있는 로컬 컴퓨터에서 실행할 것 (README 참고).
  */
-const fs = require('fs');
 const path = require('path');
-const { chromium } = require('playwright');
-const { STEALTH_CONTEXT_OPTIONS } = require('./browser-stealth');
+const { openPersistentSession } = require('./browser-stealth');
 const { sanitizeJsonLiteral, extractAssignedJson, reconstructNextFlight, extractNextDataScript } = require('./extract-helpers');
 const { downloadImage } = require('./download-image');
 const { buildOutputProduct, writeOutputFile } = require('./format-output');
 
-const SESSION_PATH = path.join(__dirname, 'goodsmile-session.json');
+const PROFILE_DIR = path.join(__dirname, 'chrome-profile', 'goodsmile'); // 로그인을 기억하는 전용 프로필 폴더
 const OUT_DIR = path.join(__dirname, 'output', new Date().toISOString().slice(0, 10));
 
 // TODO(recon): recon.js로 확인한 실제 "오늘 상품 목록" 페이지 URL로 바꿀 것.
 const TODAY_LIST_URL = 'https://www.goodsmile.com/b2b/en/TODO-오늘상품목록페이지';
+
+// TODO(recon): 실제 GoodSmile 로그인 페이지 URL 패턴으로 조정할 것 (로그인 필요 시 튕기는 URL).
+const LOGIN_URL_PATTERN = /\/login/i;
 
 async function getTodayDetailUrls(page) {
   await page.goto(TODAY_LIST_URL, { waitUntil: 'networkidle' });
@@ -74,15 +81,13 @@ async function extractProductFromDetailPage(page, url) {
 }
 
 async function main() {
-  if (!fs.existsSync(SESSION_PATH)) {
-    console.error(`❌ 세션 파일이 없음: ${SESSION_PATH}\n먼저 "node login-session.js"부터 실행해줘.`);
-    process.exit(1);
-  }
+  const { context, page } = await openPersistentSession(PROFILE_DIR, {
+    startUrl: TODAY_LIST_URL,
+    loginUrlPattern: LOGIN_URL_PATTERN,
+    onWaitingForLogin: () => console.log('▶ 크롬 창에서 GoodSmile에 로그인해주세요. 로그인되면 자동으로 이어서 진행됩니다...'),
+  });
 
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ ...STEALTH_CONTEXT_OPTIONS, storageState: SESSION_PATH });
-  const page = await context.newPage();
-
+  console.log('▶ 오늘 상품을 가져오는 중...');
   const detailUrls = await getTodayDetailUrls(page);
   console.log(`오늘 상품 상세 페이지 ${detailUrls.length}건 발견`);
 
@@ -113,7 +118,7 @@ async function main() {
   console.log('product-sns-formatter의 "B2B에서 오늘 상품 가져오기" 버튼에서 이 output.json과');
   console.log(`${path.join(OUT_DIR, 'photos')} 폴더 안의 사진들을 함께 선택해서 가져오면 됨.`);
 
-  await browser.close();
+  await context.close();
 }
 
 main().catch(err => { console.error('❌ 실패:', err.message); process.exit(1); });

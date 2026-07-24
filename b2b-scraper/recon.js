@@ -1,8 +1,12 @@
 /**
- * 저장된 로그인 세션으로 GoodSmile B2B 페이지 하나를 열어서 구조를 파악하는 정찰 스크립트.
+ * 로그인된 세션으로 GoodSmile B2B 페이지 하나를 열어서 구조를 파악하는 정찰 스크립트.
  * scrape.js를 실제로 짜기 전에 반드시 먼저 실행해서 결과를 확인해야 한다 — 실제 필드 추출
  * 코드는 이 결과(페이지에 __NEXT_DATA__/__PRELOADED_STATE__/__next_f가 있는지, 상품 목록/상세
  * 링크 구조가 어떤지)에 따라 완전히 달라지기 때문.
+ *
+ * scrape.js와 같은 전용 크롬 프로필(chrome-profile/goodsmile)을 공유한다 — scrape.js를
+ * 한 번이라도 실행해서 로그인해뒀다면 이 스크립트는 로그인 없이 바로 정찰 가능. 세션이
+ * 없거나 만료됐으면 여기서도 크롬 창이 뜨고 로그인하면 자동으로 이어서 진행된다.
  *
  * 사용법:
  *   node recon.js <오늘 상품 목록 페이지 URL>
@@ -19,11 +23,13 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { chromium } = require('playwright');
-const { STEALTH_CONTEXT_OPTIONS } = require('./browser-stealth');
+const { openPersistentSession } = require('./browser-stealth');
 
-const SESSION_PATH = path.join(__dirname, 'goodsmile-session.json');
+const PROFILE_DIR = path.join(__dirname, 'chrome-profile', 'goodsmile'); // scrape.js와 동일한 프로필 공유
 const OUT_DIR = path.join(__dirname, 'recon-output');
+
+// TODO(recon): 실제 GoodSmile 로그인 페이지 URL 패턴으로 조정할 것.
+const LOGIN_URL_PATTERN = /\/login/i;
 
 const MARKERS = ['__NEXT_DATA__', '__PRELOADED_STATE__', '__next_f', '__NUXT__', 'application/json'];
 
@@ -37,22 +43,13 @@ async function main() {
     console.error('❌ 사용법: node recon.js <상품 목록 또는 상세 페이지 URL>');
     process.exit(1);
   }
-  if (!fs.existsSync(SESSION_PATH)) {
-    console.error(`❌ 세션 파일이 없음: ${SESSION_PATH}\n먼저 "node login-session.js"부터 실행해줘.`);
-    process.exit(1);
-  }
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ ...STEALTH_CONTEXT_OPTIONS, storageState: SESSION_PATH });
-  const page = await context.newPage();
-
-  console.log(`이동 중: ${url}`);
-  const res = await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(err => {
-    console.error('❌ 페이지 이동 실패:', err.message);
-    return null;
+  const { context, page } = await openPersistentSession(PROFILE_DIR, {
+    startUrl: url,
+    loginUrlPattern: LOGIN_URL_PATTERN,
+    onWaitingForLogin: () => console.log('▶ 크롬 창에서 GoodSmile에 로그인해주세요. 로그인되면 자동으로 이어서 진행됩니다...'),
   });
-  if (res) console.log('응답 상태:', res.status(), res.status() === 200 ? '(OK)' : '(로그인 세션 만료/차단 가능성 — status 확인)');
 
   const html = await page.content();
   const slug = slugFromUrl(url);
@@ -83,7 +80,7 @@ async function main() {
   console.log('   실제 필드 추출 로직을 마저 작성할게. html 파일 안의 __NEXT_DATA__ 등 구조가 궁금하면');
   console.log(`   ${htmlPath} 파일을 열어서 해당 부분만 잘라 보내줘도 돼.`);
 
-  await browser.close();
+  await context.close();
 }
 
 main().catch(err => { console.error('❌ 실패:', err.message); process.exit(1); });

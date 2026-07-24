@@ -49,7 +49,12 @@
   - 실제 사이트 로그인·자동 수집은 별도 프로젝트(`b2b-scraper`)로 착수, 로그인 세션
     저장/사이트 구조 정찰/사진 다운로드 뼈대까지 작성 (실제 사이트 연동은 로컬 환경에서
     로그인 진행 후 이어서 완성 예정)
-    (기술: Playwright 기반, `login-session.js`+`recon.js`+`scrape.js`)
+    (기술: Playwright 기반, `recon.js`+`scrape.js`)
+  - 비개발자 팀원이 실제로 쓸 실행 방식 정리 — 더블클릭 런처(`run.bat`/`run.command`)로
+    Node 설치 확인부터 실행까지 자동화, 로그인 세션을 전용 크롬 프로필로 기억시켜 로그인
+    스크립트 없이 스크래핑 스크립트 하나가 로그인 필요 여부를 자동 판단
+    (기술: `playwright-core`+`channel:'chrome'`+`launchPersistentContext`, URL 변화 기반
+    로그인 완료 자동 감지로 터미널 입력 없앰)
 
 </details>
 
