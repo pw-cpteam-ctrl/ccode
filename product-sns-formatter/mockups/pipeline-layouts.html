@@ -109,14 +109,30 @@ button.b{padding:7px 13px;border-radius:7px;font-size:12.5px;font-weight:700;cur
 button.b.ghost{background:var(--card);color:var(--text);border-color:var(--border);}
 button.b.sm{padding:5px 10px;font-size:11.5px;}
 
-/* ② 2열 INS/X */
-.two{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-@media(max-width:560px){.two{grid-template-columns:1fr;}}
-.col-h{font-size:11.5px;font-weight:800;margin-bottom:6px;display:flex;align-items:center;gap:6px;}
-.badge-ins{background:#e6f0ff;color:#2b5dbd;border-radius:5px;padding:1px 7px;font-size:10.5px;font-weight:800;}
+/* ② 원고 — 기존 포맷터 이식(diff·교정·글자수) + X 기본, INS는 1클릭 링크치환 */
 .badge-x{background:#222;color:#fff;border-radius:5px;padding:1px 7px;font-size:10.5px;font-weight:800;}
-:root[data-theme="dark"] .badge-x,@media(prefers-color-scheme:dark){.badge-x{background:#e9e9e9;color:#111;}}
-.linkline{font-family:var(--mono);font-size:11px;color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent);border-radius:5px;padding:5px 8px;margin-top:6px;word-break:break-all;}
+@media(prefers-color-scheme:dark){.badge-x{background:#e9e9e9;color:#111;}}
+:root[data-theme="dark"] .badge-x{background:#e9e9e9;color:#111;}
+:root[data-theme="light"] .badge-x{background:#222;color:#fff;}
+.col-h{font-size:11.5px;font-weight:800;margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+.correction-box{margin-top:9px;padding:10px 12px;background:#fdecea;border:1px solid #f3b8b0;border-radius:8px;font-size:12.5px;color:#c0392b;}
+.correction-box .c-title{font-weight:700;margin-bottom:4px;}
+.correction-box ul{margin:0;padding-left:18px;}
+.correction-box li{margin-bottom:2px;}
+.diff-wrap{margin-top:9px;display:none;}
+.diff-wrap.open{display:block;}
+.diff-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;}
+.diff-head .diff-label{font-size:11.5px;color:var(--sub);font-weight:700;}
+.diff-cols{display:flex;gap:10px;}
+@media(max-width:560px){.diff-cols{flex-direction:column;}}
+.diff-col{flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:9px 11px;}
+.diff-col-title{font-size:11px;font-weight:700;color:var(--sub);margin-bottom:5px;}
+.diff-content{font-size:12px;white-space:pre-wrap;word-break:break-word;font-family:var(--mono);line-height:1.55;}
+del.diffdel{background:#fdecea;color:#c0392b;text-decoration:line-through;text-decoration-color:#c0392b;}
+ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
+.charcount{font-size:11px;color:var(--sub);margin-top:7px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+.charcount b{color:var(--text);}
+.ins-note{font-size:11px;color:var(--sub);margin-left:2px;}
 
 /* ③ 4층 합성 (사진 → 검정그라데 → 흰텍스트 → 틀) */
 .dropzone{border:2px dashed var(--border);border-radius:10px;padding:14px;text-align:center;font-size:12px;color:var(--sub);cursor:pointer;}
@@ -128,17 +144,17 @@ button.b.sm{padding:5px 10px;font-size:11.5px;}
 .frame .photo{position:absolute;inset:0;background:linear-gradient(135deg,#8ea8d8,#c9b6d8);}
 .frame .bgrad{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(transparent,rgba(0,0,0,.75));}
 .frame .wtext{position:absolute;left:0;right:0;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.5);}
-/* 미니 썸네일 */
-.t45{width:60px;height:75px;border-radius:5px;overflow:hidden;cursor:pointer;padding:11px 2px 3px;}
+/* 미니 썸네일 — padding은 좌/우/아래(=주황 테두리 두께)만, 위쪽은 .hdr 높이 하나로만 정함(이중 계산 금지) */
+.t45{width:60px;height:75px;border-radius:5px;overflow:hidden;cursor:pointer;padding:0 2px 7px;}
 .t45.sel{outline:2px solid var(--accent);outline-offset:1px;}
-.t45 .hdr{height:11px;font-size:4.5px;padding-right:3px;}
+.t45 .hdr{height:6px;font-size:0;padding-right:3px;}
 .t45 .bgrad{height:45%;}
 .t45 .wtext{bottom:2px;padding:0 3px;font-size:5px;font-weight:700;text-align:left;}
 /* 큰 미리보기 */
 .composer{display:grid;grid-template-columns:200px 1fr;gap:16px;margin-top:12px;align-items:start;}
 @media(max-width:560px){.composer{grid-template-columns:1fr;}}
-.preview45{width:200px;aspect-ratio:4/5;border-radius:6px;padding:32px 8px 8px;box-shadow:var(--shadow);}
-.preview45 .hdr{height:32px;font-size:9.5px;padding-right:11px;}
+.preview45{width:200px;aspect-ratio:4/5;border-radius:6px;padding:0 6px 22px;box-shadow:var(--shadow);}
+.preview45 .hdr{height:20px;font-size:8px;padding-right:9px;}
 .preview45 .bgrad{height:52%;}
 .preview45 .wtext{bottom:9px;padding:0 11px;}
 .preview45 .wtext .big{font-size:14px;font-weight:800;line-height:1.18;}
@@ -166,7 +182,7 @@ textarea.fake{width:100%;background:var(--panel);border:1px solid var(--border);
   <div class="page-head">
     <span class="tag">안 3 · 좌목록 · 우작업</span>
     <h1>원고 파이프라인 작업대</h1>
-    <p>한 페이지에서 그날 하루치 업로드 루틴을 끝내. <b>①</b> B2B에서 오늘 상품을 불러오면 왼쪽 목록이 채워지고, 상품을 고르면 오른쪽에 공식정보 → <b>②</b> 원고(INS·X) → <b>③</b> 캐러셀 이미지가 펼쳐져. ③은 사진을 올려 4:5로 자동 크롭하고 주황 헤더 위 흰 텍스트까지 이 안에서 합성해 완성본을 뽑아.</p>
+    <p>한 페이지에서 그날 하루치 업로드 루틴을 끝내. <b>①</b> B2B에서 오늘 상품을 불러오면 왼쪽 목록이 채워지고, 상품을 고르면 오른쪽에 공식정보 → <b>②</b> 원고(기존 포맷터 이식 — diff·교정·글자수까지, X용 기본) → <b>③</b> 캐러셀 이미지가 펼쳐져. ②는 인스타용을 버튼 한 번으로 링크 문구만 자동 치환. ③은 사진 업로드 → 4:5 자동 크롭 → 검정 그라데이션·흰 텍스트를 이 안에서 합성해 틀 이미지 위에 얹어 완성본을 뽑아.</p>
   </div>
 
   <div class="dayhead">
@@ -201,7 +217,7 @@ textarea.fake{width:100%;background:var(--panel);border:1px solid var(--border);
 
   <div class="harvest">
     <h3><span class="snum">✓</span> 하루 마무리 · 완성본 내려받기</h3>
-    <p>세 상품이 다 되면 여기서 한 번에. 이 도구가 4:5 크롭 + 주황 헤더 텍스트 합성까지 끝낸 완성 이미지와 원고(INS·X)를 그대로 뽑아줘.</p>
+    <p>세 상품이 다 되면 여기서 한 번에. 이 도구가 4:5 크롭 + 텍스트 합성까지 끝낸 완성 이미지와, X용/인스타용 원고를 그대로 뽑아줘.</p>
     <div class="row">
       <button class="b">📦 완성 이미지 ZIP (07-24)</button>
       <button class="b ghost">📋 INS 원고 3건 복사</button>
@@ -217,9 +233,11 @@ const PRODUCTS = [
     title:'고죠 와카나 넨도로이드 (재판)', work:'그 비스크 돌은 사랑을 한다',
     spec:{'발매':'27년 3월','사이즈':'논스케일 · 약 100mm','제조사':'굿스마일컴퍼니','재판':'재판 (Rerelease 3/2027)'},
     dbhits:['『비스크돌』 관계설명 1건','대사 후보 2건','#비스크돌'],
-    ins:'"키...키타가와 양?"\n\n🛒 : 구매는 프로필 링크 참고 해주세요\n▪️ 발매: 27년 3월\n\n📺 애니『그 비스크 돌은 사랑을 한다』\n키타가와 마린의 코스프레를 전적으로 돕고 있는\n같은 반 남고생 고죠 와카나가 넨도로이드로 재등장!\n\n#비스크돌 #넨도로이드 #굿스마일컴퍼니PW',
-    x:'"키...키타가와 양?"\n\n📺 애니『그 비스크 돌은 사랑을 한다』\n키타가와 마린의 코스프레를 돕는\n같은 반 남고생 고죠 와카나 넨도로이드 재등장!\n▪️ 발매: 27년 3월\n\n#비스크돌 #넨도로이드',
-    xlink:'🛒 https://naver.me/2bcqXXXX',
+    /* 기본 원고 = X용(실제 링크 포함). 인스타용은 이 텍스트의 링크 줄만 자동 치환해서 만든다 */
+    draft:'"키...키타가와 양?"\n\n🛒 : https://naver.me/2bcqXXXX\n▪️ 발매: 27년 3월\n\n📺 애니『그 비스크 돌은 사랑을 한다』\n키타가와 마린의 코스프레를 전적으로 돕고 있는\n같은 반 남고생 고죠 와카나가 넨도로이드로 재등장!\n\n#비스크돌 #넨도로이드 #굿스마일컴퍼니PW',
+    corrections:['"돕고있는"을 "돕고 있는"으로 띄어쓰기 교정했습니다.'],
+    diffOldHtml:'"키...키타가와 양?"\n\n🛒 : https://naver.me/2bcqXXXX\n▪️ 발매: 27년 3월\n\n📺 애니『그 비스크 돌은 사랑을 한다』\n키타가와 마린의 코스프레를 전적으로 <del class="diffdel">돕고있는</del>\n같은 반 남고생 고죠 와카나 넨도로이드로 <del class="diffdel">재등장</del>\n\n#비스크돌 #넨도로이드 #굿스마일컴퍼니PW',
+    diffNewHtml:'"키...키타가와 양?"\n\n🛒 : https://naver.me/2bcqXXXX\n▪️ 발매: 27년 3월\n\n📺 애니『그 비스크 돌은 사랑을 한다』\n키타가와 마린의 코스프레를 전적으로 <ins class="diffins">돕고 있는</ins>\n같은 반 남고생 고죠 와카나가 넨도로이드로 <ins class="diffins">재등장!</ins>\n\n#비스크돌 #넨도로이드 #굿스마일컴퍼니PW',
     cardTop:'고죠 와카나', cardBot:'넨도로이드 · 재판'
   },
   {
@@ -227,9 +245,8 @@ const PRODUCTS = [
     title:'하츠네 미쿠 2025 랩소디 삿포로콘서트 Ver. 1/7', work:'하츠네 미쿠',
     spec:{'발매':'27년 9월','사이즈':'높이 278mm','제조사':'굿스마일컴퍼니','재판':'신제품'},
     dbhits:['캐릭터 보컬 시리즈 01 표기','#하츠네미쿠'],
-    ins:'【하츠네 미쿠 2025 랩소디 삿포로콘서트 Ver. 1/7】\n\n🛒 : 구매는 프로필 링크 참고 해주세요\n📏 높이: 278mm  📅 발매: 27년 9월\n\n캐릭터 보컬 시리즈 01『하츠네 미쿠』\n하츠네 미쿠 심포니 삿포로 콘서트 Ver.\nGS 컬렉션 1/7 스케일 피규어가 등장!\n\n#하츠네미쿠 #굿스마일컴퍼니PW',
-    x:'【하츠네 미쿠 2025 랩소디 삿포로콘서트 Ver.】\n\n캐릭터 보컬 시리즈 01『하츠네 미쿠』\nGS 컬렉션 1/7 스케일 피규어 등장!\n📏 278mm  📅 발매: 27년 9월\n\n#하츠네미쿠',
-    xlink:'🛒 https://naver.me/6a4649XX',
+    draft:'【하츠네 미쿠 2025 랩소디 삿포로콘서트 Ver. 1/7】\n\n🛒 : https://naver.me/6a4649XX\n📏 높이: 278mm  📅 발매: 27년 9월\n\n캐릭터 보컬 시리즈 01『하츠네 미쿠』\n하츠네 미쿠 심포니 삿포로 콘서트 Ver.\nGS 컬렉션 1/7 스케일 피규어가 등장!\n\n#하츠네미쿠 #굿스마일컴퍼니PW',
+    corrections:[],
     cardTop:'하츠네 미쿠', cardBot:'GS컬렉션 1/7 · 삿포로 Ver.'
   },
   {
@@ -237,12 +254,25 @@ const PRODUCTS = [
     title:'바쿠고 카츠키 UA 교복 Ver. 넨도로이드', work:'나의 히어로 아카데미아',
     spec:{'발매':'26년 10월','사이즈':'약 100mm','제조사':'굿스마일컴퍼니','재판':'신제품'},
     dbhits:['『히로아카』 관계설명 3건','대사 후보 1건','#히로아카'],
-    ins:'(아직 원고 생성 전 — 공식정보 + 캐릭터 메모 넣고 [원고 생성])',
-    x:'(아직 원고 생성 전)',
-    xlink:'🛒 (네이버 스토어 링크 대기)',
+    draft:'(아직 원고 생성 전 — ①공식정보 + 캐릭터 메모 넣고 [원고 생성])',
+    corrections:null,
     cardTop:'바쿠고 카츠키', cardBot:'넨도로이드 · UA 교복 Ver.'
   }
 ];
+
+/* 인스타용 = X 원고에서 링크 줄만 안내문으로 치환 (그 외 내용은 완전히 동일) */
+function insVersion(text){
+  return text.replace(/🛒\s*:\s*.+/, '🛒 : 구매는 프로필 링크를 참고해 주세요!');
+}
+function copyDraft(id, kind){
+  const p = PRODUCTS.find(x=>x.id===id);
+  const text = kind==='ins' ? insVersion(p.draft) : p.draft;
+  const statusEl = document.getElementById('copystatus-'+id);
+  const say = msg => { if(statusEl){ statusEl.textContent = msg; setTimeout(()=>{ if(statusEl.textContent===msg) statusEl.textContent=''; }, 2500); } };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(()=>say(kind==='ins' ? '✓ 인스타용 복사됨 (링크 문구만 자동 교체)' : '✓ X용 복사됨')).catch(()=>say('복사 실패 (권한)'));
+  } else say('이 환경에서는 복사 미지원 (실제 배포에선 정상 동작)');
+}
 
 const esc = s => (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
@@ -316,27 +346,44 @@ function stagesHtml(p){
     <label class="flabel">캐릭터 메모 (가변 · DB 자동조회, 사람이 손봄)</label>
     <div class="dbchips">${p.dbhits.map(h=>`<span class="dbchip">${esc(h)}</span>`).join('')}</div>
   </div>
-  <div class="stage">
-    <div class="stage-h"><span class="snum">②</span> 원고 (게시물 캡션) ${p.done?'<span class="chip done">완료</span>':'<span class="chip pending">미완</span>'}</div>
-    <div class="two">
-      <div>
-        <div class="col-h"><span class="badge-ins">INS</span> 인스타그램용</div>
-        <div class="draft">${esc(p.ins)}</div>
-      </div>
-      <div>
-        <div class="col-h"><span class="badge-x">X</span> 엑스용 (네이버 스토어 링크 포함)</div>
-        <div class="draft">${esc(p.x)}</div>
-        <div class="linkline">${esc(p.xlink)}</div>
-      </div>
-    </div>
-    <div class="mini-actions">
-      <button class="b sm">${p.done?'↻ 재생성':'✍ 원고 생성'}</button>
-      <button class="b sm ghost">원문/결과 비교</button>
-      <button class="b sm ghost">📋 INS 복사</button>
-      <button class="b sm ghost">📋 X 복사</button>
-    </div>
-  </div>
+  ${draftStage(p)}
   ${imageStage(p)}`;
+}
+
+function draftStage(p){
+  if(!p.done){
+    return `<div class="stage">
+      <div class="stage-h"><span class="snum">②</span> 원고 (게시물 캡션) <span class="chip pending">미완</span></div>
+      <div class="draft">${esc(p.draft)}</div>
+      <div class="mini-actions"><button class="b sm">✍ 원고 생성</button></div>
+    </div>`;
+  }
+  const charLen = p.draft.length;
+  const correctionsHtml = p.corrections.length
+    ? `<div class="correction-box"><div class="c-title">⚠️ 맞춤법/표현 교정 내역</div><ul>${p.corrections.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`
+    : `<div class="ins-note" style="margin-top:8px;">교정 내역 없음</div>`;
+  const diffHtml = p.diffOldHtml ? `
+    <div class="diff-wrap" id="diff-${p.id}">
+      <div class="diff-cols">
+        <div class="diff-col"><div class="diff-col-title">원문</div><div class="diff-content">${p.diffOldHtml}</div></div>
+        <div class="diff-col"><div class="diff-col-title">결과 (X용)</div><div class="diff-content">${p.diffNewHtml}</div></div>
+      </div>
+    </div>` : '';
+  return `<div class="stage">
+    <div class="stage-h"><span class="snum">②</span> 원고 (게시물 캡션) <span class="badge-x">X 기본</span> <span class="chip done">완료</span></div>
+    <p style="font-size:11.5px;color:var(--sub);margin:0 0 9px;">기본은 실제 네이버 스토어 링크가 들어간 <b style="color:var(--text)">X용</b> 원고. 인스타용은 미리보기 없이 버튼 한 번으로 <b style="color:var(--text)">링크 줄만</b> "🛒 : 구매는 프로필 링크를 참고해 주세요!"로 바꿔서 바로 복사돼.</p>
+    <div class="draft">${esc(p.draft)}</div>
+    <div class="charcount">글자수 <b>${charLen}자</b></div>
+    ${correctionsHtml}
+    ${diffHtml}
+    <div class="mini-actions">
+      <button class="b sm">↻ 재생성</button>
+      ${p.diffOldHtml ? `<button class="b sm ghost" onclick="document.getElementById('diff-${p.id}').classList.toggle('open')">원문/결과 비교</button>` : ''}
+      <button class="b sm ghost" onclick="copyDraft('${p.id}','x')">📋 X 복사</button>
+      <button class="b sm ghost" onclick="copyDraft('${p.id}','ins')">📋 인스타용 복사 (링크만 자동 교체)</button>
+      <span class="ins-note" id="copystatus-${p.id}"></span>
+    </div>
+  </div>`;
 }
 
 function renderList(){
