@@ -203,6 +203,8 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
   <div class="md-wrap">
     <div class="leftcol">
       <button id="btnB2BImport" class="secondary" style="width:100%;">🔄 B2B에서 오늘 상품 가져오기</button>
+      <input type="file" id="b2bImportInput" multiple accept=".json,image/*" style="display:none;"/>
+      <div class="status" id="b2bImportStatus"></div>
       <button id="btnAddProduct" style="width:100%;">＋ 상품 추가</button>
       <div class="md-list" id="mdList"></div>
     </div>
@@ -630,14 +632,17 @@ function startThumbDrag(p, key) {
   window.addEventListener('mouseup', onMouseUp);
   thumbDragCleanup = cleanup;
 }
+// 상품 하나에 사진 파일 하나를 추가(IndexedDB 저장 + 메모리 캐시 + images 배열에 등록).
+// 수동 업로드(handleFiles)와 B2B 가져오기(importB2BFiles) 둘 다 이 함수를 통해서만 사진을 추가한다.
+async function addPhotoFileToProduct(p, file) {
+  const key = newImageKey(p.id);
+  await idbSet(key, file);
+  const img = await loadImageFromBlob(file);
+  imgCache.set(key, img);
+  p.images.push({ key, scale: 1, ox: 0, oy: 0 });
+}
 async function handleFiles(p, files) {
-  for (const f of files) {
-    const key = newImageKey(p.id);
-    await idbSet(key, f);
-    const img = await loadImageFromBlob(f);
-    imgCache.set(key, img);
-    p.images.push({ key, scale: 1, ox: 0, oy: 0 });
-  }
+  for (const f of files) await addPhotoFileToProduct(p, f);
   if (p.images.length && (p.mainIndex == null || p.mainIndex >= p.images.length)) p.mainIndex = 0;
   saveProducts();
   renderImageStage(p);
@@ -1187,9 +1192,54 @@ document.querySelectorAll('#dayBrandRadios input[name="dayBrand"]').forEach(el =
 document.querySelectorAll('#dayBrandRadios .brand-opt').forEach(o => o.classList.toggle('selected', o.querySelector('input').checked));
 
 $('#btnAddProduct').addEventListener('click', addProduct);
-$('#btnB2BImport').addEventListener('click', () => {
-  alert('아직 B2B 자동 연동 전이에요.\n\n지금은 "+ 상품 추가"로 상품을 만들고, ①상품정보 칸에 B2B 페이지 내용을 직접 복사해서 붙여넣어 주세요.\n(다음 단계로 B2B 사이트 자동 스크래핑 연결을 논의 후 진행할 예정입니다.)');
-});
+$('#btnB2BImport').addEventListener('click', () => $('#b2bImportInput').click());
+$('#b2bImportInput').addEventListener('change', () => importB2BFiles(Array.from($('#b2bImportInput').files)));
+
+// b2b-scraper(별도 프로젝트)가 만든 output.json + photos/*.jpg를 함께 선택하면 그대로 상품
+// 목록에 채워 넣는다. output.json의 photos 배열은 파일명만 담고 있어서, 같이 선택한 파일들
+// 중 이름이 같은 걸 찾아 매칭한다.
+async function importB2BFiles(files) {
+  const statusEl = $('#b2bImportStatus');
+  const jsonFile = files.find(f => /\.json$/i.test(f.name));
+  if (!jsonFile) { statusEl.textContent = 'output.json 파일이 선택 항목에 없어요.'; return; }
+
+  let data;
+  try {
+    data = JSON.parse(await jsonFile.text());
+  } catch (err) {
+    statusEl.textContent = `output.json 파싱 실패: ${err.message}`;
+    return;
+  }
+  const entries = data.products || [];
+  if (!entries.length) { statusEl.textContent = 'output.json에 상품이 없어요.'; return; }
+
+  const photoFilesByName = new Map(files.filter(f => f !== jsonFile).map(f => [f.name, f]));
+  const dayBrand = getSelectedDayBrand();
+  let imported = 0, missingPhotos = 0;
+  let firstNewId = null;
+
+  for (const entry of entries) {
+    const p = makeBlankProduct();
+    p.brand = dayBrand;
+    p.title = entry.title || '';
+    p.officialText = entry.officialText || '';
+    for (const filename of entry.photos || []) {
+      const file = photoFilesByName.get(filename);
+      if (!file) { missingPhotos++; continue; }
+      await addPhotoFileToProduct(p, file);
+    }
+    if (p.images.length) p.mainIndex = 0;
+    PRODUCTS.push(p);
+    if (!firstNewId) firstNewId = p.id;
+    imported++;
+  }
+
+  saveProducts();
+  renderList();
+  if (firstNewId) selectProduct(firstNewId);
+  statusEl.textContent = `✓ ${imported}건 가져옴` + (missingPhotos ? ` (사진 ${missingPhotos}장은 같이 선택 안 돼서 못 채움)` : '');
+  $('#b2bImportInput').value = ''; // 같은 파일을 다시 선택해도 change가 뜨도록 초기화
+}
 
 (function init() {
   PRODUCTS = loadProductsFromStorage().map(p => ({ ...makeBlankProduct(), ...p }));

@@ -1,0 +1,15 @@
+{
+  "name": "b2b-scraper",
+  "private": true,
+  "version": "0.1.0",
+  "description": "GoodSmile B2B 사이트에서 오늘 상품 공식정보+사진을 긁어와 product-sns-formatter가 가져올 수 있는 형태로 만드는 도구",
+  "main": "scrape.js",
+  "scripts": {
+    "login": "node login-session.js",
+    "recon": "node recon.js",
+    "scrape": "node scrape.js"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0"
+  }
+}
