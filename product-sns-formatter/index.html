@@ -284,61 +284,116 @@ function escapeHtml(s) {
    그게 없을 때만 쓰는 대략적인 발음 힌트일 뿐이다(토큰 사용 없음, 완벽한 정확도 보장 안 됨). */
 const HANGUL_CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
 const HANGUL_JUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
-function hangulSyllable(choJamo, jungJamo) {
-  const ci = HANGUL_CHO.indexOf(choJamo), ji = HANGUL_JUNG.indexOf(jungJamo);
+const HANGUL_JONG = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+function hangulSyllable(choJamo, jungJamo, jongJamo) {
+  const ci = HANGUL_CHO.indexOf(choJamo), ji = HANGUL_JUNG.indexOf(jungJamo), ki = HANGUL_JONG.indexOf(jongJamo || '');
   if (ci < 0 || ji < 0) return '';
-  return String.fromCharCode(0xAC00 + (ci * 21 + ji) * 28);
+  return String.fromCharCode(0xAC00 + (ci * 21 + ji) * 28 + (ki < 0 ? 0 : ki));
 }
+const isTranslitVowel = c => 'aeiou'.includes(c);
 const TRANSLIT_CONSONANTS = [
   ['tion', 'syeon'], ['sion', 'syeon'],
-  ['ck', 'k'], ['ph', 'f'], ['th', 's'], ['sh', 'sy'], ['ch', 'c'], ['wh', 'w'], ['qu', 'kw'],
+  ['ck', 'k'], ['ph', 'f'], ['th', 's'], ['sh', 'sy'], ['ch', 'c'], ['wh', 'w'], ['qu', 'kw'], ['ng', 'ng'],
   ['b','b'],['c','k'],['d','d'],['f','f'],['g','g'],['h','h'],['j','j'],['k','k'],
   ['l','l'],['m','m'],['n','n'],['p','p'],['q','k'],['r','r'],['s','s'],['t','t'],
   ['v','b'],['w','w'],['x','ks'],['y','y'],['z','j'],
 ];
+// r-계열 이중모음(er/ir/ur/or/ar)은 "다음이 자음이거나 단어 끝일 때"만 적용(bird, girl,
+// for처럼) — 뒤에 모음이 오면(Mejiro의 "ro", Saori의 "ori"처럼) r은 다음 음절의 자음일
+// 뿐이라 이 규칙에서 빼야 함. 예전엔 이걸 구분 안 해서 Mejiro가 "메저오"로 깨졌었음.
+const TRANSLIT_R_COLORED = { ur:'eo', er:'eo', ir:'eo', or:'o', ar:'a' };
 const TRANSLIT_VOWELS = [
   ['igh', 'ai'],
   ['ee','i'],['ea','i'],['oo','u'],['ou','au'],['ow','au'],['oy','oi'],['oi','oi'],
-  ['ai','ei'],['ay','ei'],['ie','ai'],['ue','u'],['ur','eo'],['er','eo'],['ir','eo'],['or','o'],['ar','a'],
-  ['a','a'],['e','e'],['i','i'],['o','o'],['u','eo'],
+  ['ai','ai'],['ay','ei'],['ie','ai'],['ue','u'],
+  ['a','a'],['e','e'],['i','i'],['o','o'],['u','u'], // 로마자 그대로 읽는 기본값 (영어식 슈와로 안 바꿈)
 ];
-const TRANSLIT_CHO_MAP = { b:'ㅂ',c:'ㅋ',k:'ㅋ',d:'ㄷ',f:'ㅍ',g:'ㄱ',h:'ㅎ',j:'ㅈ',l:'ㄹ',m:'ㅁ',n:'ㄴ',p:'ㅍ',r:'ㄹ',s:'ㅅ',t:'ㅌ',v:'ㅂ',w:'ㅇ',y:'ㅇ',z:'ㅈ',sy:'ㅅ' };
+const TRANSLIT_CHO_MAP = { b:'ㅂ',c:'ㅋ',k:'ㅋ',d:'ㄷ',f:'ㅍ',g:'ㄱ',h:'ㅎ',j:'ㅈ',l:'ㄹ',m:'ㅁ',n:'ㄴ',p:'ㅍ',r:'ㄹ',s:'ㅅ',t:'ㅌ',v:'ㅂ',w:'ㅇ',y:'ㅇ',z:'ㅈ',sy:'ㅅ',kw:'ㅋ' };
 const TRANSLIT_VOWEL_MAP = { a:'ㅏ',e:'ㅔ',i:'ㅣ',o:'ㅗ',u:'ㅜ',eo:'ㅓ',ei:'ㅔ',ai:'ㅏㅣ',au:'ㅏㅜ',oi:'ㅗㅣ' };
+// y + 모음은 ㅇ+모음이 아니라 야/여/요/유처럼 이중모음 잡음으로 합쳐야 자연스러움
+// (kaguya -> 카구야, ㅇ+아로 따로 쓰면 카구아가 됨).
+const TRANSLIT_Y_GLIDE = { a:'ㅑ', e:'ㅖ', o:'ㅛ', u:'ㅠ', eo:'ㅕ' };
+// 단어 끝(또는 다음이 자음)에서 받침으로 바로 붙일 수 있는 자음 (외래어 표기 관용에 가깝게).
+const TRANSLIT_BATCHIM = { n:'ㄴ', m:'ㅁ', ng:'ㅇ', l:'ㄹ', k:'ㄱ', p:'ㅂ', t:'ㅅ' };
 function transliterateMatchLongest(str, i, table) {
   for (const [pat, val] of table) { if (str.startsWith(pat, i)) return { len: pat.length, val }; }
   return null;
 }
+// 모음 없이 연달아 나오는 자음 뭉치(예: purple의 "pl", girl의 "l")를 한 번에 처리한다.
+// 자음이 1개면 앞 음절 받침으로 붙일 수 있으면 붙이고(girl -> 거+ㄹ = 걸) 아니면 새 음절.
+// 2개 이상이면 마지막 자음만 받침 후보, 그 앞은 각각 "자음+으" 음절로 처리한다
+// (purple -> 퍼 + 플[ㅍ+ㅡ+ㄹ]) — 첫 자음을 무작정 앞 음절 받침으로 붙이면 "펍르"처럼 깨짐.
+function transliterateFlushCluster(cluster, blocks) {
+  if (!cluster.length) return;
+  if (cluster.length === 1) {
+    const batchim = TRANSLIT_BATCHIM[cluster[0]];
+    if (batchim && blocks.length && !blocks[blocks.length - 1].jong) blocks[blocks.length - 1].jong = batchim;
+    else blocks.push({ cho: cluster[0], vowel: 'eu' });
+    return;
+  }
+  for (let idx = 0; idx < cluster.length - 1; idx++) blocks.push({ cho: cluster[idx], vowel: 'eu' });
+  const last = cluster[cluster.length - 1];
+  const batchim = TRANSLIT_BATCHIM[last];
+  if (batchim) blocks[blocks.length - 1].jong = batchim;
+  else blocks.push({ cho: last, vowel: 'eu' });
+}
 function transliterateWord(word) {
-  let w = word.toLowerCase();
+  const w0 = word.toLowerCase();
+  if (w0.length > 3 && w0.startsWith('mc')) return '맥' + transliterateWord(w0.slice(2)); // McQueen -> 맥+Queen
+  let w = w0;
   if (w.length > 3 && /[bcdfghjklmnpqrstvxz]e$/.test(w)) w = w.slice(0, -1); // 끝 묵음 e (purple, please 등)
-  const isVowel = c => 'aeiou'.includes(c);
+
   let i = 0; const blocks = []; let pendingCho = null;
   while (i < w.length) {
     const c = w[i];
     if (!/[a-z]/.test(c)) { i++; continue; }
-    if (isVowel(c)) {
+
+    // 단어 끝(뒤에 진짜 모음이 안 오는) 위치의 y는 자음이 아니라 모음 "이"로 읽는 경우가
+    // 많음 (needy -> 니디, happy -> 해피). 뒤에 진짜 모음이 오면 그대로 자음(글라이드)으로.
+    if (isTranslitVowel(c) || (c === 'y' && !isTranslitVowel(w[i + 1]))) {
+      const rc = w.substr(i, 2);
+      if (TRANSLIT_R_COLORED[rc] && !isTranslitVowel(w[i + 2])) {
+        blocks.push({ cho: pendingCho, vowel: TRANSLIT_R_COLORED[rc] });
+        pendingCho = null; i += 2; continue;
+      }
+      if (c === 'y') { blocks.push({ cho: pendingCho, vowel: 'i' }); pendingCho = null; i += 1; continue; }
       const vm = transliterateMatchLongest(w, i, TRANSLIT_VOWELS);
       if (vm) { blocks.push({ cho: pendingCho, vowel: vm.val }); pendingCho = null; i += vm.len; continue; }
     }
+
     const cm = transliterateMatchLongest(w, i, TRANSLIT_CONSONANTS);
     if (cm) {
-      const nextIsVowel = isVowel(w[i + cm.len]) || w[i + cm.len] === 'y';
+      const nextChar = w[i + cm.len];
+      const nextIsVowel = isTranslitVowel(nextChar) || (nextChar === 'y' && !isTranslitVowel(w[i + cm.len + 1]));
       if (nextIsVowel) {
         if (pendingCho) blocks.push({ cho: pendingCho, vowel: 'eu' });
         pendingCho = cm.val;
-      } else {
-        blocks.push({ cho: (pendingCho || cm.val), vowel: 'eu' });
-        pendingCho = null;
+        i += cm.len; continue;
       }
-      i += cm.len; continue;
+      // 모음이 안 이어짐 -> 뒤에 계속되는 자음까지 한 뭉치로 모아서 한꺼번에 처리
+      const cluster = [cm.val];
+      let j = i + cm.len;
+      for (;;) {
+        const nm = transliterateMatchLongest(w, j, TRANSLIT_CONSONANTS);
+        if (!nm) break;
+        const afterNext = w[j + nm.len];
+        if (isTranslitVowel(afterNext) || afterNext === 'y') break; // 다음이 모음이면 새 음절 시작
+        if (nm.val === 'y') break; // 자음 없이 끝나는 y는 모음 "이"로 따로 처리
+        cluster.push(nm.val); j += nm.len;
+      }
+      transliterateFlushCluster(cluster, blocks);
+      pendingCho = null; i = j; continue;
     }
     i++;
   }
   if (pendingCho) blocks.push({ cho: pendingCho, vowel: 'eu' });
+
   return blocks.map(b => {
+    if (b.cho === 'y' && TRANSLIT_Y_GLIDE[b.vowel]) return hangulSyllable('ㅇ', TRANSLIT_Y_GLIDE[b.vowel], b.jong);
     const choJamo = b.cho ? (TRANSLIT_CHO_MAP[b.cho] || 'ㅇ') : 'ㅇ';
     const vowelStr = b.vowel === 'eu' ? 'ㅡ' : (TRANSLIT_VOWEL_MAP[b.vowel] || 'ㅡ');
-    return [...vowelStr].map((v, idx) => hangulSyllable(idx === 0 ? choJamo : 'ㅇ', v)).join('');
+    const jamoChars = [...vowelStr];
+    return jamoChars.map((v, idx) => hangulSyllable(idx === 0 ? choJamo : 'ㅇ', v, idx === jamoChars.length - 1 ? b.jong : null)).join('');
   }).join('');
 }
 // 피규어 업계에서 매번 반복되는 고정 용어는 발음 추측이 아니라 이미 정해진 한글 표기가
@@ -390,7 +445,8 @@ function transliterateEnToKo(text) {
       let j = i;
       while (j < lower.length && !/\s/.test(lower[j])) j++;
       const word = run.slice(i, j);
-      out.push(word.length >= 2 ? transliterateWord(word) : word);
+      const isShortAcronym = word.length === 2 && word === word.toUpperCase(); // VR, PW 같은 약어는 음역하지 않고 그대로
+      out.push(word.length >= 2 && !isShortAcronym ? transliterateWord(word) : word);
       i = j;
     }
     return out.join('').replace(/ +/g, ' ').trim();
