@@ -29,17 +29,28 @@ const TODAY_LIST_URL = 'https://www.goodsmile.com/b2b/en';
 // 로그인 필요 시 이 사이트가 실제로 튕기는 경로 (recon.js로 확인: response.redirected → /login).
 const LOGIN_URL_PATTERN = /\/login/i;
 
+function todayYYYYMMDD() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
+
 async function getTodayDetailUrls(page) {
   await page.goto(TODAY_LIST_URL, { waitUntil: 'networkidle' });
-  // 상품 상세 링크만 정확히 골라냄 (예: /b2b/en/product/1142373) — "List of Products" 메뉴
-  // 링크(/b2b/en/product, ID 없음)나 다른 하위 경로는 제외.
-  const urls = await page.$$eval('a[href]', as =>
-    as
-      .map(a => a.href)
-      .filter(href => {
-        try { return /\/b2b\/en\/product\/\d+$/.test(new URL(href).pathname); }
-        catch { return false; }
-      })
+  // 상품 카드(<li class="p-top__products__item" data-guidance_date="20260728">)에 발표일이
+  // 이미 데이터로 박혀있어서, 오늘 날짜와 일치하는 것만 골라냄 — 홈 화면엔 최근 며칠~몇 주치가
+  // 섞여 있으므로 이 필터가 없으면 오늘 것 아닌 상품까지 다 긁힘.
+  const today = todayYYYYMMDD();
+  const urls = await page.$$eval(
+    'li.p-top__products__item',
+    (items, today) =>
+      items
+        .filter(li => li.getAttribute('data-guidance_date') === today)
+        .map(li => li.querySelector('a[href*="/product/"]')?.href)
+        .filter(Boolean),
+    today
   );
   return [...new Set(urls)];
 }
