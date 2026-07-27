@@ -56,6 +56,9 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 .diff-col{flex:1;min-width:0;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:10px 12px;}
 .diff-col-title{font-size:11.5px;font-weight:700;color:var(--ui-sub);margin-bottom:6px;}
 .diff-content{font-size:13px;white-space:pre-wrap;word-break:break-word;min-height:40px;font-family:var(--ui-mono);line-height:1.55;}
+.diff-content.readonly{color:var(--ui-sub);}
+.final-edit{width:100%;min-height:150px;border:none;background:transparent;padding:0;font-size:13px;font-family:var(--ui-mono);line-height:1.55;color:var(--ui-text);resize:vertical;}
+.final-edit:focus{outline:none;}
 .diff-empty{color:var(--ui-sub);}
 del.diffdel{background:#fdecea;color:#c0392b;text-decoration:line-through;text-decoration-color:#c0392b;}
 ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
@@ -332,9 +335,9 @@ function makeBlankProduct() {
     officialText: '',
     memoText: '',
     extraInstruction: '',
-    result: '',
-    corrections: [],
-    resultSourceText: '', // diff의 "원문" 쪽 = 원고 생성 당시 상품정보(공식+메모)
+    result: '', // 1차 텍스트 (AI가 재료로 바로 만든 결과, 읽기전용)
+    finalText: '', // 2차 입력 (팀원이 1차 텍스트 위에 직접 고친 버전 — 실제 게시에 쓰는 최종본)
+    reviewIssues: [], // "검수하기" 결과 — 2차 입력에 남아있는 실제 맞춤법/표현 오류 목록
     images: [], // [{key, scale, ox, oy}]
     mainIndex: 0,
     textTitle: '',
@@ -879,18 +882,34 @@ function renderDetail() {
 }
 function draftResultHtml(p) {
   return `
-    <div class="correction-box" id="correctionBox" style="display:${p.corrections.length ? 'block' : 'none'};">
-      ${p.corrections.length ? '<div class="c-title">⚠️ 맞춤법/표현 교정 내역</div><ul>' + p.corrections.map(c => `<li>${boldKeyParts(c)}</li>`).join('') + '</ul>' : ''}
+    <div class="diff-cols">
+      <div class="diff-col">
+        <div class="diff-col-title">1차 텍스트 (AI 결과, 읽기전용)</div>
+        <div class="diff-content readonly">${escapeHtml(p.result).replace(/\n/g, '<br>')}</div>
+      </div>
+      <div class="diff-col">
+        <div class="diff-col-title">2차 입력 (직접 수정 — 게시용 최종본)</div>
+        <textarea id="finalTextInput" rows="8" class="final-edit">${escapeHtml(p.finalText)}</textarea>
+      </div>
     </div>
-    <div class="charcount">글자수 <b>${p.result.length}자</b></div>
+
+    <div class="mini-actions">
+      <button class="secondary" id="btnReview">🔍 검수하기</button>
+      <span class="status" id="reviewStatus"></span>
+      <div class="charcount">글자수 <b id="finalCharCount">${p.finalText.length}</b>자</div>
+    </div>
+    <div class="correction-box" id="correctionBox" style="display:${p.reviewIssues.length ? 'block' : 'none'};">
+      ${p.reviewIssues.length ? '<div class="c-title">⚠️ 검수 결과 — 확인해볼 점</div><ul>' + p.reviewIssues.map(c => `<li>${boldKeyParts(c)}</li>`).join('') + '</ul>' : ''}
+    </div>
+
     <div class="diff-wrap${diffPlain ? ' plain' : ''}" id="diffWrap">
       <div class="diff-head">
-        <span class="diff-label">원문 vs 변환 결과 비교</span>
+        <span class="diff-label">1차 텍스트 vs 2차 입력 비교</span>
         <button type="button" class="secondary diff-toggle-btn" id="btnDiffToggle">${diffPlain ? '색깔 보기' : '색깔 없이 보기'}</button>
       </div>
       <div class="diff-cols">
-        <div class="diff-col"><div class="diff-col-title">원문</div><div class="diff-content" id="diffOld"></div></div>
-        <div class="diff-col"><div class="diff-col-title">결과 (X용)</div><div class="diff-content" id="diffNew"></div></div>
+        <div class="diff-col"><div class="diff-col-title">1차 텍스트</div><div class="diff-content" id="diffOld"></div></div>
+        <div class="diff-col"><div class="diff-col-title">2차 입력 (수정본)</div><div class="diff-content" id="diffNew"></div></div>
       </div>
     </div>
     <div class="mini-actions">
@@ -901,9 +920,15 @@ function draftResultHtml(p) {
   `;
 }
 function renderDiffInto(p) {
-  const { oldHtml, newHtml } = diffHtmlPair(p.resultSourceText, p.result);
+  const { oldHtml, newHtml } = diffHtmlPair(p.result, p.finalText);
   if ($('#diffOld')) $('#diffOld').innerHTML = oldHtml;
   if ($('#diffNew')) $('#diffNew').innerHTML = newHtml;
+}
+function renderCorrectionBox(p) {
+  const box = $('#correctionBox');
+  if (!box) return;
+  box.style.display = p.reviewIssues.length ? 'block' : 'none';
+  box.innerHTML = p.reviewIssues.length ? '<div class="c-title">⚠️ 검수 결과 — 확인해볼 점</div><ul>' + p.reviewIssues.map(c => `<li>${boldKeyParts(c)}</li>`).join('') + '</ul>' : '';
 }
 function wireDetail(p) {
   const titleInput = $('#titleInput');
@@ -927,6 +952,21 @@ function wireDetail(p) {
 
   $('#btnGenerate').addEventListener('click', () => runFormat(p));
 
+  const finalTextInput = $('#finalTextInput');
+  if (finalTextInput) {
+    finalTextInput.addEventListener('input', () => {
+      p.finalText = finalTextInput.value;
+      p.reviewIssues = []; // 내용이 또 바뀌었으니 이전 검수 결과는 더 이상 유효하지 않음
+      $('#finalCharCount').textContent = p.finalText.length;
+      renderCorrectionBox(p);
+      renderDiffInto(p);
+      saveProductsSoon();
+    });
+  }
+
+  const btnReview = $('#btnReview');
+  if (btnReview) btnReview.addEventListener('click', () => runReview(p));
+
   const btnCopyX = $('#btnCopyX'), btnCopyIns = $('#btnCopyIns'), btnDiffToggle = $('#btnDiffToggle');
   if (btnCopyX) btnCopyX.addEventListener('click', () => copyDraft(p, 'x'));
   if (btnCopyIns) btnCopyIns.addEventListener('click', () => copyDraft(p, 'ins'));
@@ -936,8 +976,27 @@ function wireDetail(p) {
     btnDiffToggle.textContent = diffPlain ? '색깔 보기' : '색깔 없이 보기';
   });
 }
+async function runReview(p) {
+  const statusEl = $('#reviewStatus');
+  if (statusEl) statusEl.textContent = '검수 중...';
+  try {
+    const res = await fetch('/api/review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ original: p.result, edited: p.finalText }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
+    p.reviewIssues = data.issues || [];
+    saveProducts();
+    renderCorrectionBox(p);
+    if (statusEl) statusEl.textContent = p.reviewIssues.length ? `검수 완료 — 확인할 점 ${p.reviewIssues.length}건` : '검수 완료 — 문제 없음';
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `검수 실패: ${err.message}`;
+  }
+}
 function copyDraft(p, kind) {
-  const text = kind === 'ins' ? insVersion(p.result) : p.result;
+  const text = kind === 'ins' ? insVersion(p.finalText) : p.finalText;
   const statusEl = $('#copyStatus');
   const say = msg => { if (statusEl) { statusEl.textContent = msg; setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ''; }, 2500); } };
   navigator.clipboard.writeText(text)
@@ -945,36 +1004,29 @@ function copyDraft(p, kind) {
     .catch(() => say('복사 실패 — 직접 선택해서 복사해주세요.'));
 }
 
-/* ── ② 원고 생성 (2단계: ①스펙→초안 가공 /api/draft → ②브랜드 규칙 적용 /api/format) ──
-   스펙 나열(officialText+memoText)을 곧바로 diff 원문으로 쓰면 결과와 거의 전부 달라져서
-   "교정"이라는 표현이 안 맞았음 — 그래서 먼저 자연스러운 한국어 초안으로 가공(시리즈/캐릭터명
-   한국어 표기 변환 포함)한 뒤, 그 초안을 진짜 diff 원문으로 삼아 기존 교정 단계를 그대로 돌린다. */
+/* ── ② 원고 생성 (재료 → 1차 텍스트, 1번의 /api/format 호출) ──
+   1차 텍스트는 AI 결과 그대로(읽기전용), 팀원이 그 위에 2차 입력(직접 수정)을 해서 실제
+   게시본을 만든다. diff/검수는 "1차 텍스트 vs 2차 입력"을 비교 — 팀원이 손으로 고치면서
+   생긴 맞춤법 실수를 잡아내는 게 목적이라, runReview()에서 별도로 처리한다. */
 async function runFormat(p) {
   const productText = [p.officialText, p.memoText].map(s => s.trim()).filter(Boolean).join('\n\n');
   if (!productText) { alert('상품정보나 캐릭터 메모를 입력해주세요.'); return; }
+  if (p.finalText && p.finalText !== p.result) {
+    if (!confirm('2차 입력(직접 수정한 내용)이 있어요. 다시 생성하면 그 수정 내용이 사라져요. 계속할까요?')) return;
+  }
   $('#genWarn').style.display = 'none';
-  $('#genStatus').textContent = '초안 작성 중...';
+  $('#genStatus').textContent = '변환 중...';
   try {
-    const draftRes = await fetch('/api/draft', {
+    const res = await fetch('/api/format', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ productText, extraInstruction: p.extraInstruction, brand: p.brand }),
     });
-    const draftData = await draftRes.json().catch(() => ({}));
-    if (!draftRes.ok) throw new Error(draftData.error || `서버 오류 (${draftRes.status})`);
-    const draftText = draftData.draft || productText;
-
-    $('#genStatus').textContent = '다듬는 중...';
-    const res = await fetch('/api/format', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productText: draftText, extraInstruction: p.extraInstruction, brand: p.brand }),
-    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
     p.result = data.result || '';
-    p.corrections = data.corrections || [];
-    p.resultSourceText = draftText;
+    p.finalText = p.result; // 2차 입력의 시작값 = 1차 텍스트 (여기서부터 사람이 고침)
+    p.reviewIssues = [];
     saveProducts();
     renderDetail();
     $('#genStatus').textContent = '변환 완료';
@@ -983,7 +1035,7 @@ async function runFormat(p) {
     fetch('/api/save-log', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productText: draftText, extraInstruction: p.extraInstruction, brand: p.brand, result: p.result }),
+      body: JSON.stringify({ productText, extraInstruction: p.extraInstruction, brand: p.brand, result: p.result }),
     }).catch(() => {});
   } catch (err) {
     $('#genStatus').textContent = '';
@@ -1180,11 +1232,11 @@ async function harvestZip() {
   statusEl.textContent = '완료';
 }
 function harvestCopy(kind) {
-  const withDraft = PRODUCTS.filter(p => p.result);
+  const withDraft = PRODUCTS.filter(p => p.finalText);
   const statusEl = $('#harvestStatus');
   if (!withDraft.length) { statusEl.textContent = '아직 완료된 원고가 없어요.'; return; }
   const text = withDraft.map(p => {
-    const t = kind === 'ins' ? insVersion(p.result) : p.result;
+    const t = kind === 'ins' ? insVersion(p.finalText) : p.finalText;
     return `[${p.title || '(제목 없음)'}]\n${t}`;
   }).join('\n\n---\n\n');
   navigator.clipboard.writeText(text)
