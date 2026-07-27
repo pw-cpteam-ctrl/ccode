@@ -24,6 +24,7 @@ h1{font-size:22px;font-weight:800;margin:0 0 6px;}
 .field{margin-bottom:10px;}
 .field label{display:block;font-size:13px;color:var(--ui-sub);margin-bottom:4px;font-weight:600;}
 .field textarea,.field input[type=text]{width:100%;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit;color:var(--ui-text);resize:vertical;}
+.ctl-block select{width:100%;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;font-size:13px;font-family:inherit;color:var(--ui-text);margin-top:2px;}
 button{padding:9px 15px;border-radius:7px;font-size:13.5px;font-weight:700;cursor:pointer;border:1px solid var(--ui-border);font-family:inherit;background:var(--ui-accent);color:#fff;}
 button.secondary{background:var(--ui-card);color:var(--ui-text);}
 button.sm{padding:6px 11px;font-size:12.5px;}
@@ -60,6 +61,11 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 .final-edit{width:100%;min-height:150px;border:none;background:transparent;padding:0;font-size:13px;font-family:var(--ui-mono);line-height:1.55;color:var(--ui-text);resize:vertical;}
 .final-edit:focus{outline:none;}
 .diff-empty{color:var(--ui-sub);}
+.review-row{display:flex;gap:10px;margin-top:10px;align-items:stretch;}
+.review-row .rv-col{flex:1;min-width:0;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:10px 12px;}
+.review-row .rv-btn-col{flex:0 0 auto;display:flex;align-items:center;justify-content:center;}
+.review-row .rv-btn-col button{white-space:nowrap;text-align:center;line-height:1.4;}
+@media (max-width:700px){.review-row{flex-direction:column;}}
 del.diffdel{background:#fdecea;color:#c0392b;text-decoration:line-through;text-decoration-color:#c0392b;}
 ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .diff-wrap.plain del.diffdel,.diff-wrap.plain ins.diffins{background:none;color:inherit;text-decoration:none;}
@@ -336,14 +342,17 @@ function makeBlankProduct() {
     memoText: '',
     extraInstruction: '',
     result: '', // 1차 텍스트 (AI가 재료로 바로 만든 결과, 읽기전용)
-    finalText: '', // 2차 입력 (팀원이 1차 텍스트 위에 직접 고친 버전 — 실제 게시에 쓰는 최종본)
-    reviewIssues: [], // "검수하기" 결과 — 2차 입력에 남아있는 실제 맞춤법/표현 오류 목록
+    finalText: '', // 2차 입력 (팀원이 1차 텍스트 위에 직접 고친 버전)
+    reviewedText: '', // 수정본 — "검수하기" 누르면 AI가 2차 입력의 오탈자만 고친 버전 (실제 게시용 최종본)
+    reviewIssues: [], // 검수 결과 — 2차 입력에 있던 실제 맞춤법/표현 오류 설명 목록
     images: [], // [{key, scale, ox, oy}]
     mainIndex: 0,
     textTitle: '',
     textSub: '',
     gradStart: 0.55,
     gradIntensity: 0.75,
+    badgeKind: 'new', // 'new' | 'decided' | 'prototype' | 'custom' — 주황틀 좌상단 표시
+    badgeCustomText: '',
   };
 }
 function getActiveProduct() {
@@ -427,7 +436,16 @@ function loadFrameImage() {
 const FRAME_INNER = { x0: 32, y0: 117, x1: 1049, y1: 1321 };
 const FIW = FRAME_INNER.x1 - FRAME_INNER.x0;
 const FIH = FRAME_INNER.y1 - FRAME_INNER.y0;
-function drawSlide(ctx, slide, withText, textTitle, textSub, gradStart, gradIntensity) {
+function getBadgeText(p) {
+  if (p.badgeKind === 'decided') return '상품화 결정';
+  if (p.badgeKind === 'prototype') return '원형 공개';
+  if (p.badgeKind === 'custom') return (p.badgeCustomText || '').trim();
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${mm}.${dd} 신제품`;
+}
+function drawSlide(ctx, slide, withText, textTitle, textSub, gradStart, gradIntensity, badgeText) {
   ctx.clearRect(0, 0, CW, CH);
   const img = slide && imgCache.get(slide.key);
   if (img) {
@@ -466,13 +484,23 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradStart, gradInte
     ctx.fillText(textTitle || '', cx, ty);
     ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
   }
-  if (frameImgEl && !(slide && slide.noFrame)) ctx.drawImage(frameImgEl, 0, 0, CW, CH);
+  if (frameImgEl && !(slide && slide.noFrame)) {
+    ctx.drawImage(frameImgEl, 0, 0, CW, CH);
+    if (badgeText) {
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#fff';
+      ctx.font = '700 30px -apple-system,"Malgun Gothic",sans-serif';
+      ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 4;
+      ctx.fillText(badgeText, 45, 72);
+      ctx.shadowBlur = 0;
+    }
+  }
 }
 function exportSlidePng(p, idx) {
   const slide = p.images[idx];
   const c = document.createElement('canvas');
   c.width = CW; c.height = CH;
-  drawSlide(c.getContext('2d'), slide, idx === p.mainIndex, p.textTitle, p.textSub, p.gradStart, p.gradIntensity);
+  drawSlide(c.getContext('2d'), slide, idx === p.mainIndex, p.textTitle, p.textSub, p.gradStart, p.gradIntensity, getBadgeText(p));
   return new Promise(res => c.toBlob(res, 'image/png'));
 }
 
@@ -498,14 +526,24 @@ function imageStageHtml(p) {
     </div>
     <div class="thumbrow" id="thumbRow"></div>
     ${p.images.length > 1 ? `<div class="mini-actions"><button class="sm secondary" id="btnRemoveFrameNonMain">★ 대표만 남기고 나머지 사진 틀 제거</button></div>` : ''}
-    <div class="composer" id="composerWrap" style="${p.images.length ? '' : 'display:none;'}">
+    <div class="composer" id="composerWrap">
       <div>
         <canvas id="composerCanvas" width="${CW}" height="${CH}"></canvas>
-        <div class="status" id="composerHint" style="margin-top:6px;">휠: 확대/축소 · 드래그: 사진 위치 이동</div>
+        <div class="status" id="composerHint" style="margin-top:6px;">${p.images.length ? '휠: 확대/축소 · 드래그: 사진 위치 이동' : '아직 사진 없음 — 틀·문구 먼저 미리보기 중. 사진 올리면 자동으로 채워져요.'}</div>
       </div>
       <div class="composer-ctl">
         <div class="ctl-block" id="mainOnlyBlock">
           <div class="cl">★ 표시된 대표 슬라이드에만 그라데이션·텍스트가 들어가요 (나머지는 틀+사진만 — 글자가 피규어를 가리지 않도록)</div>
+        </div>
+        <div class="ctl-block">
+          <div class="cl">주황틀 좌상단 표시</div>
+          <select id="badgeKindSelect">
+            <option value="new"${(p.badgeKind || 'new') === 'new' ? ' selected' : ''}>mm.dd 신제품</option>
+            <option value="decided"${p.badgeKind === 'decided' ? ' selected' : ''}>상품화 결정</option>
+            <option value="prototype"${p.badgeKind === 'prototype' ? ' selected' : ''}>원형 공개</option>
+            <option value="custom"${p.badgeKind === 'custom' ? ' selected' : ''}>기타 (직접 입력)</option>
+          </select>
+          ${p.badgeKind === 'custom' ? `<textarea id="badgeCustomInput" rows="1" placeholder="직접 입력" style="margin-top:6px;">${escapeHtml(p.badgeCustomText || '')}</textarea>` : ''}
         </div>
         <div class="ctl-block">
           <div class="cl">검정 그라데이션</div>
@@ -551,6 +589,18 @@ function wireImageStage(p) {
   const tt = $('#textTitleInput'), ts = $('#textSubInput');
   if (tt) tt.addEventListener('input', () => { p.textTitle = tt.value; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
   if (ts) ts.addEventListener('input', () => { p.textSub = ts.value; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
+
+  const badgeSelect = $('#badgeKindSelect');
+  if (badgeSelect) badgeSelect.addEventListener('change', () => {
+    p.badgeKind = badgeSelect.value;
+    saveProductsSoon();
+    renderImageStage(p); // custom 선택 시 입력창을 새로 보여줘야 해서 통째로 다시 그림
+  });
+  const badgeCustomInput = $('#badgeCustomInput');
+  if (badgeCustomInput) badgeCustomInput.addEventListener('input', () => {
+    p.badgeCustomText = badgeCustomInput.value;
+    drawComposer(p); drawAllThumbs(p); saveProductsSoon();
+  });
 
   const btnReset = $('#btnResetSlide');
   if (btnReset) btnReset.addEventListener('click', () => {
@@ -688,7 +738,7 @@ function drawAllThumbs(p) {
     if (idx === editingIdx) canvas.classList.add('sel');
     const ctx = canvas.getContext('2d');
     ctx.scale(60 / CW, 75 / CH);
-    drawSlide(ctx, slide, idx === p.mainIndex, p.textTitle, p.textSub, p.gradStart, p.gradIntensity);
+    drawSlide(ctx, slide, idx === p.mainIndex, p.textTitle, p.textSub, p.gradStart, p.gradIntensity, getBadgeText(p));
     canvas.addEventListener('click', () => { editingIdx = idx; drawAllThumbs(p); drawComposer(p); });
     const star = document.createElement('div');
     star.className = 'th-star' + (idx === p.mainIndex ? ' on' : '');
@@ -738,7 +788,7 @@ function drawComposer(p) {
   const canvas = $('#composerCanvas');
   if (!canvas) return;
   const slide = p.images[editingIdx];
-  drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, p.gradStart, p.gradIntensity);
+  drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, p.gradStart, p.gradIntensity, getBadgeText(p));
   const rect = canvas.getBoundingClientRect();
   composerScale = (rect.width || canvas.clientWidth || 210) / CW;
 }
@@ -854,7 +904,6 @@ function renderDetail() {
 
     <div class="stage">
       <div class="stage-h"><span class="snum">①</span> 상품정보 <span style="font-weight:600;color:var(--ui-sub);font-size:11px;">(지금은 직접 입력 · 추후 B2B 자동수집 예정)</span></div>
-      <div class="field"><label>공식정보 (발매일·사이즈·가격 등)</label><textarea id="officialInput" rows="5" placeholder="예) 상품명: ○○○ 피규어\n발매: 27년 3월\n사이즈: 논스케일 약 100mm">${escapeHtml(p.officialText)}</textarea></div>
       <div class="field">
         <label>캐릭터 메모 (관계설명·대사 등 가변정보)</label>
         <textarea id="memoInput" rows="3" placeholder="예) 키타가와 마린의 코스프레를 돕는 같은 반 남고생">${escapeHtml(p.memoText)}</textarea>
@@ -871,47 +920,49 @@ function renderDetail() {
       <button id="btnGenerate">${st.hasDraft ? '↻ 재생성' : '✍ 원고 생성'}</button>
       <div class="status" id="genStatus"></div>
       <div class="warn-box" id="genWarn"></div>
+
+      <div class="diff-cols">
+        <div class="diff-col">
+          <div class="diff-col-title">재료 (공식정보 — 발매일·사이즈·가격 등)</div>
+          <textarea id="officialInput" class="final-edit" rows="8" placeholder="예) 상품명: ○○○ 피규어\n발매: 27년 3월\n사이즈: 논스케일 약 100mm">${escapeHtml(p.officialText)}</textarea>
+        </div>
+        <div class="diff-col">
+          <div class="diff-col-title">1차 텍스트 (AI 결과, 읽기전용)</div>
+          <div class="diff-content readonly">${p.result ? escapeHtml(p.result).replace(/\n/g, '<br>') : '<span class="diff-empty">위 재료를 채우고 "원고 생성"을 눌러주세요.</span>'}</div>
+        </div>
+      </div>
+
       ${p.result ? draftResultHtml(p) : ''}
     </div>
 
     <div class="stage" id="stage3"></div>
   `;
   wireDetail(p);
-  if (p.result) { renderDiffInto(p); }
   renderImageStage(p);
 }
 function draftResultHtml(p) {
   return `
-    <div class="diff-cols">
-      <div class="diff-col">
-        <div class="diff-col-title">1차 텍스트 (AI 결과, 읽기전용)</div>
-        <div class="diff-content readonly">${escapeHtml(p.result).replace(/\n/g, '<br>')}</div>
-      </div>
-      <div class="diff-col">
-        <div class="diff-col-title">2차 입력 (직접 수정 — 게시용 최종본)</div>
+    <div class="review-row">
+      <div class="rv-col">
+        <div class="diff-col-title">2차 입력 (직접 수정)</div>
         <textarea id="finalTextInput" rows="8" class="final-edit">${escapeHtml(p.finalText)}</textarea>
       </div>
+      <div class="rv-btn-col">
+        <button class="secondary" id="btnReview">🔍<br>검수하기</button>
+      </div>
+      <div class="rv-col">
+        <div class="diff-col-title">수정본 (검수 결과 — 게시용 최종본)</div>
+        <div class="diff-content readonly" id="reviewedBox">${p.reviewedText ? escapeHtml(p.reviewedText).replace(/\n/g, '<br>') : '<span class="diff-empty">"검수하기"를 누르면 여기 채워져요.</span>'}</div>
+      </div>
     </div>
-
     <div class="mini-actions">
-      <button class="secondary" id="btnReview">🔍 검수하기</button>
       <span class="status" id="reviewStatus"></span>
-      <div class="charcount">글자수 <b id="finalCharCount">${p.finalText.length}</b>자</div>
+      <div class="charcount">글자수 <b id="finalCharCount">${(p.reviewedText || p.finalText).length}</b>자</div>
     </div>
     <div class="correction-box" id="correctionBox" style="display:${p.reviewIssues.length ? 'block' : 'none'};">
-      ${p.reviewIssues.length ? '<div class="c-title">⚠️ 검수 결과 — 확인해볼 점</div><ul>' + p.reviewIssues.map(c => `<li>${boldKeyParts(c)}</li>`).join('') + '</ul>' : ''}
+      ${p.reviewIssues.length ? '<div class="c-title">⚠️ 맞춤법/표현 — 뭐가 달라졌는지</div><ul>' + p.reviewIssues.map(c => `<li>${boldKeyParts(c)}</li>`).join('') + '</ul>' : ''}
     </div>
 
-    <div class="diff-wrap${diffPlain ? ' plain' : ''}" id="diffWrap">
-      <div class="diff-head">
-        <span class="diff-label">1차 텍스트 vs 2차 입력 비교</span>
-        <button type="button" class="secondary diff-toggle-btn" id="btnDiffToggle">${diffPlain ? '색깔 보기' : '색깔 없이 보기'}</button>
-      </div>
-      <div class="diff-cols">
-        <div class="diff-col"><div class="diff-col-title">1차 텍스트</div><div class="diff-content" id="diffOld"></div></div>
-        <div class="diff-col"><div class="diff-col-title">2차 입력 (수정본)</div><div class="diff-content" id="diffNew"></div></div>
-      </div>
-    </div>
     <div class="mini-actions">
       <button class="secondary" id="btnCopyX">📋 X 복사</button>
       <button class="secondary" id="btnCopyIns">📋 인스타용 복사 (링크만 자동 교체)</button>
@@ -919,16 +970,11 @@ function draftResultHtml(p) {
     </div>
   `;
 }
-function renderDiffInto(p) {
-  const { oldHtml, newHtml } = diffHtmlPair(p.result, p.finalText);
-  if ($('#diffOld')) $('#diffOld').innerHTML = oldHtml;
-  if ($('#diffNew')) $('#diffNew').innerHTML = newHtml;
-}
 function renderCorrectionBox(p) {
   const box = $('#correctionBox');
   if (!box) return;
   box.style.display = p.reviewIssues.length ? 'block' : 'none';
-  box.innerHTML = p.reviewIssues.length ? '<div class="c-title">⚠️ 검수 결과 — 확인해볼 점</div><ul>' + p.reviewIssues.map(c => `<li>${boldKeyParts(c)}</li>`).join('') + '</ul>' : '';
+  box.innerHTML = p.reviewIssues.length ? '<div class="c-title">⚠️ 맞춤법/표현 — 뭐가 달라졌는지</div><ul>' + p.reviewIssues.map(c => `<li>${boldKeyParts(c)}</li>`).join('') + '</ul>' : '';
 }
 function wireDetail(p) {
   const titleInput = $('#titleInput');
@@ -956,10 +1002,12 @@ function wireDetail(p) {
   if (finalTextInput) {
     finalTextInput.addEventListener('input', () => {
       p.finalText = finalTextInput.value;
-      p.reviewIssues = []; // 내용이 또 바뀌었으니 이전 검수 결과는 더 이상 유효하지 않음
+      p.reviewedText = ''; // 내용이 또 바뀌었으니 이전 검수 결과(수정본)는 더 이상 유효하지 않음
+      p.reviewIssues = [];
       $('#finalCharCount').textContent = p.finalText.length;
       renderCorrectionBox(p);
-      renderDiffInto(p);
+      const rb = $('#reviewedBox');
+      if (rb) rb.innerHTML = '<span class="diff-empty">"검수하기"를 누르면 여기 채워져요.</span>';
       saveProductsSoon();
     });
   }
@@ -967,14 +1015,18 @@ function wireDetail(p) {
   const btnReview = $('#btnReview');
   if (btnReview) btnReview.addEventListener('click', () => runReview(p));
 
-  const btnCopyX = $('#btnCopyX'), btnCopyIns = $('#btnCopyIns'), btnDiffToggle = $('#btnDiffToggle');
+  const btnCopyX = $('#btnCopyX'), btnCopyIns = $('#btnCopyIns');
   if (btnCopyX) btnCopyX.addEventListener('click', () => copyDraft(p, 'x'));
   if (btnCopyIns) btnCopyIns.addEventListener('click', () => copyDraft(p, 'ins'));
-  if (btnDiffToggle) btnDiffToggle.addEventListener('click', () => {
-    diffPlain = !diffPlain;
-    $('#diffWrap').classList.toggle('plain', diffPlain);
-    btnDiffToggle.textContent = diffPlain ? '색깔 보기' : '색깔 없이 보기';
-  });
+}
+// 원고 텍스트(【제목】/『시리즈』 형태)에서 캐러셀 흰 텍스트(제목/부제)를 자동으로 뽑아 채운다.
+// 버튼을 여러 번 안 눌러도 되게, 원고가 만들어지거나 검수될 때마다 최신 텍스트 기준으로 갱신.
+function applyReviewedTextToImageLabels(p) {
+  const text = p.reviewedText || p.finalText || p.result || '';
+  const titleMatch = text.match(/【([^】]+)】/);
+  const subMatch = text.match(/『([^』]+)』/);
+  if (titleMatch) p.textTitle = titleMatch[1].trim();
+  if (subMatch) p.textSub = subMatch[1].trim();
 }
 async function runReview(p) {
   const statusEl = $('#reviewStatus');
@@ -987,16 +1039,23 @@ async function runReview(p) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
+    p.reviewedText = data.corrected || p.finalText;
     p.reviewIssues = data.issues || [];
+    applyReviewedTextToImageLabels(p); // 수정본 기준으로 캐러셀 제목/부제목 자동 채움
     saveProducts();
     renderCorrectionBox(p);
+    const rb = $('#reviewedBox');
+    if (rb) rb.innerHTML = escapeHtml(p.reviewedText).replace(/\n/g, '<br>');
+    $('#finalCharCount').textContent = p.reviewedText.length;
+    renderImageStage(p);
     if (statusEl) statusEl.textContent = p.reviewIssues.length ? `검수 완료 — 확인할 점 ${p.reviewIssues.length}건` : '검수 완료 — 문제 없음';
   } catch (err) {
     if (statusEl) statusEl.textContent = `검수 실패: ${err.message}`;
   }
 }
 function copyDraft(p, kind) {
-  const text = kind === 'ins' ? insVersion(p.finalText) : p.finalText;
+  const base = p.reviewedText || p.finalText;
+  const text = kind === 'ins' ? insVersion(base) : base;
   const statusEl = $('#copyStatus');
   const say = msg => { if (statusEl) { statusEl.textContent = msg; setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ''; }, 2500); } };
   navigator.clipboard.writeText(text)
@@ -1026,7 +1085,9 @@ async function runFormat(p) {
     if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
     p.result = data.result || '';
     p.finalText = p.result; // 2차 입력의 시작값 = 1차 텍스트 (여기서부터 사람이 고침)
+    p.reviewedText = '';
     p.reviewIssues = [];
+    applyReviewedTextToImageLabels(p); // 1차 텍스트 기준으로 캐러셀 제목/부제·틀 미리보기 바로 채움
     saveProducts();
     renderDetail();
     $('#genStatus').textContent = '변환 완료';
@@ -1236,7 +1297,8 @@ function harvestCopy(kind) {
   const statusEl = $('#harvestStatus');
   if (!withDraft.length) { statusEl.textContent = '아직 완료된 원고가 없어요.'; return; }
   const text = withDraft.map(p => {
-    const t = kind === 'ins' ? insVersion(p.finalText) : p.finalText;
+    const base = p.reviewedText || p.finalText;
+    const t = kind === 'ins' ? insVersion(base) : base;
     return `[${p.title || '(제목 없음)'}]\n${t}`;
   }).join('\n\n---\n\n');
   navigator.clipboard.writeText(text)
