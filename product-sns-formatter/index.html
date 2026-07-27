@@ -341,9 +341,60 @@ function transliterateWord(word) {
     return [...vowelStr].map((v, idx) => hangulSyllable(idx === 0 ? choJamo : 'ㅇ', v)).join('');
   }).join('');
 }
+// 피규어 업계에서 매번 반복되는 고정 용어는 발음 추측이 아니라 이미 정해진 한글 표기가
+// 있음 (예: Nendoroid=넨도로이드, Scale Figure=스케일 피규어) — 이런 건 규칙 기반 음역이
+// 오히려 엉망으로 망가뜨려서, 사전에 있으면 그걸 먼저 쓰고 사전에 없는 부분(주로 실제
+// 캐릭터/시리즈 고유명사)만 규칙 기반 음역으로 넘긴다. 긴 구문부터 매칭되게 정렬해둠.
+const TRANSLIT_DICTIONARY = [
+  ['pop up parade', '팝업 퍼레이드'],
+  ['scale figure', '스케일 피규어'],
+  ['complete figure', '컴플리트 피규어'],
+  ['prize figure', '프라이즈 피규어'],
+  ['non-scale', '논스케일'], ['non scale', '논스케일'],
+  ['good smile company', '굿스마일 컴퍼니'], ['good smile', '굿스마일'],
+  ['nendoroid', '넨도로이드'],
+  ['figma', '피그마'],
+  ['punipuni', '푸니푸니'],
+  ['blythe', '블라이스'],
+  ['figure', '피규어'],
+  ['plushie', '플러시'],
+  ['deluxe', '디럭스'],
+  ['renewal', '리뉴얼'],
+  ['edition', '에디션'],
+  ['original', '오리지널'],
+  ['standard', '스탠다드'],
+  ['special', '스페셜'],
+  ['bonus', '보너스'],
+  ['series', '시리즈'],
+  ['scale', '스케일'],
+  ['ver.', '버전'], ['ver', '버전'],
+  ['set', '세트'],
+].sort((a, b) => b[0].length - a[0].length);
 function transliterateEnToKo(text) {
   if (!text) return '';
-  return String(text).replace(/[A-Za-z]+/g, w => (w.length >= 2 ? transliterateWord(w) : w));
+  return String(text).replace(/[A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*)*/g, run => {
+    const lower = run.toLowerCase();
+    let i = 0; const out = [];
+    while (i < lower.length) {
+      if (/\s/.test(lower[i])) { out.push(' '); i++; continue; }
+      let matched = null;
+      for (const [pat, ko] of TRANSLIT_DICTIONARY) {
+        if (lower.startsWith(pat, i)) {
+          const before = i === 0 || /\s/.test(lower[i - 1]);
+          const afterIdx = i + pat.length;
+          const after = afterIdx >= lower.length || /[\s.,!?)\]]/.test(lower[afterIdx]);
+          if (before && after) { matched = { pat, ko }; break; }
+        }
+      }
+      if (matched) { out.push(matched.ko); i += matched.pat.length; continue; }
+      let j = i;
+      while (j < lower.length && !/\s/.test(lower[j])) j++;
+      const word = run.slice(i, j);
+      out.push(word.length >= 2 ? transliterateWord(word) : word);
+      i = j;
+    }
+    return out.join('').replace(/ +/g, ' ').trim();
+  });
 }
 // 교정 내역에서 "무엇을 무엇으로" 부분(따옴표/괄호로 감싼 부분)만 볼드 처리 — 많을 때 훑어보기 쉽게.
 function boldKeyParts(text) {
