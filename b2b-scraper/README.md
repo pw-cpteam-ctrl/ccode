@@ -37,36 +37,29 @@ exe/GUI 포장이 필요한데, 이번 프로젝트 규모엔 오버킬로 판�
 
 ---
 
-## 개발자용 — 사이트 구조 정찰 (scrape.js 완성 전 필수)
+## 개발자용 — 사이트 구조 정찰 (`recon.js`, 완료됨)
 
-`scrape.js`의 `TODO(recon)` 표시된 부분(목록→상세 URL 뽑는 법, 임베디드 JSON 안의 실제
-필드 경로, 사진 URL 추출법, 로그인 URL 패턴)은 실제 GoodSmile 페이지 구조를 봐야 채울 수
-있다.
+실제 GoodSmile B2B 사이트(2026-07-27 기준)를 정찰한 결과:
+- 임베디드 JSON(`__NEXT_DATA__` 등)이 전혀 없는 순수 서버 렌더링 HTML → `scrape.js`는
+  화면 요소를 직접 읽는 방식(DOM 파싱, `page.locator`)으로 필드를 뽑는다.
+- "오늘 상품" 목록 = 로그인 후 뜨는 홈 화면(`https://www.goodsmile.com/b2b/en`) 자체가
+  매일 갱신되며, 신상품이 `/b2b/en/product/<숫자ID>` 링크로 나열됨.
+- 상세 페이지는 `.b-product-info__title`(제목), `.b-product-info__unit--date`(발매월 등),
+  `.b-product-info__unit--price`(가격), `#section_spec`(시리즈/사이즈/제조사/저작권 등),
+  `.c-photo-variable-grid img`(사진) 구조를 그대로 읽는다.
+- 로그인 필요 시 실제로 `/login` 경로로 리다이렉트됨 (`LOGIN_URL_PATTERN`과 일치 확인됨).
+
+사이트 구조가 나중에 바뀌면 다시 정찰해서 `scrape.js`를 갱신해야 한다:
 
 ```bash
 cd b2b-scraper
 npm install
-node recon.js <오늘 상품 목록 페이지 URL>
+node recon.js <다시 확인하고 싶은 페이지 URL>
 ```
 
 `scrape.js`와 같은 전용 크롬 프로필(`chrome-profile/goodsmile`)을 공유하므로, `scrape.js`를
-먼저 한 번 돌려서 로그인해뒀다면 `recon.js`는 로그인 없이 바로 정찰 가능. 처음이면 여기서도
-크롬 창이 뜨고 로그인하면 자동으로 이어서 진행된다.
-
-실행하면:
-- `recon-output/`에 그 페이지의 HTML 전체와 스크린샷이 저장됨
-- 터미널에 `__NEXT_DATA__` / `__PRELOADED_STATE__` / `__next_f` 마커가 있는지, 상품
-  상세로 보이는 링크·이미지 URL 목록이 출력됨
-
-**이 터미널 출력을 그대로 복사해서 알려주면**, 그걸 보고 `scrape.js`를 마저 완성할 수
-있다. 상세 페이지 URL 하나도 같은 방식으로 한 번 더 정찰해두면 더 좋음:
-
-```bash
-node recon.js <상품 상세 페이지 URL 1개>
-```
-
-정찰이 끝나 `scrape.js`가 완성되면, 팀원은 위 "팀원용" 섹션대로 `run.bat` 더블클릭만
-하면 된다 — 개발자가 직접 `node scrape.js`로 돌려도 동일하게 동작.
+먼저 한 번 돌려서 로그인해뒀다면 `recon.js`는 로그인 없이 바로 정찰 가능. `recon-output/`에
+그 페이지의 HTML 전체와 스크린샷이 저장되고, 터미널에 마커·링크 목록이 출력된다.
 
 ---
 
@@ -93,9 +86,8 @@ node recon.js <상품 상세 페이지 URL 1개>
 | 파일 | 역할 |
 |---|---|
 | `run.bat` | 팀원용 더블클릭 런처 |
-| `scrape.js` | 메인 스크립트 — 세션 확인/로그인 대기 → 스크래핑까지 한 번에. `TODO(recon)` 부분은 정찰 결과 필요 |
+| `scrape.js` | 메인 스크립트 — 세션 확인/로그인 대기 → DOM 파싱으로 실제 필드 추출까지 한 번에 |
 | `browser-stealth.js` | 전용 크롬 프로필 세션 열기 + 자동 로그인 감지 도우미 |
-| `recon.js` | 페이지 구조 정찰 (개발자용) |
-| `extract-helpers.js` | 페이지에 박힌 JSON 추출 헬퍼 (sns-report-scraper 재사용) |
+| `recon.js` | 페이지 구조 정찰 (사이트 구조 바뀌었을 때 재확인용) |
 | `download-image.js` | 로그인 세션으로 사진 다운로드 |
 | `format-output.js` | 필드를 output.json 형태로 조립 |

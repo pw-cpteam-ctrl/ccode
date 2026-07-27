@@ -28,7 +28,7 @@ const { openPersistentSession } = require('./browser-stealth');
 const PROFILE_DIR = path.join(__dirname, 'chrome-profile', 'goodsmile'); // scrape.js와 동일한 프로필 공유
 const OUT_DIR = path.join(__dirname, 'recon-output');
 
-// TODO(recon): 실제 GoodSmile 로그인 페이지 URL 패턴으로 조정할 것.
+// 실제 GoodSmile B2B가 로그인 필요 시 리다이렉트하는 경로 (정찰로 확인됨: response.redirected → /login).
 const LOGIN_URL_PATTERN = /\/login/i;
 
 const MARKERS = ['__NEXT_DATA__', '__PRELOADED_STATE__', '__next_f', '__NUXT__', 'application/json'];
