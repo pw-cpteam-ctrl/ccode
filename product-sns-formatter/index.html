@@ -340,7 +340,7 @@ function transliterateFlushCluster(cluster, blocks) {
 function transliterateWord(word) {
   const w0 = word.toLowerCase();
   if (w0.length > 3 && w0.startsWith('mc')) return '맥' + transliterateWord(w0.slice(2)); // McQueen -> 맥+Queen
-  let w = w0;
+  let w = w0.replace(/([bcdfghjklmnpqrstvwxyz])\1/g, '$1'); // 겹자음(glass의 ss 등)은 한 소리로
   if (w.length > 3 && /[bcdfghjklmnpqrstvxz]e$/.test(w)) w = w.slice(0, -1); // 끝 묵음 e (purple, please 등)
 
   let i = 0; const blocks = []; let pendingCho = null;
@@ -364,6 +364,14 @@ function transliterateWord(word) {
     const cm = transliterateMatchLongest(w, i, TRANSLIT_CONSONANTS);
     if (cm) {
       const nextChar = w[i + cm.len];
+      // 자음+l+모음(bl, cl, fl, gl, pl, sl 등) 어두 자음군은 한글 관용상 l을 두 번 씀 —
+      // 앞 음절 받침으로 한 번(블/플/클...), 뒤 음절 초성으로 한 번 더 (bloom -> 블룸).
+      // 하나만 쓰면 "브룸"처럼 l 소리가 사실상 사라짐. r 계열(br/cr/dr...)은 이미 정상
+      // 동작이라(brown -> 브라운) l만 특별 취급.
+      if (cm.val !== 'l' && nextChar === 'l' && (isTranslitVowel(w[i + cm.len + 1]) || w[i + cm.len + 1] === 'y')) {
+        blocks.push({ cho: cm.val, vowel: 'eu', jong: 'ㄹ' });
+        i += cm.len; continue; // 'l'은 다음 루프에서 새 자음으로 다시 처리(모음과 정상 결합)
+      }
       const nextIsVowel = isTranslitVowel(nextChar) || (nextChar === 'y' && !isTranslitVowel(w[i + cm.len + 1]));
       if (nextIsVowel) {
         if (pendingCho) blocks.push({ cho: pendingCho, vowel: 'eu' });
