@@ -4,27 +4,35 @@
 
 const API_BASE = 'https://api.github.com';
 
-export async function appendToGithubFile({ token, owner, repo, branch, path, newLine, message }) {
-  const headers = {
+function authHeaders(token) {
+  return {
     Authorization: `Bearer ${token}`,
     Accept: 'application/vnd.github+json',
     'Content-Type': 'application/json',
   };
+}
 
-  let sha;
-  let existingContent = '';
+// 파일이 없으면(404) null을 돌려준다. 존재하면 { sha, content(문자열) }를 돌려준다.
+export async function readGithubFile({ token, owner, repo, branch, path }) {
   const getRes = await fetch(
     `${API_BASE}/repos/${owner}/${repo}/contents/${path}?ref=${branch}`,
-    { headers }
+    { headers: authHeaders(token) }
   );
-  if (getRes.status === 200) {
-    const file = await getRes.json();
-    sha = file.sha;
-    existingContent = Buffer.from(file.content, 'base64').toString('utf-8');
-  } else if (getRes.status !== 404) {
+  if (getRes.status === 404) return null;
+  if (getRes.status !== 200) {
     const errText = await getRes.text();
     throw new Error(`파일 조회 실패 (${getRes.status}): ${errText}`);
   }
+  const file = await getRes.json();
+  return { sha: file.sha, content: Buffer.from(file.content, 'base64').toString('utf-8') };
+}
+
+export async function appendToGithubFile({ token, owner, repo, branch, path, newLine, message }) {
+  const headers = authHeaders(token);
+
+  const existing = await readGithubFile({ token, owner, repo, branch, path });
+  const sha = existing?.sha;
+  const existingContent = existing?.content || '';
 
   const updatedContent = existingContent + (existingContent ? '\n' : '') + newLine;
   const putRes = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${path}`, {
