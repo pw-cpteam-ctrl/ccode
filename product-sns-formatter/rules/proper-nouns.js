@@ -34,4 +34,24 @@ export const PROPER_NOUNS = [
   ['hatsune miku', '하츠네 미쿠'],
   ['chocopuni', '쵸코푸니'],
   ['kaguya', '카구야'],
+
+  // inbound-image-composer 프로젝트의 PRODUCT_LINE_NAMES(굿스마일류 상품 라인명/제조사명
+  // 사전)를 참고해서 이 프로젝트에 없던 항목을 추가함. 그 프로젝트는 "이미 한글로 적힌
+  // 텍스트가 IP명으로 오분류되지 않게 걸러주는" 화이트리스트라 목적이 다르지만, 여기선
+  // 그 한글 표기를 그대로 정답으로 삼아 영문 상품정보 음역용 [en, ko] 쌍으로 옮겼다.
+  ['nendoroid doll', '넨도로이드 돌'],
+  ['pop up parade sp', '팝업 퍼레이드 SP'],
+  ['blind box', '블라인드박스'],
+  ['trading figure', '트레이딩 피규어'],
+  ['secret good smile', '시크릿 굿스마일'],
+  ['hello good smile', '헬로 굿스마일'],
+  ['good smile arts shanghai', '굿스마일아츠상하이'],
+  ['aniplex', '애니플렉스'],
+  ['max factory', '맥스팩토리'],
+  ['union creative', '유니온크리에이티브'],
+  ['tenohira', '테노히라'],
+  ['mega cat', '메가캣'],
+  ['moderoid', '모데로이드'],
+  ['lucrea', '루크레아'],
+  ['choco ring', '쵸코링'],
 ];
