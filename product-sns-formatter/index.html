@@ -820,9 +820,9 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText)
     if (badgeText) {
       ctx.textAlign = 'left';
       ctx.fillStyle = '#fff';
-      ctx.font = '700 30px -apple-system,"Malgun Gothic",sans-serif';
+      ctx.font = '700 45px -apple-system,"Malgun Gothic",sans-serif';
       ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 4;
-      ctx.fillText(badgeText, 45, 72);
+      ctx.fillText(badgeText, 45, 78);
       ctx.shadowBlur = 0;
     }
   }
@@ -1131,6 +1131,19 @@ function drawComposer(p) {
   const rect = canvas.getBoundingClientRect();
   composerScale = (rect.width || canvas.clientWidth || 210) / CW;
 }
+// 사진이 틀의 투명 창(FIW x FIH)을 항상 꽉 채우도록 ox/oy(드래그 이동량)를 그 여유분
+// 안으로 붙잡아둔다 — 여유가 없는 축(예: 최소 배율 100%일 때 짧은 쪽)은 아예 못 움직이고,
+// 확대할수록 남는 여유만큼 이동 범위도 같이 늘어나되, 사진 끝에 닿으면 거기서 멈춰서
+// 뒤로 흰 여백이 보이는 일이 없게 한다.
+function clampSlideOffset(slide, pw, ph) {
+  const base = Math.max(FIW / pw, FIH / ph);
+  const eff = base * (slide.scale || 1);
+  const dw = pw * eff, dh = ph * eff;
+  const maxOx = Math.max(0, (dw - FIW) / 2);
+  const maxOy = Math.max(0, (dh - FIH) / 2);
+  slide.ox = Math.max(-maxOx, Math.min(maxOx, slide.ox || 0));
+  slide.oy = Math.max(-maxOy, Math.min(maxOy, slide.oy || 0));
+}
 function wireComposerInteraction(p) {
   const canvas = $('#composerCanvas');
   if (!canvas) return;
@@ -1138,7 +1151,11 @@ function wireComposerInteraction(p) {
     const slide = p.images[editingIdx]; if (!slide) return;
     e.preventDefault();
     const delta = e.deltaY < 0 ? 0.06 : -0.06;
-    slide.scale = Math.max(0.3, Math.min(3, (slide.scale || 1) + delta));
+    // 최소 배율을 1(=틀을 딱 채우는 cover-fit)로 고정 — 그보다 더 축소하면 사진이 틀보다
+    // 작아져서 아무리 이동해도 여백이 생기는 걸 막을 방법이 없어짐.
+    slide.scale = Math.max(1, Math.min(3, (slide.scale || 1) + delta));
+    const img = imgCache.get(slide.key);
+    if (img) clampSlideOffset(slide, img.naturalWidth, img.naturalHeight);
     drawComposer(p); drawAllThumbs(p); saveProductsSoon();
   }, { passive: false });
   let drag = null;
@@ -1152,6 +1169,8 @@ function wireComposerInteraction(p) {
     const scale = composerScale || (210 / CW);
     slide.ox = drag.sox + (e.clientX - drag.sx) / scale;
     slide.oy = drag.soy + (e.clientY - drag.sy) / scale;
+    const img = imgCache.get(slide.key);
+    if (img) clampSlideOffset(slide, img.naturalWidth, img.naturalHeight);
     drawComposer(p);
   });
   window.addEventListener('mouseup', () => {
