@@ -54,4 +54,17 @@ export const PROPER_NOUNS = [
   ['moderoid', '모데로이드'],
   ['lucrea', '루크레아'],
   ['choco ring', '쵸코링'],
+  ['plastic model', '프라모델'],
+  ['dmm tactory', 'DMM택토리'],
+  ['colors.', '컬러즈'],
+  ['system service', 'System서비스'],
+  ['look up', '룩업'],
+  ['hyper body', '하이퍼바디'],
+  ['chronicle', '크로니클'],
+  ['phat', 'Phat'], // 원문의 "!"는 정규식이 안 건드리고 그대로 남으니 여기선 느낌표 안 붙임(붙이면 "Phat!!"처럼 겹침)
+  ['company', '컴퍼니'],
+  ['one seventh', 'One Seventh'], // 이 라인은 관행상 한글화 안 하고 영문 그대로 씀
+  ['hug good smile', '허기 굿스마일'], // 영문 원표기 불확실(추정) — 실제 스펙에서 다르면 알려주세요
+  // 확신 없어서 뺀 항목: 쿠리탕(영문 소스 불명), 아카타입(archetype이면 발음상 "아키타입"이
+  // 맞아 "아카타입"과 안 맞음 — 실제 영문 표기 확인되면 추가)
 ];
