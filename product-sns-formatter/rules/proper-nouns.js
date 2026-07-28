@@ -115,4 +115,9 @@ export const PROPER_NOUNS = [
   ['january', '1월'], ['february', '2월'], ['march', '3월'], ['april', '4월'],
   ['may', '5월'], ['june', '6월'], ['july', '7월'], ['august', '8월'],
   ['september', '9월'], ['october', '10월'], ['november', '11월'], ['december', '12월'],
+
+  // silent e(끝의 묵음 e)가 앞 모음을 길게 만드는 영어 규칙(magic e)을 엔진이 반영 안 해서
+  // 깨지는 단어들. 이 규칙 자체를 일반화하면 있다/받다(have/give)처럼 예외가 많아 오히려
+  // 위험하니, 실제로 나온 단어만 사전으로 우회.
+  ['life', '라이프'],
 ];
