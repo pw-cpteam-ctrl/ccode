@@ -714,8 +714,16 @@ const FIH = FRAME_INNER.y1 - FRAME_INNER.y0;
 // 배경이 1px 미만 실선처럼 비쳐 보이는 경우가 있었다(사진마다 배율이 달라 생겼다 안 생겼다
 // 함). 배율에 0.3% 여유를 얹어 항상 살짝 오버커버하게 만들어 이 틈 자체를 없앤다.
 const COVER_FIT_SLOP = 1.003;
-function coverFitBase(pw, ph) {
-  return Math.max(FIW / pw, FIH / ph) * COVER_FIT_SLOP;
+function coverFitBase(pw, ph, fitW, fitH) {
+  return Math.max(fitW / pw, fitH / ph) * COVER_FIT_SLOP;
+}
+// 사진을 채울 기준 영역 — 틀이 켜져 있으면 틀의 투명 창(FRAME_INNER)만, 틀을 껐으면
+// 캔버스 전체(0,0~CW,CH)를 기준으로 삼는다. 틀 off일 때도 이 좁은 창 기준으로 계산하면
+// 나머지 테두리(로고띠 자리 등)가 빈 채로 남아 하얗게 보였던 문제 때문에 분리함.
+function fitRectFor(slide) {
+  return (slide && slide.noFrame)
+    ? { x0: 0, y0: 0, w: CW, h: CH }
+    : { x0: FRAME_INNER.x0, y0: FRAME_INNER.y0, w: FIW, h: FIH };
 }
 function getBadgeText(p) {
   if (p.badgeKind === 'decided') return '상품화 결정';
@@ -803,17 +811,19 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText,
   const img = slide && imgCache.get(slide.key);
   if (img) {
     const pw = img.naturalWidth, ph = img.naturalHeight;
-    // 캔버스 전체(1080x1350)가 아니라 틀의 투명 창(FIW x FIH)에 맞춰 cover-fit —
-    // 그래야 사진이 불투명한 로고띠/테두리 뒤로 숨는 부분 없이 보이는 만큼만 계산된다.
-    const base = coverFitBase(pw, ph);
+    // 틀이 켜져 있으면 틀의 투명 창(FIW x FIH)에, 꺼져 있으면 캔버스 전체(CW x CH)에 맞춰
+    // cover-fit — 틀 off인데도 좁은 창 기준으로 계산하면 나머지 테두리가 빈 채로 남아
+    // 하얗게 보였던 문제 때문에 fitRectFor(slide)로 기준 영역 자체를 분기한다.
+    const fit = fitRectFor(slide);
+    const base = coverFitBase(pw, ph, fit.w, fit.h);
     const eff = base * (slide.scale || 1);
     const dw = pw * eff, dh = ph * eff;
-    const dx = FRAME_INNER.x0 + (FIW - dw) / 2 + (slide.ox || 0);
-    const dy = FRAME_INNER.y0 + (FIH - dh) / 2 + (slide.oy || 0);
+    const dx = fit.x0 + (fit.w - dw) / 2 + (slide.ox || 0);
+    const dy = fit.y0 + (fit.h - dh) / 2 + (slide.oy || 0);
     // 사진 밑에 불투명 배경을 먼저 깔아둔다 — 위 COVER_FIT_SLOP으로 웬만한 뜬 픽셀은 없어지지만,
     //혹시 남더라도 투명(캔버스 기본값)이 아니라 이 색으로 보이게 하는 이중 안전장치.
     ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(FRAME_INNER.x0, FRAME_INNER.y0, FIW, FIH);
+    ctx.fillRect(fit.x0, fit.y0, fit.w, fit.h);
     ctx.drawImage(img, dx, dy, dw, dh);
   } else {
     ctx.fillStyle = '#e7e2d6';
@@ -1089,7 +1099,8 @@ async function addPhotoFileToProduct(p, file) {
   // 기본 위치를 세로 중앙이 아니라 "위쪽 기준"으로 잡는다 — 캐릭터 정수리가 사진 위쪽에
   // 몰려있는 경우가 대부분이라, 남는 세로 여유를 전부 아래쪽에서 잘라내야 드래그 없이도
   // 머리가 안 잘린다. clampSlideOffset과 같은 공식으로 최대 오프셋(+maxOy)을 미리 계산.
-  const base = coverFitBase(img.naturalWidth, img.naturalHeight);
+  // 새 슬라이드는 항상 틀이 켜진 상태로 시작하므로(noFrame 미지정) 틀 기준(FIH)으로 계산.
+  const base = coverFitBase(img.naturalWidth, img.naturalHeight, FIW, FIH);
   const dh = img.naturalHeight * base;
   const topAnchorOy = Math.max(0, (dh - FIH) / 2);
   p.images.push({ key, scale: 1, ox: 0, oy: topAnchorOy });
@@ -1171,6 +1182,10 @@ function drawAllThumbs(p) {
     frameToggle.addEventListener('click', e => {
       e.stopPropagation();
       slide.noFrame = !slide.noFrame;
+      // 기준 영역(틀 켜짐/꺼짐)이 바뀌었으니 기존 ox/oy를 새 기준으로 다시 한 번 안전하게
+      // 붙잡아둔다 — 대부분 그대로 유효하지만, 사진 비율에 따라 만일의 경계값 어긋남을 방지.
+      const img = imgCache.get(slide.key);
+      if (img) clampSlideOffset(slide, img.naturalWidth, img.naturalHeight);
       drawAllThumbs(p); drawComposer(p); saveProductsSoon();
     });
     wrap.appendChild(canvas); wrap.appendChild(star); wrap.appendChild(del); wrap.appendChild(frameToggle);
@@ -1192,16 +1207,17 @@ function drawComposer(p) {
   const rect = canvas.getBoundingClientRect();
   composerScale = (rect.width || canvas.clientWidth || 210) / CW;
 }
-// 사진이 틀의 투명 창(FIW x FIH)을 항상 꽉 채우도록 ox/oy(드래그 이동량)를 그 여유분
-// 안으로 붙잡아둔다 — 여유가 없는 축(예: 최소 배율 100%일 때 짧은 쪽)은 아예 못 움직이고,
-// 확대할수록 남는 여유만큼 이동 범위도 같이 늘어나되, 사진 끝에 닿으면 거기서 멈춰서
-// 뒤로 흰 여백이 보이는 일이 없게 한다.
+// 사진이 기준 영역(틀 켜짐: 투명 창 FIW x FIH / 틀 꺼짐: 캔버스 전체 CW x CH)을 항상
+// 꽉 채우도록 ox/oy(드래그 이동량)를 그 여유분 안으로 붙잡아둔다 — 여유가 없는 축(예: 최소
+// 배율 100%일 때 짧은 쪽)은 아예 못 움직이고, 확대할수록 남는 여유만큼 이동 범위도 같이
+// 늘어나되, 사진 끝에 닿으면 거기서 멈춰서 뒤로 흰 여백이 보이는 일이 없게 한다.
 function clampSlideOffset(slide, pw, ph) {
-  const base = coverFitBase(pw, ph);
+  const fit = fitRectFor(slide);
+  const base = coverFitBase(pw, ph, fit.w, fit.h);
   const eff = base * (slide.scale || 1);
   const dw = pw * eff, dh = ph * eff;
-  const maxOx = Math.max(0, (dw - FIW) / 2);
-  const maxOy = Math.max(0, (dh - FIH) / 2);
+  const maxOx = Math.max(0, (dw - fit.w) / 2);
+  const maxOy = Math.max(0, (dh - fit.h) / 2);
   slide.ox = Math.max(-maxOx, Math.min(maxOx, slide.ox || 0));
   slide.oy = Math.max(-maxOy, Math.min(maxOy, slide.oy || 0));
 }
