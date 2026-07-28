@@ -3,3 +3,5 @@ chrome-profile/
 output/
 recon-output/
 goodsmile-session.json
+cookies-*.json
+_update.zip
