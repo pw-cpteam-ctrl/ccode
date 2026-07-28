@@ -19,6 +19,7 @@ const { openPersistentSession } = require('./browser-stealth');
 const { downloadImage } = require('./download-image');
 const { buildOutputProduct, writeOutputFile } = require('./format-output');
 const { friendlyErrorMessage } = require('./friendly-error');
+const { copyToClipboard, openInExplorer } = require('./os-helpers');
 
 const { GOODSMILE_PROFILE_DIR: PROFILE_DIR } = require('./profile-dir'); // 로그인을 기억하는 전용 프로필 (저장소 밖 — profile-dir.js 참고)
 const OUT_DIR = path.join(__dirname, 'output', new Date().toISOString().slice(0, 10));
@@ -141,6 +142,11 @@ async function main() {
   console.log(`\n완료: ${products.length}건 -> ${outPath}`);
   console.log('product-sns-formatter의 "B2B에서 오늘 상품 가져오기" 버튼에서 이 output.json과');
   console.log(`${path.join(OUT_DIR, 'photos')} 폴더 안의 사진들을 함께 선택해서 가져오면 됨.`);
+
+  // 팀원 편의: 결과 폴더 경로를 클립보드에 복사해두고(폴더선택창 주소창에 붙여넣기용),
+  // 그 폴더를 탐색기로 바로 띄워준다(웹페이지로 드래그하기 편하게). 둘 다 실패해도 무시.
+  copyToClipboard(OUT_DIR);
+  openInExplorer(OUT_DIR);
 
   await context.close();
 }

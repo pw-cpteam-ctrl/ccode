@@ -175,6 +175,8 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .thumbwrap .th-del{position:absolute;top:-5px;right:-5px;font-size:10px;background:#fff;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--ui-border);color:var(--ui-sub);}
 .thumbwrap .th-del:hover{color:var(--ui-warn);}
 .thumbwrap.dragover canvas{outline:2px dashed var(--ui-accent);outline-offset:2px;}
+#b2bImportZone{border-radius:8px;transition:background .15s;}
+#b2bImportZone.dragover{outline:2px dashed var(--ui-accent);outline-offset:3px;background:rgba(240,125,30,.06);}
 .thumbwrap.drag-source{opacity:.4;}
 .thumbwrap .th-frame{position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;background:#fff;border-radius:8px;padding:0 5px;height:14px;line-height:14px;cursor:pointer;border:1px solid var(--ui-border);color:var(--ui-accent);white-space:nowrap;}
 .thumbwrap .th-frame.off{color:var(--ui-sub);text-decoration:line-through;}
@@ -224,9 +226,11 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 
   <div class="md-wrap">
     <div class="leftcol">
-      <button id="btnB2BImport" class="secondary" style="width:100%;">🔄 B2B에서 오늘 상품 가져오기 (폴더 선택)</button>
-      <input type="file" id="b2bImportInput" webkitdirectory directory multiple style="display:none;"/>
-      <div class="status" id="b2bImportStatus">scrape.js가 만든 output/&lt;날짜&gt; 폴더를 통째로 선택하면 사진까지 전부 자동으로 채워져요.</div>
+      <div id="b2bImportZone">
+        <button id="btnB2BImport" class="secondary" style="width:100%;">🔄 B2B에서 오늘 상품 가져오기 (폴더 선택 또는 드래그)</button>
+        <input type="file" id="b2bImportInput" webkitdirectory directory multiple style="display:none;"/>
+        <div class="status" id="b2bImportStatus">scrape.js가 만든 output/&lt;날짜&gt; 폴더를 통째로 선택하거나, 그 폴더를 여기로 끌어다 놓으면 사진까지 전부 자동으로 채워져요.</div>
+      </div>
       <button id="btnBatchGenerate" class="secondary" style="width:100%;">✍ 일괄 원고 생성</button>
       <div class="status" id="batchGenStatus"></div>
       <button id="btnAddProduct" style="width:100%;">＋ 상품 추가</button>
@@ -1880,6 +1884,56 @@ document.querySelectorAll('#dayBrandRadios .brand-opt').forEach(o => o.classList
 $('#btnAddProduct').addEventListener('click', addProduct);
 $('#btnB2BImport').addEventListener('click', () => $('#b2bImportInput').click());
 $('#b2bImportInput').addEventListener('change', () => importB2BFiles(Array.from($('#b2bImportInput').files)));
+
+/* ── B2B 폴더 드래그앤드롭 가져오기 — 폴더선택창 대신 탐색기 창에서 그대로 끌어다 놓기용.
+   드롭된 폴더(output.json + photos/ 하위폴더)를 재귀적으로 훑어서 File 목록으로 평탄화한 뒤
+   기존 importB2BFiles()에 그대로 넘긴다(파일명 기준 매칭이라 폴더 구조 무관하게 동작). ── */
+function readDirEntries(reader) {
+  return new Promise((resolve, reject) => {
+    const all = [];
+    const readBatch = () => {
+      reader.readEntries(entries => {
+        if (!entries.length) { resolve(all); return; }
+        all.push(...entries);
+        readBatch();
+      }, reject);
+    };
+    readBatch();
+  });
+}
+async function collectFilesFromEntry(entry, out) {
+  if (entry.isFile) {
+    out.push(await new Promise((resolve, reject) => entry.file(resolve, reject)));
+  } else if (entry.isDirectory) {
+    for (const child of await readDirEntries(entry.createReader())) {
+      await collectFilesFromEntry(child, out);
+    }
+  }
+}
+async function filesFromDataTransferItems(items) {
+  const entries = Array.from(items).map(item => item.webkitGetAsEntry && item.webkitGetAsEntry()).filter(Boolean);
+  const out = [];
+  for (const entry of entries) await collectFilesFromEntry(entry, out);
+  return out;
+}
+const b2bImportZone = $('#b2bImportZone');
+b2bImportZone.addEventListener('dragover', e => { e.preventDefault(); b2bImportZone.classList.add('dragover'); });
+b2bImportZone.addEventListener('dragleave', () => b2bImportZone.classList.remove('dragover'));
+b2bImportZone.addEventListener('drop', async e => {
+  e.preventDefault();
+  b2bImportZone.classList.remove('dragover');
+  const items = e.dataTransfer && e.dataTransfer.items;
+  if (!items || !items.length) return;
+  const statusEl = $('#b2bImportStatus');
+  statusEl.textContent = '폴더 읽는 중...';
+  try {
+    const files = await filesFromDataTransferItems(items);
+    if (!files.length) { statusEl.textContent = '폴더 안에서 파일을 찾지 못했어요.'; return; }
+    importB2BFiles(files);
+  } catch (err) {
+    statusEl.textContent = `드래그로 가져오기 실패: ${err.message}`;
+  }
+});
 
 // b2b-scraper(별도 프로젝트)가 만든 output.json + photos/*.jpg를 함께 선택하면 그대로 상품
 // 목록에 채워 넣는다. output.json의 photos 배열은 파일명만 담고 있어서, 같이 선택한 파일들
