@@ -125,7 +125,7 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .md-row .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;background:var(--ui-pending);}
 .md-row .dot.done{background:var(--ui-ok);}
 .md-row.sel .dot{outline:2px solid rgba(255,255,255,.6);}
-.md-row .md-t{flex:1;min-width:0;font-weight:700;font-size:12px;white-space:normal;word-break:break-word;line-height:1.35;}
+.md-row .md-t{flex:1;min-width:0;font-weight:700;font-size:10px;white-space:normal;word-break:break-word;line-height:1.35;}
 .md-row .md-ko{font-weight:500;color:var(--ui-sub);font-size:11.5px;margin-top:1px;}
 .md-row.sel .md-ko{color:rgba(255,255,255,.82);}
 .md-row .md-sub{font-size:10.5px;color:var(--ui-sub);font-weight:600;margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;}
@@ -344,6 +344,14 @@ function transliterateMatchLongest(str, i, table) {
 // (purple -> 퍼 + 플[ㅍ+ㅡ+ㄹ]) — 첫 자음을 무작정 앞 음절 받침으로 붙이면 "펍르"처럼 깨짐.
 function transliterateFlushCluster(cluster, blocks) {
   if (!cluster.length) return;
+  // 자음 뭉치가 l로 시작하고 뒤에 자음이 더 있으면(모음 뒤에서 l이 뭉치를 여는 자리,
+  // 예: he-lm, fi-lm) 앞 음절에 받침 ㄹ을 하나 더 겹쳐준다(helm->헬름, film->필름) —
+  // 모음 사이 l 겹받침(melon->멜론)과 같은 관행. l 혼자 끝나는 경우(girl 등, 길이 1)는
+  // 이미 아래 length===1 분기에서 받침 하나로 정확히 처리되니 여기서 건드리면 안 됨
+  // (건드리면 "걸"이 "걸르"처럼 음절이 하나 더 생겨버림).
+  if (cluster.length > 1 && cluster[0] === 'l' && blocks.length && !blocks[blocks.length - 1].jong) {
+    blocks[blocks.length - 1].jong = 'ㄹ';
+  }
   if (cluster.length === 1) {
     const batchim = TRANSLIT_BATCHIM[cluster[0]];
     if (batchim && blocks.length && !blocks[blocks.length - 1].jong) blocks[blocks.length - 1].jong = batchim;
@@ -913,7 +921,7 @@ function imageStageHtml(p) {
       <input type="file" id="fileInput" accept="image/*" multiple/>
     </div>
     <div class="thumbrow" id="thumbRow"></div>
-    ${p.images.length > 1 ? `<div class="mini-actions"><button class="sm secondary" id="btnRemoveFrameNonMain">★ 대표만 남기고 나머지 사진 틀 제거</button></div>` : ''}
+    ${p.images.length > 1 ? `<div class="mini-actions"><button class="sm secondary" id="btnRemoveFrameNonMain">${nonMainFramesStripped(p) ? '↺ 나머지 사진 틀 다시 켜기' : '★ 대표만 남기고 나머지 사진 틀 제거'}</button></div>` : ''}
     <div class="composer" id="composerWrap">
       <div>
         <canvas id="composerCanvas" width="${CW}" height="${CH}"></canvas>
@@ -1021,16 +1029,23 @@ function wireImageStage(p) {
   if (btnExportZip) btnExportZip.addEventListener('click', () => exportProductZip(p));
 
   const btnRemoveFrameNonMain = $('#btnRemoveFrameNonMain');
-  if (btnRemoveFrameNonMain) btnRemoveFrameNonMain.addEventListener('click', () => removeFrameFromNonMain(p));
+  if (btnRemoveFrameNonMain) btnRemoveFrameNonMain.addEventListener('click', () => toggleFrameOnNonMain(p));
 
   wireComposerInteraction(p);
 }
-// 사진은 그대로 두고, 대표 슬라이드가 아닌 나머지의 "틀"만 제거한다(삭제 아님) — 틀이 상품을 가리는 게 문제였지 사진 자체는 필요하니까.
-function removeFrameFromNonMain(p) {
-  p.images.forEach((s, i) => { s.noFrame = i !== p.mainIndex; });
+// 사진은 그대로 두고, 대표 슬라이드가 아닌 나머지의 "틀"만 켰다 껐다 토글한다(삭제 아님) —
+// 틀이 상품을 가리는 게 문제였지 사진 자체는 필요하니까. 예전엔 누를 때마다 항상 "제거"만
+// 해서, 한 번 끄고 나면 되돌릴 버튼이 없어 개별 사진마다 일일이 다시 켜야 했던 문제가 있었음.
+// 나머지 중 하나라도 이미 꺼져있으면(=이 기능으로 정리해둔 상태) 이번엔 전부 다시 켜고,
+// 하나도 안 꺼져있으면(아직 정리 전) 전부 끈다.
+function nonMainFramesStripped(p) {
+  return p.images.some((s, i) => i !== p.mainIndex && s.noFrame);
+}
+function toggleFrameOnNonMain(p) {
+  const turnBackOn = nonMainFramesStripped(p);
+  p.images.forEach((s, i) => { s.noFrame = i !== p.mainIndex && !turnBackOn; });
   saveProducts();
-  drawAllThumbs(p);
-  drawComposer(p);
+  renderImageStage(p); // 버튼 라벨(제거/다시켜기)도 같이 바뀌어야 해서 통째로 다시 그림
 }
 
 // ── 썸네일 드래그 재정렬 (네이티브 HTML5 draggable 대신 mousedown/mousemove/mouseup 직접 구현 —
