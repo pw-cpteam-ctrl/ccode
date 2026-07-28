@@ -376,6 +376,12 @@ function transliterateWord(word) {
       const nextIsVowel = isTranslitVowel(nextChar) || (nextChar === 'y' && !isTranslitVowel(w[i + cm.len + 1]));
       if (nextIsVowel) {
         if (pendingCho) blocks.push({ cho: pendingCho, vowel: 'eu' });
+        // 모음 사이(intervocalic)의 l은 한글 외래어 표기 관행상 앞 음절 받침 ㄹ + 뒤 음절
+        // 초성 ㄹ로 겹쳐 쓴다(melon->멜론, gorilla->고릴라, chocolate->초콜릿처럼). r은 이
+        // 처리 없이 홑 초성 ㄹ만 쓴다(saori->사오리, mejiro->메지로) — 이게 r/l 구분의 핵심.
+        if (cm.val === 'l' && blocks.length && !blocks[blocks.length - 1].jong) {
+          blocks[blocks.length - 1].jong = 'ㄹ';
+        }
         pendingCho = cm.val;
         i += cm.len; continue;
       }
@@ -436,6 +442,8 @@ const TRANSLIT_DICTIONARY = [
   ['multi', '멀티'],
   ['vanilla', '바닐라'],
   ['lollipop', '롤리팝'],
+  ['hatsune miku', '하츠네 미쿠'],
+  ['chocopuni', '쵸코푸니'],
 ].sort((a, b) => b[0].length - a[0].length);
 
 // 일본어 로마자(헵번식) -> 한글, 발음 단위(모라)별 고정 대조표. 캐릭터/시리즈 고유명사
@@ -705,30 +713,37 @@ function getBadgeText(p) {
 // 캔버스 텍스트를 maxWidth 안에 들어오게 단어 단위로 줄바꿈. 공백 없는 언어(한글)는 음절
 // 단위로도 쪼갠다 — 안 그러면 긴 한글 단어 하나가 통째로 넘칠 수 있음.
 function wrapCanvasText(ctx, text, maxWidth) {
-  const words = text.split(/(\s+)/).filter(w => w !== '');
-  const lines = []; let cur = '';
-  const pushChunk = chunk => {
-    let piece = chunk;
-    while (ctx.measureText(cur + piece).width > maxWidth && piece.length > 1) {
-      // 한 단어 자체가 너무 길면 글자 단위로 쪼개서라도 줄바꿈
-      let lo = 1, hi = piece.length, fit = 1;
-      while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        if (ctx.measureText(cur + piece.slice(0, mid)).width <= maxWidth) { fit = mid; lo = mid + 1; }
-        else hi = mid - 1;
+  // 사용자가 입력칸에서 직접 엔터(줄바꿈)를 친 경우, 그 줄바꿈 지점은 반드시 지켜야 한다 —
+  // 기존엔 \s+ 하나로 뭉뚱그려 처리해서 엔터가 그냥 공백으로 뭉개져버렸었음. 단락(문단)
+  // 단위로 먼저 쪼갠 뒤, 각 단락 안에서만 폭 기준 자동 줄바꿈을 적용한다.
+  const paragraphs = String(text).split('\n');
+  const lines = [];
+  for (const para of paragraphs) {
+    const words = para.split(/(\s+)/).filter(w => w !== '');
+    let cur = '';
+    const pushChunk = chunk => {
+      let piece = chunk;
+      while (ctx.measureText(cur + piece).width > maxWidth && piece.length > 1) {
+        // 한 단어 자체가 너무 길면 글자 단위로 쪼개서라도 줄바꿈
+        let lo = 1, hi = piece.length, fit = 1;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          if (ctx.measureText(cur + piece.slice(0, mid)).width <= maxWidth) { fit = mid; lo = mid + 1; }
+          else hi = mid - 1;
+        }
+        if (fit === 0 || (cur === '' && fit === 0)) fit = 1;
+        lines.push((cur + piece.slice(0, fit)).trim());
+        piece = piece.slice(fit); cur = '';
       }
-      if (fit === 0 || (cur === '' && fit === 0)) fit = 1;
-      lines.push((cur + piece.slice(0, fit)).trim());
-      piece = piece.slice(fit); cur = '';
+      cur += piece;
+    };
+    for (const w of words) {
+      if (/^\s+$/.test(w)) { cur += ' '; continue; }
+      if (ctx.measureText(cur + w).width > maxWidth && cur.trim()) { lines.push(cur.trim()); cur = ''; }
+      pushChunk(w);
     }
-    cur += piece;
-  };
-  for (const w of words) {
-    if (/^\s+$/.test(w)) { cur += ' '; continue; }
-    if (ctx.measureText(cur + w).width > maxWidth && cur.trim()) { lines.push(cur.trim()); cur = ''; }
-    pushChunk(w);
+    lines.push(cur.trim());
   }
-  if (cur.trim()) lines.push(cur.trim());
   return lines.length ? lines : [''];
 }
 // maxLines 안에 들어올 때까지 글자 크기를 minSize까지 줄여가며 wrapCanvasText를 재시도.
@@ -820,9 +835,9 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText)
     if (badgeText) {
       ctx.textAlign = 'left';
       ctx.fillStyle = '#fff';
-      ctx.font = '700 45px -apple-system,"Malgun Gothic",sans-serif';
+      ctx.font = '700 75px -apple-system,"Malgun Gothic",sans-serif';
       ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 4;
-      ctx.fillText(badgeText, 45, 78);
+      ctx.fillText(badgeText, 45, 95);
       ctx.shadowBlur = 0;
     }
   }
@@ -892,7 +907,7 @@ function imageStageHtml(p) {
         <div class="ctl-block">
           <div class="cl">흰 텍스트 (중앙정렬 · 대표 슬라이드에만 표시)</div>
           <label class="flabel" style="font-size:11px;color:var(--ui-sub);">제목 (큰 글자)</label>
-          <textarea id="textTitleInput" rows="1">${escapeHtml(p.textTitle || '')}</textarea>
+          <textarea id="textTitleInput" rows="2">${escapeHtml(p.textTitle || '')}</textarea>
           <label class="flabel" style="font-size:11px;color:var(--ui-sub);margin-top:6px;">부제 (작은 글자)</label>
           <textarea id="textSubInput" rows="1">${escapeHtml(p.textSub || '')}</textarea>
         </div>
