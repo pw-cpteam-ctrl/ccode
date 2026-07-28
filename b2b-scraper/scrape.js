@@ -18,6 +18,7 @@ const path = require('path');
 const { openPersistentSession } = require('./browser-stealth');
 const { downloadImage } = require('./download-image');
 const { buildOutputProduct, writeOutputFile } = require('./format-output');
+const { friendlyErrorMessage } = require('./friendly-error');
 
 const { GOODSMILE_PROFILE_DIR: PROFILE_DIR } = require('./profile-dir'); // 로그인을 기억하는 전용 프로필 (저장소 밖 — profile-dir.js 참고)
 const OUT_DIR = path.join(__dirname, 'output', new Date().toISOString().slice(0, 10));
@@ -144,4 +145,4 @@ async function main() {
   await context.close();
 }
 
-main().catch(err => { console.error('❌ 실패:', err.message); process.exit(1); });
+main().catch(err => { console.error(friendlyErrorMessage(err)); process.exit(1); });
