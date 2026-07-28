@@ -14,7 +14,7 @@
 }
 *{box-sizing:border-box;}html,body{margin:0;padding:0;}
 body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Malgun Gothic',sans-serif;display:flex;justify-content:center;padding:40px 20px 100px;}
-.wrap{width:100%;max-width:1080px;}
+.wrap{width:100%;max-width:1130px;}
 h1{font-size:22px;font-weight:800;margin:0 0 6px;}
 .sub{font-size:13px;color:var(--ui-sub);margin:0 0 24px;}
 .step{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:20px 22px;margin-bottom:18px;}
@@ -113,18 +113,19 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .dayhead .daylabel{font-weight:800;font-size:14px;}
 .dayhead .brand-toggle{margin-left:auto;}
 .dayhead .dayprog{font-size:12.5px;color:var(--ui-sub);width:100%;}
-.md-wrap{display:grid;grid-template-columns:250px 1fr;gap:14px;align-items:start;}
+.md-wrap{display:grid;grid-template-columns:300px 1fr;gap:14px;align-items:start;}
 @media(max-width:820px){.md-wrap{grid-template-columns:1fr;}}
 .leftcol{display:flex;flex-direction:column;gap:10px;position:sticky;top:16px;}
 .md-list{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:8px;min-height:60px;}
-.md-row{display:flex;align-items:center;gap:9px;padding:10px 11px;border-radius:8px;cursor:pointer;font-size:13px;}
+.md-row{display:flex;align-items:center;gap:9px;padding:10px 6px;border-radius:8px;cursor:pointer;font-size:13px;}
 .md-row:hover{background:rgba(20,82,192,.06);}
 .md-row.sel{background:var(--ui-accent);color:#fff;}
 .md-row.sel .md-sub{color:rgba(255,255,255,.82);}
+.md-row .md-side{display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:6px;flex-shrink:0;align-self:stretch;width:14px;padding:1px 0;}
 .md-row .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;background:var(--ui-pending);}
 .md-row .dot.done{background:var(--ui-ok);}
 .md-row.sel .dot{outline:2px solid rgba(255,255,255,.6);}
-.md-row .md-t{flex:1;min-width:0;font-weight:700;white-space:normal;word-break:break-word;line-height:1.35;}
+.md-row .md-t{flex:1;min-width:0;font-weight:700;font-size:12px;white-space:normal;word-break:break-word;line-height:1.35;}
 .md-row .md-ko{font-weight:500;color:var(--ui-sub);font-size:11.5px;margin-top:1px;}
 .md-row.sel .md-ko{color:rgba(255,255,255,.82);}
 .md-row .md-sub{font-size:10.5px;color:var(--ui-sub);font-weight:600;margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;}
@@ -134,11 +135,12 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .stat-pill.on{background:var(--ui-ok-bg);color:var(--ui-ok);}
 .md-row.sel .stat-pill{background:rgba(255,255,255,.18);color:rgba(255,255,255,.7);}
 .md-row.sel .stat-pill.on{background:rgba(255,255,255,.9);color:var(--ui-ok);}
-.md-row .md-del{color:var(--ui-sub);font-weight:800;padding:0 2px;}
+.md-row .md-del{color:var(--ui-sub);font-weight:800;padding:0;line-height:1;}
 .md-row .md-del:hover{color:var(--ui-warn);}
 .md-row.sel .md-del{color:rgba(255,255,255,.85);}
-.md-row .md-thumb{width:44px;height:55px;flex-shrink:0;border-radius:5px;object-fit:cover;background:var(--ui-card);border:1px solid var(--ui-border);}
-.md-row.sel .md-thumb{border-color:rgba(255,255,255,.4);}
+.md-row .md-thumb-wrap{width:64px;height:80px;flex-shrink:0;border-radius:5px;overflow:hidden;background:var(--ui-card);border:1px solid var(--ui-border);}
+.md-row.sel .md-thumb-wrap{border-color:rgba(255,255,255,.4);}
+.md-row .md-thumb{width:100%;height:100%;object-fit:cover;transform:scale(2);transform-origin:center;}
 .md-detail{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:18px 20px;min-height:300px;}
 .md-empty{color:var(--ui-sub);font-size:13.5px;text-align:center;padding:60px 10px;}
 .d-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
@@ -1262,15 +1264,17 @@ function renderList() {
     const thumbSrc = mainImg && mainImg.src;
     return `
     <div class="md-row${p.id === currentProductId ? ' sel' : ''}" data-id="${p.id}">
-      <span class="dot ${st.done ? 'done' : ''}"></span>
       <span class="md-t">${escapeHtml(label)}${showKo ? `<div class="md-ko">${escapeHtml(koLabel)}</div>` : ''}<div class="md-sub">
         <span class="brand-tag">${BRAND_LABELS[p.brand] || p.brand}</span>
         <span class="stat-pill${st.hasDraft ? ' on' : ''}">원고${st.hasDraft ? ' ✓' : ''}</span>
         <span class="stat-pill${st.hasImage ? ' on' : ''}">이미지${st.hasImage ? ' ✓' : ''}</span>
         <span class="stat-pill${st.hasReview ? ' on' : ''}">검수${st.hasReview ? ' ✓' : ''}</span>
       </div></span>
-      ${thumbSrc ? `<img class="md-thumb" src="${thumbSrc}" alt=""/>` : ''}
-      <span class="md-del" data-del="${p.id}">✕</span>
+      ${thumbSrc ? `<span class="md-thumb-wrap"><img class="md-thumb" src="${thumbSrc}" alt=""/></span>` : ''}
+      <span class="md-side">
+        <span class="dot ${st.done ? 'done' : ''}"></span>
+        <span class="md-del" data-del="${p.id}">✕</span>
+      </span>
     </div>`;
   }).join('');
   box.querySelectorAll('.md-row').forEach(el => {
