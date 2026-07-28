@@ -411,40 +411,18 @@ function transliterateWord(word) {
     return jamoChars.map((v, idx) => hangulSyllable(idx === 0 ? choJamo : 'ㅇ', v, idx === jamoChars.length - 1 ? b.jong : null)).join('');
   }).join('');
 }
-// 피규어 업계에서 매번 반복되는 고정 용어는 발음 추측이 아니라 이미 정해진 한글 표기가
-// 있음 (예: Nendoroid=넨도로이드, Scale Figure=스케일 피규어) — 이런 건 규칙 기반 음역이
-// 오히려 엉망으로 망가뜨려서, 사전에 있으면 그걸 먼저 쓰고 사전에 없는 부분(주로 실제
-// 캐릭터/시리즈 고유명사)만 규칙 기반 음역으로 넘긴다. 긴 구문부터 매칭되게 정렬해둠.
-const TRANSLIT_DICTIONARY = [
-  ['pop up parade', '팝업 퍼레이드'],
-  ['scale figure', '스케일 피규어'],
-  ['complete figure', '컴플리트 피규어'],
-  ['prize figure', '프라이즈 피규어'],
-  ['non-scale', '논스케일'], ['non scale', '논스케일'],
-  ['good smile company', '굿스마일 컴퍼니'], ['good smile', '굿스마일'],
-  ['nendoroid', '넨도로이드'],
-  ['figma', '피그마'],
-  ['punipuni', '푸니푸니'],
-  ['blythe', '블라이스'],
-  ['figure', '피규어'],
-  ['plushie', '플러시'],
-  ['deluxe', '디럭스'],
-  ['renewal', '리뉴얼'],
-  ['edition', '에디션'],
-  ['original', '오리지널'],
-  ['standard', '스탠다드'],
-  ['special', '스페셜'],
-  ['bonus', '보너스'],
-  ['series', '시리즈'],
-  ['scale', '스케일'],
-  ['ver.', '버전'], ['ver', '버전'],
-  ['set', '세트'],
-  ['multi', '멀티'],
-  ['vanilla', '바닐라'],
-  ['lollipop', '롤리팝'],
-  ['hatsune miku', '하츠네 미쿠'],
-  ['chocopuni', '쵸코푸니'],
-].sort((a, b) => b[0].length - a[0].length);
+// 고유명사 사전은 rules/proper-nouns.js 파일 하나를 백엔드(api/format.js)와 같이 쓴다 —
+// 이 페이지는 정적 파일이라 <script type="module">이 아니어도 동작하는 동적 import()로
+// 불러온다. 새 고유명사를 추가할 땐 이 파일이 아니라 rules/proper-nouns.js를 고친다.
+let TRANSLIT_DICTIONARY = [];
+async function loadProperNounDictionary() {
+  try {
+    const mod = await import('./rules/proper-nouns.js');
+    TRANSLIT_DICTIONARY = [...mod.PROPER_NOUNS].sort((a, b) => b[0].length - a[0].length);
+  } catch (e) {
+    console.error('고유명사 사전 로드 실패:', e);
+  }
+}
 
 // 일본어 로마자(헵번식) -> 한글, 발음 단위(모라)별 고정 대조표. 캐릭터/시리즈 고유명사
 // 대부분이 실제로는 일본어를 로마자로 옮긴 것(예: Mejiro=めじろ, Saori=さおり)이라, 이걸
@@ -1755,7 +1733,8 @@ async function importB2BFiles(files) {
   $('#b2bImportInput').value = ''; // 같은 파일을 다시 선택해도 change가 뜨도록 초기화
 }
 
-(function init() {
+(async function init() {
+  await loadProperNounDictionary();
   PRODUCTS = loadProductsFromStorage().map(p => ({ ...makeBlankProduct(), ...p }));
   renderList();
   if (PRODUCTS.length) selectProduct(PRODUCTS[0].id);
