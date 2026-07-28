@@ -137,6 +137,8 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .md-row .md-del{color:var(--ui-sub);font-weight:800;padding:0 2px;}
 .md-row .md-del:hover{color:var(--ui-warn);}
 .md-row.sel .md-del{color:rgba(255,255,255,.85);}
+.md-row .md-thumb{width:44px;height:55px;flex-shrink:0;border-radius:5px;object-fit:cover;background:var(--ui-card);border:1px solid var(--ui-border);}
+.md-row.sel .md-thumb{border-color:rgba(255,255,255,.4);}
 .md-detail{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:18px 20px;min-height:300px;}
 .md-empty{color:var(--ui-sub);font-size:13.5px;text-align:center;padding:60px 10px;}
 .d-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
@@ -670,6 +672,19 @@ function loadImageFromBlob(blob) {
     img.onerror = rej;
     img.src = URL.createObjectURL(blob);
   });
+}
+// 좌측 목록 썸네일은 대표(★) 사진의 imgCache 엔트리를 그대로 재사용하는데, 페이지를 새로
+// 열면 imgCache가 비어있고(지금까지는 selectProduct가 호출된 상품만 채워짐) 그러면 처음
+// 렌더링된 목록엔 썸네일이 하나도 안 보인다 — 각 상품을 한 번씩 클릭해야만 나타나는 문제.
+// 그래서 초기 로딩 시 "상품마다 대표 사진 1장만" 미리 불러와 채워둔다(전체 사진 다 불러오면
+// 무거우니 대표 1장으로 제한).
+async function preloadMainThumbnails() {
+  await Promise.all(PRODUCTS.map(async p => {
+    const slide = p.images && p.images[p.mainIndex];
+    if (!slide || imgCache.has(slide.key)) return;
+    const blob = await idbGet(slide.key).catch(() => null);
+    if (blob) { try { imgCache.set(slide.key, await loadImageFromBlob(blob)); } catch {} }
+  }));
 }
 const imgCache = new Map(); // key -> HTMLImageElement (메모리 캐시, 상품 전환할 때마다 다시 불러오지 않게)
 
@@ -1239,6 +1254,12 @@ function renderList() {
     const label = (p.title || '').trim() || (p.officialText || '').split('\n').map(s => s.trim()).find(Boolean) || '(제목 없음)';
     const koLabel = p.textTitle || transliterateEnToKo(label);
     const showKo = koLabel && koLabel.trim() && koLabel.trim() !== label.trim();
+    // 대표(★) 사진이 있으면 목록에서 바로 알아볼 수 있게 원본 사진을 작게 잘라서 보여준다.
+    // 주황틀 합성까지 다시 그리면 무거우니, 이미 메모리에 로드돼 있는 원본 이미지의 src(오브젝트
+    // URL)를 그대로 재사용 — 새로 계산하는 것 없이 사실상 공짜.
+    const mainSlide = p.images && p.images[p.mainIndex];
+    const mainImg = mainSlide && imgCache.get(mainSlide.key);
+    const thumbSrc = mainImg && mainImg.src;
     return `
     <div class="md-row${p.id === currentProductId ? ' sel' : ''}" data-id="${p.id}">
       <span class="dot ${st.done ? 'done' : ''}"></span>
@@ -1248,6 +1269,7 @@ function renderList() {
         <span class="stat-pill${st.hasImage ? ' on' : ''}">이미지${st.hasImage ? ' ✓' : ''}</span>
         <span class="stat-pill${st.hasReview ? ' on' : ''}">검수${st.hasReview ? ' ✓' : ''}</span>
       </div></span>
+      ${thumbSrc ? `<img class="md-thumb" src="${thumbSrc}" alt=""/>` : ''}
       <span class="md-del" data-del="${p.id}">✕</span>
     </div>`;
   }).join('');
@@ -1782,6 +1804,7 @@ async function importB2BFiles(files) {
   await loadProperNounDictionary();
   loadGradSettings();
   PRODUCTS = loadProductsFromStorage().map(p => ({ ...makeBlankProduct(), ...p }));
+  await preloadMainThumbnails();
   renderList();
   if (PRODUCTS.length) selectProduct(PRODUCTS[0].id);
   else renderDetail();
