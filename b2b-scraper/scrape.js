@@ -68,11 +68,6 @@ async function extractProductFromDetailPage(page, url) {
   const dateText = (await page.locator('.b-product-info__unit--date').first().textContent().catch(() => '')) || '';
   const releaseDate = (dateText.match(/Release Month:\s*([\d/]+)/) || [])[1] || '';
 
-  const priceText = (await page.locator('.b-product-info__unit--price').first().textContent().catch(() => '')) || '';
-  const wholesalePrice = (priceText.match(/Wholesale Price\s*[￥¥]\s*([\d,]+)/) || [])[1] || '';
-  const retailPrice = (priceText.match(/Retail price\s*[￥¥]\s*([\d,]+)/i) || [])[1] || '';
-  const qtyPerCarton = (priceText.match(/Quantity per carton\s*(\d+)/i) || [])[1] || '';
-
   // "Product Specifications" 섹션은 <h3>라벨</h3><p>값</p> 쌍이 상품마다 개수가 다를 수 있어서
   // (예: 재판 상품엔 Sculptor/Production Cooperation이 없을 수 있음) 고정 순서 대신 라벨로 매칭.
   const specPairs = await page.locator('#section_spec .b-text-group__unit').evaluateAll(units =>
@@ -86,14 +81,14 @@ async function extractProductFromDetailPage(page, url) {
   const work = specMap['Series'] || '';
   const size = specMap['Specifications'] || '';
   const manufacturer = specMap['Manufacturer'] || '';
-  const copyright = specMap['Copyright'] || '';
+  // 저작권/가격/카톤당 수량은 팀 실사용에 필요 없어서 수집 안 함(요청에 따라 제외).
 
   const photoSrcs = await page.locator('.c-photo-variable-grid img').evaluateAll(imgs =>
     [...new Set(imgs.map(img => img.getAttribute('src')).filter(Boolean))]
   );
   const photoUrls = photoSrcs.map(src => new URL(src, url).href);
 
-  return { id, title, work, releaseDate, rerelease, size, manufacturer, copyright, wholesalePrice, retailPrice, qtyPerCarton, photoUrls };
+  return { id, title, work, releaseDate, rerelease, size, manufacturer, photoUrls };
 }
 
 async function main() {

@@ -12,16 +12,11 @@ function buildOfficialText(f) {
   lines.push(`재판여부: ${f.rerelease ? '재판' : '신제품'}`);
   if (f.size) lines.push(`사이즈: ${f.size}`);
   if (f.manufacturer) lines.push(`제조사: ${f.manufacturer}`);
-  if (f.copyright) lines.push(`저작권: ${f.copyright}`);
-  if (f.wholesalePrice || f.retailPrice) {
-    lines.push(`가격: 도매 ${f.wholesalePrice || '-'} / 소매 ${f.retailPrice || '-'}`);
-  }
-  if (f.qtyPerCarton) lines.push(`카톤당 수량: ${f.qtyPerCarton}`);
+  // 저작권/가격/카톤당 수량은 팀 실사용에 필요 없어서 수집 안 함(요청에 따라 제외).
   return lines.join('\n');
 }
 
-// f: { id, title, work, releaseDate, rerelease, size, manufacturer, copyright,
-//      wholesalePrice, retailPrice, qtyPerCarton, photoFilenames: string[] }
+// f: { id, title, work, releaseDate, rerelease, size, manufacturer, photoFilenames: string[] }
 function buildOutputProduct(f) {
   return {
     id: f.id,
@@ -31,10 +26,6 @@ function buildOutputProduct(f) {
     rerelease: !!f.rerelease,
     size: f.size || '',
     manufacturer: f.manufacturer || '',
-    copyright: f.copyright || '',
-    wholesalePrice: f.wholesalePrice || '',
-    retailPrice: f.retailPrice || '',
-    qtyPerCarton: f.qtyPerCarton || '',
     officialText: buildOfficialText(f),
     photos: f.photoFilenames || [],
   };

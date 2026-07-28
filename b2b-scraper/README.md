@@ -45,8 +45,8 @@ exe/GUI 포장이 필요한데, 이번 프로젝트 규모엔 오버킬로 판�
 - "오늘 상품" 목록 = 로그인 후 뜨는 홈 화면(`https://www.goodsmile.com/b2b/en`) 자체가
   매일 갱신되며, 신상품이 `/b2b/en/product/<숫자ID>` 링크로 나열됨.
 - 상세 페이지는 `.b-product-info__title`(제목), `.b-product-info__unit--date`(발매월 등),
-  `.b-product-info__unit--price`(가격), `#section_spec`(시리즈/사이즈/제조사/저작권 등),
-  `.c-photo-variable-grid img`(사진) 구조를 그대로 읽는다.
+  `#section_spec`(시리즈/사이즈/제조사), `.c-photo-variable-grid img`(사진) 구조를 그대로
+  읽는다. (가격/저작권/카톤당 수량은 팀 실사용에 필요 없어서 수집하지 않는다.)
 - 로그인 필요 시 실제로 `/login` 경로로 리다이렉트됨 (`LOGIN_URL_PATTERN`과 일치 확인됨).
 
 사이트 구조가 나중에 바뀌면 다시 정찰해서 `scrape.js`를 갱신해야 한다:
