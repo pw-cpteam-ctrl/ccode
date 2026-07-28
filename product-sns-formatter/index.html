@@ -272,6 +272,19 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 const $ = s => document.querySelector(s);
 const MEMO_STORAGE_KEY = 'product-sns-formatter:memos';
 const PRODUCTS_KEY = 'product-sns-formatter:products:v1';
+const GRAD_SETTINGS_KEY = 'product-sns-formatter:gradSettings:v1';
+// 검정 그라데이션 4종 조절값 — 상품별로 따로 두지 않고 전체 상품(캔버스) 공통으로 적용.
+// 슬라이더를 만지면 이 객체 하나만 바뀌고, gradCfgFor(p)가 상품과 무관하게 이 값을 그대로 씀.
+let GLOBAL_GRAD = { start: 40, width: 60, intensity: 85, compress: 0 };
+function loadGradSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(GRAD_SETTINGS_KEY) || 'null');
+    if (saved) GLOBAL_GRAD = { ...GLOBAL_GRAD, ...saved };
+  } catch { /* 무시하고 기본값 사용 */ }
+}
+function saveGradSettings() {
+  try { localStorage.setItem(GRAD_SETTINGS_KEY, JSON.stringify(GLOBAL_GRAD)); } catch { /* 용량 초과 시 무시 */ }
+}
 const BRAND_LABELS = { bushiroad: '부시로드', megahouse: '메가하우스', goodsmile: '굿스마일' };
 const DEFAULT_BRAND = 'goodsmile';
 
@@ -590,10 +603,6 @@ function makeBlankProduct() {
     mainIndex: 0,
     textTitle: '',
     textSub: '',
-    gradStart: 40, // 시작점 % (0~90)
-    gradWidth: 60, // 퍼짐 % (5~200)
-    gradIntensity: 85, // 농도 % (0~200)
-    gradCompress: 0, // 압축 % (0~60)
     badgeKind: 'new', // 'new' | 'decided' | 'prototype' | 'custom' — 주황틀 좌상단 표시
     badgeCustomText: '',
     badgeLetterSpacing: 0, // 배지 글자 자간(px), -50~50
@@ -746,7 +755,9 @@ function fitWrappedText(ctx, text, maxWidth, baseFontSize, fontWeight, maxLines,
   return { lines, fontSize };
 }
 function gradCfgFor(p) {
-  return { start: p.gradStart ?? 40, width: p.gradWidth ?? 60, opacity: p.gradIntensity ?? 85, compress: p.gradCompress ?? 0 };
+  // 상품(p)은 안 쓰고 전체 공통값(GLOBAL_GRAD)만 반환 — 예전엔 상품별로 따로 저장했는데,
+  // 슬라이더를 모든 캔버스에 공통 적용해달라는 요청에 따라 전역 설정 하나로 통일함.
+  return { start: GLOBAL_GRAD.start, width: GLOBAL_GRAD.width, opacity: GLOBAL_GRAD.intensity, compress: GLOBAL_GRAD.compress };
 }
 // 그라데이션 4종(시작점/퍼짐/농도/압축) — 사용자가 이 프로젝트의 다른 화면에서 이미 쓰던
 // 스니펫의 계산식을 그대로 가져와 canvas 좌표로 옮긴 것. s/w/o/c는 각각 0~100대의 %값.
@@ -899,16 +910,16 @@ function imageStageHtml(p) {
           </div>
         </div>
         <div class="ctl-block">
-          <div class="cl">검정 그라데이션</div>
+          <div class="cl">검정 그라데이션 <span style="font-weight:400;color:var(--ui-sub);">(상품 개별 아님 — 전체 공통 적용)</span></div>
           <div class="grad4-grid">
             <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">시작점 %</label>
-              <input type="range" id="gradStartRange" min="0" max="90" value="${p.gradStart ?? 40}"/></div>
+              <input type="range" id="gradStartRange" min="0" max="90" value="${GLOBAL_GRAD.start}"/></div>
             <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">퍼짐 %</label>
-              <input type="range" id="gradWidthRange" min="5" max="200" value="${p.gradWidth ?? 60}"/></div>
+              <input type="range" id="gradWidthRange" min="5" max="200" value="${GLOBAL_GRAD.width}"/></div>
             <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">농도 %</label>
-              <input type="range" id="gradIntensityRange" min="0" max="200" value="${p.gradIntensity ?? 85}"/></div>
+              <input type="range" id="gradIntensityRange" min="0" max="200" value="${GLOBAL_GRAD.intensity}"/></div>
             <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">압축 %</label>
-              <input type="range" id="gradCompressRange" min="0" max="60" value="${p.gradCompress ?? 0}"/></div>
+              <input type="range" id="gradCompressRange" min="0" max="60" value="${GLOBAL_GRAD.compress}"/></div>
           </div>
         </div>
         <div class="ctl-block">
@@ -943,10 +954,10 @@ function wireImageStage(p) {
   });
 
   const gs = $('#gradStartRange'), gw = $('#gradWidthRange'), gi = $('#gradIntensityRange'), gc = $('#gradCompressRange');
-  if (gs) gs.addEventListener('input', () => { p.gradStart = Number(gs.value); drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
-  if (gw) gw.addEventListener('input', () => { p.gradWidth = Number(gw.value); drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
-  if (gi) gi.addEventListener('input', () => { p.gradIntensity = Number(gi.value); drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
-  if (gc) gc.addEventListener('input', () => { p.gradCompress = Number(gc.value); drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
+  if (gs) gs.addEventListener('input', () => { GLOBAL_GRAD.start = Number(gs.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
+  if (gw) gw.addEventListener('input', () => { GLOBAL_GRAD.width = Number(gw.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
+  if (gi) gi.addEventListener('input', () => { GLOBAL_GRAD.intensity = Number(gi.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
+  if (gc) gc.addEventListener('input', () => { GLOBAL_GRAD.compress = Number(gc.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
   const tt = $('#textTitleInput'), ts = $('#textSubInput');
   if (tt) tt.addEventListener('input', () => { p.textTitle = tt.value; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
   if (ts) ts.addEventListener('input', () => { p.textSub = ts.value; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
@@ -1766,6 +1777,7 @@ async function importB2BFiles(files) {
 
 (async function init() {
   await loadProperNounDictionary();
+  loadGradSettings();
   PRODUCTS = loadProductsFromStorage().map(p => ({ ...makeBlankProduct(), ...p }));
   renderList();
   if (PRODUCTS.length) selectProduct(PRODUCTS[0].id);
