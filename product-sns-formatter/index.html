@@ -799,7 +799,11 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText,
     const grad = ctx.createLinearGradient(0, bandTop, 0, bandBottom);
     stops.forEach(st => grad.addColorStop(Math.max(0, Math.min(1, st.pct / 100)), `rgba(0,0,0,${st.alpha.toFixed(3)})`));
     ctx.fillStyle = grad;
-    ctx.fillRect(0, bandTop, CW, bandBottom - bandTop);
+    // 칠하는 영역 자체는 캔버스 맨 아래(CH)까지 내려서 틀의 불투명 하단 테두리와 만나는
+    // 지점에 1px 틈이 안 생기게 한다 — 그라데이션 좌표(bandTop~bandBottom)는 그대로 두고
+    // FRAME_INNER.y1 밑은 마지막 색상(불투명)으로 그냥 이어서 채워지는 것이라 어차피
+    // 틀 PNG가 그 위에 덮여서 그려지므로 티가 안 남.
+    ctx.fillRect(0, bandTop, CW, CH - bandTop);
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
