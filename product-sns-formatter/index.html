@@ -220,9 +220,9 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 
   <div class="md-wrap">
     <div class="leftcol">
-      <button id="btnB2BImport" class="secondary" style="width:100%;">🔄 B2B에서 오늘 상품 가져오기</button>
-      <input type="file" id="b2bImportInput" multiple accept=".json,image/*" style="display:none;"/>
-      <div class="status" id="b2bImportStatus"></div>
+      <button id="btnB2BImport" class="secondary" style="width:100%;">🔄 B2B에서 오늘 상품 가져오기 (폴더 선택)</button>
+      <input type="file" id="b2bImportInput" webkitdirectory directory multiple style="display:none;"/>
+      <div class="status" id="b2bImportStatus">scrape.js가 만든 output/&lt;날짜&gt; 폴더를 통째로 선택하면 사진까지 전부 자동으로 채워져요.</div>
       <button id="btnAddProduct" style="width:100%;">＋ 상품 추가</button>
       <div class="md-list" id="mdList"></div>
     </div>
@@ -294,7 +294,7 @@ function hangulSyllable(choJamo, jungJamo, jongJamo) {
 const isTranslitVowel = c => 'aeiou'.includes(c);
 const TRANSLIT_CONSONANTS = [
   ['tion', 'syeon'], ['sion', 'syeon'],
-  ['ck', 'k'], ['ph', 'f'], ['th', 's'], ['sh', 'sy'], ['ch', 'c'], ['wh', 'w'], ['qu', 'kw'], ['ng', 'ng'],
+  ['ck', 'k'], ['ph', 'f'], ['th', 's'], ['sh', 'sy'], ['ch', 'ch'], ['wh', 'w'], ['qu', 'kw'], ['ng', 'ng'],
   ['b','b'],['c','k'],['d','d'],['f','f'],['g','g'],['h','h'],['j','j'],['k','k'],
   ['l','l'],['m','m'],['n','n'],['p','p'],['q','k'],['r','r'],['s','s'],['t','t'],
   ['v','b'],['w','w'],['x','ks'],['y','y'],['z','j'],
@@ -309,7 +309,7 @@ const TRANSLIT_VOWELS = [
   ['ai','ai'],['ay','ei'],['ie','ai'],['ue','u'],
   ['a','a'],['e','e'],['i','i'],['o','o'],['u','u'], // 로마자 그대로 읽는 기본값 (영어식 슈와로 안 바꿈)
 ];
-const TRANSLIT_CHO_MAP = { b:'ㅂ',c:'ㅋ',k:'ㅋ',d:'ㄷ',f:'ㅍ',g:'ㄱ',h:'ㅎ',j:'ㅈ',l:'ㄹ',m:'ㅁ',n:'ㄴ',p:'ㅍ',r:'ㄹ',s:'ㅅ',t:'ㅌ',v:'ㅂ',w:'ㅇ',y:'ㅇ',z:'ㅈ',sy:'ㅅ',kw:'ㅋ' };
+const TRANSLIT_CHO_MAP = { b:'ㅂ',c:'ㅋ',k:'ㅋ',d:'ㄷ',f:'ㅍ',g:'ㄱ',h:'ㅎ',j:'ㅈ',l:'ㄹ',m:'ㅁ',n:'ㄴ',p:'ㅍ',r:'ㄹ',s:'ㅅ',t:'ㅌ',v:'ㅂ',w:'ㅇ',y:'ㅇ',z:'ㅈ',sy:'ㅅ',kw:'ㅋ',ch:'ㅊ' };
 const TRANSLIT_VOWEL_MAP = { a:'ㅏ',e:'ㅔ',i:'ㅣ',o:'ㅗ',u:'ㅜ',eo:'ㅓ',ei:'ㅔ',ai:'ㅏㅣ',au:'ㅏㅜ',oi:'ㅗㅣ' };
 // y + 모음은 ㅇ+모음이 아니라 야/여/요/유처럼 이중모음 잡음으로 합쳐야 자연스러움
 // (kaguya -> 카구야, ㅇ+아로 따로 쓰면 카구아가 됨).
@@ -433,7 +433,68 @@ const TRANSLIT_DICTIONARY = [
   ['scale', '스케일'],
   ['ver.', '버전'], ['ver', '버전'],
   ['set', '세트'],
+  ['multi', '멀티'],
+  ['vanilla', '바닐라'],
+  ['lollipop', '롤리팝'],
 ].sort((a, b) => b[0].length - a[0].length);
+
+// 일본어 로마자(헵번식) -> 한글, 발음 단위(모라)별 고정 대조표. 캐릭터/시리즈 고유명사
+// 대부분이 실제로는 일본어를 로마자로 옮긴 것(예: Mejiro=めじろ, Saori=さおり)이라, 이걸
+// "영어처럼" 발음 추측하면 계속 깨짐 (Mejiro->메저오, Hatsune->핫순 등). 모라 단위는
+// 조합이 고정돼 있어서 표만 있으면 예외 없이 정확함. か/た/ちゃ행은 위치 구분 없이 이
+// 업계 관행(예: "카구야 님은...")대로 격음(카/타/차)으로 통일 — 국립국어원 어두 평음
+// 규칙은 이 도메인(애니/피규어)에선 안 씀.
+const TRANSLIT_JP_MORA = [
+  ['kya','갸'],['kyu','규'],['kyo','교'],
+  ['sha','샤'],['shu','슈'],['sho','쇼'],
+  ['cha','차'],['chu','추'],['cho','초'],
+  ['nya','냐'],['nyu','뉴'],['nyo','뇨'],
+  ['hya','햐'],['hyu','휴'],['hyo','효'],
+  ['mya','먀'],['myu','뮤'],['myo','묘'],
+  ['rya','랴'],['ryu','류'],['ryo','료'],
+  ['gya','갸'],['gyu','규'],['gyo','교'],
+  ['jya','자'],['jyu','주'],['jyo','조'],
+  ['bya','뱌'],['byu','뷰'],['byo','뵤'],
+  ['pya','퍄'],['pyu','퓨'],['pyo','표'],
+  ['ou','오'], ['ei','에이'], ['uu','우'], ['ii','이'],
+  ['ka','카'],['ki','키'],['ku','쿠'],['ke','케'],['ko','코'],
+  ['ga','가'],['gi','기'],['gu','구'],['ge','게'],['go','고'],
+  ['sa','사'],['shi','시'],['su','스'],['se','세'],['so','소'],
+  ['za','자'],['ji','지'],['zu','즈'],['ze','제'],['zo','조'],
+  ['ta','타'],['chi','치'],['tsu','츠'],['te','테'],['to','토'],
+  ['da','다'],['di','디'],['du','두'],['de','데'],['do','도'],
+  ['na','나'],['ni','니'],['nu','누'],['ne','네'],['no','노'],
+  ['ha','하'],['hi','히'],['fu','후'],['he','헤'],['ho','호'],
+  ['ba','바'],['bi','비'],['bu','부'],['be','베'],['bo','보'],
+  ['pa','파'],['pi','피'],['pu','푸'],['pe','페'],['po','포'],
+  ['ma','마'],['mi','미'],['mu','무'],['me','메'],['mo','모'],
+  ['ya','야'],['yu','유'],['yo','요'],
+  ['ra','라'],['ri','리'],['ru','루'],['re','레'],['ro','로'],
+  ['wa','와'],['wo','오'],
+  ['a','아'],['i','이'],['u','우'],['e','에'],['o','오'],
+].sort((x, y) => y[0].length - x[0].length);
+// word 전체가 이 표의 모라들로 빈틈없이 분해되면 그 결과를 쓰고, 중간에 하나라도 안
+// 맞으면(=일본어 로마자가 아닐 가능성) null을 반환해 영어식 음역으로 넘긴다.
+function transliterateJapaneseRomaji(word) {
+  const w = word.toLowerCase();
+  if (!/^[a-z]+$/.test(w)) return null;
+  let i = 0; const out = [];
+  while (i < w.length) {
+    if (w[i] === 'n' && (i === w.length - 1 || !'aeiouy'.includes(w[i + 1]))) {
+      if (!out.length) return null;
+      const base = out[out.length - 1];
+      const code = base.codePointAt(0) - 0xAC00;
+      const cho = Math.floor(code / (21 * 28)), jung = Math.floor((code % (21 * 28)) / 28);
+      out[out.length - 1] = String.fromCharCode(0xAC00 + (cho * 21 + jung) * 28 + 4); // 종성 ㄴ
+      i += 1; continue;
+    }
+    const hit = TRANSLIT_JP_MORA.find(([pat]) => w.startsWith(pat, i));
+    if (!hit) return null;
+    out.push(hit[1]);
+    i += hit[0].length;
+  }
+  return out.join('');
+}
 function transliterateEnToKo(text) {
   if (!text) return '';
   return String(text).replace(/[A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*)*/g, run => {
@@ -455,7 +516,9 @@ function transliterateEnToKo(text) {
       while (j < lower.length && !/\s/.test(lower[j])) j++;
       const word = run.slice(i, j);
       const isShortAcronym = word.length === 2 && word === word.toUpperCase(); // VR, PW 같은 약어는 음역하지 않고 그대로
-      out.push(word.length >= 2 && !isShortAcronym ? transliterateWord(word) : word);
+      // 캐릭터/시리즈 고유명사는 실제로는 일본어 로마자인 경우가 대부분이라 그 표부터 시도하고,
+      // 표로 안 풀리는(=진짜 영어일 가능성이 높은) 것만 영어식 음역으로 넘긴다.
+      out.push(word.length >= 2 && !isShortAcronym ? (transliterateJapaneseRomaji(word) || transliterateWord(word)) : word);
       i = j;
     }
     return out.join('').replace(/ +/g, ' ').trim();
