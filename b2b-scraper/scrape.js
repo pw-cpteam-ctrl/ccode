@@ -83,6 +83,12 @@ async function extractProductFromDetailPage(page, url) {
   const manufacturer = specMap['Manufacturer'] || '';
   // 저작권/가격/카톤당 수량은 팀 실사용에 필요 없어서 수집 안 함(요청에 따라 제외).
 
+  // "Notification > About This Product" 목록에 성인 전용 문구가 있으면 성인 상품으로 판단.
+  // 회사가 성인 피규어는 취급 안 하므로, 이 경우 사진 다운로드도 시도하지 말고 통째로 건너뛴다.
+  const noticeItems = await page.locator('.p-product-detail__section .c-list__item').allTextContents();
+  const isAdult = noticeItems.some(t => /adults?\s+18\s+years\s+of\s+age/i.test(t));
+  if (isAdult) return { id, title, isAdult: true };
+
   const photoSrcs = await page.locator('.c-photo-variable-grid img').evaluateAll(imgs =>
     [...new Set(imgs.map(img => img.getAttribute('src')).filter(Boolean))]
   );
@@ -106,6 +112,12 @@ async function main() {
   for (const url of detailUrls) {
     const raw = await extractProductFromDetailPage(page, url);
     if (!raw) continue;
+
+    if (raw.isAdult) {
+      console.log(`🔞 ${raw.title || raw.id} — 성인 전용 상품이라 건너뜀 (사진/텍스트 수집 안 함)`);
+      await page.waitForTimeout(400);
+      continue;
+    }
 
     const photoFilenames = [];
     for (let i = 0; i < raw.photoUrls.length; i += 1) {
