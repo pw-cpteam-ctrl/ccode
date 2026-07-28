@@ -182,6 +182,7 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .ctl-block{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:9px 11px;margin-bottom:8px;}
 .ctl-block .cl{font-size:11px;font-weight:800;margin-bottom:6px;}
 .ctl-block input[type=range]{width:100%;}
+.grad4-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;}
 .ctl-block textarea{width:100%;background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;font-size:12.5px;color:var(--ui-text);font-family:inherit;resize:none;}
 .harvest{background:var(--ui-panel);border:1px solid var(--ui-accent);border-radius:12px;padding:15px 18px;margin-top:18px;}
 .harvest h3{margin:0 0 4px;font-size:13.5px;font-weight:800;display:flex;align-items:center;gap:8px;}
@@ -540,8 +541,10 @@ function makeBlankProduct() {
     mainIndex: 0,
     textTitle: '',
     textSub: '',
-    gradStart: 0.55,
-    gradIntensity: 0.75,
+    gradStart: 40, // 시작점 % (0~90)
+    gradWidth: 60, // 퍼짐 % (5~200)
+    gradIntensity: 85, // 농도 % (0~200)
+    gradCompress: 0, // 압축 % (0~60)
     badgeKind: 'new', // 'new' | 'decided' | 'prototype' | 'custom' — 주황틀 좌상단 표시
     badgeCustomText: '',
   };
@@ -677,7 +680,27 @@ function fitWrappedText(ctx, text, maxWidth, baseFontSize, fontWeight, maxLines,
   if (lines.length > maxLines) lines = lines.slice(0, maxLines); // 그래도 안 들어가면 잘라냄(극단적으로 긴 경우만)
   return { lines, fontSize };
 }
-function drawSlide(ctx, slide, withText, textTitle, textSub, gradStart, gradIntensity, badgeText) {
+function gradCfgFor(p) {
+  return { start: p.gradStart ?? 40, width: p.gradWidth ?? 60, opacity: p.gradIntensity ?? 85, compress: p.gradCompress ?? 0 };
+}
+// 그라데이션 4종(시작점/퍼짐/농도/압축) — 사용자가 이 프로젝트의 다른 화면에서 이미 쓰던
+// 스니펫의 계산식을 그대로 가져와 canvas 좌표로 옮긴 것. s/w/o/c는 각각 0~100대의 %값.
+function computeGradientStops(s, w, oRaw, c) {
+  const o = Math.min(1, oRaw / 100);
+  const p = f => Math.min(100, s + w * f);
+  const a = f => Math.min(o, o * f);
+  return {
+    stops: [
+      { pct: s, alpha: 0 },
+      { pct: p(0.35), alpha: a(0.15) },
+      { pct: p(0.6), alpha: a(0.4) },
+      { pct: p(1), alpha: o },
+      { pct: 100, alpha: o },
+    ],
+    compress: c,
+  };
+}
+function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText) {
   ctx.clearRect(0, 0, CW, CH);
   const img = slide && imgCache.get(slide.key);
   if (img) {
@@ -695,12 +718,17 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradStart, gradInte
     ctx.fillRect(0, 0, CW, CH);
   }
   if (withText) {
-    const gs = FRAME_INNER.y0 + FIH * (gradStart != null ? gradStart : 0.55);
-    const grad = ctx.createLinearGradient(0, gs, 0, FRAME_INNER.y1);
-    grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, `rgba(0,0,0,${gradIntensity != null ? gradIntensity : 0.75})`);
+    const { stops, compress } = computeGradientStops(
+      gradCfg?.start ?? 40, gradCfg?.width ?? 60, gradCfg?.opacity ?? 85, gradCfg?.compress ?? 0);
+    // 압축: 밴드 자체를 위에서부터 줄여서(bandTop을 아래로 밀어서) 같은 %단계가 더 좁은
+    // 픽셀 범위 안에서 일어나게 함 — 아래쪽 끝(100%)은 그대로 틀 하단에 고정.
+    const compressPx = (compress / 100) * FIH * 0.5;
+    const bandTop = FRAME_INNER.y0 + compressPx;
+    const bandBottom = FRAME_INNER.y1;
+    const grad = ctx.createLinearGradient(0, bandTop, 0, bandBottom);
+    stops.forEach(st => grad.addColorStop(Math.max(0, Math.min(1, st.pct / 100)), `rgba(0,0,0,${st.alpha.toFixed(3)})`));
     ctx.fillStyle = grad;
-    ctx.fillRect(0, gs, CW, FRAME_INNER.y1 - gs);
+    ctx.fillRect(0, bandTop, CW, bandBottom - bandTop);
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
@@ -740,7 +768,7 @@ function exportSlidePng(p, idx) {
   const slide = p.images[idx];
   const c = document.createElement('canvas');
   c.width = CW; c.height = CH;
-  drawSlide(c.getContext('2d'), slide, idx === p.mainIndex, p.textTitle, p.textSub, p.gradStart, p.gradIntensity, getBadgeText(p));
+  drawSlide(c.getContext('2d'), slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p));
   return new Promise(res => c.toBlob(res, 'image/png'));
 }
 
@@ -787,10 +815,16 @@ function imageStageHtml(p) {
         </div>
         <div class="ctl-block">
           <div class="cl">검정 그라데이션</div>
-          <label class="flabel" style="font-size:11px;color:var(--ui-sub);">시작 위치</label>
-          <input type="range" id="gradStartRange" min="0" max="100" value="${Math.round((p.gradStart ?? 0.55) * 100)}"/>
-          <label class="flabel" style="font-size:11px;color:var(--ui-sub);">농도</label>
-          <input type="range" id="gradIntensityRange" min="0" max="100" value="${Math.round((p.gradIntensity ?? 0.75) * 100)}"/>
+          <div class="grad4-grid">
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">시작점 %</label>
+              <input type="range" id="gradStartRange" min="0" max="90" value="${p.gradStart ?? 40}"/></div>
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">퍼짐 %</label>
+              <input type="range" id="gradWidthRange" min="5" max="200" value="${p.gradWidth ?? 60}"/></div>
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">농도 %</label>
+              <input type="range" id="gradIntensityRange" min="0" max="200" value="${p.gradIntensity ?? 85}"/></div>
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">압축 %</label>
+              <input type="range" id="gradCompressRange" min="0" max="60" value="${p.gradCompress ?? 0}"/></div>
+          </div>
         </div>
         <div class="ctl-block">
           <div class="cl">흰 텍스트 (중앙정렬 · 대표 슬라이드에만 표시)</div>
@@ -823,9 +857,11 @@ function wireImageStage(p) {
     handleFiles(p, Array.from(e.dataTransfer.files).filter(f => /^image\//.test(f.type)));
   });
 
-  const gs = $('#gradStartRange'), gi = $('#gradIntensityRange');
-  if (gs) gs.addEventListener('input', () => { p.gradStart = Number(gs.value) / 100; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
-  if (gi) gi.addEventListener('input', () => { p.gradIntensity = Number(gi.value) / 100; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
+  const gs = $('#gradStartRange'), gw = $('#gradWidthRange'), gi = $('#gradIntensityRange'), gc = $('#gradCompressRange');
+  if (gs) gs.addEventListener('input', () => { p.gradStart = Number(gs.value); drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
+  if (gw) gw.addEventListener('input', () => { p.gradWidth = Number(gw.value); drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
+  if (gi) gi.addEventListener('input', () => { p.gradIntensity = Number(gi.value); drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
+  if (gc) gc.addEventListener('input', () => { p.gradCompress = Number(gc.value); drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
   const tt = $('#textTitleInput'), ts = $('#textSubInput');
   if (tt) tt.addEventListener('input', () => { p.textTitle = tt.value; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
   if (ts) ts.addEventListener('input', () => { p.textSub = ts.value; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
@@ -978,7 +1014,7 @@ function drawAllThumbs(p) {
     if (idx === editingIdx) canvas.classList.add('sel');
     const ctx = canvas.getContext('2d');
     ctx.scale(60 / CW, 75 / CH);
-    drawSlide(ctx, slide, idx === p.mainIndex, p.textTitle, p.textSub, p.gradStart, p.gradIntensity, getBadgeText(p));
+    drawSlide(ctx, slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p));
     canvas.addEventListener('click', () => { editingIdx = idx; drawAllThumbs(p); drawComposer(p); });
     const star = document.createElement('div');
     star.className = 'th-star' + (idx === p.mainIndex ? ' on' : '');
@@ -1028,7 +1064,7 @@ function drawComposer(p) {
   const canvas = $('#composerCanvas');
   if (!canvas) return;
   const slide = p.images[editingIdx];
-  drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, p.gradStart, p.gradIntensity, getBadgeText(p));
+  drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p));
   const rect = canvas.getBoundingClientRect();
   composerScale = (rect.width || canvas.clientWidth || 210) / CW;
 }
