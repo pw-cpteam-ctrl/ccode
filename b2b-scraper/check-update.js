@@ -20,7 +20,7 @@ const path = require('path');
 
 // update.bat의 배포 출처와 같은 값이어야 한다.
 const OWNER = 'pw-cpteam-ctrl';
-const REPO = 'ccode';
+const REPO = 'share';
 const BRANCH = 'main';
 const SUBDIR = 'b2b-scraper';
 

@@ -3,7 +3,7 @@ cd /d %~dp0
 
 REM ===== Distribution source (edit here if repo/branch/subfolder changes) =====
 set "OWNER=pw-cpteam-ctrl"
-set "REPO=ccode"
+set "REPO=share"
 set "BRANCH=main"
 set "SUBDIR=b2b-scraper"
 REM ===========================================================================
