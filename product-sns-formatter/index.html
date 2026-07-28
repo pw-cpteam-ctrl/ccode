@@ -596,6 +596,7 @@ function makeBlankProduct() {
     gradCompress: 0, // 압축 % (0~60)
     badgeKind: 'new', // 'new' | 'decided' | 'prototype' | 'custom' — 주황틀 좌상단 표시
     badgeCustomText: '',
+    badgeLetterSpacing: 0, // 배지 글자 자간(px), -50~50
   };
 }
 function getActiveProduct() {
@@ -764,7 +765,7 @@ function computeGradientStops(s, w, oRaw, c) {
     compress: c,
   };
 }
-function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText) {
+function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText, badgeLetterSpacing) {
   ctx.clearRect(0, 0, CW, CH);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high'; // 원본이 저해상도라 확대될 때 최대한 부드럽게 리샘플링(품질 상한은 원본 해상도가 결정)
@@ -826,11 +827,15 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText)
     ctx.drawImage(frameImgEl, 0, 0, CW, CH);
     if (badgeText) {
       ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle'; // 폰트 크기가 바뀌어도 항상 상단 띠 중앙에 오도록(밑선 기준이면 커질수록 아래로 쏠림)
       ctx.fillStyle = '#fff';
       ctx.font = '700 75px -apple-system,"Malgun Gothic",sans-serif';
+      ctx.letterSpacing = `${badgeLetterSpacing || 0}px`;
       ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 4;
-      ctx.fillText(badgeText, 45, 95);
+      ctx.fillText(badgeText, 45, FRAME_INNER.y0 / 2);
       ctx.shadowBlur = 0;
+      ctx.letterSpacing = '0px'; // 다른 텍스트에 영향 안 가게 기본값으로 복원
+      ctx.textBaseline = 'alphabetic'; // 다른 텍스트(제목 등)에 영향 안 가게 기본값으로 복원
     }
   }
 }
@@ -838,7 +843,7 @@ function exportSlidePng(p, idx) {
   const slide = p.images[idx];
   const c = document.createElement('canvas');
   c.width = CW; c.height = CH;
-  drawSlide(c.getContext('2d'), slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p));
+  drawSlide(c.getContext('2d'), slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), p.badgeLetterSpacing);
   return new Promise(res => c.toBlob(res, 'image/png'));
 }
 
@@ -875,13 +880,19 @@ function imageStageHtml(p) {
         </div>
         <div class="ctl-block">
           <div class="cl">주황틀 좌상단 표시</div>
-          <select id="badgeKindSelect">
-            <option value="new"${(p.badgeKind || 'new') === 'new' ? ' selected' : ''}>mm.dd 신제품</option>
-            <option value="decided"${p.badgeKind === 'decided' ? ' selected' : ''}>상품화 결정</option>
-            <option value="prototype"${p.badgeKind === 'prototype' ? ' selected' : ''}>원형 공개</option>
-            <option value="custom"${p.badgeKind === 'custom' ? ' selected' : ''}>기타 (직접 입력)</option>
-          </select>
-          ${p.badgeKind === 'custom' ? `<textarea id="badgeCustomInput" rows="1" placeholder="직접 입력" style="margin-top:6px;">${escapeHtml(p.badgeCustomText || '')}</textarea>` : ''}
+          <div class="grad4-grid">
+            <div>
+              <select id="badgeKindSelect">
+                <option value="new"${(p.badgeKind || 'new') === 'new' ? ' selected' : ''}>mm.dd 신제품</option>
+                <option value="decided"${p.badgeKind === 'decided' ? ' selected' : ''}>상품화 결정</option>
+                <option value="prototype"${p.badgeKind === 'prototype' ? ' selected' : ''}>원형 공개</option>
+                <option value="custom"${p.badgeKind === 'custom' ? ' selected' : ''}>기타 (직접 입력)</option>
+              </select>
+              ${p.badgeKind === 'custom' ? `<textarea id="badgeCustomInput" rows="1" placeholder="직접 입력" style="margin-top:6px;">${escapeHtml(p.badgeCustomText || '')}</textarea>` : ''}
+            </div>
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">자간</label>
+              <input type="range" id="badgeLetterSpacingRange" min="-50" max="50" value="${p.badgeLetterSpacing ?? 0}"/></div>
+          </div>
         </div>
         <div class="ctl-block">
           <div class="cl">검정 그라데이션</div>
@@ -947,6 +958,8 @@ function wireImageStage(p) {
     p.badgeCustomText = badgeCustomInput.value;
     drawComposer(p); drawAllThumbs(p); saveProductsSoon();
   });
+  const badgeLs = $('#badgeLetterSpacingRange');
+  if (badgeLs) badgeLs.addEventListener('input', () => { p.badgeLetterSpacing = Number(badgeLs.value); drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
 
   const btnReset = $('#btnResetSlide');
   if (btnReset) btnReset.addEventListener('click', () => {
@@ -1090,7 +1103,7 @@ function drawAllThumbs(p) {
     if (idx === editingIdx) canvas.classList.add('sel');
     const ctx = canvas.getContext('2d');
     ctx.scale(60 / CW, 75 / CH);
-    drawSlide(ctx, slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p));
+    drawSlide(ctx, slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), p.badgeLetterSpacing);
     canvas.addEventListener('click', () => { editingIdx = idx; drawAllThumbs(p); drawComposer(p); });
     const star = document.createElement('div');
     star.className = 'th-star' + (idx === p.mainIndex ? ' on' : '');
@@ -1140,7 +1153,7 @@ function drawComposer(p) {
   const canvas = $('#composerCanvas');
   if (!canvas) return;
   const slide = p.images[editingIdx];
-  drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p));
+  drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), p.badgeLetterSpacing);
   const rect = canvas.getBoundingClientRect();
   composerScale = (rect.width || canvas.clientWidth || 210) / CW;
 }
