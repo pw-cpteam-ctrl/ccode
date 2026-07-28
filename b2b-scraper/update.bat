@@ -30,13 +30,16 @@ echo Applying update...
 REM /XD, /XF : do NOT overwrite/remove the teammate's local login profile,
 REM            saved session, installed deps, or the running update.bat itself.
 for /d %%D in (%REPO%-*) do (
-  robocopy "%%D\%SUBDIR%" "." /E /XD node_modules chrome-profile output recon-output /XF update.bat *-session.json cookies-*.json /NFL /NDL /NJH /NJS >nul
+  robocopy "%%D\%SUBDIR%" "." /E /XD node_modules output recon-output /XF update.bat .local-version /NFL /NDL /NJH /NJS >nul
   rmdir /s /q "%%D"
 )
 del _update.zip >nul 2>&1
 
 echo Checking for new dependencies...
 call npm install
+
+REM Record the version we just applied, so run.bat stops showing the update notice.
+node check-update.js --save
 
 echo.
 echo Update complete. You can run the tool now (run.bat).

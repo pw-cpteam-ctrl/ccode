@@ -3,8 +3,8 @@
  * output.json + photos/*.jpg로 만드는 단일 진입점.
  *
  * 팀원은 이 파일(정확히는 run.bat)만 더블클릭하면 된다:
- *   - 전용 크롬 프로필(chrome-profile/goodsmile)이 로그인을 며칠간 기억하고 있으면 →
- *     로그인 단계 없이 바로 스크래핑.
+ *   - 전용 크롬 프로필(저장소 밖에 저장 — profile-dir.js 참고)이 로그인을 며칠간 기억하고
+ *     있으면 → 로그인 단계 없이 바로 스크래핑.
  *   - 세션이 없거나 만료됐으면 → 크롬 창이 뜨고, 거기서 로그인만 하면(엔터 불필요, URL
  *     변화로 자동 감지) 곧바로 이어서 스크래핑.
  *
@@ -19,7 +19,7 @@ const { openPersistentSession } = require('./browser-stealth');
 const { downloadImage } = require('./download-image');
 const { buildOutputProduct, writeOutputFile } = require('./format-output');
 
-const PROFILE_DIR = path.join(__dirname, 'chrome-profile', 'goodsmile'); // 로그인을 기억하는 전용 프로필 폴더
+const { GOODSMILE_PROFILE_DIR: PROFILE_DIR } = require('./profile-dir'); // 로그인을 기억하는 전용 프로필 (저장소 밖 — profile-dir.js 참고)
 const OUT_DIR = path.join(__dirname, 'output', new Date().toISOString().slice(0, 10));
 
 // "오늘 상품" 목록이 뜨는 고정 홈 화면. 로그인 후 이 페이지 자체 내용이 매일 갱신됨

@@ -4,7 +4,7 @@
  * 코드는 이 결과(페이지에 __NEXT_DATA__/__PRELOADED_STATE__/__next_f가 있는지, 상품 목록/상세
  * 링크 구조가 어떤지)에 따라 완전히 달라지기 때문.
  *
- * scrape.js와 같은 전용 크롬 프로필(chrome-profile/goodsmile)을 공유한다 — scrape.js를
+ * scrape.js와 같은 전용 크롬 프로필(저장소 밖에 저장 — profile-dir.js 참고)을 공유한다 — scrape.js를
  * 한 번이라도 실행해서 로그인해뒀다면 이 스크립트는 로그인 없이 바로 정찰 가능. 세션이
  * 없거나 만료됐으면 여기서도 크롬 창이 뜨고 로그인하면 자동으로 이어서 진행된다.
  *
@@ -25,7 +25,7 @@ const fs = require('fs');
 const path = require('path');
 const { openPersistentSession } = require('./browser-stealth');
 
-const PROFILE_DIR = path.join(__dirname, 'chrome-profile', 'goodsmile'); // scrape.js와 동일한 프로필 공유
+const { GOODSMILE_PROFILE_DIR: PROFILE_DIR } = require('./profile-dir'); // scrape.js와 동일한 프로필 공유
 const OUT_DIR = path.join(__dirname, 'recon-output');
 
 // 실제 GoodSmile B2B가 로그인 필요 시 리다이렉트하는 경로 (정찰로 확인됨: response.redirected → /login).

@@ -18,6 +18,10 @@ if not exist "node_modules" (
   call npm install
 )
 
+REM Tell the user if a newer version exists. Notify only - never auto-applies,
+REM never blocks (see check-update.js for why).
+node check-update.js
+
 REM Run the scraper (Korean progress messages are printed by scrape.js, not here)
 node scrape.js
 

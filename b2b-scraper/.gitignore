@@ -1,7 +1,12 @@
 node_modules/
-chrome-profile/
 output/
 recon-output/
+_update.zip
+.local-version
+
+# 아래는 이제 저장소 안에 생기지 않는다 (로그인 데이터는 profile-dir.js가 정한
+# 저장소 밖 경로에 저장됨). 옛 버전을 쓰던 사람 PC에 남아있을 수 있고, 만약
+# 어떤 이유로든 다시 생기더라도 커밋되지 않게 방어용으로 남겨둔다.
+chrome-profile/
 goodsmile-session.json
 cookies-*.json
-_update.zip
