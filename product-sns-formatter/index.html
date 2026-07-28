@@ -501,19 +501,22 @@ function transliterateEnToKo(text) {
     const lower = run.toLowerCase();
     let i = 0; const out = [];
     while (i < lower.length) {
-      if (/\s/.test(lower[i])) { out.push(' '); i++; continue; }
+      // 하이픈도 공백과 똑같이 "단어 경계"로 취급한다 — 안 그러면 "Post-Shower"가 하이픈을
+      // 무시한 채 "postshower" 한 단어로 붙어서 처리돼 완전히 다른 소리로 깨진다
+      // (post/shower 각각 사전에 있어도 경계 판정에 걸려 안 먹힘).
+      if (/[\s-]/.test(lower[i])) { out.push(run[i]); i++; continue; }
       let matched = null;
       for (const [pat, ko] of TRANSLIT_DICTIONARY) {
         if (lower.startsWith(pat, i)) {
-          const before = i === 0 || /\s/.test(lower[i - 1]);
+          const before = i === 0 || /[\s-]/.test(lower[i - 1]);
           const afterIdx = i + pat.length;
-          const after = afterIdx >= lower.length || /[\s.,!?)\]]/.test(lower[afterIdx]);
+          const after = afterIdx >= lower.length || /[\s.,!?)\]-]/.test(lower[afterIdx]);
           if (before && after) { matched = { pat, ko }; break; }
         }
       }
       if (matched) { out.push(matched.ko); i += matched.pat.length; continue; }
       let j = i;
-      while (j < lower.length && !/\s/.test(lower[j])) j++;
+      while (j < lower.length && !/[\s-]/.test(lower[j])) j++;
       const word = run.slice(i, j);
       const isShortAcronym = word.length === 2 && word === word.toUpperCase(); // VR, PW 같은 약어는 음역하지 않고 그대로
       // 캐릭터/시리즈 고유명사는 실제로는 일본어 로마자인 경우가 대부분이라 그 표부터 시도하고,
