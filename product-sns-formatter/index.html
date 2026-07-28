@@ -1157,8 +1157,17 @@ function drawAllThumbs(p) {
     star.title = '대표 슬라이드로 지정(그라데이션+텍스트)';
     star.addEventListener('click', e => {
       e.stopPropagation();
+      const oldMainIdx = p.mainIndex;
+      // "★ 대표만 남기고 나머지 틀 제거"를 이미 써서 이 사진의 틀이 꺼져있던 상태였다면
+      // (=일괄 정리 모드가 걸려있었다는 뜻), 대표를 갈아치우면서 예전 대표도 다시 꺼줘야
+      // "대표 하나만 틀 있음" 상태가 유지된다 — 안 그러면 예전 대표 틀이 계속 켜진 채로
+      // 남아서 대표가 둘로 보이는 버그가 있었음. 이 기능을 아예 안 써서 원래부터 다중
+      // 프레임 캐러셀로 쓰던 경우(다들 틀 켜짐)는 이 로직이 안 끼어들도록, 지금 누른
+      // 사진 자신의 기존 상태로만 판단한다.
+      const bulkStripActive = !!slide.noFrame;
       p.mainIndex = idx;
       slide.noFrame = false; // 대표는 항상 틀이 있어야 하므로, 예전에 꺼져 있었어도 여기서 강제로 되살림
+      if (bulkStripActive && oldMainIdx !== idx && p.images[oldMainIdx]) p.images[oldMainIdx].noFrame = true;
       drawAllThumbs(p); drawComposer(p); saveProductsSoon();
     });
     const del = document.createElement('div');
