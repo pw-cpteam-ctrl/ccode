@@ -227,6 +227,8 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
       <button id="btnB2BImport" class="secondary" style="width:100%;">🔄 B2B에서 오늘 상품 가져오기 (폴더 선택)</button>
       <input type="file" id="b2bImportInput" webkitdirectory directory multiple style="display:none;"/>
       <div class="status" id="b2bImportStatus">scrape.js가 만든 output/&lt;날짜&gt; 폴더를 통째로 선택하면 사진까지 전부 자동으로 채워져요.</div>
+      <button id="btnBatchGenerate" class="secondary" style="width:100%;">✍ 일괄 원고 생성</button>
+      <div class="status" id="batchGenStatus"></div>
       <button id="btnAddProduct" style="width:100%;">＋ 상품 추가</button>
       <div class="md-list" id="mdList"></div>
     </div>
@@ -1393,7 +1395,7 @@ function renderDetail() {
     <div class="stage">
       <div class="stage-h"><span class="snum">②</span> 원고 <span class="badge-x">X 기준</span> ${st.hasDraft ? '<span class="chip done">완료</span>' : '<span class="chip pending">미완</span>'}</div>
       <div class="field"><label>추가지시 (선택, 이번 1건에만 적용)</label><textarea id="extraInput" rows="1" placeholder="예) 이번 건은 이모지 빼고 담백하게">${escapeHtml(p.extraInstruction)}</textarea></div>
-      <button id="btnGenerate">${st.hasDraft ? '↻ 재생성' : '✍ 원고 생성'}</button>
+      <button id="btnGenerate"${batchPendingIds.has(p.id) ? ' disabled' : ''}>${batchPendingIds.has(p.id) ? '일괄 처리 대기 중...' : (st.hasDraft ? '↻ 재생성' : '✍ 원고 생성')}</button>
       <div class="status" id="genStatus"></div>
       <div class="warn-box" id="genWarn"></div>
 
@@ -1543,14 +1545,10 @@ function copyDraft(p, kind) {
    1차 텍스트는 AI 결과 그대로(읽기전용), 팀원이 그 위에 2차 입력(직접 수정)을 해서 실제
    게시본을 만든다. diff/검수는 "1차 텍스트 vs 2차 입력"을 비교 — 팀원이 손으로 고치면서
    생긴 맞춤법 실수를 잡아내는 게 목적이라, runReview()에서 별도로 처리한다. */
-async function runFormat(p) {
+// 실제 API 호출 + 상품 데이터 반영만 담당(화면 요소는 안 건드림) — 단일 생성/일괄 생성이 공용으로 씀.
+async function generateDraftCore(p) {
   const productText = [p.officialText, p.memoText].map(s => s.trim()).filter(Boolean).join('\n\n');
-  if (!productText) { alert('상품정보나 캐릭터 메모를 입력해주세요.'); return; }
-  if (p.finalText && p.finalText !== p.result) {
-    if (!confirm('2차 입력(직접 수정한 내용)이 있어요. 다시 생성하면 그 수정 내용이 사라져요. 계속할까요?')) return;
-  }
-  $('#genWarn').style.display = 'none';
-  $('#genStatus').textContent = '변환 중...';
+  if (!productText) return { ok: false, error: '상품정보나 캐릭터 메모가 없어요.' };
   try {
     const res = await fetch('/api/format', {
       method: 'POST',
@@ -1565,22 +1563,106 @@ async function runFormat(p) {
     p.reviewIssues = [];
     applyReviewedTextToImageLabels(p); // 1차 텍스트 기준으로 캐러셀 제목/부제·틀 미리보기 바로 채움
     saveProducts();
-    renderDetail();
-    $('#genStatus').textContent = '변환 완료';
-    renderList();
-
     fetch('/api/save-log', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ productText, extraInstruction: p.extraInstruction, brand: p.brand, result: p.result }),
     }).catch(() => {});
+    return { ok: true };
   } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+async function runFormat(p) {
+  const productText = [p.officialText, p.memoText].map(s => s.trim()).filter(Boolean).join('\n\n');
+  if (!productText) { alert('상품정보나 캐릭터 메모를 입력해주세요.'); return; }
+  if (p.finalText && p.finalText !== p.result) {
+    if (!confirm('2차 입력(직접 수정한 내용)이 있어요. 다시 생성하면 그 수정 내용이 사라져요. 계속할까요?')) return;
+  }
+  $('#genWarn').style.display = 'none';
+  $('#genStatus').textContent = '변환 중...';
+  const outcome = await generateDraftCore(p);
+  if (outcome.ok) {
+    renderDetail();
+    $('#genStatus').textContent = '변환 완료';
+    renderList();
+  } else {
     $('#genStatus').textContent = '';
-    const hint = /ANTHROPIC_API_KEY/i.test(err.message)
+    const hint = /ANTHROPIC_API_KEY/i.test(outcome.error)
       ? '\n\nVercel 프로젝트 환경변수에 ANTHROPIC_API_KEY를 등록해주세요.'
       : '';
-    $('#genWarn').textContent = `변환에 실패했어요: ${err.message}${hint}`;
+    $('#genWarn').textContent = `변환에 실패했어요: ${outcome.error}${hint}`;
     $('#genWarn').style.display = 'block';
+  }
+}
+
+/* ── 일괄 원고 생성: 원고 없는 상품만 대상, 동시 5개 제한 병렬 처리 ── */
+const BATCH_CONCURRENCY = 5;
+let batchRunning = false;
+let batchPendingIds = new Set(); // 일괄 처리 대상 중 아직 안 끝난(대기+처리중) 상품 id
+
+async function runBatchGenerate() {
+  if (batchRunning) return;
+  const statusEl = $('#batchGenStatus');
+  const targets = PRODUCTS.filter(p => !p.result);
+  const processable = targets.filter(p => [p.officialText, p.memoText].some(s => (s || '').trim()));
+  const skippedNoInfo = targets.length - processable.length;
+  if (!processable.length) {
+    alert(skippedNoInfo
+      ? '원고 없는 상품은 있지만 상품정보/메모가 비어 있어서 생성할 수 있는 게 없어요.'
+      : '이미 모든 상품에 원고가 있어요.');
+    return;
+  }
+  const confirmMsg = `원고 없는 상품 ${processable.length}개를 일괄 생성할까요? (API 호출 ${processable.length}번 발생${skippedNoInfo ? `, 정보 없는 ${skippedNoInfo}개는 건너뜀` : ''})`;
+  if (!confirm(confirmMsg)) return;
+
+  batchRunning = true;
+  batchPendingIds = new Set(processable.map(p => p.id));
+  const btn = $('#btnBatchGenerate');
+  if (btn) { btn.disabled = true; btn.textContent = '일괄 생성 중...'; }
+  renderDetail(); // 지금 열려있는 상품이 대기 대상이면 개별 생성 버튼도 잠금 반영
+
+  let doneCount = 0;
+  let inFlight = 0;
+  const failures = [];
+  const updateStatus = () => {
+    if (!statusEl) return;
+    statusEl.textContent = `${processable.length}개 중 ${doneCount}개 완료 (${inFlight}개 처리 중)`;
+  };
+  updateStatus();
+
+  let idx = 0;
+  await new Promise(resolve => {
+    const launchNext = () => {
+      if (idx >= processable.length && inFlight === 0) { resolve(); return; }
+      while (inFlight < BATCH_CONCURRENCY && idx < processable.length) {
+        const p = processable[idx++];
+        inFlight++;
+        updateStatus();
+        generateDraftCore(p).then(outcome => {
+          inFlight--;
+          doneCount++;
+          batchPendingIds.delete(p.id);
+          if (!outcome.ok) failures.push(`${p.title || '(제목 없음)'}: ${outcome.error}`);
+          renderList();
+          if (getActiveProduct() === p) renderDetail();
+          updateStatus();
+          launchNext();
+        });
+      }
+    };
+    launchNext();
+  });
+
+  batchRunning = false;
+  batchPendingIds = new Set();
+  if (btn) { btn.disabled = false; btn.textContent = '✍ 일괄 원고 생성'; }
+  renderDetail(); // 대기 표시로 잠겨있던 개별 생성 버튼 원복
+  if (statusEl) {
+    statusEl.textContent = failures.length
+      ? `완료 — 성공 ${processable.length - failures.length}개, 실패 ${failures.length}개: ${failures.slice(0, 3).join(' · ')}${failures.length > 3 ? ` 외 ${failures.length - 3}건` : ''}`
+      : `완료 — ${processable.length}개 전부 생성됨`;
   }
 }
 
@@ -1781,6 +1863,7 @@ function harvestCopy(kind) {
     .then(() => { statusEl.textContent = `✓ ${withDraft.length}건 복사됨 (${kind === 'ins' ? '인스타용' : 'X용'})`; })
     .catch(() => { statusEl.textContent = '복사 실패'; });
 }
+$('#btnBatchGenerate').addEventListener('click', runBatchGenerate);
 $('#btnHarvestZip').addEventListener('click', harvestZip);
 $('#btnHarvestCopyX').addEventListener('click', () => harvestCopy('x'));
 $('#btnHarvestCopyIns').addEventListener('click', () => harvestCopy('ins'));
