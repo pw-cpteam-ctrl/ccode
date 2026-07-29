@@ -116,6 +116,10 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .md-wrap{display:grid;grid-template-columns:300px 1fr;gap:14px;align-items:start;}
 @media(max-width:820px){.md-wrap{grid-template-columns:1fr;}}
 .leftcol{display:flex;flex-direction:column;gap:10px;position:sticky;top:16px;}
+.action-row{display:grid;grid-template-columns:1fr 100px;gap:8px;}
+.action-col-stack{display:flex;flex-direction:column;gap:8px;}
+.action-col-stack button{width:100%;}
+button.danger{background:var(--ui-warn);color:#fff;}
 .md-list{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:8px;min-height:60px;}
 .md-row{display:flex;align-items:center;gap:9px;padding:10px 6px;border-radius:8px;cursor:pointer;font-size:13px;}
 .md-row:hover{background:rgba(20,82,192,.06);}
@@ -229,11 +233,16 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
       <div id="b2bImportZone">
         <button id="btnB2BImport" class="secondary" style="width:100%;">🔄 B2B에서 오늘 상품 가져오기 (폴더 선택 또는 드래그)</button>
         <input type="file" id="b2bImportInput" webkitdirectory directory multiple style="display:none;"/>
-        <div class="status" id="b2bImportStatus">scrape.js가 만든 output/&lt;날짜&gt; 폴더를 통째로 선택하거나, 그 폴더를 여기로 끌어다 놓으면 사진까지 전부 자동으로 채워져요.</div>
+        <div class="status" id="b2bImportStatus">스크래퍼 프로그램을 실행하면 자동으로 만들어지는 <b>오늘 날짜 이름의 폴더</b>를 통째로 선택하거나, 그 폴더를 여기로 끌어다 놓으면 사진까지 전부 자동으로 채워져요.</div>
       </div>
-      <button id="btnBatchGenerate" class="secondary" style="width:100%;">✍ 일괄 원고 생성</button>
+      <div class="action-row">
+        <div class="action-col-stack">
+          <button id="btnBatchGenerate" class="secondary">✍ 일괄 원고 생성</button>
+          <button id="btnAddProduct">＋ 상품 추가</button>
+        </div>
+        <button id="btnResetProducts" class="danger">🗑 상품 초기화</button>
+      </div>
       <div class="status" id="batchGenStatus"></div>
-      <button id="btnAddProduct" style="width:100%;">＋ 상품 추가</button>
       <div class="md-list" id="mdList"></div>
     </div>
     <div class="md-detail" id="mdDetail">
@@ -1373,6 +1382,16 @@ function removeProduct(id) {
   renderList();
   renderDetail();
 }
+function resetAllProducts() {
+  if (!PRODUCTS.length) { alert('이미 오늘 담아둔 상품이 없어요.'); return; }
+  if (!confirm(`오늘 담아둔 상품 ${PRODUCTS.length}개를 전부 삭제할까요? (사진 포함, 되돌릴 수 없어요)`)) return;
+  PRODUCTS.forEach(p => p.images.forEach(s => { idbDel(s.key).catch(() => {}); imgCache.delete(s.key); }));
+  PRODUCTS = [];
+  saveProducts();
+  currentProductId = null;
+  renderList();
+  renderDetail();
+}
 async function selectProduct(id) {
   currentProductId = id;
   editingIdx = 0;
@@ -1895,6 +1914,7 @@ function harvestCopy(kind) {
     .catch(() => { statusEl.textContent = '복사 실패'; });
 }
 $('#btnBatchGenerate').addEventListener('click', runBatchGenerate);
+$('#btnResetProducts').addEventListener('click', resetAllProducts);
 $('#btnHarvestZip').addEventListener('click', harvestZip);
 $('#btnHarvestCopyX').addEventListener('click', () => harvestCopy('x'));
 $('#btnHarvestCopyIns').addEventListener('click', () => harvestCopy('ins'));
