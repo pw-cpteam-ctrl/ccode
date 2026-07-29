@@ -692,22 +692,25 @@ function removeCandidate(i) {
   applyCandidates(lastWithReason);
 }
 
-// 후보 명단(필터링 결과 + 수동 삭제 반영본)을 엑셀/스프레드시트에 바로 붙여넣을 수
-// 있는 탭 구분(TSV) 텍스트로 만든다 — 다운로드 파일과 동일한 데이터를 쓴다.
-function candidatesToTSV() {
+// 후보 명단(필터링 결과 + 수동 삭제 반영본)을 마크다운(| 구분) 표로 만든다 —
+// 노션/슬랙/깃허브 등 마크다운을 그대로 렌더링하는 곳에 붙여넣으면 표로 보인다.
+function candidatesToMarkdownTable() {
   if (!candidates.length) return '';
   const rows = candidates.map(c => ({ ...c.row, 판단근거: c.reason }));
   const cols = Object.keys(rows[0]);
-  const escapeCell = (v) => String(v ?? '').replace(/\t/g, ' ').replace(/\r?\n/g, ' ');
-  return [cols.join('\t')].concat(rows.map(r => cols.map(c => escapeCell(r[c])).join('\t'))).join('\n');
+  const escapeCell = (v) => String(v ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+  const headerLine = `| ${cols.map(escapeCell).join(' | ')} |`;
+  const dividerLine = `| ${cols.map(() => '---').join(' | ')} |`;
+  const bodyLines = rows.map(r => `| ${cols.map(c => escapeCell(r[c])).join(' | ')} |`);
+  return [headerLine, dividerLine, ...bodyLines].join('\n');
 }
 
 async function copyCandidatesToClipboard() {
   if (!candidates.length) return;
-  const text = candidatesToTSV();
+  const text = candidatesToMarkdownTable();
   try {
     await navigator.clipboard.writeText(text);
-    $('#copyStatus').textContent = `후보 ${candidates.length}명을 클립보드에 복사했어요 (엑셀/스프레드시트에 바로 붙여넣기 가능).`;
+    $('#copyStatus').textContent = `후보 ${candidates.length}명을 마크다운 표 형식으로 클립보드에 복사했어요 (노션/슬랙/깃허브 등에 붙여넣으면 표로 보여요).`;
   } catch (err) {
     // 클립보드 API를 못 쓰는 환경(구형 브라우저, 권한 거부 등) 대비 폴백
     const ta = document.createElement('textarea');
@@ -718,7 +721,7 @@ async function copyCandidatesToClipboard() {
     ta.select();
     try {
       document.execCommand('copy');
-      $('#copyStatus').textContent = `후보 ${candidates.length}명을 클립보드에 복사했어요 (엑셀/스프레드시트에 바로 붙여넣기 가능).`;
+      $('#copyStatus').textContent = `후보 ${candidates.length}명을 마크다운 표 형식으로 클립보드에 복사했어요 (노션/슬랙/깃허브 등에 붙여넣으면 표로 보여요).`;
     } catch (err2) {
       $('#copyStatus').textContent = `클립보드 복사 실패: ${err2.message}`;
     }
