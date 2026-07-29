@@ -192,11 +192,14 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .p-ft-logo-wrap{flex-shrink:0;display:flex;align-items:center;justify-content:flex-end;overflow:visible;}
 .p-ft-logo{height:32px;width:auto;display:block;transform-origin:right center;}
 
-.cell-drag-handle{position:absolute;top:6px;right:6px;z-index:5;width:22px;height:22px;
-  display:flex;align-items:center;justify-content:center;border-radius:5px;
-  background:rgba(0,0,0,.45);color:#fff;font-size:13px;cursor:grab;
+.cell-drag-handle{position:absolute;top:6px;left:6px;z-index:5;width:66px;height:66px;
+  display:flex;align-items:center;justify-content:center;border-radius:10px;
+  background:rgba(0,0,0,.45);color:#fff;font-size:30px;cursor:grab;
   opacity:0;transition:opacity .15s;user-select:none;}
 .cell:hover .cell-drag-handle{opacity:1;}
+.cell-del-btn{position:absolute;top:6px;right:6px;z-index:5;width:66px;height:66px;
+  display:flex;align-items:center;justify-content:center;border-radius:10px;
+  background:rgba(0,0,0,.45);color:#fff;cursor:pointer;}
 .cell.drag-over-preview{outline:3px solid #4c8dff;outline-offset:-3px;}
 
 /* 줌 바 */
