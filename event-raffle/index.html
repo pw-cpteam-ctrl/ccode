@@ -112,6 +112,7 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     </div>
     <button class="secondary" type="button" onclick="addConditionRow()" style="margin-bottom:12px;">+ 조건 추가</button>
     <button class="secondary" type="button" onclick="addLengthConditionRow()" style="margin-bottom:12px;">+ 글자 수 조건 추가</button>
+    <button class="secondary" type="button" onclick="addRepeatConditionRow()" style="margin-bottom:12px;">+ 반복 도배 조건 추가</button>
     <br/>
     <button onclick="runFilter()" id="btnRunFilter">필터링 실행</button>
     <button class="secondary" onclick="useAllAsFallback()">필터링 없이 전체 참가자로 진행 (테스트용)</button>
@@ -371,6 +372,18 @@ function updateLengthStats(rows) {
   el.style.display = '';
 }
 
+// 같은 단어/문장이 N번 이상 반복되는 "도배" 댓글을 판별하는 결정적 로직.
+// plan-filter가 만드는 codeRule은 이 함수를 이름으로 호출하기만 하고 정규식
+// 자체를 AI가 새로 작성하지 않게 한다 — 실제로 AI에게 정규식을 직접 만들게
+// 시켜봤더니 "연속 동일 문자 뭉개기" 단계를 자꾸 빠뜨려서 "ㅋㅋㅋㅋ" 같은 정상
+// 감탄 표현까지 도배로 오판하는 문제가 반복 확인되어, 검증된 로직을 함수로 미리
+// 만들어두고 AI는 호출만 하도록(숫자만 채워넣도록) 역할을 제한함.
+function isRepeatSpam(text, n) {
+  const cleaned = String(text ?? '').replace(/[\s\p{P}\p{S}]/gu, '').replace(/(.)\1+/g, '$1');
+  const repeatCount = Math.max(1, (+n || 4) - 1);
+  return new RegExp(`(.{2,}?)\\1{${repeatCount},}`).test(cleaned);
+}
+
 function resetDownstream() {
   candidates = []; lastWinners = [];
   $('#candidateWrap').style.display = 'none';
@@ -483,6 +496,29 @@ function addLengthConditionRow() {
   row.querySelector('.cond-remove').addEventListener('click', () => { row.remove(); renumberConditionRows(); });
   list.appendChild(row);
 }
+// 같은 단어/문장을 붙여서(띄어쓰기·구두점 유무 상관없이) N번 이상 반복하는
+// "도배" 댓글을 잡는 조건 칸 — 이것도 정규식 역참조로 100% 코드 판단, AI 호출 없음.
+// 반복 단위가 1글자(ㅋㅋㅋㅋ, ㅎㅎㅎ 같은 감탄 표현)인 경우는 규칙 자체에서 예외 처리됨.
+function addRepeatConditionRow() {
+  const list = $('#conditionList');
+  const idx = list.children.length;
+  const row = document.createElement('div');
+  row.className = 'cond-row';
+  row.dataset.idx = String(idx);
+  row.dataset.type = 'repeat';
+  row.innerHTML = `
+    <select class="cond-op">
+      <option value="AND">그리고(모두 만족)</option>
+      <option value="OR">또는(하나만 만족해도 됨)</option>
+    </select>
+    <span class="cond-label">조건${idx + 1}</span>
+    <span style="font-size:13px;white-space:nowrap;">같은 단어/문장이</span>
+    <input type="number" class="cond-repeat-input" min="2" value="4" style="width:60px;flex:0 0 auto;"/>
+    <span style="font-size:13px;white-space:nowrap;">번 이상 반복(도배)</span>
+    <button type="button" class="secondary cond-remove">✕</button>`;
+  row.querySelector('.cond-remove').addEventListener('click', () => { row.remove(); renumberConditionRows(); });
+  list.appendChild(row);
+}
 function renumberConditionRows() {
   [...$('#conditionList').children].forEach((row, i) => {
     row.dataset.idx = String(i);
@@ -494,6 +530,13 @@ function buildCombinedCondition() {
     if (row.dataset.type === 'length') {
       const n = row.querySelector('.cond-length-input').value.trim();
       return { text: n ? `본문 글자 수가 ${n}자 이상인 사람` : '', op: row.querySelector('.cond-op')?.value || null };
+    }
+    if (row.dataset.type === 'repeat') {
+      const n = row.querySelector('.cond-repeat-input').value.trim();
+      return {
+        text: n ? `본문에서 2글자 이상 단위의 같은 단어나 문장이 띄어쓰기·구두점과 상관없이 붙어서 ${n}번 이상 연속 반복되는 사람 (도배 의심, 단 1글자 반복(ㅋㅋㅋ 등)은 제외)` : '',
+        op: row.querySelector('.cond-op')?.value || null,
+      };
     }
     return { text: row.querySelector('.cond-input').value.trim(), op: row.querySelector('.cond-op')?.value || null };
   }).filter(p => p.text);
