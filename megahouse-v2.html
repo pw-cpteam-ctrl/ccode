@@ -600,7 +600,7 @@ function makeCell(it, ri, boardId) {
     const srcIdx = dragSrc.idx;
     const srcBoard = boards.find(b => b.id === srcBoardId);
     const destBoard = boards.find(b => b.id === destBoardId);
-    if (srcBoardId === destBoardId && srcIdx !== destIdx) {
+    if (srcIdx !== destIdx || srcBoardId !== destBoardId) {
       const tmp = srcBoard.items[srcIdx];
       srcBoard.items[srcIdx] = destBoard.items[destIdx];
       destBoard.items[destIdx] = tmp;
