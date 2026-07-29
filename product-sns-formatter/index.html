@@ -467,7 +467,7 @@ async function loadProperNounDictionary() {
 }
 // 캐러셀 부제(제품 라인)용 매칭기 — rules/product-lines.js 하나에 목록을 두고 동적 import로
 // 불러온다. 로드 전에는 임시로 기본값("스케일 피규어")만 돌려주는 함수를 대신 써둔다.
-let matchProductLine = () => '스케일 피규어';
+let matchProductLine = () => '';
 async function loadProductLineMatcher() {
   try {
     const mod = await import('./rules/product-lines.js');
@@ -475,6 +475,17 @@ async function loadProductLineMatcher() {
   } catch (e) {
     console.error('제품 라인 매칭 목록 로드 실패:', e);
   }
+}
+// 캐러셀 부제를 제품 라인으로 자동 채운다. 단 사람이 부제를 직접 고친 상품(textSubManual)은
+// 절대 덮어쓰지 않는다 — 예전엔 무조건 덮어써서, 손으로 고쳐놔도 검수/재생성 한 번에
+// 날아가는 문제가 있었다. 제품명은 상품정보 말고 제목 칸에만 적혀있는 경우도 있어서
+// 제목·상품정보·메모를 다 합쳐서 매칭 대상으로 넘긴다.
+function autoFillProductLineSub(p) {
+  if (p.textSubManual) return;
+  const matchText = [p.title, p.officialText, p.memoText].filter(Boolean).join('\n');
+  // "스케일 피규어" 기본값은 실제 스펙(상품정보 칸)이 들어온 상품에만 붙인다 — 캐릭터
+  // 메모만 적어둔 상품에까지 붙으면 봉제인형인데 "스케일 피규어"로 잘못 박힌다.
+  p.textSub = matchProductLine(matchText, { allowScaleFallback: !!(p.officialText || '').trim() });
 }
 
 // 일본어 로마자(헵번식) -> 한글, 발음 단위(모라)별 고정 대조표. 캐릭터/시리즈 고유명사
@@ -646,6 +657,7 @@ function makeBlankProduct() {
     mainIndex: 0,
     textTitle: '',
     textSub: '',
+    textSubManual: false, // 사람이 부제를 직접 고쳤는지 — true면 제품 라인 자동 채움이 덮어쓰지 않음
     badgeKind: 'new', // 'new' | 'decided' | 'prototype' | 'custom' — 주황틀 좌상단 표시
     badgeCustomText: '',
   };
@@ -1030,7 +1042,13 @@ function wireImageStage(p) {
   if (gc) gc.addEventListener('input', () => { GLOBAL_GRAD.compress = Number(gc.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
   const tt = $('#textTitleInput'), ts = $('#textSubInput');
   if (tt) tt.addEventListener('input', () => { p.textTitle = tt.value; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
-  if (ts) ts.addEventListener('input', () => { p.textSub = ts.value; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
+  if (ts) ts.addEventListener('input', () => {
+    p.textSub = ts.value;
+    // 사람이 직접 입력한 순간부터는 제품 라인 자동 채움이 이 값을 못 덮어쓰게 잠근다.
+    // 반대로 칸을 비우면 다시 자동 채움을 받도록 잠금을 푼다.
+    p.textSubManual = !!ts.value.trim();
+    drawComposer(p); drawAllThumbs(p); saveProductsSoon();
+  });
   const titleFs = $('#titleFontSizeRange'), subFs = $('#subFontSizeRange');
   if (titleFs) titleFs.addEventListener('input', () => { GLOBAL_GRAD.titleFontSize = Number(titleFs.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
   if (subFs) subFs.addEventListener('input', () => { GLOBAL_GRAD.subFontSize = Number(subFs.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
@@ -1384,6 +1402,9 @@ function removeProduct(id) {
   renderDetail();
 }
 function resetAllProducts() {
+  // 일괄 생성이 도는 중에 상품을 지우면, 이미 나간 API 호출은 계속 진행되면서 결과만
+  // 버려진다(= 돈만 쓰고 남는 게 없음). 그래서 배치가 끝날 때까지 초기화를 막는다.
+  if (batchRunning) { alert('일괄 원고 생성이 진행 중이에요. 끝난 뒤에 초기화해주세요.'); return; }
   if (!PRODUCTS.length) { alert('이미 오늘 담아둔 상품이 없어요.'); return; }
   if (!confirm(`오늘 담아둔 상품 ${PRODUCTS.length}개를 전부 삭제할까요? (사진 포함, 되돌릴 수 없어요)`)) return;
   PRODUCTS.forEach(p => p.images.forEach(s => { idbDel(s.key).catch(() => {}); imgCache.delete(s.key); }));
@@ -1512,7 +1533,7 @@ function wireDetail(p) {
   const officialInput = $('#officialInput'), memoInput = $('#memoInput'), extraInput = $('#extraInput');
   officialInput.addEventListener('input', () => {
     p.officialText = officialInput.value;
-    p.textSub = matchProductLine(p.officialText);
+    autoFillProductLineSub(p);
     const tsInput = $('#textSubInput');
     if (tsInput) tsInput.value = p.textSub;
     drawComposer(p); drawAllThumbs(p);
@@ -1553,9 +1574,9 @@ function applyReviewedTextToImageLabels(p) {
   const text = p.reviewedText || p.finalText || p.result || '';
   const titleMatch = text.match(/【([^】]+)】/);
   if (titleMatch) p.textTitle = titleMatch[1].trim();
-  // 부제는 원고의 『작품명』이 아니라 상품정보(officialText)에서 제품 라인을 직접 매칭한다 —
+  // 부제는 원고의 『작품명』이 아니라 상품정보에서 제품 라인을 직접 매칭한다 —
   // 『작품명』은 실제 게시될 원고 본문 그 자체라 캐러셀용으로 바꿔치기하면 안 됨.
-  p.textSub = matchProductLine(p.officialText);
+  autoFillProductLineSub(p);
 }
 async function runReview(p) {
   const statusEl = $('#reviewStatus');
@@ -1671,7 +1692,9 @@ async function runBatchGenerate() {
   batchRunning = true;
   batchPendingIds = new Set(processable.map(p => p.id));
   const btn = $('#btnBatchGenerate');
+  const resetBtn = $('#btnResetProducts');
   if (btn) { btn.disabled = true; btn.textContent = '일괄 생성 중...'; }
+  if (resetBtn) resetBtn.disabled = true; // 배치 도중 상품이 지워지면 남은 호출이 전부 헛돈다
   renderDetail(); // 지금 열려있는 상품이 대기 대상이면 개별 생성 버튼도 잠금 반영
 
   let doneCount = 0;
@@ -1683,33 +1706,44 @@ async function runBatchGenerate() {
   };
   updateStatus();
 
-  let idx = 0;
-  await new Promise(resolve => {
-    const launchNext = () => {
-      if (idx >= processable.length && inFlight === 0) { resolve(); return; }
-      while (inFlight < BATCH_CONCURRENCY && idx < processable.length) {
-        const p = processable[idx++];
-        inFlight++;
-        updateStatus();
-        generateDraftCore(p).then(outcome => {
-          inFlight--;
-          doneCount++;
-          batchPendingIds.delete(p.id);
-          if (!outcome.ok) failures.push(`${p.title || '(제목 없음)'}: ${outcome.error}`);
-          renderList();
-          if (getActiveProduct() === p) renderDetail();
+  // 어떤 이유로든 중간에 예외가 터져도 잠금(batchRunning/버튼 disabled)은 반드시 풀어야
+  // 한다 — 안 그러면 상품 초기화까지 영구히 막혀서 사용자가 화면을 되돌릴 방법이 없어진다.
+  try {
+    let idx = 0;
+    await new Promise(resolve => {
+      const launchNext = () => {
+        if (idx >= processable.length && inFlight === 0) { resolve(); return; }
+        while (inFlight < BATCH_CONCURRENCY && idx < processable.length) {
+          const p = processable[idx++];
+          inFlight++;
           updateStatus();
-          launchNext();
-        });
-      }
-    };
-    launchNext();
-  });
-
-  batchRunning = false;
-  batchPendingIds = new Set();
-  if (btn) { btn.disabled = false; btn.textContent = '✍ 일괄 원고 생성'; }
-  renderDetail(); // 대기 표시로 잠겨있던 개별 생성 버튼 원복
+          generateDraftCore(p).then(outcome => {
+            inFlight--;
+            doneCount++;
+            batchPendingIds.delete(p.id);
+            if (!outcome.ok) failures.push(`${p.title || '(제목 없음)'}: ${outcome.error}`);
+            // 화면 갱신이 실패해도 배치 자체는 계속 굴러가야 한다(여기서 던지면 위 Promise가
+            // 영원히 안 풀려서 배치가 멈춘 채로 잠긴다).
+            try {
+              renderList();
+              if (getActiveProduct() === p) renderDetail();
+            } catch (err) {
+              console.error('일괄 생성 중 화면 갱신 실패:', err);
+            }
+            updateStatus();
+            launchNext();
+          });
+        }
+      };
+      launchNext();
+    });
+  } finally {
+    batchRunning = false;
+    batchPendingIds = new Set();
+    if (btn) { btn.disabled = false; btn.textContent = '✍ 일괄 원고 생성'; }
+    if (resetBtn) resetBtn.disabled = false;
+    renderDetail(); // 대기 표시로 잠겨있던 개별 생성 버튼 원복
+  }
   if (statusEl) {
     statusEl.textContent = failures.length
       ? `완료 — 성공 ${processable.length - failures.length}개, 실패 ${failures.length}개: ${failures.slice(0, 3).join(' · ')}${failures.length > 3 ? ` 외 ${failures.length - 3}건` : ''}`
@@ -2011,7 +2045,7 @@ async function importB2BFiles(files) {
     p.brand = dayBrand;
     p.title = entry.title || '';
     p.officialText = entry.officialText || '';
-    p.textSub = matchProductLine(p.officialText);
+    autoFillProductLineSub(p);
     for (const filename of entry.photos || []) {
       const file = photoFilesByName.get(filename);
       if (!file) { missingPhotos++; continue; }
