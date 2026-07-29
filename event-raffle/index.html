@@ -55,6 +55,8 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 .cond-row select.cond-op{flex:0 0 auto;width:auto;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:7px 6px;font-size:13px;font-family:inherit;color:var(--ui-text);}
 .cond-row input.cond-input{flex:1;min-width:0;}
 .cond-row button.cond-remove{flex:0 0 auto;padding:6px 10px;font-size:13px;}
+.cond-negate-label{flex:0 0 auto;display:flex;align-items:center;gap:3px;font-size:12.5px;color:var(--ui-sub);white-space:nowrap;cursor:pointer;}
+.cond-negate-label input{margin:0;}
 .col-map{display:flex;gap:14px;margin-top:12px;flex-wrap:wrap;}
 .col-map .field{flex:1;min-width:220px;margin-bottom:0;}
 .slot-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
@@ -108,6 +110,7 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
       <div class="cond-row" data-idx="0">
         <span class="cond-label">조건1</span>
         <input type="text" class="cond-input" placeholder="예: 사진 첨부한 사람"/>
+        <label class="cond-negate-label"><input type="checkbox" class="cond-negate"/>제외</label>
       </div>
     </div>
     <button class="secondary" type="button" onclick="addConditionRow()" style="margin-bottom:12px;">+ 조건 추가</button>
@@ -468,6 +471,7 @@ function addConditionRow() {
     </select>
     <span class="cond-label">조건${idx + 1}</span>
     <input type="text" class="cond-input" placeholder="예: 정성스럽게 쓴 사람"/>
+    <label class="cond-negate-label"><input type="checkbox" class="cond-negate"/>제외</label>
     <button type="button" class="secondary cond-remove">✕</button>`;
   row.querySelector('.cond-remove').addEventListener('click', () => { row.remove(); renumberConditionRows(); });
   list.appendChild(row);
@@ -492,6 +496,7 @@ function addLengthConditionRow() {
     <span style="font-size:13px;white-space:nowrap;">본문 글자 수</span>
     <input type="number" class="cond-length-input" min="0" value="${defaultN}" style="width:70px;flex:0 0 auto;"/>
     <span style="font-size:13px;white-space:nowrap;">자 이상</span>
+    <label class="cond-negate-label"><input type="checkbox" class="cond-negate"/>제외</label>
     <button type="button" class="secondary cond-remove">✕</button>`;
   row.querySelector('.cond-remove').addEventListener('click', () => { row.remove(); renumberConditionRows(); });
   list.appendChild(row);
@@ -515,6 +520,7 @@ function addRepeatConditionRow() {
     <span style="font-size:13px;white-space:nowrap;">같은 단어/문장이</span>
     <input type="number" class="cond-repeat-input" min="2" value="4" style="width:60px;flex:0 0 auto;"/>
     <span style="font-size:13px;white-space:nowrap;">번 이상 반복(도배)</span>
+    <label class="cond-negate-label"><input type="checkbox" class="cond-negate"/>제외</label>
     <button type="button" class="secondary cond-remove">✕</button>`;
   row.querySelector('.cond-remove').addEventListener('click', () => { row.remove(); renumberConditionRows(); });
   list.appendChild(row);
@@ -527,18 +533,23 @@ function renumberConditionRows() {
 }
 function buildCombinedCondition() {
   const parts = [...$('#conditionList').children].map(row => {
+    const negate = row.querySelector('.cond-negate')?.checked || false;
+    const op = row.querySelector('.cond-op')?.value || null;
     if (row.dataset.type === 'length') {
       const n = row.querySelector('.cond-length-input').value.trim();
-      return { text: n ? `본문 글자 수가 ${n}자 이상인 사람` : '', op: row.querySelector('.cond-op')?.value || null };
+      if (!n) return { text: '', op };
+      return { text: negate ? `본문 글자 수가 ${n}자 미만인 사람` : `본문 글자 수가 ${n}자 이상인 사람`, op };
     }
     if (row.dataset.type === 'repeat') {
       const n = row.querySelector('.cond-repeat-input').value.trim();
-      return {
-        text: n ? `본문에서 2글자 이상 단위의 같은 단어나 문장이 띄어쓰기·구두점과 상관없이 붙어서 ${n}번 이상 연속 반복되는 사람 (도배 의심, 단 1글자 반복(ㅋㅋㅋ 등)은 제외)` : '',
-        op: row.querySelector('.cond-op')?.value || null,
-      };
+      if (!n) return { text: '', op };
+      const text = negate
+        ? `본문에서 2글자 이상 단위의 같은 단어나 문장이 띄어쓰기·구두점과 상관없이 붙어서 ${n}번 이상 연속 반복되지 않는 사람 (도배가 아닌 사람만, 즉 도배한 사람은 제외)`
+        : `본문에서 2글자 이상 단위의 같은 단어나 문장이 띄어쓰기·구두점과 상관없이 붙어서 ${n}번 이상 연속 반복되는 사람 (도배 의심, 단 1글자 반복(ㅋㅋㅋ 등)은 제외)`;
+      return { text, op };
     }
-    return { text: row.querySelector('.cond-input').value.trim(), op: row.querySelector('.cond-op')?.value || null };
+    const raw = row.querySelector('.cond-input').value.trim();
+    return { text: raw ? (negate ? `${raw}에 해당하지 않는 사람` : raw) : '', op };
   }).filter(p => p.text);
   if (!parts.length) return '';
   let combined = parts[0].text;
