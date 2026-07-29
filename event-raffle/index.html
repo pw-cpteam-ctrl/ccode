@@ -36,7 +36,7 @@ tr:last-child td{border-bottom:none;}
 tbody tr{cursor:pointer;}
 tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;}
 .tbl-hint{font-size:11.5px;color:var(--ui-sub);margin-top:4px;}
-.tbl-toolbar{margin-top:8px;}
+.tbl-toolbar{margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;}
 .winner-detail{margin-top:6px;font-size:12px;}
 .winner-detail summary{cursor:pointer;color:var(--ui-accent);font-weight:600;}
 .winner-detail .kv{margin-top:6px;padding:8px 10px;background:var(--ui-bg);border-radius:6px;}
@@ -412,7 +412,10 @@ function renderTable(wrapSel, rows, columns, opts = {}) {
     + (opts.onDelete ? `<td><button type="button" class="secondary row-delete" data-i="${i}">삭제</button></td>` : '')
     + '</tr>').join('');
   wrap.innerHTML = `
-    <div class="tbl-toolbar"><button type="button" class="secondary tbl-toggle-all">전체 접기</button></div>
+    <div class="tbl-toolbar">
+      <button type="button" class="secondary tbl-toggle-all">전체 접기</button>
+      ${opts.onSortToggle ? `<button type="button" class="secondary tbl-sort-toggle">${escapeHtml(opts.sortLabel || '본문 글자 수 정렬')}</button>` : ''}
+    </div>
     <table><thead>${head}</thead><tbody>${body}</tbody></table>
     <div class="tbl-hint">기본은 전체 펼침 상태예요. 행을 클릭하면 그 줄만 접혔다 펴져요.${opts.onDelete ? ' "삭제" 버튼으로 후보에서 개별 제외할 수 있어요.' : ''}</div>`;
   wrap.style.display = '';
@@ -429,6 +432,9 @@ function renderTable(wrapSel, rows, columns, opts = {}) {
         opts.onDelete(+btn.dataset.i);
       });
     });
+  }
+  if (opts.onSortToggle) {
+    wrap.querySelector('.tbl-sort-toggle').addEventListener('click', () => opts.onSortToggle());
   }
   const toggleAllBtn = wrap.querySelector('.tbl-toggle-all');
   toggleAllBtn.addEventListener('click', () => {
@@ -567,6 +573,7 @@ async function runFilter() {
   const condition = buildCombinedCondition();
   if (!condition) { alert('조건을 한 개 이상 입력해주세요.'); return; }
   lastCombinedCondition = condition;
+  candidateSortDir = null;
 
   const btn = $('#btnRunFilter');
   btn.disabled = true;
@@ -660,12 +667,25 @@ async function runFilter() {
 
 function useAllAsFallback() {
   if (!participants.length) { alert('먼저 참가자 파일을 업로드해주세요.'); return; }
+  candidateSortDir = null;
   candidates = participants.map(row => ({ row, reason: '(필터링 없이 전체 명단)' }));
   applyCandidates(false);
   $('#filterStatus').textContent = `필터링 없이 전체 ${candidates.length}명을 후보로 사용 중`;
 }
 
 let lastWithReason = true; // 후보 삭제 후 같은 방식(판단근거 포함 여부)으로 다시 그리기 위해 기억해둠
+let candidateSortDir = null; // null(원래 순서) | 'asc' | 'desc' — 본문 글자 수 기준
+
+// 후보 표 정렬 버튼 — 누를 때마다 본문 글자 수 오름차순/내림차순으로 전환한다.
+// 정렬은 화면 순서뿐 아니라 클립보드 복사·엑셀 다운로드에도 그대로 반영되고
+// (전부 candidates 배열을 그대로 읽으므로), 실제 당첨자 추첨은 이미 무작위라
+// 정렬 순서와 무관하게 공정성에 영향이 없다.
+function toggleCandidateSort() {
+  candidateSortDir = candidateSortDir === 'asc' ? 'desc' : 'asc';
+  const dir = candidateSortDir === 'asc' ? 1 : -1;
+  candidates.sort((a, b) => dir * (String(a.row[contentColumn] ?? '').length - String(b.row[contentColumn] ?? '').length));
+  applyCandidates(lastWithReason);
+}
 
 function applyCandidates(withReason) {
   lastWithReason = withReason;
@@ -673,7 +693,10 @@ function applyCandidates(withReason) {
   const allColumns = candidates.length ? Object.keys(candidates[0].row) : [];
   const cols = getMeaningfulColumns(rawRows, allColumns).concat(withReason ? ['__판단근거'] : []);
   const rowsForTable = candidates.map(c => withReason ? { ...c.row, __판단근거: c.reason } : c.row);
-  renderTable('#candidateWrap', rowsForTable, cols, { onDelete: removeCandidate });
+  const sortLabel = candidateSortDir === 'asc' ? '본문 글자 수 ▲ (오름차순, 클릭 시 내림차순)'
+    : candidateSortDir === 'desc' ? '본문 글자 수 ▼ (내림차순, 클릭 시 오름차순)'
+    : '본문 글자 수로 정렬';
+  renderTable('#candidateWrap', rowsForTable, cols, { onDelete: removeCandidate, onSortToggle: toggleCandidateSort, sortLabel });
   $('#candidateCount').textContent = `후보 ${candidates.length}명`;
   $('#btnDownloadCandidates').style.display = candidates.length ? '' : 'none';
   $('#btnCopyCandidates').style.display = candidates.length ? '' : 'none';
