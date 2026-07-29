@@ -120,7 +120,9 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
   width:20px;height:20px;cursor:pointer;font-size:12px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;}
 .board-hdr .del-board:hover{background:rgba(220,50,50,.6);}
 
-.scaler{transform-origin:top center;display:inline-block;}
+/* sc-wrap: 실제 레이아웃 공간을 차지하는 래퍼 — 크기는 JS에서 설정 */
+.sc-wrap{position:relative;overflow:hidden;flex-shrink:0;}
+.scaler{position:absolute;top:0;left:0;transform-origin:top left;}
 
 /* ═══ 포스터 ═══ */
 .poster{
@@ -392,7 +394,12 @@ function makeBoardEl(board, boardNum) {
   hdr.appendChild(delBtn);
   outer.appendChild(hdr);
 
-  // Scaler
+  // Wrap (레이아웃 공간 확보용 — 크기는 applyPreviewZoom에서 설정)
+  const wrap = document.createElement('div');
+  wrap.className = 'sc-wrap';
+  wrap.id = 'sc-wrap-' + board.id;
+
+  // Scaler (position:absolute, transform만 담당)
   const sc = document.createElement('div');
   sc.className = 'scaler';
   sc.id = 'sc-' + board.id;
@@ -431,7 +438,8 @@ function makeBoardEl(board, boardNum) {
   poster.appendChild(pft);
 
   sc.appendChild(poster);
-  outer.appendChild(sc);
+  wrap.appendChild(sc);
+  outer.appendChild(wrap);
   return outer;
 }
 
@@ -1139,16 +1147,33 @@ function applyPreviewZoom(pct) {
   _previewZoomPct = +pct;
   const el = $('#previewZoom'); if (el) el.value = pct;
   const vEl = $('#previewZoomVal'); if (vEl) vEl.textContent = pct + '%';
-  const stageH = document.getElementById('stage').clientHeight - 120;
+
+  const stage = document.getElementById('stage');
+  // 스테이지 가용 너비: 좌우 패딩(28px×2) 제외
+  const stageW = stage.clientWidth - 56;
+  // 보드 사이 갭 32px
+  const gap = 32;
+  const n = boards.length;
+  const slotW = (stageW - gap * (n - 1)) / n;
+
   boards.forEach(board => {
     const preset = CANVAS_PRESETS[board.canvasIdx];
-    const autoScale = Math.min(1, stageH / preset.h);
+    // pct=50 → 너비 기준 딱 맞춤, pct>50 → 확대
+    const autoScale = Math.min(1, slotW / preset.w);
     const scale = autoScale * (pct / 50);
+
     const scEl = document.getElementById('sc-' + board.id);
-    if (!scEl) return;
-    scEl.style.transform = `scale(${scale})`;
+    const wrapEl = document.getElementById('sc-wrap-' + board.id);
+    if (!scEl || !wrapEl) return;
+
+    // scaler: intrinsic 크기 유지, transform만 적용
     scEl.style.width = preset.w + 'px';
-    scEl.style.height = (preset.h * scale) + 'px';
+    scEl.style.height = preset.h + 'px';
+    scEl.style.transform = `scale(${scale})`;
+
+    // wrap: 실제 레이아웃 공간 (scaled 크기)
+    wrapEl.style.width = Math.round(preset.w * scale) + 'px';
+    wrapEl.style.height = Math.round(preset.h * scale) + 'px';
   });
 }
 
