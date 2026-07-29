@@ -123,7 +123,9 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     <div class="warn-box" id="filterFallback"></div>
     <div class="tbl-wrap" id="candidateWrap" style="display:none;"></div>
     <div class="count-badge" id="candidateCount"></div>
+    <button class="secondary" onclick="copyCandidatesToClipboard()" id="btnCopyCandidates" style="display:none;margin-top:10px;">후보 명단 클립보드로 복사</button>
     <button class="secondary" onclick="downloadCandidates()" id="btnDownloadCandidates" style="display:none;margin-top:10px;">후보 명단 다운로드 (엑셀)</button>
+    <div class="status" id="copyStatus"></div>
   </div>
 
   <div class="step">
@@ -674,6 +676,8 @@ function applyCandidates(withReason) {
   renderTable('#candidateWrap', rowsForTable, cols, { onDelete: removeCandidate });
   $('#candidateCount').textContent = `후보 ${candidates.length}명`;
   $('#btnDownloadCandidates').style.display = candidates.length ? '' : 'none';
+  $('#btnCopyCandidates').style.display = candidates.length ? '' : 'none';
+  $('#copyStatus').textContent = '';
   lastWinners = [];
   $('#winnerResult').innerHTML = '';
   $('#btnDownloadResult').style.display = 'none';
@@ -686,6 +690,40 @@ function applyCandidates(withReason) {
 function removeCandidate(i) {
   candidates.splice(i, 1);
   applyCandidates(lastWithReason);
+}
+
+// 후보 명단(필터링 결과 + 수동 삭제 반영본)을 엑셀/스프레드시트에 바로 붙여넣을 수
+// 있는 탭 구분(TSV) 텍스트로 만든다 — 다운로드 파일과 동일한 데이터를 쓴다.
+function candidatesToTSV() {
+  if (!candidates.length) return '';
+  const rows = candidates.map(c => ({ ...c.row, 판단근거: c.reason }));
+  const cols = Object.keys(rows[0]);
+  const escapeCell = (v) => String(v ?? '').replace(/\t/g, ' ').replace(/\r?\n/g, ' ');
+  return [cols.join('\t')].concat(rows.map(r => cols.map(c => escapeCell(r[c])).join('\t'))).join('\n');
+}
+
+async function copyCandidatesToClipboard() {
+  if (!candidates.length) return;
+  const text = candidatesToTSV();
+  try {
+    await navigator.clipboard.writeText(text);
+    $('#copyStatus').textContent = `후보 ${candidates.length}명을 클립보드에 복사했어요 (엑셀/스프레드시트에 바로 붙여넣기 가능).`;
+  } catch (err) {
+    // 클립보드 API를 못 쓰는 환경(구형 브라우저, 권한 거부 등) 대비 폴백
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      $('#copyStatus').textContent = `후보 ${candidates.length}명을 클립보드에 복사했어요 (엑셀/스프레드시트에 바로 붙여넣기 가능).`;
+    } catch (err2) {
+      $('#copyStatus').textContent = `클립보드 복사 실패: ${err2.message}`;
+    }
+    document.body.removeChild(ta);
+  }
 }
 
 // 추첨 전에 후보 명단 자체(필터링 결과 + 수동 삭제 반영본)를 엑셀로 받아볼 수 있게 한다.
