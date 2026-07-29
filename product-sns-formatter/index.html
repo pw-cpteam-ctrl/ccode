@@ -180,9 +180,9 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .thumbwrap.drag-source{opacity:.4;}
 .thumbwrap .th-frame{position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;background:#fff;border-radius:8px;padding:0 5px;height:14px;line-height:14px;cursor:pointer;border:1px solid var(--ui-border);color:var(--ui-accent);white-space:nowrap;}
 .thumbwrap .th-frame.off{color:var(--ui-sub);text-decoration:line-through;}
-.composer{display:grid;grid-template-columns:210px 1fr;gap:16px;margin-top:12px;align-items:start;}
+.composer{display:grid;grid-template-columns:420px 1fr;gap:16px;margin-top:12px;align-items:start;}
 @media(max-width:560px){.composer{grid-template-columns:1fr;}}
-#composerCanvas{width:210px;height:262.5px;border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.12);cursor:grab;background:var(--ui-card);}
+#composerCanvas{width:420px;height:525px;border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.12);cursor:grab;background:var(--ui-card);}
 #composerCanvas:active{cursor:grabbing;}
 .composer-ctl .hint{font-size:11px;color:var(--ui-sub);margin:2px 0 6px;line-height:1.5;}
 .ctl-block{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:9px 11px;margin-bottom:8px;}
@@ -286,7 +286,7 @@ const GRAD_SETTINGS_KEY = 'product-sns-formatter:gradSettings:v1';
 // 검정 그라데이션 4종 + 배지 자간 — 상품별로 따로 두지 않고 전체 상품(캔버스) 공통으로 적용.
 // 슬라이더를 만지면 이 객체 하나만 바뀌고, gradCfgFor(p)/getBadgeText 호출부가 상품과
 // 무관하게 이 값을 그대로 씀.
-let GLOBAL_GRAD = { start: 40, width: 60, intensity: 85, compress: 0, badgeLetterSpacing: 0 };
+let GLOBAL_GRAD = { start: 40, width: 60, intensity: 85, compress: 0, badgeLetterSpacing: 0, titleFontSize: 44, subFontSize: 27 };
 function loadGradSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(GRAD_SETTINGS_KEY) || 'null');
@@ -453,6 +453,17 @@ async function loadProperNounDictionary() {
     TRANSLIT_DICTIONARY = [...mod.PROPER_NOUNS].sort((a, b) => b[0].length - a[0].length);
   } catch (e) {
     console.error('고유명사 사전 로드 실패:', e);
+  }
+}
+// 캐러셀 부제(제품 라인)용 매칭기 — rules/product-lines.js 하나에 목록을 두고 동적 import로
+// 불러온다. 로드 전에는 임시로 기본값("스케일 피규어")만 돌려주는 함수를 대신 써둔다.
+let matchProductLine = () => '스케일 피규어';
+async function loadProductLineMatcher() {
+  try {
+    const mod = await import('./rules/product-lines.js');
+    matchProductLine = mod.matchProductLine;
+  } catch (e) {
+    console.error('제품 라인 매칭 목록 로드 실패:', e);
   }
 }
 
@@ -818,7 +829,7 @@ function computeGradientStops(s, w, oRaw, c) {
     compress: c,
   };
 }
-function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText, badgeLetterSpacing) {
+function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText, badgeLetterSpacing, titleFontSize, subFontSize) {
   ctx.clearRect(0, 0, CW, CH);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high'; // 원본이 저해상도라 확대될 때 최대한 부드럽게 리샘플링(품질 상한은 원본 해상도가 결정)
@@ -862,20 +873,21 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText,
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
+    // 그림자는 조절 옵션 없이 항상 켜져 있는 기본값(퍼지는 그림자로 가독성 확보) — 제목/부제 공통.
     ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 7; ctx.shadowOffsetY = 2;
     const cx = CW / 2;
     const maxTextWidth = FIW - 80; // 좌우 여백 (틀 테두리에 안 붙게)
     let ty = FRAME_INNER.y1 - 26; // 투명 창 하단에서 살짝 띄운 기준선(테두리에 안 붙게)
     if (textSub) {
-      ctx.font = '600 27px -apple-system,"Malgun Gothic",sans-serif';
+      ctx.font = `600 ${subFontSize ?? 27}px -apple-system,"Malgun Gothic",sans-serif`;
       ctx.fillText(textSub, cx, ty);
       ty -= 46;
     }
     // 제목이 길면 2줄까지 자동 줄바꿈, 그래도 안 들어가면 글자 크기를 줄여가며 맞춤 —
     // 예전엔 무조건 한 줄로 그려서 긴 제목이 캔버스 밖으로 잘려 나갔음.
-    const { lines: titleLines, fontSize: titleFontSize } = fitWrappedText(ctx, textTitle || '', maxTextWidth, 44, 800, 2, 24);
-    ctx.font = `800 ${titleFontSize}px -apple-system,"Malgun Gothic",sans-serif`;
-    const lineHeight = titleFontSize + 8;
+    const { lines: titleLines, fontSize: resolvedTitleFontSize } = fitWrappedText(ctx, textTitle || '', maxTextWidth, titleFontSize ?? 44, 800, 2, 24);
+    ctx.font = `800 ${resolvedTitleFontSize}px -apple-system,"Malgun Gothic",sans-serif`;
+    const lineHeight = resolvedTitleFontSize + 8;
     for (let i = titleLines.length - 1; i >= 0; i--) {
       ctx.fillText(titleLines[i], cx, ty);
       ty -= lineHeight;
@@ -902,7 +914,7 @@ function exportSlidePng(p, idx) {
   const slide = p.images[idx];
   const c = document.createElement('canvas');
   c.width = CW; c.height = CH;
-  drawSlide(c.getContext('2d'), slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing);
+  drawSlide(c.getContext('2d'), slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize);
   return new Promise(res => c.toBlob(res, 'image/png'));
 }
 
@@ -970,8 +982,12 @@ function imageStageHtml(p) {
           <div class="cl">흰 텍스트 (중앙정렬 · 대표 슬라이드에만 표시)</div>
           <label class="flabel" style="font-size:11px;color:var(--ui-sub);">제목 (큰 글자)</label>
           <textarea id="textTitleInput" rows="2">${escapeHtml(p.textTitle || '')}</textarea>
+          <label class="flabel" style="font-size:11px;color:var(--ui-sub);">제목 글자크기 <span style="font-weight:400;">(공통)</span></label>
+          <input type="range" id="titleFontSizeRange" min="24" max="60" value="${GLOBAL_GRAD.titleFontSize}"/>
           <label class="flabel" style="font-size:11px;color:var(--ui-sub);margin-top:6px;">부제 (작은 글자)</label>
           <textarea id="textSubInput" rows="1">${escapeHtml(p.textSub || '')}</textarea>
+          <label class="flabel" style="font-size:11px;color:var(--ui-sub);">부제 글자크기 <span style="font-weight:400;">(공통)</span></label>
+          <input type="range" id="subFontSizeRange" min="16" max="40" value="${GLOBAL_GRAD.subFontSize}"/>
         </div>
         <div class="mini-actions">
           <button class="sm secondary" id="btnResetSlide">위치/배율 초기화</button>
@@ -1005,6 +1021,9 @@ function wireImageStage(p) {
   const tt = $('#textTitleInput'), ts = $('#textSubInput');
   if (tt) tt.addEventListener('input', () => { p.textTitle = tt.value; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
   if (ts) ts.addEventListener('input', () => { p.textSub = ts.value; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
+  const titleFs = $('#titleFontSizeRange'), subFs = $('#subFontSizeRange');
+  if (titleFs) titleFs.addEventListener('input', () => { GLOBAL_GRAD.titleFontSize = Number(titleFs.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
+  if (subFs) subFs.addEventListener('input', () => { GLOBAL_GRAD.subFontSize = Number(subFs.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
 
   const badgeSelect = $('#badgeKindSelect');
   if (badgeSelect) badgeSelect.addEventListener('change', () => {
@@ -1170,7 +1189,7 @@ function drawAllThumbs(p) {
     if (idx === editingIdx) canvas.classList.add('sel');
     const ctx = canvas.getContext('2d');
     ctx.scale(60 / CW, 75 / CH);
-    drawSlide(ctx, slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing);
+    drawSlide(ctx, slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize);
     canvas.addEventListener('click', () => { editingIdx = idx; drawAllThumbs(p); drawComposer(p); });
     const star = document.createElement('div');
     star.className = 'th-star' + (idx === p.mainIndex ? ' on' : '');
@@ -1233,9 +1252,9 @@ function drawComposer(p) {
   const canvas = $('#composerCanvas');
   if (!canvas) return;
   const slide = p.images[editingIdx];
-  drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing);
+  drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize);
   const rect = canvas.getBoundingClientRect();
-  composerScale = (rect.width || canvas.clientWidth || 210) / CW;
+  composerScale = (rect.width || canvas.clientWidth || 420) / CW;
 }
 // 사진이 기준 영역(틀 켜짐: 투명 창 FIW x FIH / 틀 꺼짐: 캔버스 전체 CW x CH)을 항상
 // 꽉 채우도록 ox/oy(드래그 이동량)를 그 여유분 안으로 붙잡아둔다 — 여유가 없는 축(예: 최소
@@ -1273,7 +1292,7 @@ function wireComposerInteraction(p) {
   window.addEventListener('mousemove', e => {
     if (!drag) return;
     const slide = p.images[editingIdx]; if (!slide) return;
-    const scale = composerScale || (210 / CW);
+    const scale = composerScale || (420 / CW);
     slide.ox = drag.sox + (e.clientX - drag.sx) / scale;
     slide.oy = drag.soy + (e.clientY - drag.sy) / scale;
     const img = imgCache.get(slide.key);
@@ -1471,7 +1490,14 @@ function wireDetail(p) {
   document.querySelectorAll('#prodBrandRadios .brand-opt').forEach(o => o.classList.toggle('selected', o.querySelector('input').checked));
 
   const officialInput = $('#officialInput'), memoInput = $('#memoInput'), extraInput = $('#extraInput');
-  officialInput.addEventListener('input', () => { p.officialText = officialInput.value; saveProductsSoon(); });
+  officialInput.addEventListener('input', () => {
+    p.officialText = officialInput.value;
+    p.textSub = matchProductLine(p.officialText);
+    const tsInput = $('#textSubInput');
+    if (tsInput) tsInput.value = p.textSub;
+    drawComposer(p); drawAllThumbs(p);
+    saveProductsSoon();
+  });
   memoInput.addEventListener('input', () => { p.memoText = memoInput.value; saveProductsSoon(); });
   extraInput.addEventListener('input', () => { p.extraInstruction = extraInput.value; saveProductsSoon(); });
 
@@ -1506,9 +1532,10 @@ function wireDetail(p) {
 function applyReviewedTextToImageLabels(p) {
   const text = p.reviewedText || p.finalText || p.result || '';
   const titleMatch = text.match(/【([^】]+)】/);
-  const subMatch = text.match(/『([^』]+)』/);
   if (titleMatch) p.textTitle = titleMatch[1].trim();
-  if (subMatch) p.textSub = subMatch[1].trim();
+  // 부제는 원고의 『작품명』이 아니라 상품정보(officialText)에서 제품 라인을 직접 매칭한다 —
+  // 『작품명』은 실제 게시될 원고 본문 그 자체라 캐러셀용으로 바꿔치기하면 안 됨.
+  p.textSub = matchProductLine(p.officialText);
 }
 async function runReview(p) {
   const statusEl = $('#reviewStatus');
@@ -1963,6 +1990,7 @@ async function importB2BFiles(files) {
     p.brand = dayBrand;
     p.title = entry.title || '';
     p.officialText = entry.officialText || '';
+    p.textSub = matchProductLine(p.officialText);
     for (const filename of entry.photos || []) {
       const file = photoFilesByName.get(filename);
       if (!file) { missingPhotos++; continue; }
@@ -1983,6 +2011,7 @@ async function importB2BFiles(files) {
 
 (async function init() {
   await loadProperNounDictionary();
+  await loadProductLineMatcher();
   loadGradSettings();
   PRODUCTS = loadProductsFromStorage().map(p => ({ ...makeBlankProduct(), ...p }));
   await preloadMainThumbnails();
