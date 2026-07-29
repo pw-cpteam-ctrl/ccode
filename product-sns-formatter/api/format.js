@@ -48,8 +48,11 @@ export default async function handler(req, res) {
     // 판별 가능한 이상 징후는 결과를 내보내지 않고 막은 뒤 왜 그랬는지 로그로 남긴다.
     const anomaly = detectAnomaly(productText, result);
     if (anomaly) {
-      await logAnomaly({ brand, productText, extraInstruction, result, corrections, ...anomaly });
-      res.status(502).json({ error: `${anomaly.message} 다시 변환해주세요. (이번 시도는 이상감지 로그에 남았어요.)` });
+      const logged = await logAnomaly({ brand, productText, extraInstruction, result, corrections, ...anomaly });
+      const logNote = logged
+        ? '이번 시도는 이상감지 로그에 남았어요.'
+        : '이상감지 로그 저장은 실패했어요 — 이 화면을 캡처해서 담당자에게 보내주세요.';
+      res.status(502).json({ error: `${anomaly.message} 다시 변환해주세요. (${logNote})` });
       return;
     }
 
@@ -87,7 +90,10 @@ async function logAnomaly({ reason, message, brand, productText, extraInstructio
   const owner = process.env.GITHUB_LOG_OWNER || process.env.GITHUB_OWNER;
   const repo = process.env.GITHUB_LOG_REPO || process.env.GITHUB_REPO;
   const branch = process.env.GITHUB_BRANCH || 'main';
-  if (!token || !owner || !repo) return; // 로그 저장은 최선 노력 — 미설정이면 그냥 넘어간다.
+  if (!token || !owner || !repo) {
+    console.error('이상 감지 로그 저장 건너뜀: GITHUB_TOKEN/GITHUB_OWNER/GITHUB_REPO 환경변수 미설정');
+    return false;
+  }
 
   const entry = {
     at: new Date().toISOString(),
@@ -109,8 +115,10 @@ async function logAnomaly({ reason, message, brand, productText, extraInstructio
       newLine: JSON.stringify(entry),
       message: `이상 감지 로그 추가 (${reason})`,
     });
+    return true;
   } catch (err) {
     console.error('이상 감지 로그 저장 실패:', err.message);
+    return false;
   }
 }
 
