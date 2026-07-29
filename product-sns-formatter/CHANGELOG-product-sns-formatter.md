@@ -5,7 +5,67 @@
 ---
 
 <details open>
-<summary>2026-07-24 (V2.0 다중 상품 작업대 + 캐러셀 이미지 도구)</summary>
+<summary>2026-07-28 ~ 07-29 (V2.1 일괄 원고 생성 + 캐러셀 개편 + B2B 배포 준비)</summary>
+
+## 2026-07-28 ~ 07-29 (V2.1 일괄 원고 생성 + 캐러셀 개편 + B2B 배포 준비)
+
+- **원고 (신규 기능 + 버그 수정)**
+  - 여러 상품 원고를 한 번에 생성하는 **일괄 원고 생성** 버튼 추가
+    (기술: 동시 5개 제한 병렬 처리, `runBatchGenerate`/`generateDraftCore` 공용화)
+  - 고유명사를 뜻으로 창작해 바꿔치기하던 문제 수정 (예: "하츠네 미쿠"→"초음속 미쿠")
+    (기술: 소리 나는 대로만 옮기라는 규칙 추가 + `rules/proper-nouns.js` 프롬프트 주입)
+  - 제목(【】) 안 영문 고유명사가 한글로 안 바뀌던 규칙 충돌 수정, "Umamusume" 등 사전 보강
+    (기술: `format-rules.js` 제목 보존 규칙에 예외 조항 추가, `proper-nouns.js` 항목 추가)
+  - 이상 감지 로그 저장 실패 시 "저장됐다"고 거짓 안내하던 버그 수정
+    (기술: `logAnomaly()` 성공/실패 boolean 반환, 안내 문구 분기)
+
+- **캐러셀 이미지**
+  - 사진 기본 배치를 중앙 기준에서 위쪽 기준으로 변경 (얼굴 잘림 방지)
+    (기술: `addPhotoFileToProduct` 기본 `oy` 계산 변경)
+  - 미세한 렌더링 흠집(우측 1px 선, 그라데이션-틀 경계 틈, 뱃지 위치) 수정
+    (기술: `COVER_FIT_SLOP`, 그라데이션 `fillRect` 확장, `textBaseline:middle`)
+  - 그라데이션/뱃지 자간을 상품별 개별 설정에서 전체 공통 설정으로 변경
+    (기술: `GLOBAL_GRAD` 전역 상태로 이전)
+  - 틀 off 시 사진 주위에 흰 여백이 남던 문제 수정
+    (기술: `fitRectFor(slide)`로 cover-fit 기준 영역 분기)
+  - "대표만 남기고 나머지 틀 제거" 버튼을 진짜 토글로 수정 + 대표 전환 시 이전 대표 틀
+    복원 안 되던 버그 수정
+    (기술: `toggleFrameOnNonMain`, 대표 전환 시 `noFrame` 동기화)
+  - 제목 입력창 줄바꿈(Enter) 무시되던 문제 수정
+    (기술: `wrapCanvasText` 문단 우선 분리)
+  - 미리보기 화면 크기 2배 확대 (저장용 실제 해상도는 그대로)
+    (기술: `#composerCanvas` 210x262.5 → 420x525, `composerScale` 자동 재계산)
+  - 부제(작은 글자) 소스를 원고의 『작품명』에서 상품정보 기반 **제품 라인**으로 변경
+    (기술: `rules/product-lines.js` 신설, officialText 키워드 매칭)
+  - 제목/부제 글자크기 조절 슬라이더 각각 추가
+    (기술: `GLOBAL_GRAD.titleFontSize`/`subFontSize`)
+
+- **좌측 상품 목록**
+  - 대표 사진 썸네일 추가 + 레이아웃 개편(패딩·폭·폰트 조정, 줌 기준점 재조정)
+    (기술: `.md-thumb-wrap`, `preloadMainThumbnails`, 썸네일 200% 확대 기준 위쪽 25%)
+  - 영어→한글 발음 변환기(AI 아님, 미리보기 전용) 오표기 다수 수정
+    (기술: L 겹받침 트레일링 클러스터 처리, 하이픈 단어경계 처리)
+  - B2B 가져오기 안내문구를 비개발자도 이해할 수 있게 수정
+    (기술: 경로 표기 대신 "오늘 날짜 이름의 폴더"로 서술)
+  - 상품 초기화 버튼 추가 (사진 캐싱 포함 전체 삭제, 확인창 필수)
+    (기술: `resetAllProducts`, IndexedDB+`imgCache`+localStorage 동시 정리)
+
+- **B2B 가져오기**
+  - 폴더 선택 없이 드래그앤드롭으로 가져오기 지원
+    (기술: `DataTransferItem`/`FileSystemEntry` 재귀 탐색)
+
+- **b2b-scraper (별도 로컬 도구)**
+  - 수집 항목에서 가격/카톤수량 제외, 성인 전용 상품 자동 제외
+  - 팀원 배포 준비 — 로그인 세션 저장 위치를 도구 폴더 밖으로 분리(보안), 업데이트
+    확인/적용 기능, 스크랩 완료 시 결과 폴더 클립보드 복사+탐색기 자동 오픈, 스크랩 전체
+    실패 시 팀원용 친절한 오류 메시지, 별도 공개 저장소(`share`)로 배포 경로 결정
+    (기술: `profile-dir.js`, `check-update.js`/`update.bat`, `os-helpers.js`,
+    `friendly-error.js`)
+
+</details>
+
+<details>
+<summary>이전 기록 (2026-07-24 이전)</summary>
 
 ## 2026-07-24 (V2.0 다중 상품 작업대 + 캐러셀 이미지 도구)
 
@@ -55,11 +115,6 @@
     스크립트 없이 스크래핑 스크립트 하나가 로그인 필요 여부를 자동 판단
     (기술: `playwright-core`+`channel:'chrome'`+`launchPersistentContext`, URL 변화 기반
     로그인 완료 자동 감지로 터미널 입력 없앰)
-
-</details>
-
-<details>
-<summary>이전 기록 (2026-07-13 이전)</summary>
 
 ## 2026-07-13 (V1.6 실제 게시물 데이터 기반 규칙 재정비 + 진단 도구)
 
