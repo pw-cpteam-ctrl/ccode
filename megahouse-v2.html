@@ -127,7 +127,8 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .ptab.drag-over{outline:2px solid var(--ui-accent);outline-offset:-2px;}
 
 /* sc-wrap: 실제 레이아웃 공간을 차지하는 래퍼 — 크기는 JS에서 설정 */
-.sc-wrap{position:relative;overflow:hidden;flex-shrink:0;}
+.sc-wrap{position:relative;overflow:hidden;flex-shrink:0;border-radius:4px;outline:3px solid transparent;transition:outline-color .15s;}
+.sc-wrap.board-active{outline-color:#4c8dff;box-shadow:0 0 0 6px rgba(76,141,255,.18);}
 .scaler{position:absolute;top:0;left:0;transform-origin:top left;}
 
 /* ═══ 포스터 ═══ */
@@ -138,7 +139,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 
 /* 헤더/푸터 표시 토글 */
 .poster.no-header .p-hd{display:none!important;}
-.poster.no-header .p-grid{padding-top:var(--hpad,30px);}
+.poster.no-header .p-grid{padding-top:var(--hpad,0px);}
 .poster.no-footer .p-ft{display:none!important;}
 
 /* 토글 pill 버튼 */
@@ -243,7 +244,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
     <div class="sec">헤더</div>
     <div class="row2" style="align-items:center">
       <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;"><input type="checkbox" id="chkHeader" onchange="toggleHeader()"/> 헤더 표시</label>
-      <div class="field" style="margin:0"><label>꺼짐 여백</label><input type="range" id="headerPad" min="5" max="120" value="30" oninput="toggleHeader()"/></div>
+      <div class="field" style="margin:0"><label>꺼짐 여백</label><input type="range" id="headerPad" min="0" max="120" value="0" oninput="toggleHeader()"/></div>
     </div>
     <div class="row2" style="margin-top:6px">
       <div class="field"><label>월</label><input type="text" id="inMonth" value="6월"/></div>
@@ -499,6 +500,10 @@ function renderBoards() {
     const pwlogo = document.getElementById('pwlogo-' + b.id);
     if (pwlogo) pwlogo.src = PW_SRC;
   });
+  // 헤더/푸터 토글 상태 재적용 (renderBoards가 포스터를 새로 만들어서 클래스가 날아가므로)
+  toggleHeader();
+  toggleFooter();
+  updateBoardActiveStyle();
 }
 
 /* ═══════════════════════════════════════
@@ -574,6 +579,14 @@ function switchBoard(id) {
   renderBoardTabs();
   renderItemList();
   renderRowControls();
+  updateBoardActiveStyle();
+}
+
+function updateBoardActiveStyle() {
+  boards.forEach(b => {
+    const wrap = document.getElementById('sc-wrap-' + b.id);
+    if (wrap) wrap.classList.toggle('board-active', b.id === curBoardId);
+  });
 }
 
 let _tabDragSrc = null;
