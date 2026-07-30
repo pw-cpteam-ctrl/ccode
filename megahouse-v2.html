@@ -364,6 +364,42 @@ let firstRowFlex = {}; // keyed by boardId
 let blurPx = 10;
 let blurBright = 80;
 let dragSrc = null;
+
+/* ── Undo 스택 ── */
+const undoStack = [];
+const UNDO_MAX = 30;
+
+function pushUndo() {
+  undoStack.push({
+    boards: JSON.parse(JSON.stringify(boards)),
+    boardSeq, idSeq, curBoardId,
+    rowFontSizes: JSON.parse(JSON.stringify(rowFontSizes)),
+    firstRowFlex: JSON.parse(JSON.stringify(firstRowFlex)),
+  });
+  if (undoStack.length > UNDO_MAX) undoStack.shift();
+}
+
+function undo() {
+  if (!undoStack.length) { toast('더 이상 되돌릴 수 없습니다'); return; }
+  const s = undoStack.pop();
+  boards.length = 0;
+  s.boards.forEach(b => boards.push(b));
+  boardSeq = s.boardSeq;
+  idSeq = s.idSeq;
+  curBoardId = s.curBoardId;
+  rowFontSizes = s.rowFontSizes;
+  firstRowFlex = s.firstRowFlex;
+  renderBoards();
+  boards.forEach(b => renderGrid(b.id));
+  renderBoardTabs();
+  renderItemList();
+  renderRowControls();
+  syncHeader(); syncLogoSize(); syncMegaLogoSize(); syncBadgeStyle(); syncGrad();
+  toggleHeader(); toggleFooter(); syncPwStroke();
+  fitScale();
+  saveState();
+  toast('실행 취소');
+}
 const $ = s => document.querySelector(s);
 
 /* ═══════════════════════════════════════
@@ -510,6 +546,7 @@ function renderBoards() {
    보드 캔버스 변경
 ═══════════════════════════════════════ */
 function setBoardCanvas(boardId, canvasIdx) {
+  pushUndo();
   const board = boards.find(b => b.id === boardId);
   if (!board) return;
   board.canvasIdx = canvasIdx;
@@ -528,6 +565,7 @@ function setBoardCanvas(boardId, canvasIdx) {
 ═══════════════════════════════════════ */
 function addBoard() {
   if (boards.length >= 6) { toast('보드는 최대 6개까지 가능합니다'); return; }
+  pushUndo();
   const board = createBoard(0);
   boards.push(board);
   curBoardId = board.id;
@@ -543,6 +581,7 @@ function addBoard() {
 
 function deleteBoard(boardId) {
   if (boards.length <= 1) { toast('마지막 보드는 삭제할 수 없습니다'); return; }
+  pushUndo();
   const idx = boards.findIndex(b => b.id === boardId);
   boards.splice(idx, 1);
   if (curBoardId === boardId) curBoardId = boards[0].id;
@@ -555,6 +594,7 @@ function deleteBoard(boardId) {
 
 function duplicateBoard(boardId) {
   if (boards.length >= 6) { toast('보드는 최대 6개까지 가능합니다'); return; }
+  pushUndo();
   const src = boards.find(b => b.id === boardId);
   if (!src) return;
   const newBoard = {
@@ -611,6 +651,7 @@ function renderBoardTabs() {
       if (!_tabDragSrc || _tabDragSrc === b.id) return;
       const si = boards.findIndex(x => x.id === _tabDragSrc);
       const di = boards.findIndex(x => x.id === b.id);
+      pushUndo();
       boards.splice(di, 0, boards.splice(si, 1)[0]);
       _tabDragSrc = null;
       renderBoards(); renderBoardTabs();
@@ -683,6 +724,7 @@ function makeCell(it, ri, boardId) {
     delBtn.addEventListener('mousedown', e => e.stopPropagation());
     delBtn.addEventListener('click', e => {
       e.stopPropagation();
+      pushUndo();
       it.src = ''; it.scale = 1; it.ox = 0; it.oy = 0; it._fitted = false;
       refresh();
     });
@@ -701,6 +743,7 @@ function makeCell(it, ri, boardId) {
     inp.type = 'file'; inp.accept = 'image/*';
     inp.addEventListener('change', () => {
       if (!inp.files[0]) return;
+      pushUndo();
       const r = new FileReader();
       r.onload = ev => resizeDataURL(ev.target.result, 1200, src => {
         const dBoardId = +cell.dataset.boardId;
@@ -740,6 +783,7 @@ function makeCell(it, ri, boardId) {
       const destIdx = +cell.dataset.idx;
       const destBoard = boards.find(b => b.id === destBoardId);
       if (!destBoard) return;
+      pushUndo();
       const r = new FileReader();
       r.onload = ev => resizeDataURL(ev.target.result, 1200, src => {
         destBoard.items[destIdx] = { ...destBoard.items[destIdx], src, scale: 1, ox: 0, oy: 0, _fitted: false };
@@ -756,6 +800,7 @@ function makeCell(it, ri, boardId) {
     const srcBoard = boards.find(b => b.id === srcBoardId);
     const destBoard = boards.find(b => b.id === destBoardId);
     if (srcIdx !== destIdx || srcBoardId !== destBoardId) {
+      pushUndo();
       const tmp = srcBoard.items[srcIdx];
       srcBoard.items[srcIdx] = destBoard.items[destIdx];
       destBoard.items[destIdx] = tmp;
@@ -1075,6 +1120,7 @@ function makeToggleBtn(label, active, onChange) {
    일괄 텍스트 입력
 ═══════════════════════════════════════ */
 function applyBulk() {
+  pushUndo();
   const lines = $('#bulkInput').value.split('\n');
   const board = boards.find(b => b.id === curBoardId);
   if (!board) return;
@@ -1211,6 +1257,7 @@ function syncBadgeStyle() {
    업로드
 ═══════════════════════════════════════ */
 function addFiles(files) {
+  pushUndo();
   const curBoard = boards.find(b => b.id === curBoardId);
   if (!curBoard) return;
   const imgs = [...files].filter(f => f.type.startsWith('image/'));
@@ -1562,6 +1609,15 @@ refresh();
 // auto-save on any data change
 const _origRefresh = refresh;
 window.refresh = function() { _origRefresh(); saveState(); };
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement.isContentEditable) return;
+    e.preventDefault();
+    undo();
+  }
+});
 </script>
 </body>
 </html>
