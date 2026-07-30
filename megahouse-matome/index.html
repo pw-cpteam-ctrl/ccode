@@ -95,10 +95,10 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
   background-size:20px 20px;padding:40px 0 80px;gap:24px;cursor:grab;}
 .stage:active{cursor:grabbing;}
 .stage-toolbar{z-index:50;}
-.stage-toolbar-inner{cursor:default;}
-.stage-toolbar-handle{cursor:grab;padding:0 4px;color:#fff;opacity:.7;user-select:none;}
-.stage-toolbar-handle:active{cursor:grabbing;}
-.stage-toolbar.dragging .stage-toolbar-inner{opacity:.85;}
+.stage-toolbar-inner{cursor:grab;}
+.stage-toolbar-inner input,.stage-toolbar-inner button,.stage-toolbar-inner select{cursor:pointer;}
+.stage-toolbar-handle{padding:0 4px;color:#fff;opacity:.7;user-select:none;}
+.stage-toolbar.dragging .stage-toolbar-inner{opacity:.85;cursor:grabbing;}
 #postersRow{margin:0 auto;padding:0 80px;}
 .poster-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:6px;cursor:default;}
 .scaler{transform-origin:top center;display:inline-block;}
@@ -2067,7 +2067,9 @@ document.getElementById('stage').addEventListener('wheel', e => {
   }
 
   let _tbDrag = null;
-  handle.addEventListener('mousedown', e => {
+  // 손잡이 아이콘만이 아니라 팝업 전체(슬라이더 자체는 제외)를 잡아도 드래그되게 함
+  bar.addEventListener('mousedown', e => {
+    if (e.target.closest('input, button, select')) return; // 슬라이더 등 조작은 그대로 두고 드래그로 안 뺏음
     e.preventDefault();
     const r = bar.getBoundingClientRect();
     _tbDrag = { sx: e.clientX, sy: e.clientY, ox: r.left, oy: r.top };
