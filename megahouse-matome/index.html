@@ -42,6 +42,8 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:'Pretendard',-appl
 .ptab.on{background:var(--ui-accent);color:#fff;border-color:var(--ui-accent);}
 .ptab.dragging-tab{opacity:.4;}
 .ptab.drop-target{border-color:var(--ui-accent);border-style:dashed;}
+.ptab-del{opacity:.5;font-weight:900;padding:0 2px;border-radius:4px;}
+.ptab-del:hover{opacity:1;background:rgba(0,0,0,.15);}
 
 /* dropzone */
 .dropzone{border:1.5px dashed var(--ui-border);border-radius:8px;padding:14px 12px;text-align:center;
@@ -92,7 +94,7 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 /* ═══ 스테이지 ═══ */
 .stage{flex:1;height:100vh;overflow:auto;display:flex;flex-direction:column;align-items:flex-start;
   background:#dedad2;background-image:radial-gradient(#c8c4bc 1px,transparent 1px);
-  background-size:20px 20px;padding:40px 0 80px;gap:24px;cursor:grab;}
+  background-size:20px 20px;padding:40px 0 45vh;gap:24px;cursor:grab;} /* 아래쪽에 화면 높이의 45%만큼 여유를 항상 남겨서, 줌%가 낮아 캔버스가 화면에 딱 맞을 때도 세로 드래그가 먹히게 함 */
 .stage:active{cursor:grabbing;}
 .stage-toolbar{z-index:50;}
 .stage-toolbar-inner{cursor:grab;}
@@ -223,6 +225,7 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
   opacity:0;transition:opacity .15s;cursor:pointer;pointer-events:none;}
 .thumb-wrap:hover .thumb-repl{opacity:1;pointer-events:auto;}
 .cell.drag-over-preview{outline:3px solid #4c8dff;outline-offset:-3px;}
+.cell.file-drag-over{outline:3px dashed #14a052;outline-offset:-3px;background:rgba(20,160,82,.12);}
 .p-grid.drag-over-grid{outline:3px dashed #4c8dff;outline-offset:-4px;background:rgba(76,141,255,.07);}</style>
 </head>
 <body>
@@ -548,7 +551,19 @@ function renderTabs() {
     btn.draggable = true;
     btn.title = '드래그해서 페이지 순서 변경';
     btn.onclick = () => switchTab(pg);
-    btn.textContent = `${pg}페이지 (${p.length})`;
+    btn.style.cssText = 'display:inline-flex;align-items:center;gap:6px;';
+    const label = document.createElement('span');
+    label.textContent = `${pg}페이지 (${p.length})`;
+    btn.appendChild(label);
+    if (pages.length > 1) {
+      const delBtn = document.createElement('span');
+      delBtn.className = 'ptab-del';
+      delBtn.textContent = '×';
+      delBtn.title = '페이지 삭제';
+      delBtn.addEventListener('mousedown', e => e.stopPropagation());
+      delBtn.addEventListener('click', e => { e.stopPropagation(); deletePage(pg); });
+      btn.appendChild(delBtn);
+    }
     btn.addEventListener('dragstart', e => {
       e.dataTransfer.setData('text/plain', String(i));
       e.dataTransfer.effectAllowed = 'move';
@@ -587,6 +602,18 @@ function addPage() {
   ensurePosterWrap(pg);
   switchTab(pg);
   refresh();
+}
+function deletePage(pg) {
+  if (pages.length <= 1) { toast('페이지가 하나뿐이라 삭제할 수 없습니다'); return; }
+  if (pages[pg-1].length && !confirm(`${pg}페이지에 사진 ${pages[pg-1].length}장이 있습니다. 정말 삭제할까요? (Ctrl+Z로 되돌릴 수 있습니다)`)) return;
+  pages.splice(pg-1, 1);
+  firstRowFlex.splice(pg-1, 1);
+  if (curPage > pg) curPage--;
+  curPage = Math.min(curPage, pages.length);
+  document.getElementById('postersRow').innerHTML = '';
+  pages.forEach((_, i) => ensurePosterWrap(i+1));
+  refresh();
+  saveState();
 }
 
 /* ═══════════════════════════════════════
@@ -682,11 +709,27 @@ function makeCell(it, ri, pg) {
   });
   cell.appendChild(delBtn);
 
-  cell.addEventListener('dragover', e => { e.preventDefault(); cell.classList.add('drag-over-preview'); });
-  cell.addEventListener('dragleave', () => cell.classList.remove('drag-over-preview'));
+  cell.addEventListener('dragover', e => {
+    e.preventDefault();
+    // 파일 탐색기에서 사진을 끌어오는 경우와 셀↔셀 순서 교환 드래그를 구분해서 강조 표시
+    cell.classList.add(e.dataTransfer.types.includes('Files') ? 'file-drag-over' : 'drag-over-preview');
+  });
+  cell.addEventListener('dragleave', () => cell.classList.remove('drag-over-preview', 'file-drag-over'));
   cell.addEventListener('drop', e => {
     e.preventDefault();
-    cell.classList.remove('drag-over-preview');
+    cell.classList.remove('drag-over-preview', 'file-drag-over');
+    // 파일 탐색기에서 사진을 직접 끌어다 놓은 경우 — 그 칸의 사진만 교체 (이름/위치 등은 유지)
+    if (e.dataTransfer.files && e.dataTransfer.files.length) {
+      const file = [...e.dataTransfer.files].find(f => f.type.startsWith('image/'));
+      if (!file) return;
+      const r = new FileReader();
+      r.onload = ev => resizeDataURL(ev.target.result, 900, src => {
+        it.src = src; it._fitted = false;
+        renderGrid(pg); saveState();
+      });
+      r.readAsDataURL(file);
+      return;
+    }
     if (!dragSrc) return;
     const destPg = +cell.dataset.pg;
     const destIdx = +cell.dataset.idx;
