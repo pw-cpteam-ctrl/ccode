@@ -269,7 +269,10 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
       <div class="field"><label>푸터 크기</label><input type="range" id="footerFontSize" min="10" max="28" value="18" oninput="syncHeader()"/></div>
       <div class="field"><label>PW 스트로크</label><input type="range" id="pwStroke" min="0" max="10" value="0" step="0.5" oninput="syncPwStroke()"/></div>
       <div class="field"><label>하단 PW 로고</label><input type="range" id="pwLogoSize" min="16" max="200" value="32" oninput="syncLogoSize()"/></div>
+      <div class="field"><label>상단 MH 로고</label><input type="range" id="logoSize" min="20" max="120" value="64" oninput="syncMegaLogoSize()"/></div>
     </div>
+    <div class="sec">줄별 제품명 크기</div>
+    <div id="rowControls"></div>
     <div class="sec">그라데이션</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
       <div class="field" style="text-align:center"><label>시작점<br/><span id="gradValS" style="font-size:10px">20%</span></label><input type="range" id="gradStart" min="0" max="90" value="20" step="1" oninput="syncGrad()"/></div>
@@ -501,7 +504,7 @@ function addBoard() {
   boards.forEach(b => renderGrid(b.id));
   renderBoardTabs();
   syncHeader();
-  syncLogoSize();
+  syncLogoSize(); syncMegaLogoSize();
   syncBadgeStyle();
   fitScale();
   saveState();
@@ -998,6 +1001,14 @@ function toggleHeader() {
   requestAnimationFrame(fitScale);
 }
 
+function syncMegaLogoSize() {
+  const h = +$('#logoSize').value;
+  boards.forEach(b => {
+    const logo = document.getElementById('logo-' + b.id);
+    if (logo) { logo.style.height = h + 'px'; logo.style.width = 'auto'; }
+  });
+}
+
 function syncLogoSize() {
   const pwH = +$('#pwLogoSize').value;
   boards.forEach(b => {
@@ -1096,7 +1107,7 @@ function addFiles(files) {
   if (boards.length > origLen) {
     renderBoards();
     renderBoardTabs();
-    syncHeader(); syncLogoSize(); syncBadgeStyle(); syncGrad();
+    syncHeader(); syncLogoSize(); syncMegaLogoSize(); syncBadgeStyle(); syncGrad();
     toggleHeader(); toggleFooter(); syncPwStroke();
   }
 
@@ -1255,7 +1266,7 @@ $('#btnReset').addEventListener('click', () => {
   localStorage.removeItem('mh_maker_state');
   renderBoards();
   syncHeader();
-  syncLogoSize();
+  syncLogoSize(); syncMegaLogoSize();
   syncBadgeStyle();
   syncGrad();
   refresh();
@@ -1295,6 +1306,7 @@ function saveState() {
       footerFontSize: $('#footerFontSize').value,
       pwStroke: $('#pwStroke') ? $('#pwStroke').value : '0',
       pwLogoSize: $('#pwLogoSize') ? $('#pwLogoSize').value : '32',
+      logoSize: $('#logoSize') ? $('#logoSize').value : '64',
       footerOn: $('#chkFooter') ? $('#chkFooter').checked : false,
       storeFontWeight: $('#storeFontWeight') ? $('#storeFontWeight').value : '800',
       storeOffset: $('#storeOffset') ? $('#storeOffset').value : '0',
@@ -1350,6 +1362,7 @@ function loadState() {
     if (st.footerFontSize) $('#footerFontSize').value = st.footerFontSize;
     if (st.pwStroke != null && $('#pwStroke')) $('#pwStroke').value = st.pwStroke;
     if (st.pwLogoSize && $('#pwLogoSize')) $('#pwLogoSize').value = st.pwLogoSize;
+    if (st.logoSize && $('#logoSize')) { $('#logoSize').value = st.logoSize; syncMegaLogoSize(); }
     if (st.footerOn != null && $('#chkFooter')) { $('#chkFooter').checked = !!st.footerOn; }
     if (st.storeFontWeight && $('#storeFontWeight')) $('#storeFontWeight').value = st.storeFontWeight;
     if (st.storeOffset && $('#storeOffset')) $('#storeOffset').value = st.storeOffset;
@@ -1380,7 +1393,7 @@ if (!curBoardId || !boards.find(b => b.id === curBoardId)) curBoardId = boards[0
 renderBoards();
 renderBoardTabs();
 syncHeader();
-syncLogoSize();
+syncLogoSize(); syncMegaLogoSize();
 syncBadgeStyle();
 syncGrad();
 toggleHeader();
