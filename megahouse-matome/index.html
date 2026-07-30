@@ -40,6 +40,8 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:'Pretendard',-appl
 .ptab{flex:1;padding:7px;border-radius:6px;border:1px solid var(--ui-border);background:var(--ui-card);
   font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--ui-sub);}
 .ptab.on{background:var(--ui-accent);color:#fff;border-color:var(--ui-accent);}
+.ptab.dragging-tab{opacity:.4;}
+.ptab.drop-target{border-color:var(--ui-accent);border-style:dashed;}
 
 /* dropzone */
 .dropzone{border:1.5px dashed var(--ui-border);border-radius:8px;padding:14px 12px;text-align:center;
@@ -92,7 +94,11 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
   background:#dedad2;background-image:radial-gradient(#c8c4bc 1px,transparent 1px);
   background-size:20px 20px;padding:40px 0 80px;gap:24px;cursor:grab;}
 .stage:active{cursor:grabbing;}
-.stage-toolbar{width:100%;display:flex;justify-content:center;flex-shrink:0;padding:0 80px;}
+.stage-toolbar{z-index:50;}
+.stage-toolbar-inner{cursor:default;}
+.stage-toolbar-handle{cursor:grab;padding:0 4px;color:#fff;opacity:.7;user-select:none;}
+.stage-toolbar-handle:active{cursor:grabbing;}
+.stage-toolbar.dragging .stage-toolbar-inner{opacity:.85;}
 #postersRow{margin:0 auto;padding:0 80px;}
 .poster-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:6px;cursor:default;}
 .scaler{transform-origin:top center;display:inline-block;}
@@ -421,8 +427,9 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 
 <!-- ═══ 스테이지 ═══ -->
 <div class="stage" id="stage">
-  <div class="stage-toolbar" style="position:sticky;top:0;z-index:10;">
-  <div style="display:inline-flex;align-items:center;gap:10px;background:rgba(0,0,0,.25);backdrop-filter:blur(4px);border-radius:20px;padding:6px 16px;">
+  <div class="stage-toolbar" id="stageToolbar">
+  <div class="stage-toolbar-inner" style="display:inline-flex;align-items:center;gap:10px;background:rgba(0,0,0,.25);backdrop-filter:blur(4px);border-radius:20px;padding:6px 16px;">
+    <span class="stage-toolbar-handle" id="stageToolbarHandle" title="드래그해서 위치 이동">⠿</span>
     <span style="color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">미리보기</span>
     <input type="range" id="previewZoom" min="20" max="100" value="50" step="1" style="width:120px;accent-color:#fff;cursor:pointer;" oninput="applyPreviewZoom(this.value)"/>
     <span id="previewZoomVal" style="color:#fff;font-size:11px;min-width:32px;">50%</span>
@@ -538,10 +545,40 @@ function renderTabs() {
     const btn = document.createElement('button');
     btn.className = 'ptab' + (curPage===pg?' on':'');
     btn.id = 'tab'+pg;
+    btn.draggable = true;
+    btn.title = '드래그해서 페이지 순서 변경';
     btn.onclick = () => switchTab(pg);
     btn.textContent = `${pg}페이지 (${p.length})`;
+    btn.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', String(i));
+      e.dataTransfer.effectAllowed = 'move';
+      btn.classList.add('dragging-tab');
+    });
+    btn.addEventListener('dragend', () => btn.classList.remove('dragging-tab'));
+    btn.addEventListener('dragover', e => { e.preventDefault(); btn.classList.add('drop-target'); });
+    btn.addEventListener('dragleave', () => btn.classList.remove('drop-target'));
+    btn.addEventListener('drop', e => {
+      e.preventDefault();
+      btn.classList.remove('drop-target');
+      const from = +e.dataTransfer.getData('text/plain');
+      if (from === i) return;
+      reorderPages(from, i);
+    });
     row.appendChild(btn);
   });
+}
+// 보드(페이지) 순서 교체 — 지금 보고 있던 페이지가 옮겨져도 화면이 계속 그 페이지를 보여주도록 curPage를 재계산
+function reorderPages(from, to) {
+  const curRef = pages[curPage-1];
+  const [moved] = pages.splice(from, 1);
+  pages.splice(to, 0, moved);
+  const [movedFlex] = firstRowFlex.splice(from, 1);
+  firstRowFlex.splice(to, 0, movedFlex);
+  curPage = pages.indexOf(curRef) + 1;
+  document.getElementById('postersRow').innerHTML = '';
+  pages.forEach((_, i) => ensurePosterWrap(i+1));
+  refresh();
+  saveState();
 }
 function addPage() {
   pages.push([]);
@@ -2004,6 +2041,53 @@ document.getElementById('stage').addEventListener('wheel', e => {
   const newVal = Math.min(100, Math.max(20, _previewZoomPct + delta));
   applyPreviewZoom(newVal);
 }, { passive: false });
+
+// 미리보기 줌 팝업(stage-toolbar) 그랩 이동 — 항상 같은 자리에 고정돼있던 걸
+// 핸들(⠿)을 드래그해서 원하는 위치로 옮길 수 있게 함. 위치는 localStorage에 저장해
+// 다음에 열어도 마지막 위치 그대로 유지됨.
+(function() {
+  const bar = document.getElementById('stageToolbar');
+  const handle = document.getElementById('stageToolbarHandle');
+  const POS_KEY = 'mh_maker_toolbar_pos';
+
+  function applyBarPos(x, y) {
+    bar.style.position = 'fixed';
+    bar.style.left = x + 'px';
+    bar.style.top = y + 'px';
+  }
+
+  const saved = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
+  if (saved) {
+    applyBarPos(saved.x, saved.y);
+  } else {
+    requestAnimationFrame(() => {
+      const r = bar.getBoundingClientRect();
+      applyBarPos((window.innerWidth - r.width) / 2, 12); // 기본 위치: 상단 중앙
+    });
+  }
+
+  let _tbDrag = null;
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const r = bar.getBoundingClientRect();
+    _tbDrag = { sx: e.clientX, sy: e.clientY, ox: r.left, oy: r.top };
+    bar.classList.add('dragging');
+  });
+  window.addEventListener('mousemove', e => {
+    if (!_tbDrag) return;
+    const r = bar.getBoundingClientRect();
+    const nx = Math.min(window.innerWidth - r.width, Math.max(0, _tbDrag.ox + (e.clientX - _tbDrag.sx)));
+    const ny = Math.min(window.innerHeight - r.height, Math.max(0, _tbDrag.oy + (e.clientY - _tbDrag.sy)));
+    applyBarPos(nx, ny);
+  });
+  window.addEventListener('mouseup', () => {
+    if (!_tbDrag) return;
+    _tbDrag = null;
+    bar.classList.remove('dragging');
+    const r = bar.getBoundingClientRect();
+    localStorage.setItem(POS_KEY, JSON.stringify({ x: r.left, y: r.top }));
+  });
+})();
 
 // Ctrl+Z undo
 document.addEventListener('keydown', e => {
