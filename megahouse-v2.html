@@ -120,6 +120,11 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .board-hdr .del-board{background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:50%;
   width:20px;height:20px;cursor:pointer;font-size:12px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;}
 .board-hdr .del-board:hover{background:rgba(220,50,50,.6);}
+.board-hdr .dup-board{background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:50%;
+  width:20px;height:20px;cursor:pointer;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;}
+.board-hdr .dup-board:hover{background:rgba(80,180,80,.6);}
+/* 보드 탭 드래그 */
+.ptab.drag-over{outline:2px solid var(--ui-accent);outline-offset:-2px;}
 
 /* sc-wrap: 실제 레이아웃 공간을 차지하는 래퍼 — 크기는 JS에서 설정 */
 .sc-wrap{position:relative;overflow:hidden;flex-shrink:0;}
@@ -203,6 +208,13 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
   background:rgba(180,30,30,.75);color:#fff;font-size:18px;cursor:pointer;transform-origin:top right;
   opacity:0;transition:opacity .15s;}
 .cell:hover .cell-del-btn{opacity:1;}
+.cell-replace-btn{position:absolute;top:56px;right:6px;z-index:5;width:44px;height:44px;
+  display:flex;align-items:center;justify-content:center;border-radius:8px;
+  background:rgba(20,82,192,.75);color:#fff;font-size:18px;cursor:pointer;transform-origin:top right;
+  opacity:0;transition:opacity .15s;}
+.cell:hover .cell-replace-btn{opacity:1;}
+/* 빈 셀 파일 드래그오버 강조 */
+.cell.file-drag-over{outline:3px dashed var(--ui-accent);outline-offset:-3px;background:rgba(20,82,192,.08)!important;}
 .cell.drag-over-preview{outline:3px solid #4c8dff;outline-offset:-3px;}
 
 /* 줌 바 */
@@ -309,7 +321,8 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 
   <div class="actions">
     <button class="ghost" id="btnReset">초기화</button>
-    <button class="primary" id="btnDownload">PNG 다운로드</button>
+    <button class="ghost" id="btnDownload">이 보드 저장</button>
+    <button class="primary" id="btnDownloadAll">전체 저장</button>
   </div>
 </div>
 
@@ -395,6 +408,13 @@ function makeBoardEl(board, boardNum) {
   sel.addEventListener('change', () => setBoardCanvas(board.id, +sel.value));
   hdr.appendChild(sel);
 
+  const dupBtn = document.createElement('button');
+  dupBtn.className = 'dup-board';
+  dupBtn.textContent = '⧉';
+  dupBtn.title = '보드 복제';
+  dupBtn.addEventListener('click', () => duplicateBoard(board.id));
+  hdr.appendChild(dupBtn);
+
   const delBtn = document.createElement('button');
   delBtn.className = 'del-board';
   delBtn.textContent = '✕';
@@ -445,6 +465,12 @@ function makeBoardEl(board, boardNum) {
     <div class="p-ft-logo-wrap"><img class="p-ft-logo" id="pwlogo-${board.id}" alt="PW"/></div>
   `;
   poster.appendChild(pft);
+
+  wrap.addEventListener('click', e => {
+    if (!e.target.closest('.cell-drag-handle, .cell-del-btn, .cell-replace-btn, .name-text')) {
+      switchBoard(board.id);
+    }
+  });
 
   sc.appendChild(poster);
   wrap.appendChild(sc);
@@ -522,12 +548,35 @@ function deleteBoard(boardId) {
   saveState();
 }
 
+function duplicateBoard(boardId) {
+  if (boards.length >= 6) { toast('보드는 최대 6개까지 가능합니다'); return; }
+  const src = boards.find(b => b.id === boardId);
+  if (!src) return;
+  const newBoard = {
+    id: boardSeq++,
+    canvasIdx: src.canvasIdx,
+    items: src.items.map(it => ({...it, id: idSeq++})),
+    pwX: src.pwX, pwY: src.pwY
+  };
+  const idx = boards.findIndex(b => b.id === boardId);
+  boards.splice(idx + 1, 0, newBoard);
+  curBoardId = newBoard.id;
+  renderBoards();
+  boards.forEach(b => renderGrid(b.id));
+  renderBoardTabs();
+  syncHeader(); syncLogoSize(); syncMegaLogoSize(); syncBadgeStyle();
+  fitScale();
+  saveState();
+}
+
 function switchBoard(id) {
   curBoardId = id;
   renderBoardTabs();
   renderItemList();
   renderRowControls();
 }
+
+let _tabDragSrc = null;
 
 function renderBoardTabs() {
   const container = document.getElementById('boardTabs');
@@ -538,7 +587,23 @@ function renderBoardTabs() {
     const filled = b.items.filter(it=>it.src).length;
     tab.className = 'ptab' + (b.id === curBoardId ? ' on' : '');
     tab.textContent = `보드 ${i+1} (${filled}/${b.items.length})`;
+    tab.draggable = true;
     tab.addEventListener('click', () => switchBoard(b.id));
+    tab.addEventListener('dragstart', e => { _tabDragSrc = b.id; e.dataTransfer.effectAllowed = 'move'; });
+    tab.addEventListener('dragover', e => { e.preventDefault(); tab.classList.add('drag-over'); });
+    tab.addEventListener('dragleave', () => tab.classList.remove('drag-over'));
+    tab.addEventListener('dragend', () => { tab.classList.remove('drag-over'); _tabDragSrc = null; });
+    tab.addEventListener('drop', e => {
+      e.preventDefault(); tab.classList.remove('drag-over');
+      if (!_tabDragSrc || _tabDragSrc === b.id) return;
+      const si = boards.findIndex(x => x.id === _tabDragSrc);
+      const di = boards.findIndex(x => x.id === b.id);
+      boards.splice(di, 0, boards.splice(si, 1)[0]);
+      _tabDragSrc = null;
+      renderBoards(); renderBoardTabs();
+      boards.forEach(brd => renderGrid(brd.id));
+      fitScale(); saveState();
+    });
     container.appendChild(tab);
   });
 }
@@ -611,11 +676,65 @@ function makeCell(it, ri, boardId) {
     cell.appendChild(delBtn);
   }
 
-  cell.addEventListener('dragover', e => { e.preventDefault(); cell.classList.add('drag-over-preview'); });
-  cell.addEventListener('dragleave', () => cell.classList.remove('drag-over-preview'));
+  // 이미지 교체 버튼 (사진 있으면 교체, 없으면 추가)
+  const replBtn = document.createElement('div');
+  replBtn.className = 'cell-replace-btn';
+  replBtn.textContent = '↺';
+  replBtn.title = it.src ? '이미지 교체' : '이미지 추가';
+  replBtn.addEventListener('mousedown', e => e.stopPropagation());
+  replBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.addEventListener('change', () => {
+      if (!inp.files[0]) return;
+      const r = new FileReader();
+      r.onload = ev => resizeDataURL(ev.target.result, 1200, src => {
+        const dBoardId = +cell.dataset.boardId;
+        const dIdx = +cell.dataset.idx;
+        const dBoard = boards.find(b => b.id === dBoardId);
+        if (!dBoard) return;
+        dBoard.items[dIdx] = { ...dBoard.items[dIdx], src, scale: 1, ox: 0, oy: 0, _fitted: false };
+        refresh();
+      });
+      r.readAsDataURL(inp.files[0]);
+    });
+    inp.click();
+  });
+  cell.appendChild(replBtn);
+
+  cell.addEventListener('dragover', e => {
+    e.preventDefault();
+    if (e.dataTransfer.types.includes('Files')) {
+      cell.classList.add('file-drag-over');
+    } else {
+      cell.classList.add('drag-over-preview');
+    }
+  });
+  cell.addEventListener('dragleave', () => {
+    cell.classList.remove('drag-over-preview');
+    cell.classList.remove('file-drag-over');
+  });
   cell.addEventListener('drop', e => {
     e.preventDefault();
     cell.classList.remove('drag-over-preview');
+    cell.classList.remove('file-drag-over');
+    // 파일 드래그 → 해당 슬롯에 직접 사진 교체
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = [...e.dataTransfer.files].find(f => f.type.startsWith('image/'));
+      if (!file) return;
+      const destBoardId = +cell.dataset.boardId;
+      const destIdx = +cell.dataset.idx;
+      const destBoard = boards.find(b => b.id === destBoardId);
+      if (!destBoard) return;
+      const r = new FileReader();
+      r.onload = ev => resizeDataURL(ev.target.result, 1200, src => {
+        destBoard.items[destIdx] = { ...destBoard.items[destIdx], src, scale: 1, ox: 0, oy: 0, _fitted: false };
+        refresh();
+      });
+      r.readAsDataURL(file);
+      return;
+    }
     if (!dragSrc) return;
     const destBoardId = +cell.dataset.boardId;
     const destIdx = +cell.dataset.idx;
@@ -1147,8 +1266,27 @@ function loadLogoFile(file, ids) {
 async function downloadPNG() {
   if (typeof htmlToImage === 'undefined') { toast('라이브러리 로드 실패 (인터넷 필요)'); return; }
   const m = $('#inMonth').value.trim().replace(/\s+/g,'') || 'preview';
-  if (!boards.length) { toast('보드가 없습니다'); return; }
+  const board = boards.find(b => b.id === curBoardId);
+  if (!board) { toast('보드가 없습니다'); return; }
   toast('이미지 생성 중…');
+  const el = document.getElementById('poster-' + board.id);
+  if (!el) return;
+  try {
+    const preset = CANVAS_PRESETS[board.canvasIdx];
+    const dataUrl = await htmlToImage.toPng(el, {pixelRatio:1, width:preset.w, height:preset.h, cacheBust:true, backgroundColor:'#fff'});
+    const a = document.createElement('a');
+    const i = boards.indexOf(board);
+    a.download = `megahouse_${m}_b${i+1}.png`;
+    a.href = dataUrl; a.click();
+    toast('다운로드 완료!');
+  } catch(err) { toast('생성 실패: '+err.message); }
+}
+
+async function downloadAllPNG() {
+  if (typeof htmlToImage === 'undefined') { toast('라이브러리 로드 실패 (인터넷 필요)'); return; }
+  const m = $('#inMonth').value.trim().replace(/\s+/g,'') || 'preview';
+  if (!boards.length) { toast('보드가 없습니다'); return; }
+  toast('전체 이미지 생성 중…');
   for (let i = 0; i < boards.length; i++) {
     const board = boards[i];
     const el = document.getElementById('poster-' + board.id);
@@ -1162,7 +1300,7 @@ async function downloadPNG() {
       await new Promise(r => setTimeout(r, 400));
     } catch(err) { toast('생성 실패: '+err.message); return; }
   }
-  toast('다운로드 완료!');
+  toast('전체 다운로드 완료!');
 }
 
 /* ═══════════════════════════════════════
@@ -1212,6 +1350,7 @@ function applyPreviewZoom(pct) {
     if (poster) {
       poster.querySelectorAll('.cell-drag-handle').forEach(h => h.style.transform = `scale(${inv})`);
       poster.querySelectorAll('.cell-del-btn').forEach(h => h.style.transform = `scale(${inv})`);
+      poster.querySelectorAll('.cell-replace-btn').forEach(h => h.style.transform = `scale(${inv})`);
     }
   });
 }
@@ -1255,6 +1394,7 @@ $('#logoPW').addEventListener('change', e => {
 
 $('#btnApplyBulk').addEventListener('click', applyBulk);
 $('#btnDownload').addEventListener('click', downloadPNG);
+$('#btnDownloadAll').addEventListener('click', downloadAllPNG);
 $('#btnAddBoard').addEventListener('click', addBoard);
 
 $('#btnReset').addEventListener('click', () => {
