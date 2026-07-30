@@ -125,6 +125,7 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .board-hdr .dup-board:hover{background:rgba(80,180,80,.6);}
 /* 보드 탭 드래그 */
 .ptab.drag-over{outline:2px solid var(--ui-accent);outline-offset:-2px;}
+.ptab.dragging-tab{opacity:.4;}
 
 /* sc-wrap: 실제 레이아웃 공간을 차지하는 래퍼 — 크기는 JS에서 설정 */
 .sc-wrap{position:relative;overflow:hidden;flex-shrink:0;border-radius:4px;outline:3px solid transparent;transition:outline-color .15s;}
@@ -633,8 +634,6 @@ function updateBoardActiveStyle() {
   });
 }
 
-let _tabDragSrc = null;
-
 function renderBoardTabs() {
   const container = document.getElementById('boardTabs');
   if (!container) return;
@@ -646,24 +645,34 @@ function renderBoardTabs() {
     tab.textContent = `보드 ${i+1} (${filled}/${b.items.length})`;
     tab.draggable = true;
     tab.addEventListener('click', () => switchBoard(b.id));
-    tab.addEventListener('dragstart', e => { _tabDragSrc = b.id; e.dataTransfer.effectAllowed = 'move'; });
+    tab.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', String(i));
+      e.dataTransfer.effectAllowed = 'move';
+      tab.classList.add('dragging-tab');
+    });
+    tab.addEventListener('dragend', () => tab.classList.remove('dragging-tab'));
     tab.addEventListener('dragover', e => { e.preventDefault(); tab.classList.add('drag-over'); });
     tab.addEventListener('dragleave', () => tab.classList.remove('drag-over'));
-    tab.addEventListener('dragend', () => { tab.classList.remove('drag-over'); _tabDragSrc = null; });
     tab.addEventListener('drop', e => {
-      e.preventDefault(); tab.classList.remove('drag-over');
-      if (!_tabDragSrc || _tabDragSrc === b.id) return;
-      const si = boards.findIndex(x => x.id === _tabDragSrc);
-      const di = boards.findIndex(x => x.id === b.id);
-      pushUndo();
-      boards.splice(di, 0, boards.splice(si, 1)[0]);
-      _tabDragSrc = null;
-      renderBoards(); renderBoardTabs();
-      boards.forEach(brd => renderGrid(brd.id));
-      fitScale(); saveState();
+      e.preventDefault();
+      tab.classList.remove('drag-over');
+      const from = +e.dataTransfer.getData('text/plain');
+      if (from === i) return;
+      reorderBoards(from, i);
     });
     container.appendChild(tab);
   });
+}
+
+function reorderBoards(from, to) {
+  const curRef = boards[boards.findIndex(b => b.id === curBoardId)];
+  pushUndo();
+  const [moved] = boards.splice(from, 1);
+  boards.splice(to, 0, moved);
+  curBoardId = curRef ? curRef.id : boards[0].id;
+  renderBoards(); renderBoardTabs();
+  boards.forEach(brd => renderGrid(brd.id));
+  fitScale(); saveState();
 }
 
 /* ═══════════════════════════════════════
