@@ -1363,7 +1363,11 @@ function applyPreviewZoom(pct) {
     if (poster) {
       poster.querySelectorAll('.cell-drag-handle').forEach(h => h.style.transform = `scale(${inv})`);
       poster.querySelectorAll('.cell-del-btn').forEach(h => h.style.transform = `scale(${inv})`);
-      poster.querySelectorAll('.cell-replace-btn').forEach(h => h.style.transform = `scale(${inv})`);
+      // replace-btn: del-btn 바로 아래 4px 간격으로 위치 (del 6px + 44px시각높이 + 4px갭 = 54px 화면px → 포스터좌표 = 54*inv + 6)
+      poster.querySelectorAll('.cell-replace-btn').forEach(h => {
+        h.style.transform = `scale(${inv})`;
+        h.style.top = `${6 + 54 * inv}px`;
+      });
     }
   });
 }
@@ -1471,7 +1475,7 @@ function saveState() {
       badgeBg: $('#badgeBg') ? $('#badgeBg').value : '#0d1580',
       badgeFg: $('#badgeFg') ? $('#badgeFg').value : '#ffffff',
       headerOn: $('#chkHeader') ? $('#chkHeader').checked : false,
-      headerPad: $('#headerPad') ? $('#headerPad').value : '30',
+      headerPad: $('#headerPad') ? $('#headerPad').value : '0',
       blurPx, blurBright,
     };
     localStorage.setItem('mh_maker_state', JSON.stringify(state));
@@ -1526,7 +1530,8 @@ function loadState() {
     if (st.footerOffset && $('#footerOffset')) $('#footerOffset').value = st.footerOffset;
     if (st.badgeBg && $('#badgeBg')) $('#badgeBg').value = st.badgeBg;
     if (st.badgeFg && $('#badgeFg')) $('#badgeFg').value = st.badgeFg;
-    if (st.headerPad && $('#headerPad')) $('#headerPad').value = st.headerPad;
+    // 구버전 기본값(30)이 저장된 경우 0으로 마이그레이션
+    if (st.headerPad != null && $('#headerPad')) $('#headerPad').value = (+st.headerPad === 30 ? 0 : st.headerPad);
     if (st.headerOn != null && $('#chkHeader')) { $('#chkHeader').checked = !!st.headerOn; }
     if (st.blurPx != null) { blurPx = st.blurPx; const sl=$('#sliderBlurPx'); if(sl){sl.value=blurPx;} const lbl=$('#blurPxVal'); if(lbl) lbl.textContent=blurPx; }
     if (st.blurBright != null) { blurBright = st.blurBright; const sl=$('#sliderBlurBright'); if(sl){sl.value=blurBright;} const lbl=$('#blurBrightVal'); if(lbl) lbl.textContent=blurBright; }
