@@ -219,9 +219,12 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .cell.drag-over-preview{outline:3px solid #4c8dff;outline-offset:-3px;}
 
 /* 줌 바 */
-.zoom-bar{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:10px;
-  background:rgba(0,0,0,.25);backdrop-filter:blur(4px);border-radius:20px;
-  padding:6px 16px;align-self:flex-start;}
+.zoom-bar{position:fixed;z-index:50;display:flex;align-items:center;gap:10px;
+  background:rgba(0,0,0,.45);backdrop-filter:blur(4px);border-radius:20px;
+  padding:6px 16px;user-select:none;}
+.zoom-bar.dragging{cursor:grabbing;}
+.zoom-bar-handle{cursor:grab;padding:0 4px;color:#fff;opacity:.7;user-select:none;font-size:16px;line-height:1;}
+.zoom-bar-handle:active{cursor:grabbing;}
 </style>
 </head>
 <body>
@@ -329,7 +332,8 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 
 <!-- ═══ 스테이지 ═══ -->
 <div class="stage" id="stage">
-  <div class="zoom-bar">
+  <div class="zoom-bar" id="zoomBar">
+    <span class="zoom-bar-handle" id="zoomBarHandle" title="드래그해서 위치 이동">⠿</span>
     <span style="color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">미리보기</span>
     <input type="range" id="previewZoom" min="20" max="100" value="50" step="1" style="width:120px;accent-color:#fff;cursor:pointer;" oninput="applyPreviewZoom(this.value)"/>
     <span id="previewZoomVal" style="color:#fff;font-size:11px;min-width:32px;">50%</span>
@@ -1618,6 +1622,58 @@ document.addEventListener('keydown', e => {
     undo();
   }
 });
+
+// 휠 줌: 스테이지에서 휠 → 미리보기 확대/축소 (줌바 위는 제외)
+document.getElementById('stage').addEventListener('wheel', e => {
+  if (e.target.closest('.zoom-bar')) return;
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -2 : 2;
+  applyPreviewZoom(Math.min(100, Math.max(20, _previewZoomPct + delta)));
+}, { passive: false });
+
+// 줌바 드래그 이동 + 위치 기억
+(function() {
+  const bar = document.getElementById('zoomBar');
+  const handle = document.getElementById('zoomBarHandle');
+  const POS_KEY = 'mhv2_toolbar_pos';
+
+  function applyBarPos(x, y) {
+    bar.style.left = x + 'px';
+    bar.style.top  = y + 'px';
+  }
+
+  const saved = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
+  if (saved) {
+    applyBarPos(saved.x, saved.y);
+  } else {
+    requestAnimationFrame(() => {
+      const r = bar.getBoundingClientRect();
+      applyBarPos((window.innerWidth - r.width) / 2, 12);
+    });
+  }
+
+  let _drag = null;
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const r = bar.getBoundingClientRect();
+    _drag = { sx: e.clientX, sy: e.clientY, ox: r.left, oy: r.top };
+    bar.classList.add('dragging');
+  });
+  window.addEventListener('mousemove', e => {
+    if (!_drag) return;
+    const r = bar.getBoundingClientRect();
+    const nx = Math.min(window.innerWidth  - r.width,  Math.max(0, _drag.ox + (e.clientX - _drag.sx)));
+    const ny = Math.min(window.innerHeight - r.height, Math.max(0, _drag.oy + (e.clientY - _drag.sy)));
+    applyBarPos(nx, ny);
+  });
+  window.addEventListener('mouseup', () => {
+    if (!_drag) return;
+    _drag = null;
+    bar.classList.remove('dragging');
+    const r = bar.getBoundingClientRect();
+    localStorage.setItem(POS_KEY, JSON.stringify({ x: r.left, y: r.top }));
+  });
+})();
 </script>
 </body>
 </html>
