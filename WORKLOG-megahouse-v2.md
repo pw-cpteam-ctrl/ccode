@@ -1,5 +1,39 @@
 <details open>
-<summary>2026-07-30 (오늘)</summary>
+<summary>2026-07-31 (오늘)</summary>
+
+## 2026-07-31
+
+### 실행취소(Ctrl+Z) 추가
+
+- **무슨 문제/요청이 있었나**: 실수로 사진을 지우거나 순서를 바꿨을 때 되돌릴 방법이 없었음. 실행취소 스니펫 공유 후 v2에 반영 요청
+- **어떻게 처리했나**: `undoStack` 배열 + `pushUndo()` / `undo()` 함수 추가. 보드 추가·삭제·복제, 파일 추가, 셀 삭제·교체, 캔버스 전환, 탭 드래그 순서변경 등 데이터를 바꾸는 모든 지점 직전에 `pushUndo()` 호출. Ctrl+Z (Mac: Cmd+Z) 키보드 단축키 등록 — 텍스트 입력칸 포커스 중일 때는 동작 안 함. 최대 30단계
+- **결과**: Playwright로 이벤트 등록 확인
+
+---
+
+### 휠 줌 + 줌바 드래그 이동
+
+- **무슨 문제/요청이 있었나**: 미리보기 배율을 슬라이더로만 바꿀 수 있었음. 스니펫 3종(휠 줌 / 툴바 그랩 이동 / 보드 탭 순서변경) 공유 후 반영 요청
+- **어떻게 처리했나**:
+  - 휠 줌: `#stage`에 `wheel` 이벤트 리스너 추가 — 줌바(`.zoom-bar`) 위에서는 무시, 그 외 스테이지 어디서든 휠로 확대/축소. 처음에 `.sc-wrap` 위도 제외하도록 짰다가 "빈 셀도 sc-wrap 안에 있어서 사실상 배경이 없음" 확인 후 `.zoom-bar`만 제외로 수정
+  - 줌바 드래그: `.zoom-bar`를 `position:sticky → position:fixed`로 전환, `⠿` 핸들 추가. 핸들 `mousedown` → `window mousemove/mouseup`으로 이동 처리, 화면 밖 이탈 clamp 포함. 위치는 `localStorage('mhv2_toolbar_pos')`에 저장해 새로고침 후에도 유지
+- **결과**: Playwright로 휠 후 `#previewZoomVal` 텍스트 50%→60% 확인, 줌바 드래그 후 X좌표 120px 이상 이동·localStorage 저장 확인
+
+---
+
+### 보드 탭 드래그 순서변경 재구현
+
+- **무슨 문제/요청이 있었나**: 보드 탭 드래그 순서변경이 실제로 동작하지 않았음. 스니펫 3번이 새 기능 요청이었는데 "이미 구현됨"으로 임의 판단해 넘어간 것도 잘못
+- **확인해보니**: 기존 코드가 `dragstart`에서 `e.dataTransfer.setData()`를 호출하지 않아 `drop` 이벤트가 제대로 발화하지 않는 구조였음 (HTML5 DnD는 `setData` 없으면 drop이 안 fires). Playwright 이벤트 로그로 직접 확인
+- **어떻게 처리했나**: `setData('text/plain', String(인덱스))` → drop에서 `getData`로 읽는 방식으로 교체. `reorderBoards(from, to)` 함수 분리 — 현재 선택 보드(`curBoardId`)를 참조로 유지한 채 `splice` 후 `curBoardId` 재계산
+- **결과**: Playwright에서 boards 배열 canvasIdx 기준으로 [0,1,2] → [1,2,0] 순서변경 확인
+
+---
+
+</details>
+
+<details>
+<summary>2026-07-30</summary>
 
 ## 2026-07-30
 
