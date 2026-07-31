@@ -33,10 +33,14 @@ function buildOutputProduct(f) {
 
 // outDir 안에 output.json + photos/ 폴더를 만든다. product-sns-formatter의 "B2B 가져오기"는
 // 이 output.json과 photos/ 안의 파일들을 함께 선택해서 가져온다(파일명으로 매칭).
-function writeOutputFile(products, outDir) {
+// meta.guidanceDate: 이 결과가 어느 발표일분인지(예: '20260730'). 폴더명만으로도 알 수 있지만,
+// 파일 하나만 따로 전달받았을 때도 어느 날짜분인지 알 수 있게 같이 적어둔다(있으면 기록, 없으면 생략).
+function writeOutputFile(products, outDir, meta = {}) {
   fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, 'output.json');
-  fs.writeFileSync(outPath, JSON.stringify({ scrapedAt: new Date().toISOString(), products }, null, 1), 'utf-8');
+  const payload = { scrapedAt: new Date().toISOString(), products };
+  if (meta.guidanceDate) payload.guidanceDate = meta.guidanceDate;
+  fs.writeFileSync(outPath, JSON.stringify(payload, null, 1), 'utf-8');
   return outPath;
 }
 

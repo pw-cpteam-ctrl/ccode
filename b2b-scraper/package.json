@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node scrape.js",
     "scrape": "node scrape.js",
+    "scrape:pick": "node scrape.js --pick",
     "recon": "node recon.js"
   },
   "dependencies": {
