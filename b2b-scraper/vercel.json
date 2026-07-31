@@ -1,0 +1,10 @@
+{
+  "ignoreCommand": "[ -z \"$VERCEL_GIT_PREVIOUS_SHA\" ] && exit 1; git cat-file -e \"$VERCEL_GIT_PREVIOUS_SHA\" 2>/dev/null || exit 1; git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD ./",
+  "installCommand": "echo \"api/files.js는 외부 라이브러리를 쓰지 않으므로 설치 단계를 생략합니다 (playwright-core는 팀원 PC에서만 필요)\"",
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "**": false
+    }
+  }
+}
