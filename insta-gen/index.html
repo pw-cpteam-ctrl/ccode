@@ -539,7 +539,7 @@ function parseJP(txt){
   const DECO=new RegExp('['+STRIP+']','g');
   const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
   const CTX=['初公開','公開','決定','受付','開始','新作','登場','シリーズ','プロジェクト',
-             '최초공개','공개','결정','시작','신작','등장','시리즈','프로젝트','フィギュア','うしろ姿','原型'];
+             '최초공개','최초','공개','결정','시작','신작','등장','시리즈','프로젝트','フィギュア','うしろ姿','原型'];
   const STRIPKW=[]; if(r.workRaw) STRIPKW.push(r.workRaw);
   if(r.headline) STRIPKW.push(r.headline);   // 감지된 헤드라인 전체 문구 ("재판매 결정"이 "매"로 남는 것 방지)
   if(r.line) STRIPKW.push(r.line);
@@ -549,6 +549,10 @@ function parseJP(txt){
   STRIPKW.sort((a,b)=>b.length-a.length);
   const stripKW=s=>{ let o=s; for(const k of STRIPKW){ if(inc(o,k)) o=o.replace(new RegExp(esc(k),'gi'),' '); } return o.replace(/\s+/g,' ').trim(); };
   const nameLike=s=>/[ぁ-んァ-ヶ㐀-鿿가-힣A-Za-z]/.test(s);
+  // 알려진 키워드(라인명/헤드라인 등)를 지우고 나면, 원문에서 그 키워드에 붙어있던 조사만
+  // 홀로 남는 경우가 있다(예: "토비마스 시리즈에"→"시리즈" 제거 후 "에"만 남음).
+  // 이런 조사 한 토막은 이름이 아니므로 걸러낸다 — 특정 케이스 patch가 아니라 일반 규칙.
+  const isParticleNoise=s=>/^(에|에서|으로|로|의|은|는|이|가|을|를|도|만|과|와|께|께서|한테|이랑|랑)$/.test(s);
   const lines = txt.split('\n').map(s=>s.replace(/[　\s]+/g,' ').trim())
     .map(s=>s.replace(new RegExp('^['+STRIP+']+|['+STRIP+']+$','g'),'').trim()).filter(Boolean);
   const isDeco=s=>!s.replace(DECO,'').length || !nameLike(s);
@@ -561,10 +565,10 @@ function parseJP(txt){
     const stripped=stripKW(s);
     if(!stripped||!nameLike(stripped)) continue;            // 작품/라인/헤드라인만 있던 줄 → 건너뜀
     for(const entry of stripped.split(/[／/、]/).map(x=>x.trim()).filter(Boolean)){   // 다른 제품
-      if(!nameLike(entry)) continue;
+      if(!nameLike(entry)||isParticleNoise(entry)) continue;
       const parts=[];
       for(const piece of entry.split(/[＆&]/).map(x=>x.trim()).filter(Boolean)){       // 한 제품 안 여러 캐릭터
-        if(!nameLike(piece)) continue;
+        if(!nameLike(piece)||isParticleNoise(piece)) continue;
         const cc=convChar(piece); const key=cc.base||cc.raw; if(!key||seen.has(key)) continue; seen.add(key); parts.push(cc);
       }
       if(parts.length) entries.push(parts);
