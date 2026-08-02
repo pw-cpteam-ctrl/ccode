@@ -217,13 +217,6 @@
       <div class="field">
         <label>③ 시리즈/라인 (작품 뒤에 자동으로 붙음)</label>
         <select id="t_line">
-          <optgroup label="스케일 피규어">
-            <option>G.E.M. 시리즈</option>
-            <option>스케일 피규어</option>
-            <option>GGG</option>
-            <option>루크리아</option>
-            <option>멜티 프린세스</option>
-          </optgroup>
           <optgroup label="룩업">
             <option>룩업</option>
             <option>룩업 판초</option>
@@ -231,15 +224,30 @@
             <option>룩업 미니어처</option>
             <option>룩업 소품</option>
           </optgroup>
-          <optgroup label="기타 라인">
-            <option>누잇뽀</option>
+          <optgroup label="젬 시리즈">
+            <option>G.E.M. 시리즈</option>
+          </optgroup>
+          <optgroup label="스케일">
+            <option>스케일 피규어</option>
+            <option>GGG</option>
+            <option>루크리아</option>
+            <option>멜티 프린세스</option>
             <option>FigUnity</option>
-            <option>바리어블 액션 히어로즈</option>
-            <option>Portrait.Of.Pirates</option>
-            <option>버디코레</option>
+          </optgroup>
+          <optgroup label="컬렉션 피규어">
+            <option>컬렉션 피규어</option>
+            <option>쵸코링 컬렉션</option>
             <option>츠미첸</option>
-            <option>유라콜레</option>
-            <option>토코토코 아크릴 스탠드</option>
+            <option>토비마스</option>
+            <option>유라코레</option>
+            <option>누잇뽀</option>
+          </optgroup>
+          <optgroup label="컬렉션 굿즈">
+            <option>컬렉션 굿즈</option>
+            <option>카라코로</option>
+            <option>버디코레</option>
+            <option>이루스타</option>
+            <option>꺄르르르</option>
           </optgroup>
           <optgroup label="메가캣">
             <option>메가캣 프로젝트</option>
@@ -249,16 +257,9 @@
             <option>메가캣 찰싹</option>
             <option>메가캣 뱃지</option>
           </optgroup>
-          <optgroup label="컬렉션 피규어">
-            <option>컬렉션 피규어</option>
-            <option>쵸코링 컬렉션</option>
-          </optgroup>
-          <optgroup label="컬렉션 굿즈">
-            <option>컬렉션 굿즈</option>
-            <option>카라코로</option>
-            <option>버디코레</option>
-            <option>이루스타</option>
-            <option>꺄르르르</option>
+          <optgroup label="기타">
+            <option>배리어블 액션 히어로즈</option>
+            <option>P.O.P</option>
           </optgroup>
         </select>
         <div class="preview-line" id="titlePreview">타이틀: —</div>
@@ -523,8 +524,13 @@ function parseJP(txt){
   else if(workJP && DICT.works[workJP]){ r.work=DICT.works[workJP]; r.jp=workJP; r.workRaw=workJP; }
   else if(workJP){ const tw=kanaToHangul(workJP); if(tw.ok){ r.work=tw.text; r.workApprox=true; } r.jp=workJP; r.workRaw=workJP; }
 
-  // 테노히라 등 = 라인은 G.E.M. 시리즈, 제품명 앞엔 '테노히라 ' 접두어(고유명사) 부착
-  let charPrefix=''; if(/てのひら|테노히라|手のひら/.test(txt)) charPrefix='테노히라 ';
+  // 젬(G.E.M.) 계열 세부 접두어 — 라인은 항상 'G.E.M. 시리즈'로 두고, 제품명 앞엔 세부명 접두어를 부착
+  const GEM_PREFIX = [
+    { re:/てのひら|테노히라|手のひら/, kr:'테노히라 ' },
+    { re:/プレシャス|프레셔스|Precious/i, kr:'프레셔스 ' },
+    { re:/カラット|캐럿|Carat/i, kr:'캐럿 ' },
+  ];
+  let charPrefix=''; for(const p of GEM_PREFIX) if(p.re.test(txt)){ charPrefix=p.kr; break; }
   r.charPrefix=charPrefix;
 
   // 캐릭터 줄 구조적 추출: 작품/라인/헤드라인/문맥 키워드를 줄에서 지우고 → 구분자로 분리
