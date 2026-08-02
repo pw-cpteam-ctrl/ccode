@@ -511,7 +511,12 @@ function parseJP(txt){
   let kw2=null; for(const w of KR_WORKS) if(txt.includes(w)&&(!kw2||w.length>kw2.length)) kw2=w;
   let kwAlias=null, kwAliasRaw=null;   // 약칭(히트맨 리본 등) → 정식명
   if(typeof KR_ALIAS!=='undefined') for(const a of Object.keys(KR_ALIAS)) if(txt.includes(a)&&(!kwAliasRaw||a.length>kwAliasRaw.length)){ kwAliasRaw=a; kwAlias=KR_ALIAS[a]; }
-  if(workJP && /[가-힣]/.test(workJP)){ r.work=workJP; r.jp=''; r.workRaw=workJP; }
+  // 해시태그(#진격의거인 등)는 원문 그대로라 공백이 빠진 채로 올 때가 많다 — 그 상태로 바로 쓰지 말고
+  // 공백을 지운 값으로 KR_WORKS와 대조해, 이미 등록된 작품이면 사전의 정확한 표기(공백 포함)로 바꿔치기한다.
+  const stripSp=s=>s.replace(/\s+/g,'');
+  const canonWork = workJP ? KR_WORKS.find(w=>stripSp(w)===stripSp(workJP)) : null;
+  if(canonWork){ r.work=canonWork; r.jp=''; r.workRaw=workJP; }
+  else if(workJP && /[가-힣]/.test(workJP)){ r.work=workJP; r.jp=''; r.workRaw=workJP; }
   else if(bw){ r.work=DICT.works[bw]; r.jp=bw; r.workRaw=bw; }
   else if(kw2){ r.work=kw2; r.jp=''; r.workRaw=kw2; }     // 한국어 자유입력 작품(정식명)
   else if(kwAlias){ r.work=kwAlias; r.jp=''; r.workRaw=kwAliasRaw; }   // 약칭 → 정식명 (줄에선 약칭을 지움)
