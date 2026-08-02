@@ -224,8 +224,11 @@
             <option>룩업 미니어처</option>
             <option>룩업 소품</option>
           </optgroup>
-          <optgroup label="젬 시리즈">
-            <option>G.E.M. 시리즈</option>
+          <optgroup label="G.E.M. 시리즈">
+            <option value="G.E.M. 시리즈">G.E.M. 시리즈</option>
+            <option value="G.E.M. 시리즈" data-prefix="테노히라 ">G.E.M. 시리즈 · 테노히라</option>
+            <option value="G.E.M. 시리즈" data-prefix="프레셔스 ">G.E.M. 시리즈 · 프레셔스</option>
+            <option value="G.E.M. 시리즈" data-prefix="캐럿 ">G.E.M. 시리즈 · 캐럿</option>
           </optgroup>
           <optgroup label="스케일">
             <option>스케일 피규어</option>
@@ -587,6 +590,15 @@ function parseJP(txt){
 
 
 function setSelect(id,val){ const el=document.getElementById(id); if(val&&[...el.options].some(o=>o.value===val)){ el.value=val; return true; } return false; }
+// t_line은 G.E.M. 시리즈처럼 value는 같고 data-prefix만 다른 옵션(테노히라/프레셔스/캐럿)이 있어서
+// el.value=val만으론 항상 접두어 없는 첫 옵션이 골라진다 — 접두어까지 일치하는 옵션을 찾아 선택.
+function setLineSelect(line, prefix){
+  const el=document.getElementById('t_line'); const opts=[...el.options];
+  if(!line||!opts.some(o=>o.value===line)) return false;
+  const idx = opts.findIndex(o=>o.value===line && (o.dataset.prefix||'')===(prefix||''));
+  el.selectedIndex = idx>=0 ? idx : opts.findIndex(o=>o.value===line);
+  return true;
+}
 
 /* ── 이전 입력 캐시 (최근 6칸 · localStorage) ── */
 const SLOT_KEY='instaSlots_v1', SLOT_MAX=6;
@@ -631,7 +643,7 @@ function applySlot(s){
   document.getElementById('t_source').value = s.source||'';
   { const hv=s.headline||'원형 최초공개'; setSelect('t_headline',hv); state.text.headline=hv; }
   const wv = s.work || '[작품명]'; document.getElementById('t_work').value=wv; state.work=wv;
-  { const lv=s.line||'G.E.M. 시리즈'; setSelect('t_line',lv); state.line=lv; }
+  { const lv=s.line||'G.E.M. 시리즈'; setLineSelect(lv, s.linePrefix); state.line=lv; }
   state.linePrefix = s.linePrefix||'';
   document.getElementById('t_product').value=s.product||''; state.text.product=s.product||'';
   document.getElementById('t_jp').value=s.jp||''; state.jp=s.jp||'';
@@ -684,7 +696,7 @@ function applySource(){
   const miss=[];
   if(head){ if(!setSelect('t_headline',head)) miss.push('헤드라인'); else state.text.headline=head; } else miss.push('헤드라인');
   { const wv = work || '[작품명]'; document.getElementById('t_work').value = wv; state.work = wv; if(!work) miss.push('작품'); }
-  if(line){ if(!setSelect('t_line',line)) miss.push('라인('+line+')'); else state.line=line; } else miss.push('라인');
+  if(line){ if(!setLineSelect(line, R&&R.charPrefix)) miss.push('라인('+line+')'); else state.line=line; } else miss.push('라인');
   { const v=(prod||'').split(/[\n／/]/).map(s=>s.trim()).filter(Boolean).join('\n'); document.getElementById('t_product').value=v; state.text.product=v; if(!v) miss.push('제품명(캐릭터)'); }
   document.getElementById('t_jp').value = jp||''; state.jp = jp||'';
   document.getElementById('t_saledate').value = date||''; state.saleDate = date||''; state.saleDow = dow;
@@ -774,7 +786,13 @@ cv.addEventListener('wheel', e=>{ if(!state.img) return; e.preventDefault(); con
 document.getElementById('t_headline').addEventListener('change', e=>{ state.text.headline=e.target.value; render(); });
 document.getElementById('t_work').addEventListener('input', e=>{ state.work=e.target.value; composeTitle(); updatePreview(); render(); runValidation(); checkWorkSpacing(); });
 document.getElementById('t_work').addEventListener('focus', e=>{ if(e.target.value==='[작품명]') e.target.select(); });  // 더미는 클릭 시 전체선택
-document.getElementById('t_line').addEventListener('change', e=>{ state.line=e.target.value; composeTitle(); updatePreview(); render(); });
+document.getElementById('t_line').addEventListener('change', e=>{
+  state.line=e.target.value;
+  // G.E.M. 시리즈 하위 세부(테노히라/프레셔스/캐럿)는 값은 같고 data-prefix만 다른 옵션이라
+  // 직접 골랐을 때도 접두어가 반영되게 여기서 세팅. 접두어 없는 옵션이면 비움.
+  state.linePrefix = e.target.selectedOptions[0]?.dataset.prefix || '';
+  composeTitle(); updatePreview(); render();
+});
 document.getElementById('t_product').addEventListener('input', e=>{ state.text.product=e.target.value; render(); runValidation(); });
 document.getElementById('t_footer').addEventListener('input', e=>{ state.text.footer=e.target.value; render(); });
 document.getElementById('t_jp').addEventListener('input', e=>{ state.jp=e.target.value; });
@@ -796,7 +814,7 @@ function applyParsed(data, originalTxt) {
 
   if (head) { if (!setSelect('t_headline', head)) miss.push('헤드라인'); else state.text.headline = head; } else miss.push('헤드라인');
   { const wv = work || '[작품명]'; document.getElementById('t_work').value = wv; state.work = wv; if (!work) miss.push('작품'); }
-  if (line) { if (!setSelect('t_line', line)) miss.push('라인(' + line + ')'); else state.line = line; } else miss.push('라인');
+  if (line) { if (!setLineSelect(line, data.linePrefix)) miss.push('라인(' + line + ')'); else state.line = line; } else miss.push('라인');
   document.getElementById('t_product').value = prod; state.text.product = prod;
   document.getElementById('t_jp').value = jp; state.jp = jp;
   document.getElementById('t_saledate').value = date; state.saleDate = date; state.saleDow = '목';
@@ -893,7 +911,7 @@ function restoreSlot(s){
   document.getElementById('t_source').value = s.source||'';
   const hv=s.headline||'원형 최초공개'; setSelect('t_headline',hv); state.text.headline=hv;
   const wv=s.work||'[작품명]'; document.getElementById('t_work').value=wv; state.work=wv;
-  const lv=s.line||'G.E.M. 시리즈'; setSelect('t_line',lv); state.line=lv;
+  const lv=s.line||'G.E.M. 시리즈'; setLineSelect(lv, s.linePrefix); state.line=lv;
   state.linePrefix=s.linePrefix||'';
   document.getElementById('t_product').value=s.product||''; state.text.product=s.product||'';
   document.getElementById('t_jp').value=s.jp||''; state.jp=s.jp||'';
