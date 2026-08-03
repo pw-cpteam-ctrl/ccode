@@ -497,7 +497,7 @@ function makeFillableCell(idx, field, kind, candidates){
   } else {
     control = document.createElement('input');
     control.type = 'text';
-    control.placeholder = '예: PW 메가하우스 공식스토어';
+    control.placeholder = '예: 메가하우스 공식 스토어';
     control.value = items[idx][field] || '';
     control.addEventListener('input', () => {
       items[idx][field] = control.value;
@@ -711,7 +711,7 @@ function drawBadge(ctx, it){
   ctx.fillText(it.storeName, groupStartX + logoW + gap, storeY);
 
   if (badgeLogoLoaded) {
-    const logoY = storeY + storeSize / 2 - logoH / 2; // 텍스트 세로 중앙에 상하좌우로 정확히 센터
+    const logoY = storeY + storeSize / 2 - logoH / 2 - 3; // 텍스트 세로 중앙 기준, 3px 위로 미세조정
     ctx.drawImage(badgeLogoImg, groupStartX, logoY, logoW, logoH);
   }
   ctx.restore();
