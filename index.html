@@ -88,7 +88,7 @@ p.sub{font-size:13px;color:#7d7568;margin:0 0 27px;}
 <p class="sub">내부 제작 도구 모음</p>
 <div class="columns">
   <div class="column">
-    <a class="card" href="https://ccode-omega.vercel.app/">
+    <a class="card" id="link-insta-gen" href="https://ccode-omega.vercel.app/">
       <div class="thumb"><img src="assets/thumbs/insta-gen.jpg"/></div>
       <div class="body">
         <div class="name">인스타 카드 생성기</div>
@@ -148,5 +148,13 @@ p.sub{font-size:13px;color:#7d7568;margin:0 0 27px;}
     </a>
   </div>
 </div>
+<script>
+  // 인스타 카드 생성기(insta-gen)는 회사 네트워크의 캐싱 장비 때문에 배포 후에도
+  // 며칠씩 옛날 버전이 보이는 사례가 있었다 — 매번 페이지를 열 때마다 링크에 새로운
+  // 캐시버스터 쿼리스트링을 자동으로 붙여서, 정적으로 "?v=2"처럼 고정값을 박아두면
+  // 그 값 자체가 다시 캐싱되는 문제 없이 항상 새 요청으로 인식되게 한다.
+  var link = document.getElementById('link-insta-gen');
+  if (link) link.href = 'https://ccode-omega.vercel.app/?v=' + Date.now();
+</script>
 </body>
 </html>
