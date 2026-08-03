@@ -630,7 +630,8 @@ function drawBadge(ctx, it){
   const side = it.badgeSide || 'left';
   // 좌우 모서리(다리)는 bh까지 길게 내려가고, 가운데는 flatH까지만 파여 올라온 노치 모양.
   // 글자는 항상 flatH 위쪽(전체 폭이 평평한 영역)에만 놓아서 다리 사이 파인 곳에 안 걸치게 함
-  const bw = 210, bh = 112, notch = 14;
+  // 뱃지 높이 240px 기준 (레퍼런스 지정값) — 이전 112px 대비 전체 비율을 그대로 유지해 스케일업
+  const bh = 240, bw = 450, notch = 30;
   const flatH = bh - notch;
 
   // 리본 뱃지 (월 숫자 + "신제품")
@@ -648,10 +649,10 @@ function drawBadge(ctx, it){
   ctx.fillStyle = '#111';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  ctx.font = `${badgeWeight} 44px 'S-Core Dream'`;
-  ctx.fillText(String(badgeMonth || '').padStart(2, '0'), bw / 2, 48);
-  ctx.font = `${badgeWeight} 24px 'S-Core Dream'`;
-  ctx.fillText('신제품', bw / 2, 80);
+  ctx.font = `${badgeWeight} 94px 'S-Core Dream'`;
+  ctx.fillText(String(badgeMonth || '').padStart(2, '0'), bw / 2, 103);
+  ctx.font = `${badgeWeight} 51px 'S-Core Dream'`;
+  ctx.fillText('신제품', bw / 2, 171);
   ctx.restore();
 
   // 스토어명 (뱃지 반대쪽) — 검은 글씨 + 흰 그림자/테두리로 어떤 배경 위에서도 잘 보이게
