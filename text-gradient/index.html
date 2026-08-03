@@ -615,6 +615,19 @@ function applyGrad(el, s, w, oRaw, c) {
 }
 
 /* ── PNG 내보내기 (투명 배경, 항상 1080×1350 원본 크기) ── */
+// 파일명에 못 쓰는 특수문자(\ / : * ? " < > |)만 제거. 한글은 그대로 둬도
+// a.download에 JS 문자열을 직접 넣으면 브라우저가 UTF-8로 처리해서 안 깨짐.
+// (encodeURIComponent로 직접 인코딩하면 오히려 %XX가 파일명에 그대로 남을 수 있어 하면 안 됨)
+function safeFileName(s) {
+  return (s || '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
+}
+// 슬롯의 제목(titleL | titleR)으로 구분 가능한 파일명을 만들고, 둘 다 비어있으면 slotN으로 대체
+function slotFileNameBase(pg) {
+  const s = slots[pg - 1];
+  if (!s) return `slot${pg}`;
+  const parts = [s.titleL, s.titleR].map(safeFileName).filter(Boolean);
+  return parts.length ? parts.join('_') : `slot${pg}`;
+}
 async function downloadPng(pg) {
   pg = pg || curSlot; // 슬롯 카드의 개별 다운로드 버튼은 pg를 넘기고, 패널 버튼은 현재 슬롯을 그대로 다운로드
   if (typeof htmlToImage === 'undefined') { alert('라이브러리 로드 실패 (인터넷 연결을 확인해주세요)'); return; }
@@ -623,7 +636,7 @@ async function downloadPng(pg) {
   el.style.transform = 'none'; // 화면 미리보기용 축소를 잠깐 해제하고 원본 크기로 캡처
   try {
     const dataUrl = await htmlToImage.toPng(el, { pixelRatio:1, width:1080, height:1350, cacheBust:true, backgroundColor:null });
-    const a = document.createElement('a'); a.download = `slot${pg}.png`; a.href = dataUrl; a.click();
+    const a = document.createElement('a'); a.download = slotFileNameBase(pg) + '.png'; a.href = dataUrl; a.click();
   } finally {
     el.style.transform = prevTransform;
   }
