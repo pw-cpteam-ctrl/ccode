@@ -675,7 +675,16 @@ function drawBadge(ctx, it){
     { x: bw / 2, y: flatH },
     { x: 0, y: bh },
   ], radius);
+  // 4시 방향(오른쪽 아래쪽)으로 흐리게 퍼지는 그림자 — 배지 도형에만 적용, 글자엔 안 묻게 fill 직후 초기화
+  ctx.shadowColor = 'rgba(0,0,0,0.35)';
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetX = 9;
+  ctx.shadowOffsetY = 5;
   ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
   ctx.fillStyle = '#111';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
