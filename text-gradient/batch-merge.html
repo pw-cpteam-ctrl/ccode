@@ -680,7 +680,7 @@ function drawBadge(ctx, it){
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   ctx.font = `${badgeWeight} 80px 'S-Core Dream'`;
-  ctx.fillText(String(badgeMonth || '').padStart(2, '0'), bw / 2, 100);
+  ctx.fillText(badgeMonth ? `${badgeMonth}월` : '', bw / 2, 100);
   ctx.font = `${badgeWeight} 39px 'S-Core Dream'`;
   ctx.fillText('신제품', bw / 2, 146);
   ctx.restore();
@@ -696,7 +696,7 @@ function drawBadge(ctx, it){
   ctx.miterLimit = 2;
 
   const textW = ctx.measureText(it.storeName).width;
-  const logoH = storeSize;
+  const logoH = storeSize * 2; // 기존 크기의 200%
   const logoW = badgeLogoLoaded ? logoH * (badgeLogoImg.naturalWidth / badgeLogoImg.naturalHeight) : 0;
   const gap = badgeLogoLoaded ? logoGap : 0;
   const groupW = logoW + gap + textW;
@@ -711,7 +711,7 @@ function drawBadge(ctx, it){
   ctx.fillText(it.storeName, groupStartX + logoW + gap, storeY);
 
   if (badgeLogoLoaded) {
-    const logoY = storeY + (storeSize - logoH) / 2 + storeSize * 0.08; // 텍스트 위아래 중앙에 대략 맞춤
+    const logoY = storeY + storeSize / 2 - logoH / 2; // 텍스트 세로 중앙에 상하좌우로 정확히 센터
     ctx.drawImage(badgeLogoImg, groupStartX, logoY, logoW, logoH);
   }
   ctx.restore();
