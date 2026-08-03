@@ -57,6 +57,8 @@ button:disabled{opacity:.4;cursor:default;}
 .fillable-cell.selected .fill-handle{display:block;}
 .badgeToggle{position:absolute;top:2px;right:2px;font-size:10px;line-height:1;padding:3px 5px;border-radius:4px;border:1px solid #ccc4b4;background:#fff;opacity:.85;z-index:3;cursor:pointer;}
 .badgeToggle:hover{opacity:1;}
+.downloadBtn{position:absolute;top:2px;left:2px;font-size:10px;line-height:1;padding:3px 5px;border-radius:4px;border:1px solid #ccc4b4;background:#fff;opacity:.85;z-index:3;cursor:pointer;}
+.downloadBtn:hover{opacity:1;}
 </style>
 </head>
 <body>
@@ -145,6 +147,7 @@ button:disabled{opacity:.4;cursor:default;}
         <div id="editBg"></div>
         <img id="editPhoto"/>
         <img id="editOverlay"/>
+        <canvas id="editBadge" width="1080" height="1350" style="position:absolute;inset:0;pointer-events:none;"></canvas>
       </div>
     </div>
     <div id="editControls">
@@ -156,6 +159,7 @@ button:disabled{opacity:.4;cursor:default;}
         <input type="color" id="bgCustom" value="#ffffff"/>
       </div>
       <button id="btnResetItem">위치/배율 초기화</button>
+      <button id="btnDownloadItem">이 사진만 PNG 다운로드</button>
       <button class="primary" id="btnCloseEditor">닫기</button>
     </div>
   </div>
@@ -647,20 +651,19 @@ function drawBadge(ctx, it){
   ctx.fillText('신제품', bw / 2, 74);
   ctx.restore();
 
-  // 스토어명 (뱃지 반대쪽)
+  // 스토어명 (뱃지 반대쪽) — 검은 글씨 + 흰 그림자/테두리로 어떤 배경 위에서도 잘 보이게
   ctx.save();
-  ctx.fillStyle = '#fff';
   ctx.font = `${badgeWeight} 30px 'S-Core Dream'`;
   ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0,0,0,.55)';
-  ctx.shadowBlur = 6;
-  if (side === 'left') {
-    ctx.textAlign = 'right';
-    ctx.fillText(it.storeName, CW - 24, bh / 2);
-  } else {
-    ctx.textAlign = 'left';
-    ctx.fillText(it.storeName, 24, bh / 2);
-  }
+  ctx.lineJoin = 'round';
+  ctx.miterLimit = 2;
+  ctx.textAlign = side === 'left' ? 'right' : 'left';
+  const storeX = side === 'left' ? CW - 24 : 24;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 6;
+  ctx.strokeText(it.storeName, storeX, bh / 2);
+  ctx.fillStyle = '#111';
+  ctx.fillText(it.storeName, storeX, bh / 2);
   ctx.restore();
 }
 
@@ -690,6 +693,20 @@ function computeGeom(it){
   const dx = (CW - dw) / 2 + (it.ox || 0);
   const dy = (CH - dh) / 2 + (it.oy || 0);
   return { dx, dy, dw, dh };
+}
+
+// ---------- 사진 1장만 다운로드 (전체 ZIP 안 받고 테스트/개별 확인용) ----------
+async function downloadSingleItem(it){
+  const canvas = document.createElement('canvas');
+  canvas.width = CW; canvas.height = CH;
+  const ctx = canvas.getContext('2d');
+  drawItem(ctx, it);
+  const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = it.photoName.replace(/\.[^.]+$/, '') + '.png';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
 // ---------- 그리드(썸네일) ----------
@@ -725,8 +742,18 @@ function renderGrid(){
       refreshThumb(it);
       saveMetaSoon();
     });
+    const downloadBtn = document.createElement('button');
+    downloadBtn.className = 'downloadBtn';
+    downloadBtn.type = 'button';
+    downloadBtn.textContent = '⬇';
+    downloadBtn.title = '이 사진만 PNG로 다운로드';
+    downloadBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      downloadSingleItem(it);
+    });
     wrap.appendChild(canvas);
     wrap.appendChild(badgeToggle);
+    wrap.appendChild(downloadBtn);
     wrap.appendChild(name);
     wrap.addEventListener('click', () => openEditor(idx));
     grid.appendChild(wrap);
@@ -780,6 +807,13 @@ const editOverlay = $('#editorOverlay');
 const editPhoto = $('#editPhoto');
 const editOverlayImg = $('#editOverlay');
 const editBg = $('#editBg');
+const editBadgeCanvas = $('#editBadge');
+
+function updateEditorBadge(){
+  const ctx = editBadgeCanvas.getContext('2d');
+  ctx.clearRect(0, 0, CW, CH);
+  drawBadge(ctx, curItem);
+}
 
 function openEditor(idx){
   curItem = items[idx];
@@ -793,6 +827,7 @@ function openEditor(idx){
   }
   editBg.style.background = curItem.bg;
   updateEditorGeom();
+  updateEditorBadge();
   editOverlay.classList.add('open');
 }
 function updateEditorGeom(){
@@ -814,6 +849,7 @@ $('#btnResetItem').addEventListener('click', () => {
   updateEditorGeom();
   saveMetaSoon();
 });
+$('#btnDownloadItem').addEventListener('click', () => downloadSingleItem(curItem));
 $('#bgWhite').addEventListener('click', () => { curItem.bg = '#ffffff'; editBg.style.background = curItem.bg; saveMetaSoon(); });
 $('#bgCustom').addEventListener('input', e => { curItem.bg = e.target.value; editBg.style.background = curItem.bg; saveMetaSoon(); });
 $('#bgAuto').addEventListener('click', () => {
