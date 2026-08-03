@@ -724,10 +724,11 @@ function drawBadge(ctx, it, opts){
   const groupStartX = side === 'left' ? CW - storeMargin - groupW : storeMargin;
   const storeY = offsetY + storeTopPad;
 
+  // 딱딱한 흰 테두리(strokeText) 대신, 로고·텍스트에 공통으로 부드러운 흰 후광(soft glow)을 줘서
+  // 재질이 서로 달라 보이던 문제를 해결 (같은 shadow 설정을 텍스트/로고 둘 다에 적용)
   ctx.textAlign = 'left';
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 6;
-  ctx.strokeText(it.storeName, groupStartX + logoW + gap, storeY);
+  ctx.shadowColor = 'rgba(255,255,255,0.95)';
+  ctx.shadowBlur = 6;
   ctx.fillStyle = '#111';
   ctx.fillText(it.storeName, groupStartX + logoW + gap, storeY);
 
@@ -735,6 +736,8 @@ function drawBadge(ctx, it, opts){
     const logoY = storeY + storeSize / 2 - logoH / 2 - 3; // 텍스트 세로 중앙 기준, 3px 위로 미세조정
     ctx.drawImage(badgeLogoImg, groupStartX, logoY, logoW, logoH);
   }
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
   ctx.restore();
 }
 
