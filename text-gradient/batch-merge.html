@@ -24,7 +24,7 @@ button:disabled{opacity:.4;cursor:default;}
 #grid{display:flex;flex-wrap:wrap;gap:10px;}
 .thumb{cursor:pointer;position:relative;}
 .thumb canvas{border-radius:6px;border:1px solid #ddd8ce;display:block;background:#eee;}
-.thumb .name{font-size:10px;color:#7d7568;margin-top:2px;word-break:break-all;text-align:center;}
+.thumb .name{font-size:10px;color:#7d7568;margin-top:2px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;padding:0 2px;}
 .thumb.warn canvas{border-color:#e05d5d;}
 #editorOverlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:100;}
 #editorOverlay.open{display:flex;}
@@ -79,7 +79,8 @@ button:disabled{opacity:.4;cursor:default;}
   <p style="font-size:12px;color:#7d7568;margin:0 0 10px;">
     사진 폴더를 통째로 불러오면 아트보드 + 아래 리스트에 자동으로 채워져. 위에서 투명 이미지를 먼저 올려두면 리스트 2번 칸에서 후보로 나와.
   </p>
-  <button id="btnPickFolder">사진 폴더 선택 (크롬/엣지)</button>
+  <button id="btnPickFolder">사진 폴더 선택 (기존 리스트 비우고 새로)</button>
+  <button id="btnPickFolderAppend">폴더 추가 (기존 리스트 유지, 뒤에 이어붙이기)</button>
   <input type="file" id="inPhotoFolder" webkitdirectory multiple style="display:none;"/>
   <div id="listWrap" style="display:none;margin-top:14px;">
     <div style="font-size:12px;color:#7d7568;margin-bottom:6px;">투명파일명/스토어명 칸 선택 후, 셀 오른쪽 아래 손잡이를 드래그해서 내리면 그 값이 쭉 채워짐.</div>
@@ -441,24 +442,30 @@ function naturalCompare(a, b){
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 }
 
-$('#btnPickFolder').addEventListener('click', () => $('#inPhotoFolder').click());
+let _folderPickAppendMode = false;
+$('#btnPickFolder').addEventListener('click', () => { _folderPickAppendMode = false; $('#inPhotoFolder').click(); });
+$('#btnPickFolderAppend').addEventListener('click', () => { _folderPickAppendMode = true; $('#inPhotoFolder').click(); });
 $('#inPhotoFolder').addEventListener('change', async (e) => {
   const files = Array.from(e.target.files).filter(f => /^image\//.test(f.type));
   if (!files.length) { log('폴더에서 이미지 파일을 못 찾음'); return; }
   files.sort((a, b) => naturalCompare(a.name, b.name));
 
-  log(`폴더에서 사진 ${files.length}장 불러오는 중...`);
-  items = [];
+  const appendMode = _folderPickAppendMode;
+  log(appendMode ? `폴더에서 사진 ${files.length}장 추가로 불러오는 중...` : `폴더에서 사진 ${files.length}장 불러오는 중...`);
+  const newItems = [];
   for (const f of files) {
     const img = await loadImage(f);
-    items.push({
+    newItems.push({
       photoName: f.name, overlayName: null,
       photoFile: f, overlayFile: null, photoImg: img, overlayImg: null,
       scaleMul: 1, ox: 0, oy: 0, bg: '#ffffff',
       storeName: '', badgeSide: 'left'
     });
   }
-  log(`사진 ${items.length}장 로딩 완료 (투명 이미지는 아직 없음, 리스트에서 배정)`);
+  items = appendMode ? items.concat(newItems) : newItems;
+  log(appendMode
+    ? `사진 ${newItems.length}장 추가 완료 (전체 ${items.length}장, 투명 이미지는 아직 없음, 리스트에서 배정)`
+    : `사진 ${items.length}장 로딩 완료 (투명 이미지는 아직 없음, 리스트에서 배정)`);
 
   $('#gridPanel').style.display = '';
   $('#restoreNote').style.display = 'none';
@@ -819,6 +826,7 @@ function renderGrid(){
     const wrap = document.createElement('div');
     wrap.className = 'thumb';
     wrap.dataset.idx = idx;
+    wrap.style.width = THUMB_W + 'px'; // 파일명이 길어도 이 너비를 넘지 않고 말줄임표로 잘리게
     const canvas = document.createElement('canvas');
     canvas.width = THUMB_W; canvas.height = h;
     canvas.style.width = THUMB_W + 'px';
