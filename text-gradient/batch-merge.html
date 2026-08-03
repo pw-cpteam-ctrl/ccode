@@ -655,8 +655,9 @@ function roundedPolyPath(ctx, pts, radii){
   ctx.closePath();
 }
 
-function drawBadge(ctx, it){
+function drawBadge(ctx, it, opts){
   if (!it.storeName) return; // 스토어명 안 채운 사진은 뱃지도 안 그림
+  const withShadow = !opts || opts.shadow !== false;
   const side = it.badgeSide || 'left';
   // badge-tuner.html에서 확정한 값 그대로 (조정 도구는 삭제 예정)
   const bw = 183, bh = 240, notch = 45, radius = 0;
@@ -676,10 +677,14 @@ function drawBadge(ctx, it){
     { x: 0, y: bh },
   ], radius);
   // 4시 방향(오른쪽 아래쪽)으로 흐리게 퍼지는 그림자 — 배지 도형에만 적용, 글자엔 안 묻게 fill 직후 초기화
-  ctx.shadowColor = 'rgba(0,0,0,0.35)';
-  ctx.shadowBlur = 18;
-  ctx.shadowOffsetX = 9;
-  ctx.shadowOffsetY = 5;
+  // shadowBlur는 캔버스에서 비용이 큰 연산이라 작은 썸네일(수백 개) 렌더링에는 생략하고
+  // 크게보기/실제 다운로드처럼 눈에 보이는 큰 화면에서만 그림 (opts.shadow===false로 끔)
+  if (withShadow) {
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 18;
+    ctx.shadowOffsetX = 9;
+    ctx.shadowOffsetY = 5;
+  }
   ctx.fill();
   ctx.shadowColor = 'transparent';
   ctx.shadowBlur = 0;
@@ -744,6 +749,40 @@ function drawItem(ctx, it){
   drawBadge(ctx, it);
 }
 
+// 썸네일 전용 저해상도 캐시 — 사진이 수백 장일 때 원본 고해상도를 매번 리샘플링하면
+// 렉이 심해서, 최초 1회만 작게 줄인 캔버스를 만들어두고 이후 썸네일은 그걸로만 그림
+const THUMB_SRC_MAX = 480;
+function getThumbSourceCanvas(it){
+  if (it._thumbSrc) return it._thumbSrc;
+  const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
+  const scale = Math.min(1, THUMB_SRC_MAX / Math.max(pw, ph));
+  const tw = Math.max(1, Math.round(pw * scale)), th = Math.max(1, Math.round(ph * scale));
+  const c = document.createElement('canvas');
+  c.width = tw; c.height = th;
+  c.getContext('2d').drawImage(it.photoImg, 0, 0, tw, th);
+  it._thumbSrc = c;
+  return c;
+}
+
+// 그리드 썸네일 전용 — 화질을 낮춘 캐시 이미지로 그리고, 무거운 그림자도 생략 (성능용)
+// 클릭해서 "크게보기"/실제 다운로드는 항상 drawItem(원본 화질)을 그대로 사용
+function drawItemThumb(ctx, it){
+  ctx.fillStyle = it.bg;
+  ctx.fillRect(0, 0, CW, CH);
+
+  const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
+  const base = Math.max(CW / pw, CH / ph);
+  const eff = base * (it.scaleMul || 1);
+  const dw = pw * eff, dh = ph * eff;
+  const dx = (CW - dw) / 2 + (it.ox || 0);
+  const dy = (CH - dh) / 2 + (it.oy || 0);
+  ctx.drawImage(getThumbSourceCanvas(it), dx, dy, dw, dh);
+
+  if (it.overlayImg) ctx.drawImage(it.overlayImg, 0, 0, CW, CH);
+
+  drawBadge(ctx, it, { shadow: false });
+}
+
 function computeGeom(it){
   const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
   const base = Math.max(CW / pw, CH / ph);
@@ -786,7 +825,7 @@ function renderGrid(){
     canvas.style.height = h + 'px';
     const ctx = canvas.getContext('2d');
     ctx.scale(THUMB_W / CW, h / CH);
-    drawItem(ctx, it);
+    drawItemThumb(ctx, it);
     const name = document.createElement('div');
     name.className = 'name';
     name.textContent = it.photoName;
@@ -825,7 +864,7 @@ function refreshThumb(it){
   const ctx = it._thumbCanvas.getContext('2d');
   ctx.setTransform(1,0,0,1,0,0);
   ctx.scale(THUMB_W / CW, h / CH);
-  drawItem(ctx, it);
+  drawItemThumb(ctx, it);
 }
 
 $('#thumbSizeSlider').addEventListener('input', e => {
