@@ -776,15 +776,19 @@ function buildCopy(){
   const prefix=(state.linePrefix||'').trim();
   const alias=(typeof WORK_SHORT!=='undefined' && WORK_SHORT[work]) ? WORK_SHORT[work] : '';
   const isLong = !!alias;   // 약칭이 등록된 작품 = '긴 작품'
-  // 1줄: 헤드라인 + (긴 작품이면 풀네임만 / 짧으면 작품+시리즈)
-  const headTitle = (isLong ? work : (work+' '+series)).trim().replace(/\s+/g,' ');
-  // 2줄(시리즈 줄): 시리즈 + 접두어 + (긴 작품이면 약칭)
-  const titleB = [series, prefix, (isLong?alias:'')].filter(Boolean).join(' ').trim();
+  // 1줄: (긴 작품이면 약칭 / 짧으면 풀네임) + 시리즈 — 약칭을 쓰는 이유 자체가 1줄을
+  // 압축하기 위함이므로, 여기서 시리즈까지 같이 압축해서 넣는다.
+  const headTitle = ((isLong?alias:work)+' '+series).trim().replace(/\s+/g,' ');
+  // 2줄부터: 1줄에 이미 나온 값과 중복되지 않는 정보만, 순서대로 한 줄씩 추가한다.
+  //  · 접두어(세부, 테노히라 등)가 있으면 그 줄 — 시리즈는 1줄에 이미 있으니 여기선 접두어만.
+  //  · 긴 작품(약칭 사용)이면 풀네임 줄 — 1줄엔 약칭만 있고 풀네임이 아직 안 나왔으므로.
+  //  · 짧은 작품 + 접두어 없음 → 1줄과 중복 안 되는 새 정보가 없으니 이 줄 자체를 생략.
+  const infoLines=[]; if(prefix) infoLines.push(prefix); if(isLong) infoLines.push(work);
   // 캐릭터 줄 (시리즈/접두어 없이)
   let prodLines=state.text.product.split('\n').map(s=>s.trim()).filter(Boolean);
   if(h==='한정 재판매 결정') prodLines=prodLines.map(l=>l+' 【한정 재판매판】');
   if(state.bullet) prodLines=prodLines.map(l=>'• '+l);
-  const block=[titleB, prodLines.join('\n')].filter(Boolean).join('\n');   // 시리즈 줄 + 캐릭터들 = 한 단락
+  const block=[infoLines.join('\n'), prodLines.join('\n')].filter(Boolean).join('\n');   // 추가정보줄 + 캐릭터들 = 한 단락
   const tag = s => '#'+s.replace(/[^\w가-힣ぁ-んァ-ヶ㐀-鿿]/g,''); // ☆×・공백 등 태그 깨는 기호 제거
   const raw=[ state.jp.trim()?tag(state.jp):null, work?tag(work):null, '#메가하우스공식스토어' ].filter(Boolean);
   const tags=[...new Set(raw)].join(' ');
