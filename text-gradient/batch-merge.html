@@ -625,6 +625,12 @@ function saveBadgeSettings(){
   localStorage.setItem('batch_merge_badge_settings', JSON.stringify({ month: badgeMonth, weight: badgeWeight }));
 }
 
+// 스토어명 옆(좌측)에 붙는 로고 — 페이지 로딩 시 1번만 불러와서 재사용
+const badgeLogoImg = new Image();
+let badgeLogoLoaded = false;
+badgeLogoImg.onload = () => { badgeLogoLoaded = true; if (items.length) renderGrid(); };
+badgeLogoImg.src = '../assets/favicon-pw.png';
+
 // 다각형 꼭짓점을 둥글린 모서리로 이어그리는 헬퍼 (radii: 꼭짓점별 반지름, 0이면 각짐)
 function roundedPolyPath(ctx, pts, radii){
   const n = pts.length;
@@ -652,48 +658,62 @@ function roundedPolyPath(ctx, pts, radii){
 function drawBadge(ctx, it){
   if (!it.storeName) return; // 스토어명 안 채운 사진은 뱃지도 안 그림
   const side = it.badgeSide || 'left';
-  // 좌우 모서리(다리)는 bh까지 길게 내려가고, 가운데는 flatH까지만 파여 올라온 노치 모양.
-  // 글자는 항상 flatH 위쪽(전체 폭이 평평한 영역)에만 놓아서 다리 사이 파인 곳에 안 걸치게 함
-  // 레퍼런스 실측 기준: 가로세로 거의 정사각형(260x240), 모서리는 둥글게
-  // 노치(파인 깊이)를 절반으로 줄임
-  const bh = 240, bw = 260, notch = 48;
+  // badge-tuner.html에서 확정한 값 그대로 (조정 도구는 삭제 예정)
+  const bw = 183, bh = 240, notch = 45, radius = 0;
+  const offsetX = 77, offsetY = 0;
   const flatH = bh - notch;
 
   // 리본 뱃지 (월 숫자 + "신제품")
   ctx.save();
-  ctx.translate(side === 'left' ? 0 : CW - bw, 0);
+  ctx.translate(side === 'left' ? offsetX : CW - bw - offsetX, offsetY);
   ctx.fillStyle = '#ffd400';
   ctx.beginPath();
   roundedPolyPath(ctx, [
-    { x: 0, y: 0 },          // 상단좌 (도화지 모서리에 붙는 쪽이라 각지게 유지)
-    { x: bw, y: 0 },         // 상단우 — 살짝 둥글게
-    { x: bw, y: bh },        // 우측 다리 끝 — 둥글게
-    { x: bw / 2, y: flatH }, // 가운데 노치 꼭짓점 — 둥글게
-    { x: 0, y: bh },         // 좌측 다리 끝 — 둥글게
-  ], [0, 14, 16, 12, 16]);
+    { x: 0, y: 0 },
+    { x: bw, y: 0 },
+    { x: bw, y: bh },
+    { x: bw / 2, y: flatH },
+    { x: 0, y: bh },
+  ], radius);
   ctx.fill();
   ctx.fillStyle = '#111';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  ctx.font = `${badgeWeight} 68px 'S-Core Dream'`;
-  ctx.fillText(String(badgeMonth || '').padStart(2, '0'), bw / 2, 92);
-  ctx.font = `${badgeWeight} 34px 'S-Core Dream'`;
-  ctx.fillText('신제품', bw / 2, 130);
+  ctx.font = `${badgeWeight} 80px 'S-Core Dream'`;
+  ctx.fillText(String(badgeMonth || '').padStart(2, '0'), bw / 2, 100);
+  ctx.font = `${badgeWeight} 39px 'S-Core Dream'`;
+  ctx.fillText('신제품', bw / 2, 146);
   ctx.restore();
 
-  // 스토어명 (뱃지 반대쪽) — 검은 글씨 + 흰 그림자/테두리로 어떤 배경 위에서도 잘 보이게
+  // 스토어명 (뱃지 반대쪽) — 뱃지와 마찬가지로 top 정렬 + 위쪽 패딩만 살짝
+  // 로고+텍스트를 한 덩어리로 보고, 그 덩어리 전체를 여백 기준으로 붙인 뒤
+  // 로고는 항상 텍스트 왼쪽에 오도록 배치 (뱃지가 좌/우 어느 쪽에 있든 캔버스 밖으로 안 나가게)
+  const storeSize = 30, storeMargin = 24, storeTopPad = 8, logoGap = 8;
   ctx.save();
-  ctx.font = `${badgeWeight} 30px 'S-Core Dream'`;
-  ctx.textBaseline = 'middle';
+  ctx.font = `${badgeWeight} ${storeSize}px 'S-Core Dream'`;
+  ctx.textBaseline = 'top';
   ctx.lineJoin = 'round';
   ctx.miterLimit = 2;
-  ctx.textAlign = side === 'left' ? 'right' : 'left';
-  const storeX = side === 'left' ? CW - 24 : 24;
+
+  const textW = ctx.measureText(it.storeName).width;
+  const logoH = storeSize;
+  const logoW = badgeLogoLoaded ? logoH * (badgeLogoImg.naturalWidth / badgeLogoImg.naturalHeight) : 0;
+  const gap = badgeLogoLoaded ? logoGap : 0;
+  const groupW = logoW + gap + textW;
+  const groupStartX = side === 'left' ? CW - storeMargin - groupW : storeMargin;
+  const storeY = offsetY + storeTopPad;
+
+  ctx.textAlign = 'left';
   ctx.strokeStyle = '#fff';
   ctx.lineWidth = 6;
-  ctx.strokeText(it.storeName, storeX, bh / 2);
+  ctx.strokeText(it.storeName, groupStartX + logoW + gap, storeY);
   ctx.fillStyle = '#111';
-  ctx.fillText(it.storeName, storeX, bh / 2);
+  ctx.fillText(it.storeName, groupStartX + logoW + gap, storeY);
+
+  if (badgeLogoLoaded) {
+    const logoY = storeY + (storeSize - logoH) / 2 + storeSize * 0.08; // 텍스트 위아래 중앙에 대략 맞춤
+    ctx.drawImage(badgeLogoImg, groupStartX, logoY, logoW, logoH);
+  }
   ctx.restore();
 }
 
