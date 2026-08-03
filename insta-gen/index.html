@@ -968,7 +968,16 @@ function logAiLearningOnDownload(){
   state.aiLearn = null;   // 같은 결과를 여러 번 다운로드해도 중복 전송하지 않도록 즉시 비움
   fetch('/api/log-download', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).catch(()=>{});
 }
-document.getElementById('download').addEventListener('click',()=>{ if(!runValidation()) return; cv.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='insta-card.png'; a.click(); logAiLearningOnDownload(); },'image/png'); });
+// 파일명: ②작품명 + ③시리즈/라인 조합 (예: "은혼_G.E.M. 시리즈.png"). 한글은 그대로 JS
+// 문자열로 a.download에 넣으면 브라우저가 알아서 UTF-8로 처리해 깨지지 않는다 —
+// encodeURIComponent 등으로 직접 인코딩하면 오히려 %XX가 파일명에 그대로 남는 경우가 있어 하면 안 됨.
+// 파일 시스템에서 못 쓰는 문자(\/:*?"<>|)만 제거.
+function buildDownloadName(){
+  const safe = s => (s||'').replace(/[\\/:*?"<>|]/g,'').replace(/\s+/g,' ').trim();
+  const name = [safe(state.work), safe(state.line)].filter(Boolean).join('_');
+  return (name || 'insta-card') + '.png';
+}
+document.getElementById('download').addEventListener('click',()=>{ if(!runValidation()) return; cv.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=buildDownloadName(); a.click(); logAiLearningOnDownload(); },'image/png'); });
 
 // 모바일 미리보기 접기 토글 (데스크톱에선 버튼 자체가 숨겨져 있어 무해)
 document.getElementById('previewToggle').addEventListener('click', function(){
