@@ -57,7 +57,7 @@ button:disabled{opacity:.4;cursor:default;}
 .fillable-cell.selected .fill-handle{display:block;}
 .badgeToggle{position:absolute;top:2px;right:2px;font-size:10px;line-height:1;padding:3px 5px;border-radius:4px;border:1px solid #ccc4b4;background:#fff;opacity:.85;z-index:3;cursor:pointer;}
 .badgeToggle:hover{opacity:1;}
-.downloadBtn{position:absolute;top:2px;left:2px;font-size:10px;line-height:1;padding:3px 5px;border-radius:4px;border:1px solid #ccc4b4;background:#fff;opacity:.85;z-index:3;cursor:pointer;}
+.downloadBtn{position:absolute;bottom:2px;right:2px;font-size:10px;line-height:1;padding:3px 5px;border-radius:4px;border:1px solid #ccc4b4;background:#fff;opacity:.85;z-index:3;cursor:pointer;}
 .downloadBtn:hover{opacity:1;}
 </style>
 </head>
@@ -628,7 +628,10 @@ function saveBadgeSettings(){
 function drawBadge(ctx, it){
   if (!it.storeName) return; // 스토어명 안 채운 사진은 뱃지도 안 그림
   const side = it.badgeSide || 'left';
-  const bw = 190, bh = 90, notch = 26;
+  // 좌우 모서리(다리)는 bh까지 길게 내려가고, 가운데는 flatH까지만 파여 올라온 노치 모양.
+  // 글자는 항상 flatH 위쪽(전체 폭이 평평한 영역)에만 놓아서 다리 사이 파인 곳에 안 걸치게 함
+  const bw = 210, bh = 112, notch = 14;
+  const flatH = bh - notch;
 
   // 리본 뱃지 (월 숫자 + "신제품")
   ctx.save();
@@ -637,18 +640,18 @@ function drawBadge(ctx, it){
   ctx.beginPath();
   ctx.moveTo(0, 0);
   ctx.lineTo(bw, 0);
-  ctx.lineTo(bw, bh - notch);
-  ctx.lineTo(bw / 2, bh);
-  ctx.lineTo(0, bh - notch);
+  ctx.lineTo(bw, bh);
+  ctx.lineTo(bw / 2, flatH);
+  ctx.lineTo(0, bh);
   ctx.closePath();
   ctx.fill();
   ctx.fillStyle = '#111';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  ctx.font = `${badgeWeight} 42px 'S-Core Dream'`;
+  ctx.font = `${badgeWeight} 44px 'S-Core Dream'`;
   ctx.fillText(String(badgeMonth || '').padStart(2, '0'), bw / 2, 48);
-  ctx.font = `${badgeWeight} 22px 'S-Core Dream'`;
-  ctx.fillText('신제품', bw / 2, 74);
+  ctx.font = `${badgeWeight} 24px 'S-Core Dream'`;
+  ctx.fillText('신제품', bw / 2, 80);
   ctx.restore();
 
   // 스토어명 (뱃지 반대쪽) — 검은 글씨 + 흰 그림자/테두리로 어떤 배경 위에서도 잘 보이게
