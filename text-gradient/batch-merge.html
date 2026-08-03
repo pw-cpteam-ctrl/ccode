@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>사진 일괄 합성 (프로토타입)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fonts-archive/S-CoreDream/S-CoreDream.css"/>
 <style>
 *{box-sizing:border-box;}
 body{margin:0;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f0ede7;color:#252018;padding:24px;}
@@ -45,12 +46,17 @@ button:disabled{opacity:.4;cursor:default;}
 #matchListTable tbody{display:block;max-height:340px;overflow-y:auto;}
 #matchListTable thead,#matchListTable tbody tr{display:table;width:100%;table-layout:fixed;}
 #matchListTable td:first-child,#matchListTable th:first-child{width:60%;}
-.overlay-cell{position:relative;}
-.overlay-cell select{width:100%;font-size:12px;border:1px solid #ccc4b4;border-radius:4px;padding:2px;}
-.overlay-cell.selected select{outline:2px solid #4a7cff;}
-.overlay-cell.range-hl select{background:#eef3ff;}
+#matchListTable td:nth-child(1),#matchListTable th:nth-child(1){width:40%;}
+#matchListTable td:nth-child(2),#matchListTable th:nth-child(2){width:30%;}
+#matchListTable td:nth-child(3),#matchListTable th:nth-child(3){width:30%;}
+.fillable-cell{position:relative;}
+.fillable-cell select,.fillable-cell input{width:100%;font-size:12px;border:1px solid #ccc4b4;border-radius:4px;padding:2px;font-family:inherit;}
+.fillable-cell.selected select,.fillable-cell.selected input{outline:2px solid #4a7cff;}
+.fillable-cell.range-hl select,.fillable-cell.range-hl input{background:#eef3ff;}
 .fill-handle{position:absolute;right:-4px;bottom:-4px;width:8px;height:8px;background:#4a7cff;border:1px solid #fff;cursor:crosshair;display:none;z-index:2;}
-.overlay-cell.selected .fill-handle{display:block;}
+.fillable-cell.selected .fill-handle{display:block;}
+.badgeToggle{position:absolute;top:2px;right:2px;font-size:10px;line-height:1;padding:3px 5px;border-radius:4px;border:1px solid #ccc4b4;background:#fff;opacity:.85;z-index:3;cursor:pointer;}
+.badgeToggle:hover{opacity:1;}
 </style>
 </head>
 <body>
@@ -74,8 +80,8 @@ button:disabled{opacity:.4;cursor:default;}
   <button id="btnPickFolder">사진 폴더 선택 (크롬/엣지)</button>
   <input type="file" id="inPhotoFolder" webkitdirectory multiple style="display:none;"/>
   <div id="listWrap" style="display:none;margin-top:14px;">
-    <div style="font-size:12px;color:#7d7568;margin-bottom:6px;">투명파일명 칸 선택 후, 셀 오른쪽 아래 손잡이를 드래그해서 내리면 그 값이 쭉 채워짐.</div>
-    <table id="matchListTable"><thead><tr><th>사진파일명</th><th>투명파일명</th></tr></thead><tbody></tbody></table>
+    <div style="font-size:12px;color:#7d7568;margin-bottom:6px;">투명파일명/스토어명 칸 선택 후, 셀 오른쪽 아래 손잡이를 드래그해서 내리면 그 값이 쭉 채워짐.</div>
+    <table id="matchListTable"><thead><tr><th>사진파일명</th><th>투명파일명</th><th>스토어명</th></tr></thead><tbody></tbody></table>
     <div style="margin-top:10px;">
       <span id="listProgress" style="font-size:12px;color:#7d7568;margin-right:10px;"></span>
       <button class="primary" id="btnApplyList">적용 (아트보드에 반영)</button>
@@ -109,6 +115,20 @@ button:disabled{opacity:.4;cursor:default;}
   <div class="previewToolbar">
     <label>미리보기 크기: <input type="range" id="thumbSizeSlider" min="70" max="240" value="120"/></label>
     <label style="margin-left:16px;"><input type="checkbox" id="thumbZoomToggle"/> 미리보기에서 마우스 휠로 개별 확대/축소</label>
+    <label style="margin-left:16px;">월: <input type="number" id="badgeMonth" min="1" max="12" style="width:48px;"/></label>
+    <label style="margin-left:16px;">뱃지·스토어명 글자 굵기:
+      <select id="badgeWeight">
+        <option value="100">100 Thin</option>
+        <option value="200">200 ExtraLight</option>
+        <option value="300">300 Light</option>
+        <option value="400">400 Regular</option>
+        <option value="500">500 Medium</option>
+        <option value="600">600 Bold</option>
+        <option value="700" selected>700 ExtraBold</option>
+        <option value="800">800 Heavy</option>
+        <option value="900">900 Black</option>
+      </select>
+    </label>
   </div>
   <div id="grid"></div>
   <div style="margin-top:14px;">
@@ -196,7 +216,8 @@ function queueIdbSet(key, val){
 function itemsMetaSnapshot(){
   return items.map(it => ({
     photoName: it.photoName, overlayName: it.overlayName,
-    scaleMul: it.scaleMul, ox: it.ox, oy: it.oy, bg: it.bg
+    scaleMul: it.scaleMul, ox: it.ox, oy: it.oy, bg: it.bg,
+    storeName: it.storeName || '', badgeSide: it.badgeSide || 'left'
   }));
 }
 async function saveFilesToCache(){
@@ -251,7 +272,8 @@ async function restoreFromCache(){
     items.push({
       photoName: m.photoName, overlayName: overlayBlob ? m.overlayName : null,
       photoFile: photoBlob, overlayFile: overlayBlob, photoImg, overlayImg,
-      scaleMul: m.scaleMul, ox: m.ox, oy: m.oy, bg: m.bg
+      scaleMul: m.scaleMul, ox: m.ox, oy: m.oy, bg: m.bg,
+      storeName: m.storeName || '', badgeSide: m.badgeSide || 'left'
     });
   }
   if (!items.length) return false;
@@ -383,7 +405,8 @@ $('#btnMatch').addEventListener('click', async () => {
     items.push({
       photoName: photoFile.name, overlayName: overlayFile.name,
       photoFile, overlayFile, photoImg: null, overlayImg: null,
-      scaleMul: 1, ox: 0, oy: 0, bg: '#ffffff'
+      scaleMul: 1, ox: 0, oy: 0, bg: '#ffffff',
+      storeName: '', badgeSide: 'left'
     });
   }
   log(`매칭 완료: ${items.length}개 성공, ${unmatched}개 실패`);
@@ -427,7 +450,8 @@ $('#inPhotoFolder').addEventListener('change', async (e) => {
     items.push({
       photoName: f.name, overlayName: null,
       photoFile: f, overlayFile: null, photoImg: img, overlayImg: null,
-      scaleMul: 1, ox: 0, oy: 0, bg: '#ffffff'
+      scaleMul: 1, ox: 0, oy: 0, bg: '#ffffff',
+      storeName: '', badgeSide: 'left'
     });
   }
   log(`사진 ${items.length}장 로딩 완료 (투명 이미지는 아직 없음, 리스트에서 배정)`);
@@ -451,6 +475,40 @@ function updateListProgress(){
   $('#listProgress').textContent = `${done}/${items.length} 배정됨`;
 }
 
+function makeFillableCell(idx, field, kind, candidates){
+  const td = document.createElement('td');
+  td.className = 'fillable-cell';
+  td.dataset.idx = idx;
+  td.dataset.field = field;
+  let control;
+  if (kind === 'select') {
+    control = document.createElement('select');
+    control.innerHTML = '<option value="">(없음)</option>' +
+      candidates.map(n => `<option value="${n}"${n === items[idx][field] ? ' selected' : ''}>${n}</option>`).join('');
+    control.addEventListener('change', () => {
+      items[idx][field] = control.value || null;
+      updateListProgress();
+      saveMetaSoon();
+    });
+  } else {
+    control = document.createElement('input');
+    control.type = 'text';
+    control.placeholder = '예: PW 메가하우스 공식스토어';
+    control.value = items[idx][field] || '';
+    control.addEventListener('input', () => {
+      items[idx][field] = control.value;
+      refreshThumb(items[idx]);
+      saveMetaSoon();
+    });
+  }
+  control.addEventListener('focus', () => selectCell(td));
+  const handle = document.createElement('div');
+  handle.className = 'fill-handle';
+  td.appendChild(control);
+  td.appendChild(handle);
+  return td;
+}
+
 function renderMatchListTable(){
   const tbody = $('#matchListTable tbody');
   tbody.innerHTML = '';
@@ -459,24 +517,9 @@ function renderMatchListTable(){
     const tr = document.createElement('tr');
     const tdName = document.createElement('td');
     tdName.textContent = it.photoName;
-    const tdOverlay = document.createElement('td');
-    tdOverlay.className = 'overlay-cell';
-    tdOverlay.dataset.idx = idx;
-    const sel = document.createElement('select');
-    sel.innerHTML = '<option value="">(없음)</option>' +
-      candidates.map(n => `<option value="${n}"${n === it.overlayName ? ' selected' : ''}>${n}</option>`).join('');
-    sel.addEventListener('change', () => {
-      it.overlayName = sel.value || null;
-      selectCell(tdOverlay);
-      updateListProgress();
-    });
-    sel.addEventListener('focus', () => selectCell(tdOverlay));
-    const handle = document.createElement('div');
-    handle.className = 'fill-handle';
-    tdOverlay.appendChild(sel);
-    tdOverlay.appendChild(handle);
     tr.appendChild(tdName);
-    tr.appendChild(tdOverlay);
+    tr.appendChild(makeFillableCell(idx, 'overlayName', 'select', candidates));
+    tr.appendChild(makeFillableCell(idx, 'storeName', 'text'));
     tbody.appendChild(tr);
   });
   updateListProgress();
@@ -489,46 +532,52 @@ function selectCell(td){
   td.classList.add('selected');
 }
 
-// 드래그 채우기 (엑셀 자동채우기 방식) — 전역 리스너 1개로 처리
+// 드래그 채우기 (엑셀 자동채우기 방식) — 전역 리스너 1개로 처리, 투명파일명/스토어명 칸 공용
 let _fillDrag = null;
 document.addEventListener('mousedown', (e) => {
   if (!e.target.classList.contains('fill-handle')) return;
   e.preventDefault();
-  const startTd = e.target.closest('.overlay-cell');
+  const startTd = e.target.closest('.fillable-cell');
   const startIdx = Number(startTd.dataset.idx);
-  _fillDrag = { startIdx, value: items[startIdx].overlayName, curEndIdx: startIdx };
-  highlightRange(startIdx, startIdx);
+  const field = startTd.dataset.field;
+  _fillDrag = { startIdx, field, value: items[startIdx][field], curEndIdx: startIdx };
+  highlightRange(startIdx, startIdx, field);
 });
 document.addEventListener('mousemove', (e) => {
   if (!_fillDrag) return;
-  const cell = document.elementFromPoint(e.clientX, e.clientY)?.closest('.overlay-cell');
-  if (!cell) return;
+  const cell = document.elementFromPoint(e.clientX, e.clientY)?.closest('.fillable-cell');
+  if (!cell || cell.dataset.field !== _fillDrag.field) return;
   const idx = Number(cell.dataset.idx);
   if (idx < _fillDrag.startIdx) return; // 아래로만 채우기
   _fillDrag.curEndIdx = idx;
-  highlightRange(_fillDrag.startIdx, idx);
+  highlightRange(_fillDrag.startIdx, idx, _fillDrag.field);
 });
 document.addEventListener('mouseup', () => {
   if (!_fillDrag) return;
-  const { startIdx, curEndIdx, value } = _fillDrag;
+  const { startIdx, curEndIdx, value, field } = _fillDrag;
   for (let i = startIdx; i <= curEndIdx; i++) {
-    items[i].overlayName = value;
-    const td = document.querySelector(`.overlay-cell[data-idx="${i}"]`);
-    if (td) td.querySelector('select').value = value || '';
+    items[i][field] = value;
+    const td = document.querySelector(`.fillable-cell[data-idx="${i}"][data-field="${field}"]`);
+    if (td) {
+      const ctrl = td.querySelector('select, input');
+      if (ctrl) ctrl.value = value || '';
+    }
+    if (field === 'storeName') refreshThumb(items[i]);
   }
   clearRangeHighlight();
-  updateListProgress();
+  if (field === 'overlayName') updateListProgress();
+  saveMetaSoon();
   _fillDrag = null;
 });
-function highlightRange(start, end){
+function highlightRange(start, end, field){
   clearRangeHighlight();
   for (let i = start; i <= end; i++) {
-    const td = document.querySelector(`.overlay-cell[data-idx="${i}"]`);
+    const td = document.querySelector(`.fillable-cell[data-idx="${i}"][data-field="${field}"]`);
     if (td) td.classList.add('range-hl');
   }
 }
 function clearRangeHighlight(){
-  document.querySelectorAll('.overlay-cell.range-hl').forEach(td => td.classList.remove('range-hl'));
+  document.querySelectorAll('.fillable-cell.range-hl').forEach(td => td.classList.remove('range-hl'));
 }
 
 // 오버레이 이미지 캐시 (같은 투명 파일 여러 번 로딩 안 하게)
@@ -558,6 +607,63 @@ $('#btnApplyList').addEventListener('click', async () => {
   await saveMetaToCache();
 });
 
+// ---------- 3번째 레이어: 월 리본 뱃지 + 스토어명 (둘 다 캔버스에 코드로 직접 그림, 이미지 아님) ----------
+let badgeMonth = '', badgeWeight = 700;
+function loadBadgeSettings(){
+  try {
+    const s = JSON.parse(localStorage.getItem('batch_merge_badge_settings') || 'null');
+    if (s) { badgeMonth = s.month || ''; badgeWeight = s.weight || 700; }
+  } catch (e) {}
+  $('#badgeMonth').value = badgeMonth;
+  $('#badgeWeight').value = String(badgeWeight);
+}
+function saveBadgeSettings(){
+  localStorage.setItem('batch_merge_badge_settings', JSON.stringify({ month: badgeMonth, weight: badgeWeight }));
+}
+
+function drawBadge(ctx, it){
+  if (!it.storeName) return; // 스토어명 안 채운 사진은 뱃지도 안 그림
+  const side = it.badgeSide || 'left';
+  const bw = 190, bh = 90, notch = 26;
+
+  // 리본 뱃지 (월 숫자 + "신제품")
+  ctx.save();
+  ctx.translate(side === 'left' ? 0 : CW - bw, 0);
+  ctx.fillStyle = '#ffd400';
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(bw, 0);
+  ctx.lineTo(bw, bh - notch);
+  ctx.lineTo(bw / 2, bh);
+  ctx.lineTo(0, bh - notch);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#111';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = `${badgeWeight} 42px 'S-Core Dream'`;
+  ctx.fillText(String(badgeMonth || '').padStart(2, '0'), bw / 2, 48);
+  ctx.font = `${badgeWeight} 22px 'S-Core Dream'`;
+  ctx.fillText('신제품', bw / 2, 74);
+  ctx.restore();
+
+  // 스토어명 (뱃지 반대쪽)
+  ctx.save();
+  ctx.fillStyle = '#fff';
+  ctx.font = `${badgeWeight} 30px 'S-Core Dream'`;
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,.55)';
+  ctx.shadowBlur = 6;
+  if (side === 'left') {
+    ctx.textAlign = 'right';
+    ctx.fillText(it.storeName, CW - 24, bh / 2);
+  } else {
+    ctx.textAlign = 'left';
+    ctx.fillText(it.storeName, 24, bh / 2);
+  }
+  ctx.restore();
+}
+
 // ---------- 합성 로직 (1080x1350 논리 좌표, ctx는 호출부에서 scale 적용) ----------
 function drawItem(ctx, it){
   ctx.fillStyle = it.bg;
@@ -572,6 +678,8 @@ function drawItem(ctx, it){
   ctx.drawImage(it.photoImg, dx, dy, dw, dh);
 
   if (it.overlayImg) ctx.drawImage(it.overlayImg, 0, 0, CW, CH);
+
+  drawBadge(ctx, it);
 }
 
 function computeGeom(it){
@@ -606,7 +714,19 @@ function renderGrid(){
     const name = document.createElement('div');
     name.className = 'name';
     name.textContent = it.photoName;
+    const badgeToggle = document.createElement('button');
+    badgeToggle.className = 'badgeToggle';
+    badgeToggle.type = 'button';
+    badgeToggle.textContent = '⇄';
+    badgeToggle.title = '뱃지/스토어명 좌우 위치 전환';
+    badgeToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      it.badgeSide = (it.badgeSide === 'right') ? 'left' : 'right';
+      refreshThumb(it);
+      saveMetaSoon();
+    });
     wrap.appendChild(canvas);
+    wrap.appendChild(badgeToggle);
     wrap.appendChild(name);
     wrap.addEventListener('click', () => openEditor(idx));
     grid.appendChild(wrap);
@@ -626,6 +746,20 @@ $('#thumbSizeSlider').addEventListener('input', e => {
   THUMB_W = Number(e.target.value);
   renderGrid();
 });
+
+$('#badgeMonth').addEventListener('input', e => {
+  badgeMonth = e.target.value;
+  saveBadgeSettings();
+  renderGrid();
+});
+$('#badgeWeight').addEventListener('change', e => {
+  badgeWeight = Number(e.target.value);
+  saveBadgeSettings();
+  renderGrid();
+});
+loadBadgeSettings();
+// 폰트가 늦게 로딩되는 경우 대비 — 로딩 끝나면 뱃지 글자를 실제 폰트로 다시 그림
+document.fonts.ready.then(() => { if (items.length) renderGrid(); });
 
 // 미리보기에서 마우스 휠로 개별 아트보드 확대/축소 (체크박스 켜졌을 때만)
 $('#grid').addEventListener('wheel', e => {
