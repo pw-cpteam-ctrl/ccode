@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>뱃지 그리드 미리보기 도구 (임시)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fonts-archive/S-CoreDream/S-CoreDream.css"/>
+<style>
+*{box-sizing:border-box;}
+body{margin:0;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f0ede7;color:#252018;padding:24px;}
+h1{font-size:18px;margin:0 0 4px;}
+p.desc{font-size:12px;color:#7d7568;margin:0 0 20px;max-width:760px;line-height:1.5;}
+.panel{background:#fff;border:1px solid #ddd8ce;border-radius:12px;padding:16px;margin-bottom:16px;}
+.row{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:12px;}
+.row label{display:flex;align-items:center;gap:6px;}
+button{font-size:12px;padding:7px 14px;border-radius:6px;border:1px solid #ccc4b4;background:#fff;cursor:pointer;}
+button.primary{background:#252018;color:#fff;border-color:#252018;}
+select,input[type=text],input[type=number]{font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid #ccc4b4;}
+
+/* 인스타그램 프로필 그리드 느낌 — 3열 고정, 칸 사이 여백 최소 */
+#igGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:900px;margin-top:16px;}
+.slot{background:#fff;border:1px solid #ddd8ce;border-radius:8px;overflow:hidden;}
+.slot .stage{position:relative;aspect-ratio:4/5;background:#e8e5de;}
+.slot canvas{width:100%;height:100%;display:block;}
+
+/* 비어있는 칸 — 클릭하거나 드래그해서 사진 넣기 */
+.slot .stage.empty{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;cursor:pointer;color:#9a927f;font-size:12px;text-align:center;padding:12px;border:2px dashed #ccc4b4;transition:.15s;}
+.slot .stage.empty.over{border-color:#4a7cff;background:#eef3ff;color:#3a5dcc;}
+.slot .stage.empty .plus{font-size:28px;line-height:1;color:#c8c0ac;}
+
+.slot .ctrls{padding:8px;display:flex;flex-direction:column;gap:6px;}
+.slot .ctrls .line{display:flex;gap:6px;align-items:center;}
+.slot .ctrls input[type=text]{flex:1;min-width:0;}
+.slot .ctrls input[type=color]{width:28px;height:28px;padding:0;border:1px solid #ccc4b4;border-radius:6px;cursor:pointer;}
+.slot .miniBtn{font-size:11px;padding:3px 8px;border-radius:4px;border:1px solid #ccc4b4;background:#faf9f6;cursor:pointer;}
+</style>
+</head>
+<body>
+<h1>뱃지 그리드 미리보기 도구 (임시)</h1>
+<p class="desc">
+인스타그램 프로필 그리드처럼 빈 칸(4:5 비율)이 먼저 떠 있고, 칸마다 사진을 따로 넣을 수 있음(클릭하거나 드래그).
+사진을 넣은 칸은 그 칸만의 뱃지 색상·1줄/2줄 문구·좌우 위치를 바꿀 수 있고, 그 설정은 그 칸에만 적용됨(다른 칸엔 영향 없음).
+로고·스토어명·글자 굵기만 전체 공통 설정. 값이 정해지면 batch-merge.html에 반영하고 이 페이지는 삭제 예정 — 팀원용 정식 화면 아님.
+</p>
+
+<div class="panel">
+  <div class="row">
+    <label>칸 개수: <input type="number" id="gCount" min="1" max="12" value="6" style="width:50px;"/></label>
+    <label>공통 스토어명: <input type="text" id="gStoreName" value="메가하우스 공식 스토어" style="width:180px;"/></label>
+    <label>글자 굵기:
+      <select id="gWeight">
+        <option value="100">100 Thin</option><option value="200">200 ExtraLight</option>
+        <option value="300">300 Light</option><option value="400">400 Regular</option>
+        <option value="500">500 Medium</option><option value="600">600 Bold</option>
+        <option value="700" selected>700 ExtraBold</option><option value="800">800 Heavy</option>
+        <option value="900">900 Black</option>
+      </select>
+    </label>
+    <button id="btnClearAll">전부 비우기</button>
+  </div>
+</div>
+
+<div id="igGrid"></div>
+
+<script>
+const CW = 1080, CH = 1350; // 4:5
+const $ = s => document.querySelector(s);
+let slots = []; // 길이 = gCount, 각 원소는 null(빈칸) 또는 {img, badgeColor, line1, line2, side}
+
+const badgeLogoImg = new Image();
+let badgeLogoLoaded = false;
+badgeLogoImg.onload = () => { badgeLogoLoaded = true; renderAll(); };
+badgeLogoImg.src = '../assets/favicon-pw.png';
+
+function roundedPolyPath(ctx, pts, radii){
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const prev = pts[(i - 1 + n) % n];
+    const cur = pts[i];
+    const next = pts[(i + 1) % n];
+    const r = Array.isArray(radii) ? radii[i] : radii;
+    if (!r) { if (i === 0) ctx.moveTo(cur.x, cur.y); else ctx.lineTo(cur.x, cur.y); continue; }
+    const v1x = prev.x - cur.x, v1y = prev.y - cur.y;
+    const v2x = next.x - cur.x, v2y = next.y - cur.y;
+    const len1 = Math.hypot(v1x, v1y), len2 = Math.hypot(v2x, v2y);
+    const d = Math.min(r, len1 / 2, len2 / 2);
+    const a1x = cur.x + (v1x / len1) * d, a1y = cur.y + (v1y / len1) * d;
+    const a2x = cur.x + (v2x / len2) * d, a2y = cur.y + (v2y / len2) * d;
+    if (i === 0) ctx.moveTo(a1x, a1y); else ctx.lineTo(a1x, a1y);
+    ctx.quadraticCurveTo(cur.x, cur.y, a2x, a2y);
+  }
+  ctx.closePath();
+}
+
+// 뱃지 배경색 밝기에 따라 글자를 검정/흰색 중 자동으로 골라서, 어두운 색 배지에서 글자가 안 보이는 문제 방지
+function readableTextColor(hex){
+  const h = (hex || '#ffd400').replace('#', '');
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  const r = parseInt(full.slice(0, 2), 16), g = parseInt(full.slice(2, 4), 16), b = parseInt(full.slice(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.55 ? '#111' : '#fff';
+}
+
+function drawBadge(ctx, slot){
+  const weight = Number($('#gWeight').value);
+  const storeName = $('#gStoreName').value;
+  const side = slot.side || 'left';
+  const bw = 183, bh = 240, notch = 45, radius = 0;
+  const offsetX = 77, offsetY = 0;
+  const flatH = bh - notch;
+
+  ctx.save();
+  ctx.translate(side === 'left' ? offsetX : CW - bw - offsetX, offsetY);
+  ctx.fillStyle = slot.badgeColor || '#ffd400';
+  ctx.beginPath();
+  roundedPolyPath(ctx, [
+    { x: 0, y: 0 }, { x: bw, y: 0 }, { x: bw, y: bh }, { x: bw / 2, y: flatH }, { x: 0, y: bh },
+  ], radius);
+  ctx.shadowColor = 'rgba(0,0,0,0.35)';
+  ctx.shadowBlur = 18; ctx.shadowOffsetX = 9; ctx.shadowOffsetY = 5;
+  ctx.fill();
+  ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+  ctx.fillStyle = readableTextColor(slot.badgeColor);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = `${weight} 68px 'S-Core Dream'`;
+  ctx.fillText(slot.line1 || '', bw / 2, 100);
+  ctx.font = `${weight} 34px 'S-Core Dream'`;
+  ctx.fillText(slot.line2 || '', bw / 2, 146);
+  ctx.restore();
+
+  if (!storeName) return;
+  const storeSize = 30, storeMargin = 24, storeTopPad = 8, logoGap = 8;
+  ctx.save();
+  ctx.font = `${weight} ${storeSize}px 'S-Core Dream'`;
+  ctx.textBaseline = 'top';
+  ctx.lineJoin = 'round'; ctx.miterLimit = 2;
+  const textW = ctx.measureText(storeName).width;
+  const logoH = storeSize * 2;
+  const logoW = badgeLogoLoaded ? logoH * (badgeLogoImg.naturalWidth / badgeLogoImg.naturalHeight) : 0;
+  const gap = badgeLogoLoaded ? logoGap : 0;
+  const groupW = logoW + gap + textW;
+  const groupStartX = side === 'left' ? CW - storeMargin - groupW : storeMargin;
+  const storeY = offsetY + storeTopPad;
+  ctx.textAlign = 'left';
+  ctx.shadowColor = 'rgba(255,255,255,0.95)'; ctx.shadowBlur = 6;
+  ctx.fillStyle = '#111';
+  ctx.fillText(storeName, groupStartX + logoW + gap, storeY);
+  if (badgeLogoLoaded) {
+    const logoY = storeY + storeSize / 2 - logoH / 2 - 3;
+    ctx.drawImage(badgeLogoImg, groupStartX, logoY, logoW, logoH);
+  }
+  ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawSlot(ctx, slot){
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, CW, CH);
+  const img = slot.img;
+  const pw = img.naturalWidth, ph = img.naturalHeight;
+  const base = Math.max(CW / pw, CH / ph); // cover-fit, 4:5로 중앙 크롭
+  const dw = pw * base, dh = ph * base;
+  const dx = (CW - dw) / 2, dy = (CH - dh) / 2;
+  ctx.drawImage(img, dx, dy, dw, dh);
+  drawBadge(ctx, slot);
+}
+
+function loadImage(file){
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+const PALETTE = ['#ffd400', '#ff5a5f', '#4a7cff', '#2ecc71', '#a855f7', '#111827', '#ffffff', '#f97316', '#ec4899'];
+const SAMPLE_LINE1 = ['8월', 'NEW', '8월', '한정', '8월', 'HOT', '8월', '재입고', '8월'];
+const SAMPLE_LINE2 = ['신제품', '입고', '재입고', '수량', '예약중', '판매중', '신제품', '알림', '한정판'];
+
+async function fillSlot(idx, file){
+  const img = await loadImage(file);
+  slots[idx] = {
+    img,
+    badgeColor: PALETTE[idx % PALETTE.length],
+    line1: SAMPLE_LINE1[idx % SAMPLE_LINE1.length],
+    line2: SAMPLE_LINE2[idx % SAMPLE_LINE2.length],
+    side: 'left'
+  };
+  renderAll();
+}
+
+function ensureSlotCount(n){
+  if (n > slots.length) {
+    while (slots.length < n) slots.push(null);
+  } else if (n < slots.length) {
+    slots.length = n;
+  }
+}
+
+$('#gCount').addEventListener('input', () => {
+  const n = Math.max(1, Math.min(12, Number($('#gCount').value) || 1));
+  ensureSlotCount(n);
+  renderAll();
+});
+$('#btnClearAll').addEventListener('click', () => {
+  if (!confirm('전부 비울까요?')) return;
+  slots = slots.map(() => null);
+  renderAll();
+});
+$('#gStoreName').addEventListener('input', renderAll);
+$('#gWeight').addEventListener('change', renderAll);
+
+function renderAll(){
+  const grid = $('#igGrid');
+  grid.innerHTML = '';
+
+  slots.forEach((slot, idx) => {
+    const slotEl = document.createElement('div');
+    slotEl.className = 'slot';
+
+    const stage = document.createElement('div');
+    stage.className = 'stage';
+
+    if (!slot) {
+      stage.classList.add('empty');
+      stage.innerHTML = `<div class="plus">+</div><div>클릭하거나<br/>사진을 드래그해서 넣기</div>`;
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.style.display = 'none';
+      stage.appendChild(fileInput);
+      stage.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files[0]) fillSlot(idx, fileInput.files[0]);
+      });
+      stage.addEventListener('dragover', e => { e.preventDefault(); stage.classList.add('over'); });
+      stage.addEventListener('dragleave', () => stage.classList.remove('over'));
+      stage.addEventListener('drop', e => {
+        e.preventDefault(); stage.classList.remove('over');
+        const f = e.dataTransfer.files[0];
+        if (f && /^image\//.test(f.type)) fillSlot(idx, f);
+      });
+      slotEl.appendChild(stage);
+      grid.appendChild(slotEl);
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = CW; canvas.height = CH;
+    stage.appendChild(canvas);
+    slotEl.appendChild(stage);
+
+    const ctrls = document.createElement('div');
+    ctrls.className = 'ctrls';
+    ctrls.innerHTML = `
+      <div class="line">
+        <input type="color" class="cColor"/>
+        <input type="text" class="cLine1" placeholder="1줄 (예: 8월)"/>
+        <input type="text" class="cLine2" placeholder="2줄 (예: 신제품)"/>
+      </div>
+      <div class="line">
+        <button type="button" class="miniBtn sideBtn">⇄ 좌우</button>
+        <button type="button" class="miniBtn replaceBtn">사진 교체</button>
+        <button type="button" class="miniBtn clearBtn" style="margin-left:auto;">✕ 비우기</button>
+      </div>
+    `;
+    slotEl.appendChild(ctrls);
+    grid.appendChild(slotEl);
+
+    const cColor = ctrls.querySelector('.cColor');
+    const cLine1 = ctrls.querySelector('.cLine1');
+    const cLine2 = ctrls.querySelector('.cLine2');
+    cColor.value = slot.badgeColor;
+    cLine1.value = slot.line1;
+    cLine2.value = slot.line2;
+
+    const redraw = () => { const ctx = canvas.getContext('2d'); ctx.clearRect(0,0,CW,CH); drawSlot(ctx, slot); };
+    cColor.addEventListener('input', () => { slot.badgeColor = cColor.value; redraw(); });
+    cLine1.addEventListener('input', () => { slot.line1 = cLine1.value; redraw(); });
+    cLine2.addEventListener('input', () => { slot.line2 = cLine2.value; redraw(); });
+    ctrls.querySelector('.sideBtn').addEventListener('click', () => { slot.side = slot.side === 'right' ? 'left' : 'right'; redraw(); });
+    ctrls.querySelector('.clearBtn').addEventListener('click', () => { slots[idx] = null; renderAll(); });
+
+    const replaceInput = document.createElement('input');
+    replaceInput.type = 'file'; replaceInput.accept = 'image/*'; replaceInput.style.display = 'none';
+    ctrls.appendChild(replaceInput);
+    ctrls.querySelector('.replaceBtn').addEventListener('click', () => replaceInput.click());
+    replaceInput.addEventListener('change', async () => {
+      if (!replaceInput.files[0]) return;
+      slot.img = await loadImage(replaceInput.files[0]);
+      redraw();
+    });
+
+    redraw();
+  });
+}
+
+ensureSlotCount(6);
+document.fonts.ready.then(renderAll);
+renderAll();
+</script>
+</body>
+</html>
