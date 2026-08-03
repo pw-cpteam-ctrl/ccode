@@ -421,7 +421,16 @@ function render(){
   //  · 세부 있음 + 캐릭터 1명 → "세부 캐릭터" 한 줄로 합침 (예: 테노히라 나미카제 미나토)
   //  · 세부 있음 + 여러 명   → 세부만 있는 줄 + 캐릭터들을 ·로 이어붙인 줄(체크박스로 축소 전환)
   const rawPlines = state.text.product.split('\n').map(s=>s.trim()).filter(Boolean);
-  const prefix = (state.linePrefix||'').trim();
+  // 룩업/G.E.M.의 세부(의상·소품·미니어처·판초·테노히라·프레셔스·캐럿)는 단어만 보면 무슨
+  // 그룹인지 안 보여서(예: "의상 바쿠고"), 이미지에 그릴 때만 그룹명을 붙인다(원고 캡션은
+  // 그대로 유지 — 캡션 1줄에 이미 그룹명이 있어서 안 붙임). 다른 그룹의 세부(토비마스 등)는
+  // 그 자체로 이미 고유한 명칭이라 그대로 둔다.
+  const IMG_PREFIX_DISPLAY = {
+    '룩업': { '의상':'룩업 의상', '미니어처':'룩업 미니어처', '소품':'룩업 소품', '판초':'룩업 판초' },
+    'G.E.M. 시리즈': { '테노히라':'G.E.M. 테노히라', '프레셔스':'G.E.M. 프레셔스', '캐럿':'G.E.M. 캐럿' },
+  };
+  const rawPrefix = (state.linePrefix||'').trim();
+  const prefix = (IMG_PREFIX_DISPLAY[state.line] && IMG_PREFIX_DISPLAY[state.line][rawPrefix]) || rawPrefix;
   // 캐릭터가 줄바꿈으로 나뉘어 있든, 한 줄에 쉼표(,)나 슬래시(/)로 나뉘어 있든 모두
   // 개별 이름으로 인정한다 — 몇 명인지는 이 배열 길이로 판단(줄 수가 아니라).
   const names = rawPlines.flatMap(l=>l.split(/[,\/、／]+/).map(s=>s.trim()).filter(Boolean));
