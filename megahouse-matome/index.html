@@ -774,26 +774,10 @@ function makeCell(it, ri, pg) {
     }
     ci.appendChild(img);
     bindCellInteraction(cell, img, it);
-    // Auto fit-to-width for fresh items (scale not yet adjusted by user)
-    if (!it._fitted) {
-      img.onload = () => {
-        it._fitted = true;
-        const cellW = cell.offsetWidth || 1;
-        const cellH = cell.offsetHeight || 1;
-        const iW = img.naturalWidth || 1;
-        const iH = img.naturalHeight || 1;
-        const cellAR = cellW / cellH;
-        const imgAR = iW / iH;
-        // With object-fit:contain, rendered width = iW * min(cellW/iW, cellH/iH)
-        if (imgAR < cellAR) {
-          // portrait in landscape cell: rendered width < cellW → scale up to fill width
-          const renderedW = iW * (cellH / iH);
-          it.scale = Math.max(1, cellW / renderedW);
-          applyImgTransform(img, it);
-        }
-        // landscape image: already fills width, no change needed
-      };
-    }
+    // (구) contain 시절 "세로 사진을 가로 폭에 맞춰 자동 확대"하던 보정 로직 제거함.
+    // object-fit:cover로 바꾼 지금은 애초에 항상 칸을 꽉 채우므로 이 보정이 불필요하고,
+    // 오히려 cover가 이미 확대한 위에 또 확대를 얹어 사진이 필요 이상으로 심하게
+    // 잘리는 원인이었음 (세로로 긴 사진의 머리·글씨가 잘리던 버그의 실제 원인)
   } else {
     const e = document.createElement('div');
     e.className = 'empty'; e.textContent = '이미지 없음';
@@ -895,14 +879,20 @@ function makeCell(it, ri, pg) {
   return cell;
 }
 
-// cover-fit 여백 방지: object-fit:cover 덕분에 scale=1(최소 배율)일 땐 항상 칸을 꽉
-// 채우지만, 그 상태에서 이동(ox/oy)을 그대로 두면 사진 가장자리가 칸 밖으로 밀려나가
-// 반대편에 빈 배경이 드러난다. transform은 `scale(sc) translate(ox,oy)` 순서라
-// translate가 먼저 적용된 뒤 sc배로 확대되므로, 화면상 실제 이동량은 ox*sc다.
-// 화면상 이동량이 "확대된 만큼 남는 여유(cw*(sc-1))의 절반"을 못 넘게 막으면
-// 사진이 칸 밖으로 안 밀려나 여백이 생기지 않는다 (scale=1일 땐 여유가 0이라 이동 자체가 막힘).
+// cover-fit 여백 방지 + 기본 배율에서도 위치 조정 여유 확보:
+// object-fit:cover 덕분에 배율 1(확대 안 한 기본 상태)일 때도 칸을 항상 꽉 채우지만,
+// "정확히 딱 채우는 크기" 그대로 두면 이동 가능 범위가 0이 돼서 확대하기 전엔 아예
+// 위치를 못 옮기고, 종횡비가 안 맞는 사진은 잘린 부분(머리·글씨 등)을 조정할 방법이
+// 없어진다. 그래서 사용자가 조작하는 배율(it.scale, 1~5)과 별개로, 화면에 실제로
+// 그리는 배율은 항상 OVERSCAN(15%)만큼 얹어서, 배율 1(확대 안 함) 상태에서도 처음부터
+// 위아래·좌우로 조금씩은 밀어 위치를 조정할 수 있게 한다. (그 15%만큼은 기본 상태에서도
+// 항상 살짝 크롭된다 — 여유를 주려면 그만큼 더 잘라야 하는 트레이드오프)
+// transform은 `scale(sc) translate(ox,oy)` 순서라 translate가 먼저 적용된 뒤 sc배로
+// 확대되므로, 화면상 실제 이동량은 ox*sc다. 화면상 이동량이 "확대된 만큼 남는 여유
+// (cw*(sc-1))의 절반"을 못 넘게 막으면 사진이 칸 밖으로 안 밀려나 여백이 생기지 않는다.
+const IMG_OVERSCAN = 1.15;
 function applyImgTransform(img, it) {
-  const sc = it.scale || 1;
+  const sc = (it.scale || 1) * IMG_OVERSCAN;
   const cw = img.offsetWidth, ch = img.offsetHeight;
   if (cw > 0 && ch > 0) {
     const maxOx = Math.max(0, cw * (sc - 1) / (2 * sc));
@@ -925,8 +915,8 @@ let _cellDrag = null;
 window.addEventListener('mousemove', e => {
   if (!_cellDrag) return;
   const { img, it, sx, sy, sox, soy } = _cellDrag;
-  const dx = (e.clientX - sx) / (it.scale || 1);
-  const dy = (e.clientY - sy) / (it.scale || 1);
+  const dx = (e.clientX - sx) / ((it.scale || 1) * IMG_OVERSCAN);
+  const dy = (e.clientY - sy) / ((it.scale || 1) * IMG_OVERSCAN);
   it.ox = sox + dx; it.oy = soy + dy;
   applyImgTransform(img, it);
 });
@@ -980,8 +970,8 @@ function bindCellInteraction(cell, img, it) {
   cell.addEventListener('touchmove', e => {
     e.preventDefault();
     if (e.touches.length === 1 && t0) {
-      it.ox = t0.ox + (e.touches[0].clientX - t0.x) / (it.scale||1);
-      it.oy = t0.oy + (e.touches[0].clientY - t0.y) / (it.scale||1);
+      it.ox = t0.ox + (e.touches[0].clientX - t0.x) / ((it.scale||1) * IMG_OVERSCAN);
+      it.oy = t0.oy + (e.touches[0].clientY - t0.y) / ((it.scale||1) * IMG_OVERSCAN);
       applyImgTransform(img, it);
     }
     if (e.touches.length === 2 && lastDist) {
