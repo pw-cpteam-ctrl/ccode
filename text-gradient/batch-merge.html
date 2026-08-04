@@ -132,6 +132,7 @@ button:disabled{opacity:.4;cursor:default;}
         <option value="900">900 Black</option>
       </select>
     </label>
+    <label style="margin-left:16px;">뱃지 색상: <input type="color" id="badgeColor" value="#ffd400"/></label>
   </div>
   <div id="grid"></div>
   <div style="margin-top:14px;">
@@ -619,17 +620,18 @@ $('#btnApplyList').addEventListener('click', async () => {
 });
 
 // ---------- 3번째 레이어: 월 리본 뱃지 + 스토어명 (둘 다 캔버스에 코드로 직접 그림, 이미지 아님) ----------
-let badgeMonth = '', badgeWeight = 700;
+let badgeMonth = '', badgeWeight = 700, badgeColor = '#ffd400';
 function loadBadgeSettings(){
   try {
     const s = JSON.parse(localStorage.getItem('batch_merge_badge_settings') || 'null');
-    if (s) { badgeMonth = s.month || ''; badgeWeight = s.weight || 700; }
+    if (s) { badgeMonth = s.month || ''; badgeWeight = s.weight || 700; badgeColor = s.color || '#ffd400'; }
   } catch (e) {}
   $('#badgeMonth').value = badgeMonth;
   $('#badgeWeight').value = String(badgeWeight);
+  $('#badgeColor').value = badgeColor;
 }
 function saveBadgeSettings(){
-  localStorage.setItem('batch_merge_badge_settings', JSON.stringify({ month: badgeMonth, weight: badgeWeight }));
+  localStorage.setItem('batch_merge_badge_settings', JSON.stringify({ month: badgeMonth, weight: badgeWeight, color: badgeColor }));
 }
 
 // 스토어명 옆(좌측)에 붙는 로고 — 페이지 로딩 시 1번만 불러와서 재사용
@@ -662,6 +664,14 @@ function roundedPolyPath(ctx, pts, radii){
   ctx.closePath();
 }
 
+function readableTextColor(hex){
+  const h = (hex || '#ffd400').replace('#', '');
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  const r = parseInt(full.slice(0, 2), 16), g = parseInt(full.slice(2, 4), 16), b = parseInt(full.slice(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.55 ? '#111' : '#fff';
+}
+
 function drawBadge(ctx, it, opts){
   if (!it.storeName) return; // 스토어명 안 채운 사진은 뱃지도 안 그림
   const withShadow = !opts || opts.shadow !== false;
@@ -674,7 +684,7 @@ function drawBadge(ctx, it, opts){
   // 리본 뱃지 (월 숫자 + "신제품")
   ctx.save();
   ctx.translate(side === 'left' ? offsetX : CW - bw - offsetX, offsetY);
-  ctx.fillStyle = '#ffd400';
+  ctx.fillStyle = badgeColor;
   ctx.beginPath();
   roundedPolyPath(ctx, [
     { x: 0, y: 0 },
@@ -697,7 +707,7 @@ function drawBadge(ctx, it, opts){
   ctx.shadowBlur = 0;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 0;
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = readableTextColor(badgeColor);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   ctx.font = `${badgeWeight} 80px 'S-Core Dream'`;
@@ -890,6 +900,11 @@ $('#badgeMonth').addEventListener('input', e => {
 });
 $('#badgeWeight').addEventListener('change', e => {
   badgeWeight = Number(e.target.value);
+  saveBadgeSettings();
+  renderGrid();
+});
+$('#badgeColor').addEventListener('input', e => {
+  badgeColor = e.target.value;
   saveBadgeSettings();
   renderGrid();
 });
