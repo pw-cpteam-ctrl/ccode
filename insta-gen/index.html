@@ -9,7 +9,7 @@
 <style>
   :root { --bg:#f3f4f6; --panel:#ffffff; --line:#e3e5ea; --line2:#d2d6dd; --accent:#e0668f; --text:#1f2329; --muted:#6b7280; --danger:#d83a52; }
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', sans-serif; }
-  body { background: var(--bg); color: var(--text); display: flex; min-height: 100vh; gap: 28px; padding: 28px; align-items: flex-start; }
+  body { background: var(--bg); color: var(--text); display: flex; flex-wrap: wrap; min-height: 100vh; gap: 28px; padding: 28px; align-items: flex-start; }
 
   .left { flex: 0 0 auto; width: 432px; display: flex; flex-direction: column; gap: 16px; }
   #stage { width: 324px; height: 405px; border-radius: 14px; box-shadow: 0 10px 36px rgba(0,0,0,.16); cursor: grab; touch-action: none; background: #e9eaee; display:block; } /* 미리보기만 75% 축소 — canvas width/height(1080x1350) 속성은 그대로 = 다운로드 화질 무관 */
@@ -114,6 +114,31 @@
   #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
   #toast.warn { background:#8a2f3d; }
 
+  /* ===== 하단 "인스타 규격 크롭" — 위 카드 생성기와 완전히 독립된 별도 도구.
+     body가 flex-wrap:wrap이라 이 섹션에 flex:1 1 100%를 주면 위 2열(.left/.panel)
+     밑으로 자동으로 줄바꿈돼서 내려간다. ===== */
+  .igcrop-wrap { flex: 1 1 100%; }
+  .igcrop-upload { max-width: 460px; }
+  .igcrop-grid { display:flex; flex-wrap:wrap; gap:16px; margin-top:16px; }
+  .igcrop-item { width:160px; }
+  .igcrop-canvaswrap { position:relative; }
+  .igcrop-item canvas { width:160px; height:200px; border-radius:10px; cursor:pointer; display:block; background:#1a1a1a; box-shadow:0 2px 10px rgba(0,0,0,.14); }
+  .igcrop-del { position:absolute; top:5px; right:5px; width:19px; height:19px; border-radius:50%; background:rgba(0,0,0,.62); color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .igcrop-del:hover { background:var(--danger); }
+  .igcrop-name { font-size:11px; color:var(--muted); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .igcrop-btns { margin-top:6px; }
+  .igcrop-btns button { width:100%; font-size:12px; padding:7px; }
+  .igcrop-empty { font-size:13px; color:var(--muted); margin-top:14px; }
+
+  .igcrop-modal { position:fixed; inset:0; background:rgba(10,10,12,.72); display:none; align-items:center; justify-content:center; z-index:10000; padding:20px; }
+  .igcrop-modal.show { display:flex; }
+  .igcrop-modal-inner { background:#161616; padding:18px; border-radius:16px; display:flex; flex-direction:column; align-items:center; gap:10px; max-width:92vw; }
+  .igcrop-modal-inner canvas { max-width:min(72vw, 480px); max-height:70vh; width:auto; height:auto; border-radius:10px; cursor:grab; touch-action:none; background:#1a1a1a; }
+  .igcrop-modal-inner canvas:active { cursor:grabbing; }
+  .igcrop-modal-hint { font-size:12px; color:#9a9a9a; }
+  .igcrop-modal-btns { display:flex; gap:8px; width:100%; }
+  .igcrop-modal-btns button { flex:1; }
+
   /* ===== 모바일 (≤860px): 반응형 축소가 아니라 PC의 좌·우 2열을 세로 1열로 쌓고,
      미리보기는 기본 펼침(사진 넣으면 바로 보이게) + 큰 버튼으로 원하면 접을 수 있게 한다. ===== */
   .mobile-preview-toggle { display:none; } /* 데스크톱에선 숨김(미리보기 항상 표시) */
@@ -133,6 +158,7 @@
     .infobar { order: 8; }   /* 이전입력 설명 · 사진 크롭/배경 */
     .box-b { order: 9; }     /* 원고(캡션) */
     .dlbar { order: 10; }    /* PNG 다운로드 */
+    .igcrop-wrap { order: 11; } /* 인스타 규격 크롭(독립 섹션) — 항상 맨 아래 */
 
     /* 미리보기 접기 토글 — 눈에 확 띄게 크고 강조색으로 */
     .mobile-preview-toggle {
@@ -329,9 +355,31 @@
     </div>
   </div>
 
+  <div class="card igcrop-wrap" id="igcropSection">
+    <h2>④ 인스타 규격 크롭 (독립 도구)</h2>
+    <div class="subtitle">비율이 제각각인 공개 이미지를 인스타 4:5 규격으로 미리 잘라봅니다. 위 카드 작업과는 서로 영향을 주지 않습니다.</div>
+    <label class="upload igcrop-upload">
+      <span class="icon">🖼️</span><span>사진 여러 장 선택 (4:5로 자동 크롭)<br><small>클릭해서 크게 보면 드래그·휠로 크롭 위치 조정 가능</small></span>
+      <input type="file" id="igcropFile" accept="image/*" multiple>
+    </label>
+    <div class="igcrop-grid" id="igcropGrid"></div>
+  </div>
+
+  <div class="igcrop-modal" id="igcropModal">
+    <div class="igcrop-modal-inner">
+      <canvas id="igcropModalCanvas" width="480" height="600"></canvas>
+      <div class="igcrop-modal-hint">드래그로 위치 이동 · 마우스 휠로 확대/축소</div>
+      <div class="igcrop-modal-btns">
+        <button class="btn2" id="igcropModalDownload">다운로드</button>
+        <button class="btn2" id="igcropModalClose">닫기</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" role="status" aria-live="polite"></div>
 
 <script src="dict.js"></script>
+<script src="ig-crop.js"></script>
 <script>
 const cv = document.getElementById('stage'), ctx = cv.getContext('2d');
 const W = 1080, H = 1350;
@@ -1016,6 +1064,165 @@ function restoreSlot(s){
   if(slots.length){ restoreSlot(slots[0]); syncControlsUI(); checkWorkSpacing(); }
   composeTitle(); updatePreview(); render(); runValidation(); renderSlots(); updateCopyCount();
   if(slots[0]?.imgData) loadImage(slots[0].imgData, true);
+})();
+</script>
+
+<!-- ================================================================
+     인스타 규격 크롭 (독립 도구) — 위 카드 생성기의 state/함수와 이름도 로직도
+     완전히 분리된 IIFE. 서로 참조하지 않으므로 어느 한쪽을 고쳐도 다른 쪽엔
+     영향이 없다. igLoadImage/IG_SIZES/coverCropRect 등은 ig-crop.js 전역 함수.
+     ================================================================ -->
+<script>
+(function(){
+  const grid = document.getElementById('igcropGrid');
+  const fileInput = document.getElementById('igcropFile');
+  const uploadLabel = document.querySelector('.igcrop-upload');
+  const modal = document.getElementById('igcropModal');
+  const modalCanvas = document.getElementById('igcropModalCanvas');
+  const modalCtx = modalCanvas.getContext('2d');
+  const modalDownloadBtn = document.getElementById('igcropModalDownload');
+  const modalCloseBtn = document.getElementById('igcropModalClose');
+
+  const EXPORT_W = IG_SIZES.portrait.w, EXPORT_H = IG_SIZES.portrait.h; // 4:5 고정(1080×1350)
+  const THUMB_W = 216, THUMB_H = 270;   // 미리보기용 축소 캔버스(1/5 스케일)
+  const MODAL_W = modalCanvas.width, MODAL_H = modalCanvas.height; // 480×600
+
+  let items = [];      // { id, name, img, focusX, focusY, zoom, canvas, ctx }
+  let nextId = 1;
+  let openItem = null; // 지금 모달에서 편집 중인 항목
+
+  function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+
+  // 미리보기(썸네일/모달)와 실제 다운로드 둘 다 이 함수 하나로 그려서 결과가 어긋나지 않게 함
+  function drawItem(item, ctx2d, W, H){
+    ctx2d.clearRect(0,0,W,H);
+    ctx2d.fillStyle = '#1a1a1a'; ctx2d.fillRect(0,0,W,H);
+    const pw = item.img.naturalWidth||item.img.width, ph = item.img.naturalHeight||item.img.height;
+    const { dw, dh, dx, dy } = coverCropRect(pw, ph, W, H, item.focusX, item.focusY, item.zoom);
+    ctx2d.imageSmoothingEnabled = true; ctx2d.imageSmoothingQuality = 'high';
+    ctx2d.drawImage(item.img, dx, dy, dw, dh);
+  }
+  function renderThumb(item){ drawItem(item, item.ctx, THUMB_W, THUMB_H); }
+  function renderModal(){ if(openItem) drawItem(openItem, modalCtx, MODAL_W, MODAL_H); }
+
+  function safeFileBase(name){
+    return (name||'photo').replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]/g,'').trim() || 'photo';
+  }
+
+  function updateEmptyMsg(){
+    let msg = grid.querySelector('.igcrop-empty');
+    if(items.length===0){
+      if(!msg){ msg=document.createElement('div'); msg.className='igcrop-empty'; msg.textContent='사진을 올리면 여기 4:5 미리보기가 나란히 표시됩니다.'; grid.appendChild(msg); }
+    } else if(msg){ msg.remove(); }
+  }
+
+  async function addFiles(files){
+    for(const file of files){
+      if(!file.type || !file.type.startsWith('image/')) continue;
+      let img;
+      try{ img = await igLoadImage(file); }
+      catch(e){ console.error(e); if(typeof showToast==='function') showToast('⚠ 불러오지 못한 사진: '+file.name, true); continue; }
+      const item = { id: nextId++, name: file.name, img, focusX:0.5, focusY:0.5, zoom:1 };
+      items.push(item);
+      addItemEl(item);
+    }
+    updateEmptyMsg();
+  }
+
+  function addItemEl(item){
+    const el = document.createElement('div');
+    el.className = 'igcrop-item';
+    el.innerHTML =
+      '<div class="igcrop-canvaswrap">'
+        + '<canvas width="'+THUMB_W+'" height="'+THUMB_H+'"></canvas>'
+        + '<span class="igcrop-del" title="삭제">✕</span>'
+      + '</div>'
+      + '<div class="igcrop-name"></div>'
+      + '<div class="igcrop-btns"><button class="btn2 igcrop-dl">다운로드</button></div>';
+    item.canvas = el.querySelector('canvas');
+    item.ctx = item.canvas.getContext('2d');
+    el.querySelector('.igcrop-name').textContent = item.name;
+    el.querySelector('.igcrop-del').addEventListener('click', e=>{ e.stopPropagation(); removeItem(item, el); });
+    el.querySelector('.igcrop-dl').addEventListener('click', e=>{ e.stopPropagation(); downloadItem(item); });
+    item.canvas.addEventListener('click', ()=> openModal(item));
+    grid.appendChild(el);
+    renderThumb(item);
+  }
+
+  function removeItem(item, el){
+    items = items.filter(x=>x.id!==item.id);
+    el.remove();
+    if(openItem && openItem.id===item.id) closeModal();
+    updateEmptyMsg();
+  }
+
+  function exportBlob(item){
+    return new Promise((resolve,reject)=>{
+      const canvas = document.createElement('canvas');
+      canvas.width = EXPORT_W; canvas.height = EXPORT_H;
+      const c = canvas.getContext('2d');
+      drawItem(item, c, EXPORT_W, EXPORT_H);
+      canvas.toBlob(b=> b?resolve(b):reject(new Error('이미지 변환 실패')), 'image/png');
+    });
+  }
+  async function downloadItem(item){
+    const blob = await exportBlob(item);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = safeFileBase(item.name) + '_1080x1350.png';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  fileInput.addEventListener('change', e=>{ addFiles([...e.target.files]); e.target.value=''; });
+  ['dragover','drop'].forEach(ev=>uploadLabel.addEventListener(ev, e=>e.preventDefault()));
+  uploadLabel.addEventListener('drop', e=>{
+    const files=[...(e.dataTransfer?.files||[])];
+    if(files.length) addFiles(files);
+  });
+
+  // ── 모달(클릭해서 크게 보기) — 드래그로 위치 이동, 휠로 확대/축소 ──
+  function openModal(item){ openItem = item; modal.classList.add('show'); renderModal(); }
+  function closeModal(){
+    modal.classList.remove('show');
+    if(openItem) renderThumb(openItem); // 조정한 내용을 썸네일에도 반영
+    openItem = null;
+  }
+  modalCloseBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', e=>{ if(e.target===modal) closeModal(); });
+  modalDownloadBtn.addEventListener('click', ()=>{ if(openItem) downloadItem(openItem); });
+
+  let dragging=false, lastX=0, lastY=0;
+  modalCanvas.addEventListener('pointerdown', e=>{
+    if(!openItem) return;
+    dragging=true; lastX=e.clientX; lastY=e.clientY;
+    try{ modalCanvas.setPointerCapture(e.pointerId); }catch{}
+  });
+  modalCanvas.addEventListener('pointermove', e=>{
+    if(!dragging || !openItem) return;
+    const pw = openItem.img.naturalWidth||openItem.img.width, ph = openItem.img.naturalHeight||openItem.img.height;
+    const rect = modalCanvas.getBoundingClientRect();
+    const scaleX = modalCanvas.width/rect.width, scaleY = modalCanvas.height/rect.height;
+    const { dw, dh } = coverCropRect(pw, ph, MODAL_W, MODAL_H, openItem.focusX, openItem.focusY, openItem.zoom);
+    const overflowX = dw - MODAL_W, overflowY = dh - MODAL_H;
+    const dxPix = (e.clientX-lastX)*scaleX, dyPix = (e.clientY-lastY)*scaleY;
+    if(overflowX>0.5) openItem.focusX = clamp01(openItem.focusX - dxPix/overflowX);
+    if(overflowY>0.5) openItem.focusY = clamp01(openItem.focusY - dyPix/overflowY);
+    lastX=e.clientX; lastY=e.clientY;
+    renderModal();
+  });
+  function endDrag(){ dragging=false; }
+  modalCanvas.addEventListener('pointerup', endDrag);
+  modalCanvas.addEventListener('pointercancel', endDrag);
+  modalCanvas.addEventListener('pointerleave', ()=>{ if(dragging) endDrag(); });
+  modalCanvas.addEventListener('wheel', e=>{
+    if(!openItem) return;
+    e.preventDefault();
+    openItem.zoom = Math.max(1, Math.min(4, openItem.zoom*(e.deltaY<0?1.08:0.92)));
+    renderModal();
+  }, {passive:false});
+
+  updateEmptyMsg();
 })();
 </script>
 </body>
