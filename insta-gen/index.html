@@ -117,7 +117,7 @@
   /* ===== 하단 "인스타 규격 크롭" — 위 카드 생성기와 완전히 독립된 별도 도구.
      body가 flex-wrap:wrap이라 이 섹션에 flex:1 1 100%를 주면 위 2열(.left/.panel)
      밑으로 자동으로 줄바꿈돼서 내려간다. ===== */
-  .igcrop-wrap { flex: 1 1 100%; }
+  .igcrop-wrap { flex: 1 1 100%; max-width: 890px; } /* 위 .left(432)+gap(28)+.panel(430) 합계에 맞춤 — 안 하면 body 전체 폭으로 늘어나 오른쪽으로 튀어나와 보임 */
   .igcrop-upload { max-width: 460px; }
   .igcrop-grid { display:flex; flex-wrap:wrap; gap:16px; margin-top:16px; }
   .igcrop-item { width:160px; }
