@@ -139,6 +139,19 @@ function buildProductComparison(ownPosts, competitorPosts, fields, textField, di
   ownPosts = remainingOwn;
   competitorPosts = remainingCompetitor;
 
+  // ignorePosts(공지/이벤트 등 상품이 아닌 게시물)는 지금까지 "매칭 안 됨" 목록에서만
+  // 안 보이게 걸렀고, 정작 아래 키워드 매칭/그룹화 단계에는 그대로 들어가고 있었음 — 그래서
+  // 다상품을 한꺼번에 나열하는 월간 공지 게시물 하나가 서로 다른 캐릭터 그룹들을 죄다
+  // 이어붙이는 다리 역할을 해버리는 문제가 있었음(실제 사례: "2026년 8월 메가하우스 신규
+  // 상품 안내" 게시물이 여러 프랜차이즈명을 한 게시물에 다 언급해서, 인스타그램 쪽 상품별
+  // 비교표가 거의 전부 "신규" 한 그룹으로 뭉쳐버림). 계정 총계(팔로워/전체 게시물 지표)는
+  // 이 함수 밖(buildComparisonReport)에서 이미 원본 posts로 따로 계산하니, 여기서 완전히
+  // 빼도 총계엔 영향 없음 — 매칭 대상 풀 자체에서 제외.
+  const ignoredOwnLinks = new Set(ignorePosts.pw || []);
+  const ignoredCompetitorLinks = new Set(ignorePosts.bh || []);
+  ownPosts = ownPosts.filter(p => !ignoredOwnLinks.has(p[linkField]));
+  competitorPosts = competitorPosts.filter(p => !ignoredCompetitorLinks.has(p[linkField]));
+
   const ownEntries = ownPosts.map(post => ({ side: 'own', post, title: extractOwnProductName(post[textField]) }));
   const competitorEntries = competitorPosts.map(post => ({ side: 'competitor', post, title: extractCompetitorProductName(post[textField]) }));
   // 매칭(그룹화) 판단은 좁은 title 한 줄이 아니라 본문 전체 텍스트 기준 — 프랜차이즈명이
@@ -197,10 +210,10 @@ function buildProductComparison(ownPosts, competitorPosts, fields, textField, di
   const impact = p => displayFields.reduce((sum, f) => sum + p.own[`total_${f}`] + p.competitor[`total_${f}`], 0);
   products.sort((a, b) => impact(b) - impact(a));
 
-  const ignoredOwnLinks = new Set(ignorePosts.pw || []);
-  const ignoredCompetitorLinks = new Set(ignorePosts.bh || []);
-  const ownUnmatched = ownPosts.filter(p => !matchedPosts.has(p) && !ignoredOwnLinks.has(p[linkField]));
-  const competitorUnmatched = competitorPosts.filter(p => !matchedPosts.has(p) && !ignoredCompetitorLinks.has(p[linkField]));
+  // ignorePosts는 위에서 이미 매칭 풀 자체에서 뺐으므로(ownPosts/competitorPosts가 이미
+  // 걸러진 상태), 여기선 matchedPosts만 제외하면 됨.
+  const ownUnmatched = ownPosts.filter(p => !matchedPosts.has(p));
+  const competitorUnmatched = competitorPosts.filter(p => !matchedPosts.has(p));
 
   return { products, ownUnmatched, competitorUnmatched, displayFields };
 }

@@ -1,6 +1,8 @@
 {
   "twitter": {
-    "pw": [],
+    "pw": [
+      "https://x.com/MegahouseStore/status/2083029747462766628"
+    ],
     "bh": [
       "https://x.com/Megahouse_BH/status/2072689355513331837",
       "https://x.com/Megahouse_BH/status/2072633831384100934",
@@ -8,7 +10,10 @@
     ]
   },
   "instagram": {
-    "pw": [],
+    "pw": [
+      "https://www.instagram.com/megahouse_store/p/DbcR4ZFoKuP/",
+      "https://www.instagram.com/megahouse_store/p/DbZqKQBIDHP/"
+    ],
     "bh": []
   }
 }
