@@ -436,6 +436,7 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
     <span style="color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">미리보기</span>
     <input type="range" id="previewZoom" min="20" max="100" value="50" step="1" style="width:120px;accent-color:#fff;cursor:pointer;" oninput="applyPreviewZoom(this.value)"/>
     <span id="previewZoomVal" style="color:#fff;font-size:11px;min-width:32px;">50%</span>
+    <button id="btnBoardLayout" onclick="toggleBoardLayout()" title="보드 배치 전환" style="background:rgba(255,255,255,.15);border:none;color:#fff;font-size:11px;font-weight:700;border-radius:12px;padding:5px 10px;cursor:pointer;white-space:nowrap;">가로보기</button>
   </div></div>
   <div id="postersRow" style="display:flex;flex-direction:row;gap:24px;align-items:flex-start;"></div><!-- /postersRow -->
 </div>
@@ -532,6 +533,7 @@ function ensurePosterWrap(pg) {
   if (!document.getElementById('wrap'+pg)) {
     document.getElementById('postersRow').appendChild(makePosterWrap(pg));
     syncHeader();
+    toggleHeader();
     toggleOpenHeader();
     syncOpenHeader();
     applyOhBox();
@@ -622,7 +624,10 @@ function deletePage(pg) {
 function computeRows(n) {
   n = Math.min(n, 12);
   if (n <= 0) return [];
-  if (n <= 3) return [n];
+  if (n === 1) return [1];
+  // 사진이 2~3장뿐일 때 가로로 나란히 두면 칸이 옆으로 눌려 작아 보이므로,
+  // 세로로 한 칸씩 쌓아(1열 n행) 각 사진을 크게 보여줌
+  if (n === 2 || n === 3) return Array(n).fill(1);
   const rows = Math.min(4, Math.ceil(n / 3));
   const base = Math.floor(n / rows);
   const rem = n - base * rows;
@@ -2091,6 +2096,29 @@ document.getElementById('stage').addEventListener('wheel', e => {
   const newVal = Math.min(100, Math.max(20, _previewZoomPct + delta));
   applyPreviewZoom(newVal);
 }, { passive: false });
+
+// 보드(페이지) 배치 전환: 가로로 쭉 나열 ↔ 2열로 줄바꿈. 프로젝트 데이터가 아니라
+// "화면을 어떻게 보고 싶은지"에 대한 개인 취향이라 saveState()가 아니라 localStorage에 저장
+let _boardLayout2Col = localStorage.getItem('mh_maker_board_layout') === '2col';
+function applyBoardLayout() {
+  const row = document.getElementById('postersRow');
+  if (_boardLayout2Col) {
+    row.style.display = 'grid';
+    row.style.gridTemplateColumns = 'repeat(2, max-content)';
+  } else {
+    row.style.display = 'flex';
+    row.style.flexDirection = 'row';
+    row.style.gridTemplateColumns = '';
+  }
+  const btn = document.getElementById('btnBoardLayout');
+  if (btn) btn.textContent = _boardLayout2Col ? '2열보기' : '가로보기';
+}
+function toggleBoardLayout() {
+  _boardLayout2Col = !_boardLayout2Col;
+  localStorage.setItem('mh_maker_board_layout', _boardLayout2Col ? '2col' : 'row');
+  applyBoardLayout();
+}
+applyBoardLayout();
 
 // 미리보기 줌 팝업(stage-toolbar) 그랩 이동 — 항상 같은 자리에 고정돼있던 걸
 // 핸들(⠿)을 드래그해서 원하는 위치로 옮길 수 있게 함. 위치는 localStorage에 저장해
