@@ -493,22 +493,6 @@ function makeCell(it, ri, boardId) {
     }
     ci.appendChild(img);
     bindCellInteraction(cell, img, it);
-    if (!it._fitted) {
-      img.onload = () => {
-        it._fitted = true;
-        const cellW = cell.offsetWidth || 1;
-        const cellH = cell.offsetHeight || 1;
-        const iW = img.naturalWidth || 1;
-        const iH = img.naturalHeight || 1;
-        const cellAR = cellW / cellH;
-        const imgAR = iW / iH;
-        if (imgAR < cellAR) {
-          const renderedW = iW * (cellH / iH);
-          it.scale = Math.max(1, cellW / renderedW);
-          applyImgTransform(img, it);
-        }
-      };
-    }
   } else {
     const e = document.createElement('div');
     e.className = 'empty'; e.textContent = '이미지 없음';
@@ -568,6 +552,16 @@ function applyImgTransform(img, it) {
   img.style.transform = `scale(${sc}) translate(${ox}px,${oy}px)`;
 }
 
+// cover-fit 클램프: scale(s)·object-fit:cover 기준으로 ox/oy가 셀 밖을 드러내지 못하게 잡음
+// 수식: visual 이동량 = ox*s, 허용 범위 = (cellSize*(s-1)/2) → ox ≤ cellSize/2*(1-1/s)
+function clampCoverOffset(it, cellEl) {
+  const s = it.scale || 1;
+  const maxOx = (cellEl.offsetWidth  || 1) / 2 * (1 - 1 / s);
+  const maxOy = (cellEl.offsetHeight || 1) / 2 * (1 - 1 / s);
+  it.ox = Math.max(-maxOx, Math.min(maxOx, it.ox || 0));
+  it.oy = Math.max(-maxOy, Math.min(maxOy, it.oy || 0));
+}
+
 function bindCellInteraction(cell, img, it) {
   let dragging = false, sx = 0, sy = 0, sox = 0, soy = 0;
 
@@ -584,6 +578,7 @@ function bindCellInteraction(cell, img, it) {
     const dx = (e.clientX - sx) / (it.scale || 1);
     const dy = (e.clientY - sy) / (it.scale || 1);
     it.ox = sox + dx; it.oy = soy + dy;
+    clampCoverOffset(it, cell);
     applyImgTransform(img, it);
   });
   window.addEventListener('mouseup', e => {
@@ -599,7 +594,8 @@ function bindCellInteraction(cell, img, it) {
   cell.addEventListener('wheel', e => {
     e.preventDefault();
     const delta = e.deltaY < 0 ? 0.08 : -0.08;
-    it.scale = Math.max(0.5, Math.min(5, (it.scale || 1) + delta));
+    it.scale = Math.max(1, Math.min(5, (it.scale || 1) + delta));
+    clampCoverOffset(it, cell);
     applyImgTransform(img, it);
   }, { passive: false });
 
@@ -617,12 +613,14 @@ function bindCellInteraction(cell, img, it) {
     if (e.touches.length === 1 && t0) {
       it.ox = t0.ox + (e.touches[0].clientX - t0.x) / (it.scale||1);
       it.oy = t0.oy + (e.touches[0].clientY - t0.y) / (it.scale||1);
+      clampCoverOffset(it, cell);
       applyImgTransform(img, it);
     }
     if (e.touches.length === 2 && lastDist) {
       const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
-      it.scale = Math.max(0.5, Math.min(5, (it.scale||1) * (d/lastDist)));
+      it.scale = Math.max(1, Math.min(5, (it.scale||1) * (d/lastDist)));
       lastDist = d;
+      clampCoverOffset(it, cell);
       applyImgTransform(img, it);
     }
   }, { passive: false });
