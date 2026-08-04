@@ -19,19 +19,18 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Mal
 .field{margin-bottom:10px;}
 .field label{display:block;font-size:13px;color:var(--ui-sub);margin-bottom:4px;font-weight:600;}
 .field input,.field textarea{width:100%;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:7px 10px;font-size:14.5px;font-family:inherit;color:var(--ui-text);}
-/* 도구 내 모든 range 슬라이더를 네온 글로우 진행률(progress bar) 알약 모양으로 통일 —
-   채워지는 부분/글로우는 JS가 값 바뀔 때마다 인라인으로 계산해서 넣고(updateRangeUI),
-   현재값 숫자는 막대 위에 겹쳐서 중앙에 흰 글씨로 표시한다(.range-badge) */
+/* 도구 내 모든 range 슬라이더를 진행률(progress bar) 모양으로 통일 —
+   채워지는 부분은 JS가 값 바뀔 때마다 인라인으로 계산해서 넣고(updateRangeUI),
+   현재값 숫자는 막대 위에 겹쳐서 중앙에 표시한다(.range-badge). 네온/글로우 없이 평범한 색상만 사용 */
 .range-wrap{position:relative;margin:8px 0;}
 .range-wrap input[type=range]{
-  -webkit-appearance:none;appearance:none;width:100%;height:26px;border-radius:13px;
-  background:#0b1a2e;border:1px solid rgba(110,190,255,.35);outline:none;cursor:pointer;margin:0;
-  box-shadow:inset 0 2px 5px rgba(0,0,0,.55);
+  -webkit-appearance:none;appearance:none;width:100%;height:22px;border-radius:11px;
+  background:var(--ui-border);border:1px solid var(--ui-border);outline:none;cursor:pointer;margin:0;
 }
-.range-wrap input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:5px;height:20px;border-radius:3px;background:#fff;cursor:pointer;border:none;box-shadow:0 0 6px #fff,0 0 14px #5fd4ff;}
-.range-wrap input[type=range]::-moz-range-track{height:26px;background:transparent;border:none;}
-.range-wrap input[type=range]::-moz-range-thumb{width:5px;height:20px;border-radius:3px;background:#fff;border:none;cursor:pointer;box-shadow:0 0 6px #fff,0 0 14px #5fd4ff;}
-.range-badge{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#eaf6ff;font-weight:800;font-size:12.5px;letter-spacing:.3px;text-shadow:0 1px 3px rgba(0,0,0,.9);pointer-events:none;}
+.range-wrap input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:4px;height:16px;border-radius:2px;background:#fff;cursor:pointer;border:1px solid var(--ui-border);}
+.range-wrap input[type=range]::-moz-range-track{height:22px;background:transparent;border:none;}
+.range-wrap input[type=range]::-moz-range-thumb{width:4px;height:16px;border-radius:2px;background:#fff;border:1px solid var(--ui-border);cursor:pointer;}
+.range-badge{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;font-weight:700;font-size:12px;text-shadow:0 1px 2px rgba(0,0,0,.5);pointer-events:none;}
 .field textarea#inBulkMd{font-family:'SFMono-Regular',Consolas,monospace;font-size:13px;white-space:pre;}
 .row2{display:flex;gap:7px;}.row2 .field{flex:1;min-width:0;}
 .col-divider{flex:0 0 5px;align-self:stretch;margin:0 3px;border-radius:2px;background:var(--ui-border);cursor:col-resize;position:relative;}
@@ -252,8 +251,7 @@ function updateRangeUI(inp) {
   const badge = ensureRangeWrapped(inp);
   const min = +inp.min || 0, max = +inp.max || 100, val = +inp.value;
   const pct = max > min ? ((val - min) / (max - min)) * 100 : 0;
-  inp.style.background = `linear-gradient(to right, #0ea5e9 0%, #38bdf8 ${pct}%, #0b1a2e ${pct}%, #0b1a2e 100%)`;
-  inp.style.boxShadow = `inset 0 2px 5px rgba(0,0,0,.55), 0 0 ${6 + pct / 8}px rgba(56,189,248,${0.25 + pct / 300})`;
+  inp.style.background = `linear-gradient(to right, var(--ui-accent) ${pct}%, var(--ui-border) ${pct}%)`;
   badge.textContent = val;
 }
 function refreshAllRangeUI() { document.querySelectorAll('input[type=range]').forEach(updateRangeUI); }
