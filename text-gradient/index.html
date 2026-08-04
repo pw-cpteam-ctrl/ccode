@@ -17,13 +17,15 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Mal
 /* ─── 좌측 패널 ─── */
 .panel{width:380px;min-width:380px;height:100vh;overflow-y:auto;border-right:1px solid var(--ui-border);background:var(--ui-panel);padding:16px 15px 100px;}
 .field{margin-bottom:10px;}
-.field label{display:block;font-size:13px;color:var(--ui-sub);margin-bottom:4px;font-weight:600;}
+.field label{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:13px;color:var(--ui-sub);margin-bottom:4px;font-weight:600;}
+.field label .range-val{flex-shrink:0;font-weight:800;color:var(--ui-accent);font-size:12.5px;background:rgba(20,82,192,.1);border-radius:4px;padding:1px 6px;}
 .field input,.field textarea{width:100%;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:7px 10px;font-size:14.5px;font-family:inherit;color:var(--ui-text);}
-/* 도구 내 모든 range 슬라이더를 얇은 트랙 + 작은 원형 손잡이로 통일 */
-input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:4px;background:var(--ui-border);border-radius:2px;outline:none;cursor:pointer;margin:6px 0;}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:13px;height:13px;border-radius:50%;background:var(--ui-accent);cursor:pointer;border:2px solid #fff;box-shadow:0 0 0 1px var(--ui-border);}
-input[type=range]::-moz-range-track{height:4px;background:var(--ui-border);border-radius:2px;}
-input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:var(--ui-accent);border:2px solid #fff;cursor:pointer;}
+/* 도구 내 모든 range 슬라이더를 "진행률(progress bar)"처럼 현재값까지 채워진 트랙으로 통일 — 채워지는 배경색은 JS가 값 바뀔 때마다 인라인으로 계산해서 넣는다(updateRangeUI) */
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:8px;background:var(--ui-border);border-radius:4px;outline:none;cursor:pointer;margin:6px 0;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:15px;height:15px;border-radius:50%;background:var(--ui-accent);cursor:pointer;border:2px solid #fff;box-shadow:0 0 0 1px var(--ui-border);margin-top:-3.5px;}
+input[type=range]::-moz-range-track{height:8px;background:transparent;border-radius:4px;}
+input[type=range]::-moz-range-progress{height:8px;background:var(--ui-accent);border-radius:4px;}
+input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--ui-accent);border:2px solid #fff;cursor:pointer;}
 .field textarea#inBulkMd{font-family:'SFMono-Regular',Consolas,monospace;font-size:13px;white-space:pre;}
 .row2{display:flex;gap:7px;}.row2 .field{flex:1;min-width:0;}
 .col-divider{flex:0 0 5px;align-self:stretch;margin:0 3px;border-radius:2px;background:var(--ui-border);cursor:col-resize;position:relative;}
@@ -80,7 +82,10 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 
   <div class="sec">저장 슬롯</div>
   <div class="tabsRow" id="tabsRow"></div>
-  <button onclick="addSlot()">＋ 슬롯 추가</button>
+  <div style="display:flex;gap:6px;">
+    <button onclick="addSlot()" style="flex:1;">＋ 슬롯 추가</button>
+    <button onclick="duplicateSlot()" style="flex:1;">⧉ 아트보드 복제</button>
+  </div>
 
   <div class="sec">마크다운 일괄입력</div>
   <div class="field"><label>공통 배지 문구 (생성되는 슬롯 전체에 적용)</label><input type="text" id="inBulkBadge" value="예약판매 기간 5% 할인 캠페인 중!"/></div>
@@ -224,6 +229,24 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 <script>
 const $ = s => document.querySelector(s);
 
+/* ── 모든 range 슬라이더 공통 처리: 값 옆에 숫자 표시 + 트랙을 진행률(progress bar)처럼 채움 ──
+   개별 슬라이더마다 표시 로직을 따로 안 짜고, 페이지에 있는 input[type=range] 전부에
+   한 번에 적용한다. .value를 코드로 바꿔서 넣는 곳(슬롯 전환 등)에서는 input 이벤트가
+   저절로 발생하지 않으므로 그런 지점 뒤에서 refreshAllRangeUI()를 한 번 더 불러준다. */
+function updateRangeUI(inp) {
+  const min = +inp.min || 0, max = +inp.max || 100, val = +inp.value;
+  const pct = max > min ? ((val - min) / (max - min)) * 100 : 0;
+  inp.style.background = `linear-gradient(to right, var(--ui-accent) ${pct}%, var(--ui-border) ${pct}%)`;
+  const label = inp.parentElement && inp.parentElement.querySelector('label');
+  if (label) {
+    let span = label.querySelector('.range-val');
+    if (!span) { span = document.createElement('span'); span.className = 'range-val'; label.appendChild(span); }
+    span.textContent = val;
+  }
+}
+function refreshAllRangeUI() { document.querySelectorAll('input[type=range]').forEach(updateRangeUI); }
+document.addEventListener('input', e => { if (e.target.matches('input[type=range]')) updateRangeUI(e.target); });
+
 /* ── 저장소: IndexedDB (megahouse.html과 동일한 패턴) ── */
 const DB_NAME = 'tg_maker';
 const STATE_KEY = 'tg_maker_state';
@@ -324,6 +347,13 @@ function addSlot() {
   pushUndo();
   slots.push(makeEmptySlot());
   curSlot = slots.length;
+  renderTabs(); renderAllSlots(); loadInputsFromCurSlot(); persistState();
+}
+function duplicateSlot() {
+  pushUndo();
+  const copy = JSON.parse(JSON.stringify(slots[curSlot - 1]));
+  slots.splice(curSlot, 0, copy); // 현재 슬롯 바로 뒤에 끼워 넣음
+  curSlot = curSlot + 1;
   renderTabs(); renderAllSlots(); loadInputsFromCurSlot(); persistState();
 }
 function deleteSlot(pg) {
@@ -442,6 +472,7 @@ function loadInputsFromCurSlot() {
   $('#bulletsY').value = layoutVal(s,'bulletsYOffset'); $('#bulletsSize').value = layoutVal(s,'bulletsSize');
   $('#titleTracking').value = layoutVal(s,'titleTracking'); $('#subtitleTracking').value = layoutVal(s,'subtitleTracking'); $('#bulletsTracking').value = layoutVal(s,'bulletsTracking');
   ALL_LAYOUT_FIELDS.forEach(([id, key]) => { $('#'+id).value = layoutVal(s, key); }); // "전체 적용" 슬라이더도 현재 슬롯 값으로 시작점 맞춤
+  refreshAllRangeUI(); // 위에서 .value를 코드로 바꾼 슬라이더들은 input 이벤트가 안 나므로 여기서 한 번에 다시 그림
   highlightCurSlot();
 }
 function highlightCurSlot() {
@@ -518,7 +549,7 @@ ALL_LAYOUT_FIELDS.forEach(([id, key]) => {
   $('#'+id).addEventListener('input', () => {
     const val = +$('#'+id).value;
     slots.forEach(s => { s[key] = val; });
-    $('#'+individualIdFor(id)).value = val; // 현재 슬롯의 개별 슬라이더도 동기화
+    const indiv = $('#'+individualIdFor(id)); indiv.value = val; updateRangeUI(indiv); // 현재 슬롯의 개별 슬라이더도 동기화
     renderAllSlots();
     persistState();
   });
