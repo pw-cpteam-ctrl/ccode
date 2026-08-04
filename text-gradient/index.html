@@ -17,15 +17,21 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Mal
 /* ─── 좌측 패널 ─── */
 .panel{width:380px;min-width:380px;height:100vh;overflow-y:auto;border-right:1px solid var(--ui-border);background:var(--ui-panel);padding:16px 15px 100px;}
 .field{margin-bottom:10px;}
-.field label{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:13px;color:var(--ui-sub);margin-bottom:4px;font-weight:600;}
-.field label .range-val{flex-shrink:0;font-weight:800;color:var(--ui-accent);font-size:12.5px;background:rgba(20,82,192,.1);border-radius:4px;padding:1px 6px;}
+.field label{display:block;font-size:13px;color:var(--ui-sub);margin-bottom:4px;font-weight:600;}
 .field input,.field textarea{width:100%;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:7px 10px;font-size:14.5px;font-family:inherit;color:var(--ui-text);}
-/* 도구 내 모든 range 슬라이더를 "진행률(progress bar)"처럼 현재값까지 채워진 트랙으로 통일 — 채워지는 배경색은 JS가 값 바뀔 때마다 인라인으로 계산해서 넣는다(updateRangeUI) */
-input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:8px;background:var(--ui-border);border-radius:4px;outline:none;cursor:pointer;margin:6px 0;}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:15px;height:15px;border-radius:50%;background:var(--ui-accent);cursor:pointer;border:2px solid #fff;box-shadow:0 0 0 1px var(--ui-border);margin-top:-3.5px;}
-input[type=range]::-moz-range-track{height:8px;background:transparent;border-radius:4px;}
-input[type=range]::-moz-range-progress{height:8px;background:var(--ui-accent);border-radius:4px;}
-input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--ui-accent);border:2px solid #fff;cursor:pointer;}
+/* 도구 내 모든 range 슬라이더를 네온 글로우 진행률(progress bar) 알약 모양으로 통일 —
+   채워지는 부분/글로우는 JS가 값 바뀔 때마다 인라인으로 계산해서 넣고(updateRangeUI),
+   현재값 숫자는 막대 위에 겹쳐서 중앙에 흰 글씨로 표시한다(.range-badge) */
+.range-wrap{position:relative;margin:8px 0;}
+.range-wrap input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;height:26px;border-radius:13px;
+  background:#0b1a2e;border:1px solid rgba(110,190,255,.35);outline:none;cursor:pointer;margin:0;
+  box-shadow:inset 0 2px 5px rgba(0,0,0,.55);
+}
+.range-wrap input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:5px;height:20px;border-radius:3px;background:#fff;cursor:pointer;border:none;box-shadow:0 0 6px #fff,0 0 14px #5fd4ff;}
+.range-wrap input[type=range]::-moz-range-track{height:26px;background:transparent;border:none;}
+.range-wrap input[type=range]::-moz-range-thumb{width:5px;height:20px;border-radius:3px;background:#fff;border:none;cursor:pointer;box-shadow:0 0 6px #fff,0 0 14px #5fd4ff;}
+.range-badge{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#eaf6ff;font-weight:800;font-size:12.5px;letter-spacing:.3px;text-shadow:0 1px 3px rgba(0,0,0,.9);pointer-events:none;}
 .field textarea#inBulkMd{font-family:'SFMono-Regular',Consolas,monospace;font-size:13px;white-space:pre;}
 .row2{display:flex;gap:7px;}.row2 .field{flex:1;min-width:0;}
 .col-divider{flex:0 0 5px;align-self:stretch;margin:0 3px;border-radius:2px;background:var(--ui-border);cursor:col-resize;position:relative;}
@@ -229,20 +235,26 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 <script>
 const $ = s => document.querySelector(s);
 
-/* ── 모든 range 슬라이더 공통 처리: 값 옆에 숫자 표시 + 트랙을 진행률(progress bar)처럼 채움 ──
+/* ── 모든 range 슬라이더 공통 처리: 값을 막대 위에 겹쳐서 중앙에 숫자로 표시 + 네온 글로우 진행률 바로 채움 ──
    개별 슬라이더마다 표시 로직을 따로 안 짜고, 페이지에 있는 input[type=range] 전부에
    한 번에 적용한다. .value를 코드로 바꿔서 넣는 곳(슬롯 전환 등)에서는 input 이벤트가
    저절로 발생하지 않으므로 그런 지점 뒤에서 refreshAllRangeUI()를 한 번 더 불러준다. */
+function ensureRangeWrapped(inp) {
+  if (inp.parentElement.classList.contains('range-wrap')) return inp.parentElement.querySelector('.range-badge');
+  const wrap = document.createElement('div'); wrap.className = 'range-wrap';
+  inp.parentElement.insertBefore(wrap, inp);
+  wrap.appendChild(inp);
+  const badge = document.createElement('span'); badge.className = 'range-badge';
+  wrap.appendChild(badge);
+  return badge;
+}
 function updateRangeUI(inp) {
+  const badge = ensureRangeWrapped(inp);
   const min = +inp.min || 0, max = +inp.max || 100, val = +inp.value;
   const pct = max > min ? ((val - min) / (max - min)) * 100 : 0;
-  inp.style.background = `linear-gradient(to right, var(--ui-accent) ${pct}%, var(--ui-border) ${pct}%)`;
-  const label = inp.parentElement && inp.parentElement.querySelector('label');
-  if (label) {
-    let span = label.querySelector('.range-val');
-    if (!span) { span = document.createElement('span'); span.className = 'range-val'; label.appendChild(span); }
-    span.textContent = val;
-  }
+  inp.style.background = `linear-gradient(to right, #0ea5e9 0%, #38bdf8 ${pct}%, #0b1a2e ${pct}%, #0b1a2e 100%)`;
+  inp.style.boxShadow = `inset 0 2px 5px rgba(0,0,0,.55), 0 0 ${6 + pct / 8}px rgba(56,189,248,${0.25 + pct / 300})`;
+  badge.textContent = val;
 }
 function refreshAllRangeUI() { document.querySelectorAll('input[type=range]').forEach(updateRangeUI); }
 document.addEventListener('input', e => { if (e.target.matches('input[type=range]')) updateRangeUI(e.target); });
