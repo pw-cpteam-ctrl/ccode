@@ -218,7 +218,8 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
   <button onclick="downloadFileListTxt()" style="width:100%;margin-bottom:4px;">유니코드 텍스트로 다운로드</button>
 
   <div class="actions">
-    <button onclick="downloadPng()">PNG 다운로드 (투명)</button>
+    <button onclick="downloadPng()" style="flex:1;">이 슬롯만 다운로드</button>
+    <button onclick="downloadAllPng()" style="flex:1;">전체 슬롯 PNG 다운로드</button>
   </div>
 </div>
 
@@ -662,11 +663,18 @@ function applyGrad(el, s, w, oRaw, c) {
 function safeFileName(s) {
   return (s || '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
 }
-// 슬롯의 제목(titleL | titleR)으로 구분 가능한 파일명을 만들고, 둘 다 비어있으면 slotN으로 대체
+// 불릿 입력창의 첫 줄(마커 -/*/• 제거)만 파일명에 쓴다
+function firstBulletText(bullets) {
+  const lines = (bullets || '').split('\n').map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return '';
+  const m = lines[0].match(/^[-*•]\s*(.*)$/);
+  return m ? m[1] : lines[0];
+}
+// 슬롯의 "타이틀(좌) + 불릿 첫 줄"로 구분 가능한 파일명을 만들고, 둘 다 비어있으면 slotN으로 대체
 function slotFileNameBase(pg) {
   const s = slots[pg - 1];
   if (!s) return `slot${pg}`;
-  const parts = [s.titleL, s.titleR].map(safeFileName).filter(Boolean);
+  const parts = [s.titleL, firstBulletText(s.bullets)].map(safeFileName).filter(Boolean);
   return parts.length ? parts.join('_') : `slot${pg}`;
 }
 async function downloadPng(pg) {
@@ -680,6 +688,13 @@ async function downloadPng(pg) {
     const a = document.createElement('a'); a.download = slotFileNameBase(pg) + '.png'; a.href = dataUrl; a.click();
   } finally {
     el.style.transform = prevTransform;
+  }
+}
+// 슬롯 전체를 순서대로 하나씩 다운로드 — 브라우저가 여러 다운로드를 한 번에 막을 수 있어 슬롯 사이에 약간 텀을 둔다
+async function downloadAllPng() {
+  for (let pg = 1; pg <= slots.length; pg++) {
+    await downloadPng(pg);
+    await new Promise(r => setTimeout(r, 300));
   }
 }
 
