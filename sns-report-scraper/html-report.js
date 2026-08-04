@@ -219,10 +219,17 @@ function renderPlatformSection(platformKey, data, stockComparison) {
       ] : []),
     ].join('');
 
+    // ⚠️ 임베드 마크업을 <template> 안에 넣어두고, 그 행을 펼칠 때만 실제 DOM으로 옮긴다
+    // (tryRenderEmbeds). 인스타그램 위젯의 처리 함수는 트위터와 달리 범위를 지정할 수 없어서
+    // (instgrm.Embeds.process()는 인자가 없음) 호출하면 **페이지 전체**의 임베드를 훑는데,
+    // 그때 접혀 있어 크기가 0인 임베드까지 "처리됨"으로 소진해버려서 나중에 그 행을 펼쳐도
+    // 다시 렌더링되지 않았음(트위터는 widgets.load(row)로 범위를 줄 수 있어 이 문제가 없어서,
+    // "X는 보이는데 인스타만 안 보인다"는 증상이 됨). <template> 안의 내용은 문서에 렌더링되지
+    // 않고 process()의 탐색 대상도 아니므로, 펼친 행의 임베드만 처리되게 만들 수 있다.
     const embedCol = (label, cls, posts) => `
       <div class="embed-col">
         <h4 class="${cls}">${label} (${posts.length})</h4>
-        ${posts.length === 0 ? '<p class="embed-empty">게시물 없음</p>' : posts.map(post => embedBlockquote(platformKey, post)).join('')}
+        ${posts.length === 0 ? '<p class="embed-empty">게시물 없음</p>' : `<div class="embed-mount"></div><template class="embed-src">${posts.map(post => embedBlockquote(platformKey, post)).join('')}</template>`}
       </div>`;
     const embedRow = `<tr class="embed-row" id="${embedRowId}"><td colspan="${headerCells.length}">
       <div class="embed-cols">
@@ -671,8 +678,19 @@ function addFallbackPost(platform) {
 // 되는데 임베드만 안 뜨는" 버그의 원인. widgets.load/Embeds.process는 여러 번 불러도
 // 이미 처리된 임베드는 건드리지 않으므로(멱등) rendered 플래그 없이 열 때마다 시도하고,
 // 스크립트가 아직 안 뜬 경우 잠깐 폴링해서 뜨자마자 처리한다.
+// <template>에 넣어둔 임베드 마크업을 실제 DOM으로 옮김(이 행을 처음 펼칠 때 1회).
+// 이렇게 미루는 이유는 embedCol 주석 참고 — 접힌 행의 임베드가 인스타그램 위젯에 미리
+// 소진되는 것을 막기 위함.
+function mountEmbeds(row) {
+  row.querySelectorAll('template.embed-src').forEach(function (tpl) {
+    var mount = tpl.parentNode.querySelector('.embed-mount');
+    if (mount) mount.innerHTML = tpl.innerHTML;
+    tpl.parentNode.removeChild(tpl);
+  });
+}
 function tryRenderEmbeds(platform, row, attemptsLeft) {
   if (attemptsLeft === undefined) attemptsLeft = 20; // 300ms * 20 = 최대 6초까지 대기
+  mountEmbeds(row); // 스크립트 로드를 기다리는 중에도 링크는 바로 보이도록 먼저 DOM에 올림
   if (platform === 'twitter' && window.twttr && window.twttr.widgets) { window.twttr.widgets.load(row); return; }
   if (platform === 'instagram' && window.instgrm && window.instgrm.Embeds) { window.instgrm.Embeds.process(); return; }
   if (attemptsLeft > 0) setTimeout(function () { tryRenderEmbeds(platform, row, attemptsLeft - 1); }, 300);
