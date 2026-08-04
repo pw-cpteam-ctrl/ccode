@@ -167,7 +167,7 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 .cell img{
   position:absolute;display:block;
   width:100%;height:100%;
-  object-fit:contain;
+  object-fit:cover; /* contain은 종횡비가 안 맞는 사진에서 칸 여백(레터박스)이 생김 — cover는 항상 칸을 꽉 채움 */
   transform-origin:center center;
   pointer-events:none;user-select:none;
 }
@@ -895,8 +895,21 @@ function makeCell(it, ri, pg) {
   return cell;
 }
 
+// cover-fit 여백 방지: object-fit:cover 덕분에 scale=1(최소 배율)일 땐 항상 칸을 꽉
+// 채우지만, 그 상태에서 이동(ox/oy)을 그대로 두면 사진 가장자리가 칸 밖으로 밀려나가
+// 반대편에 빈 배경이 드러난다. transform은 `scale(sc) translate(ox,oy)` 순서라
+// translate가 먼저 적용된 뒤 sc배로 확대되므로, 화면상 실제 이동량은 ox*sc다.
+// 화면상 이동량이 "확대된 만큼 남는 여유(cw*(sc-1))의 절반"을 못 넘게 막으면
+// 사진이 칸 밖으로 안 밀려나 여백이 생기지 않는다 (scale=1일 땐 여유가 0이라 이동 자체가 막힘).
 function applyImgTransform(img, it) {
   const sc = it.scale || 1;
+  const cw = img.offsetWidth, ch = img.offsetHeight;
+  if (cw > 0 && ch > 0) {
+    const maxOx = Math.max(0, cw * (sc - 1) / (2 * sc));
+    const maxOy = Math.max(0, ch * (sc - 1) / (2 * sc));
+    it.ox = Math.max(-maxOx, Math.min(maxOx, it.ox || 0));
+    it.oy = Math.max(-maxOy, Math.min(maxOy, it.oy || 0));
+  }
   const ox = it.ox || 0;
   const oy = it.oy || 0;
   img.style.transform = `scale(${sc}) translate(${ox}px,${oy}px)`;
@@ -949,7 +962,7 @@ function bindCellInteraction(cell, img, it) {
   cell.addEventListener('wheel', e => {
     e.preventDefault();
     const delta = e.deltaY < 0 ? 0.08 : -0.08;
-    it.scale = Math.max(0.5, Math.min(5, (it.scale || 1) + delta));
+    it.scale = Math.max(1, Math.min(5, (it.scale || 1) + delta)); // 1 미만이면 cover-fit 기본 크기보다 작아져 여백이 드러남
     applyImgTransform(img, it);
     saveStateSoon(); // 확대/축소분 저장 (연타 시 마지막 한 번만)
   }, { passive: false });
@@ -973,7 +986,7 @@ function bindCellInteraction(cell, img, it) {
     }
     if (e.touches.length === 2 && lastDist) {
       const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
-      it.scale = Math.max(0.5, Math.min(5, (it.scale||1) * (d/lastDist)));
+      it.scale = Math.max(1, Math.min(5, (it.scale||1) * (d/lastDist))); // 1 미만이면 cover-fit 기본 크기보다 작아져 여백이 드러남
       lastDist = d;
       applyImgTransform(img, it);
     }
