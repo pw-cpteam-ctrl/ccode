@@ -107,6 +107,129 @@ function earliestDatetime(posts) {
   }, null);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 상품 그룹화 (게시물 → "같은 상품" 묶음)
+//
+// ⚠️ 이 부분은 원래 Union-Find(겹치는 키워드 2개 이상이면 연결)였는데, 구조적으로 잘못된
+// 선택이었음. Union-Find는 **단일연결(single-linkage)** — A-B, B-C만 연결돼도 A-C까지
+// 한 그룹이 됨. 그래서 여러 상품을 동시에 언급하는 게시물(월간 신제품 공지, 이벤트/당첨자
+// 발표) 하나가 "다리"가 되면 전혀 무관한 상품들이 사슬처럼 전부 한 덩어리가 됨.
+// (실제 사례: 트위터 "악입문" 행에 7개 프랜차이즈 38건, 인스타는 45건이 한 덩어리)
+//
+// 이때 상용구 단어를 GENERIC_KEYWORDS에 계속 추가하는 방식으로 대응했었는데, 그건 사슬을
+// 만드는 "방아쇠"를 하나씩 뽑는 것일 뿐 사슬 구조 자체는 그대로라서 끝이 없음 — 실제로
+// 인스타는 상용구를 20개 넘게 추가해도 45건에서 거의 줄지 않았음.
+// (같은 진단이 stock-report.js의 matchPwBhStockProducts 주석에도 이미 적혀 있음 — 거기선
+//  재고 상품 1:1 짝짓기라서 "점수 기반 상호 최선 매칭"으로 해결했지만, SNS 게시물은 한
+//  상품에 여러 게시물(원형공개/채색공개/예약시작)이 정상적으로 붙으므로 1:1이 아니라
+//  N:M 그룹이 필요해서 그 방식을 그대로 쓸 수 없음)
+//
+// 그래서 두 가지를 바꿈:
+//  (1) **IDF 가중치** — "상용구"의 정의 자체가 "여러 게시물에 반복 등장하는 말"이므로,
+//      이 배치 안에서의 등장 빈도로 자동 판별한다. 절반 이상 게시물에 나오는 토큰은
+//      가중치 0(사실상 무시), 그 외에는 흔할수록 낮은 가중치. 손으로 목록을 관리하지
+//      않아도 새로운 상용구가 자동으로 걸러짐(GENERIC_KEYWORDS는 배치가 작을 때를 위한
+//      안전망으로 그대로 유지).
+//  (2) **완전연결(complete-linkage) 군집화** — 그룹에 합류하려면 기존 멤버 *전원*과
+//      유사도 기준을 넘겨야 한다. 다상품 공지 게시물이 A와도 B와도 각각 닮아 보여도,
+//      A와 B가 서로 안 닮으면 세 개가 한 그룹이 되지 못하므로 사슬이 원천적으로 불가능.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 두 게시물을 "같은 상품"으로 볼 최소 유사도(가중치 기준 겹침 비율).
+const MIN_PAIR_SCORE = 0.34;
+// 유사도와 별개로, 가중치가 살아있는(=모든 게시물에 나오는 말이 아닌) 토큰이 최소 이만큼은
+// 겹쳐야 함.
+const MIN_SHARED_KEYWORDS = 2;
+
+// 배치 전체의 등장 빈도(document frequency)로 토큰별 가중치를 만듦 — IDF에 하한선을 둔 형태.
+//
+// ⚠️ 여기서 두 번 헛발질했고 둘 다 verify-mock 회귀 테스트가 잡아냈으니 기록해둠:
+//  1) "게시물 절반 이상에 나오면 상용구니까 가중치 0"이라는 비율 하드컷 → 한 상품이 작은
+//     배치의 다수를 차지하면(모의 데이터는 7건 중 5건이 같은 상품) 정작 그 상품 이름이
+//     상용구로 오판돼 매칭이 통째로 실패. 임의의 비율 임계값 자체가 잘못된 발상이었음.
+//  2) 순수 IDF(log(N/df)) → 게시물이 2건뿐인 배치에서는 공유 토큰이 전부 2/2에 등장하므로
+//     log(1)=0, 즉 모든 가중치가 0이 되어 역시 매칭 불가.
+// 그래서 `1 + log(N/df)`로 **하한선 1을 보장**한다. 어떤 토큰도 완전히 0이 되지 않아 작은
+// 배치가 안전하고, 동시에 흔한 토큰(상용구)은 희귀 토큰보다 연속적으로 낮은 가중치를 받아
+// 큰 배치에서 상용구의 영향력이 자동으로 줄어든다.
+function buildTokenWeights(entries) {
+  const df = new Map();
+  entries.forEach(e => new Set(e.keywords).forEach(k => df.set(k, (df.get(k) || 0) + 1)));
+  const total = entries.length;
+  const weights = new Map();
+  df.forEach((count, token) => weights.set(token, 1 + Math.log(total / count)));
+  return weights;
+}
+
+function weightSum(keywords, weights) {
+  return keywords.reduce((sum, k) => sum + (weights.get(k) || 0), 0);
+}
+
+// 두 게시물의 유사도: 겹친 토큰의 가중치 합 / 양쪽 가중치 합 중 큰 쪽.
+// 분모가 "큰 쪽"이라, 키워드가 잔뜩 붙은 게시물(다상품 공지 등)이 짧은 게시물과 일부만
+// 겹쳐서 우연히 붙는 것을 억제함(stock-report.js의 점수 계산과 같은 방침).
+function pairScore(a, b, weights) {
+  if (a.line !== b.line) return 0; // 상품 라인이 다르면 같은 상품일 수 없음(null↔라인도 금지)
+  const shared = a.keywords.filter(k => b.keywords.includes(k) && (weights.get(k) || 0) > 0);
+  if (shared.length < MIN_SHARED_KEYWORDS) return 0;
+  const denom = Math.max(weightSum(a.keywords, weights), weightSum(b.keywords, weights));
+  if (denom <= 0) return 0;
+  return weightSum(shared, weights) / denom;
+}
+
+/**
+ * 게시물 목록을 "같은 상품" 그룹으로 묶음(완전연결 군집화).
+ * 점수가 높은 쌍부터 순서대로 병합하되, 두 그룹의 모든 교차 쌍이 기준을 넘을 때만 병합 —
+ * 한 쌍만 닮았다고 두 그룹이 합쳐지는 사슬(single-linkage) 문제를 구조적으로 차단.
+ *
+ * @param {Array<{side:string, post:object, title:?string, keywords:string[], line:?string}>} entries
+ * @returns {Map<number, Array>} 그룹 대표 인덱스 → 그룹 멤버 배열
+ */
+function clusterEntriesByProduct(entries) {
+  const weights = buildTokenWeights(entries);
+  const candidates = [];
+  for (let i = 0; i < entries.length; i++) {
+    if (entries[i].keywords.length === 0) continue;
+    for (let j = i + 1; j < entries.length; j++) {
+      if (entries[j].keywords.length === 0) continue;
+      const score = pairScore(entries[i], entries[j], weights);
+      if (score >= MIN_PAIR_SCORE) candidates.push({ i, j, score });
+    }
+  }
+  // 점수 높은 쌍부터 병합(동점이면 인덱스 순 — 실행마다 결과가 달라지지 않게 결정적으로).
+  candidates.sort((a, b) => b.score - a.score || a.i - b.i || a.j - b.j);
+
+  const scoreOf = new Map(candidates.map(c => [`${c.i}:${c.j}`, c.score]));
+  const linked = (x, y) => (scoreOf.get(x < y ? `${x}:${y}` : `${y}:${x}`) || 0) >= MIN_PAIR_SCORE;
+
+  // 그룹 = 인덱스 배열. 처음엔 키워드가 있는 게시물마다 1인 그룹으로 시작.
+  const groupOf = new Map(); // entry index -> group id
+  const members = new Map(); // group id -> [entry index]
+  entries.forEach((e, i) => {
+    if (e.keywords.length === 0) return;
+    groupOf.set(i, i);
+    members.set(i, [i]);
+  });
+
+  for (const { i, j } of candidates) {
+    const gi = groupOf.get(i);
+    const gj = groupOf.get(j);
+    if (gi === undefined || gj === undefined || gi === gj) continue;
+    const mi = members.get(gi);
+    const mj = members.get(gj);
+    // 완전연결 조건: 두 그룹의 모든 교차 쌍이 기준을 넘어야 병합
+    const allLinked = mi.every(a => mj.every(b => linked(a, b)));
+    if (!allLinked) continue;
+    mj.forEach(b => groupOf.set(b, gi));
+    members.set(gi, mi.concat(mj));
+    members.delete(gj);
+  }
+
+  const groups = new Map();
+  members.forEach((idxs, gid) => groups.set(gid, idxs.map(i => entries[i])));
+  return groups;
+}
+
 /**
  * 자사/경쟁사 게시물을 상품명(본문 템플릿 위치 기반 추출) 기준으로 매칭해서
  * "상품별" 비교표를 만듦(한 상품 = 한 행, PW/BH 값이 나란히). 자사는 첫 줄, 경쟁사는
@@ -162,37 +285,7 @@ function buildProductComparison(ownPosts, competitorPosts, fields, textField, di
     line: detectProductLine(e.post[textField]),
   }));
 
-  // Union-Find: 키워드가 **2개 이상** 겹치고 **감지된 상품 라인이 정확히 같아야**(둘 다
-  // null인 경우도 "같음"으로 취급) 같은 상품 그룹으로 묶음.
-  // - 키워드 1개만 겹쳐도 매칭시켰을 때, 상용구 제외 목록에 없는 단어 하나(예: "SET", "버전")가
-  //   우연히 겹치는 것만으로 서로 다른 프랜차이즈가 사슬처럼 전부 연결되는 문제가 있었음
-  //   → 2개 이상 요구.
-  // - 라인 조건이 "둘 중 하나라도 null이면 통과"였을 때, 라인이 감지 안 된 게시물 하나가
-  //   다리 역할을 해서 룩업/스케일/컬렉션처럼 서로 다른 라인 그룹이 전이적으로(Union-Find라
-  //   A-B, B-C만 연결돼도 A-C까지 한 그룹이 됨) 다시 합쳐지는 문제가 있었음 → **정확히
-  //   같은 라인끼리만** 묶도록 강화(null↔다른 라인 연결도 금지).
-  const MIN_SHARED_KEYWORDS = 2;
-  const parent = entries.map((_, i) => i);
-  function find(i) { return parent[i] === i ? i : (parent[i] = find(parent[i])); }
-  function union(i, j) { const a = find(i), b = find(j); if (a !== b) parent[a] = b; }
-
-  for (let i = 0; i < entries.length; i++) {
-    if (entries[i].keywords.length === 0) continue;
-    for (let j = i + 1; j < entries.length; j++) {
-      if (entries[j].keywords.length === 0) continue;
-      if (entries[i].line !== entries[j].line) continue;
-      const overlap = entries[i].keywords.filter(k => entries[j].keywords.includes(k));
-      if (overlap.length >= MIN_SHARED_KEYWORDS) union(i, j);
-    }
-  }
-
-  const groups = new Map();
-  entries.forEach((e, i) => {
-    if (e.keywords.length === 0) return; // 상품명을 못 뽑았으면 그룹화 대상 아님(매칭 안 됨으로)
-    const root = find(i);
-    if (!groups.has(root)) groups.set(root, []);
-    groups.get(root).push(e);
-  });
+  const groups = clusterEntriesByProduct(entries);
 
   const matchedPosts = new Set();
   const products = [...manualProducts];
