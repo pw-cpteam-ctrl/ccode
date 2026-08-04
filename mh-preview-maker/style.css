@@ -168,9 +168,6 @@ details.logos summary{font-size:11px;color:var(--ui-sub);cursor:pointer;padding:
 .cell .ci{position:absolute;inset:0;overflow:hidden;}
 .cell img{
   position:absolute;display:block;
-  width:100%;height:100%;
-  object-fit:cover;
-  transform-origin:center center;
   pointer-events:none;user-select:none;
 }
 .cell .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:14px;}

@@ -480,9 +480,11 @@ function makeCell(it, ri, boardId) {
 
   if (it.src) {
     const img = document.createElement('img');
-    img.src = it.src;
     img.draggable = false;
-    applyImgTransform(img, it);
+    img.onload = () => applyImgTransform(img, it);
+    img.src = it.src;
+    // 브라우저 캐시로 이미 complete 상태이면 onload가 안 오므로 즉시 계산
+    if (img.complete && img.naturalWidth) applyImgTransform(img, it);
     if (it.blur) {
       const bgImg = document.createElement('img');
       bgImg.src = it.src;
@@ -545,82 +547,85 @@ function makeCell(it, ri, boardId) {
   return cell;
 }
 
+// object-fit을 쓰지 않는 이유: object-fit:cover는 칸 크기 기준으로 이미지를 미리 크롭해서
+// 렌더링하므로, 그 위에 CSS transform을 얹어도 크롭된 부분은 이미 화면에 없어 드래그로
+// 복구 불가. 대신 naturalWidth/Height 기준으로 width/height/left/top을 JS로 직접 계산.
+const SLOP = 1.003; // 반올림 오차로 생기는 1px 미만 틈 제거용
 function applyImgTransform(img, it) {
-  const sc = it.scale || 1;
-  const ox = it.ox || 0;
-  const oy = it.oy || 0;
-  img.style.transform = `scale(${sc}) translate(${ox}px,${oy}px)`;
-}
-
-// cover-fit 클램프: scale(s)·object-fit:cover 기준으로 ox/oy가 셀 밖을 드러내지 못하게 잡음
-// 수식: visual 이동량 = ox*s, 허용 범위 = (cellSize*(s-1)/2) → ox ≤ cellSize/2*(1-1/s)
-function clampCoverOffset(it, cellEl) {
-  const s = it.scale || 1;
-  const maxOx = (cellEl.offsetWidth  || 1) / 2 * (1 - 1 / s);
-  const maxOy = (cellEl.offsetHeight || 1) / 2 * (1 - 1 / s);
+  const ci = img.closest('.ci');
+  const cw = ci ? ci.clientWidth : 0;
+  const ch = ci ? ci.clientHeight : 0;
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  if (!cw || !ch || !iw || !ih) return;
+  const baseScale = Math.max(cw / iw, ch / ih) * SLOP;
+  const eff = baseScale * (it.scale || 1);
+  const dw = iw * eff, dh = ih * eff;
+  const maxOx = Math.max(0, (dw - cw) / 2);
+  const maxOy = Math.max(0, (dh - ch) / 2);
   it.ox = Math.max(-maxOx, Math.min(maxOx, it.ox || 0));
   it.oy = Math.max(-maxOy, Math.min(maxOy, it.oy || 0));
+  img.style.width  = dw + 'px';
+  img.style.height = dh + 'px';
+  img.style.left   = ((cw - dw) / 2 + it.ox) + 'px';
+  img.style.top    = ((ch - dh) / 2 + it.oy) + 'px';
 }
 
-function bindCellInteraction(cell, img, it) {
-  let dragging = false, sx = 0, sy = 0, sox = 0, soy = 0;
+// window 리스너는 전역 1벌만 — 셀마다 등록하면 리스너가 쌓임
+let _cellDrag = null;
+window.addEventListener('mousemove', e => {
+  if (!_cellDrag) return;
+  const { img, it, cell, sx, sy, sox, soy } = _cellDrag;
+  it.ox = sox + (e.clientX - sx);
+  it.oy = soy + (e.clientY - sy);
+  applyImgTransform(img, it);
+});
+window.addEventListener('mouseup', e => {
+  if (!_cellDrag) return;
+  const { cell, sx, sy } = _cellDrag;
+  const moved = Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy);
+  cell.classList.remove('editing');
+  _cellDrag = null;
+  if (moved < 6) {
+    const span = cell.querySelector('.name-text');
+    if (span) { span.contentEditable = 'true'; span.focus(); }
+  }
+});
 
+function bindCellInteraction(cell, img, it) {
   cell.addEventListener('mousedown', e => {
     if (e.target.classList.contains('name-text') || e.target.classList.contains('reprint-badge')) return;
     e.preventDefault();
-    dragging = true;
-    sx = e.clientX; sy = e.clientY;
-    sox = it.ox || 0; soy = it.oy || 0;
     cell.classList.add('editing');
-  });
-  window.addEventListener('mousemove', e => {
-    if (!dragging) return;
-    const dx = (e.clientX - sx) / (it.scale || 1);
-    const dy = (e.clientY - sy) / (it.scale || 1);
-    it.ox = sox + dx; it.oy = soy + dy;
-    clampCoverOffset(it, cell);
-    applyImgTransform(img, it);
-  });
-  window.addEventListener('mouseup', e => {
-    if (!dragging) return;
-    const moved = Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy);
-    dragging = false; cell.classList.remove('editing');
-    if (moved < 6) {
-      const span = cell.querySelector('.name-text');
-      if (span) { span.contentEditable='true'; span.focus(); }
-    }
+    _cellDrag = { img, it, cell, sx: e.clientX, sy: e.clientY, sox: it.ox || 0, soy: it.oy || 0 };
   });
 
   cell.addEventListener('wheel', e => {
     e.preventDefault();
     const delta = e.deltaY < 0 ? 0.08 : -0.08;
     it.scale = Math.max(1, Math.min(5, (it.scale || 1) + delta));
-    clampCoverOffset(it, cell);
     applyImgTransform(img, it);
   }, { passive: false });
 
   let lastDist = null, t0 = null;
   cell.addEventListener('touchstart', e => {
     if (e.touches.length === 1) {
-      t0 = { x: e.touches[0].clientX, y: e.touches[0].clientY, ox: it.ox||0, oy: it.oy||0 };
+      t0 = { x: e.touches[0].clientX, y: e.touches[0].clientY, ox: it.ox || 0, oy: it.oy || 0 };
     }
     if (e.touches.length === 2) {
-      lastDist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+      lastDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
     }
   }, { passive: true });
   cell.addEventListener('touchmove', e => {
     e.preventDefault();
     if (e.touches.length === 1 && t0) {
-      it.ox = t0.ox + (e.touches[0].clientX - t0.x) / (it.scale||1);
-      it.oy = t0.oy + (e.touches[0].clientY - t0.y) / (it.scale||1);
-      clampCoverOffset(it, cell);
+      it.ox = t0.ox + (e.touches[0].clientX - t0.x);
+      it.oy = t0.oy + (e.touches[0].clientY - t0.y);
       applyImgTransform(img, it);
     }
     if (e.touches.length === 2 && lastDist) {
-      const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
-      it.scale = Math.max(1, Math.min(5, (it.scale||1) * (d/lastDist)));
+      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      it.scale = Math.max(1, Math.min(5, (it.scale || 1) * (d / lastDist)));
       lastDist = d;
-      clampCoverOffset(it, cell);
       applyImgTransform(img, it);
     }
   }, { passive: false });
