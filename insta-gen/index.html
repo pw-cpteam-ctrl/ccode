@@ -122,7 +122,7 @@
   .igcrop-grid { display:flex; flex-wrap:wrap; gap:16px; margin-top:16px; }
   .igcrop-item { width:160px; }
   .igcrop-canvaswrap { position:relative; }
-  .igcrop-item canvas { width:160px; height:200px; border-radius:10px; cursor:pointer; display:block; background:#1a1a1a; box-shadow:0 2px 10px rgba(0,0,0,.14); }
+  .igcrop-item canvas { width:160px; height:200px; border-radius:10px; cursor:pointer; display:block; background:#ffffff; border:1px solid var(--line); box-shadow:0 2px 10px rgba(0,0,0,.14); }
   .igcrop-del { position:absolute; top:5px; right:5px; width:19px; height:19px; border-radius:50%; background:rgba(0,0,0,.62); color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; cursor:pointer; }
   .igcrop-del:hover { background:var(--danger); }
   .igcrop-name { font-size:11px; color:var(--muted); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -133,7 +133,7 @@
   .igcrop-modal { position:fixed; inset:0; background:rgba(10,10,12,.72); display:none; align-items:center; justify-content:center; z-index:10000; padding:20px; }
   .igcrop-modal.show { display:flex; }
   .igcrop-modal-inner { background:#161616; padding:18px; border-radius:16px; display:flex; flex-direction:column; align-items:center; gap:10px; max-width:92vw; }
-  .igcrop-modal-inner canvas { max-width:min(72vw, 480px); max-height:70vh; width:auto; height:auto; border-radius:10px; cursor:grab; touch-action:none; background:#1a1a1a; }
+  .igcrop-modal-inner canvas { max-width:min(72vw, 480px); max-height:70vh; width:auto; height:auto; border-radius:10px; cursor:grab; touch-action:none; background:#ffffff; border:1px solid var(--line); }
   .igcrop-modal-inner canvas:active { cursor:grabbing; }
   .igcrop-modal-hint { font-size:12px; color:#9a9a9a; }
   .igcrop-modal-btns { display:flex; gap:8px; width:100%; }
@@ -368,7 +368,7 @@
   <div class="igcrop-modal" id="igcropModal">
     <div class="igcrop-modal-inner">
       <canvas id="igcropModalCanvas" width="480" height="600"></canvas>
-      <div class="igcrop-modal-hint">드래그로 위치 이동 · 마우스 휠로 확대/축소</div>
+      <div class="igcrop-modal-hint">드래그로 위치 이동 · 휠로 확대/축소 · Shift+휠: 사진 전체 보기(흰 여백 생김)</div>
       <div class="igcrop-modal-btns">
         <button class="btn2" id="igcropModalDownload">다운로드</button>
         <button class="btn2" id="igcropModalClose">닫기</button>
@@ -1096,11 +1096,15 @@ function restoreSlot(s){
   // 미리보기(썸네일/모달)와 실제 다운로드 둘 다 이 함수 하나로 그려서 결과가 어긋나지 않게 함
   function drawItem(item, ctx2d, W, H){
     ctx2d.clearRect(0,0,W,H);
-    ctx2d.fillStyle = '#1a1a1a'; ctx2d.fillRect(0,0,W,H);
+    ctx2d.fillStyle = '#ffffff'; ctx2d.fillRect(0,0,W,H); // 여백은 흰 배경(피규어 머리/양옆 잘림 방지용 축소 시 보임)
     const pw = item.img.naturalWidth||item.img.width, ph = item.img.naturalHeight||item.img.height;
     const { dw, dh, dx, dy } = coverCropRect(pw, ph, W, H, item.focusX, item.focusY, item.zoom);
     ctx2d.imageSmoothingEnabled = true; ctx2d.imageSmoothingQuality = 'high';
     ctx2d.drawImage(item.img, dx, dy, dw, dh);
+  }
+  // 사진마다 "전체가 다 보이는" 최소 줌(컨테인 스케일) — Shift+휠일 때만 이 아래까지 허용
+  function containMinZoom(pw, ph){
+    return Math.min(EXPORT_W/pw, EXPORT_H/ph) / (Math.max(EXPORT_W/pw, EXPORT_H/ph) * SLOP);
   }
   function renderThumb(item){ drawItem(item, item.ctx, THUMB_W, THUMB_H); }
   function renderModal(){ if(openItem) drawItem(openItem, modalCtx, MODAL_W, MODAL_H); }
@@ -1218,7 +1222,12 @@ function restoreSlot(s){
   modalCanvas.addEventListener('wheel', e=>{
     if(!openItem) return;
     e.preventDefault();
-    openItem.zoom = Math.max(1, Math.min(4, openItem.zoom*(e.deltaY<0?1.08:0.92)));
+    // 평소 휠은 최소 1배(=빈틈 없이 꽉 채움, 기존과 동일)까지만 축소.
+    // Shift를 누른 채 휠을 돌리면 그 사진의 "전체가 다 보이는" 지점까지 더 축소 허용 —
+    // 이때는 흰 여백(레터박스)이 생기는 걸 사용자가 의도적으로 선택한 것으로 간주.
+    const pw = openItem.img.naturalWidth||openItem.img.width, ph = openItem.img.naturalHeight||openItem.img.height;
+    const minZoom = e.shiftKey ? containMinZoom(pw, ph) : 1;
+    openItem.zoom = Math.max(minZoom, Math.min(4, openItem.zoom*(e.deltaY<0?1.08:0.92)));
     renderModal();
   }, {passive:false});
 

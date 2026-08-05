@@ -67,7 +67,7 @@ function coverCropRect(pw, ph, W, H, focusX, focusY, zoom) {
  *                       사용자가 더 확대했을 때 그 값을 그대로 넘기면 미리보기와 동일하게 잘림
  * @param opts.type      'image/png'(기본) | 'image/jpeg' | 'image/webp'
  * @param opts.quality   jpeg/webp 품질 0~1 (기본 0.92)
- * @param opts.backdrop  혹시 남는 픽셀에 깔 색 (기본 '#1a1a1a')
+ * @param opts.backdrop  혹시 남는 픽셀에 깔 색 (기본 '#ffffff')
  * @returns {Promise<Blob>}
  */
 async function cropToInstagram(source, opts) {
@@ -90,7 +90,7 @@ async function cropToInstagram(source, opts) {
   ctx.imageSmoothingQuality = 'high'; // 원본이 작아서 확대될 때 최대한 부드럽게
   // 이중 안전장치 — 위 SLOP으로 웬만한 틈은 없어지지만, 혹시 남더라도
   // 투명(캔버스 기본값)이 아니라 이 색으로 보이게 한다.
-  ctx.fillStyle = opts.backdrop || '#1a1a1a';
+  ctx.fillStyle = opts.backdrop || '#ffffff';
   ctx.fillRect(0, 0, W, H);
 
   const { dw, dh, dx, dy } = coverCropRect(pw, ph, W, H, fx, fy, opts.zoom);
