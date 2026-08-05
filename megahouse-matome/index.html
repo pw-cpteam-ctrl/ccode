@@ -351,9 +351,11 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
       <div class="field"><label>스토어명 크기</label><input type="range" id="ohStoreSize" min="12" max="60" value="34" oninput="syncOpenHeader()"/></div>
       <div class="field"><label>박스 투명도</label><input type="range" id="ohBoxOpacity" min="0" max="100" value="40" oninput="applyOhBox();saveState()"/></div>
     </div>
-    <div class="row2">
-      <div class="field"><label>그라데이션 농도</label><input type="range" id="ohGradOpacity" min="0" max="100" value="60" oninput="syncOhGrad()"/></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
+      <div class="field"><label>그라데이션 시작점</label><input type="range" id="ohGradStart" min="0" max="90" value="0" oninput="syncOhGrad()"/></div>
       <div class="field"><label>그라데이션 퍼짐</label><input type="range" id="ohGradSpread" min="10" max="90" value="60" oninput="syncOhGrad()"/></div>
+      <div class="field"><label>그라데이션 농도</label><input type="range" id="ohGradOpacity" min="0" max="100" value="60" oninput="syncOhGrad()"/></div>
+      <div class="field"><label>그라데이션 압축</label><input type="range" id="ohGradCompress" min="0" max="60" value="0" oninput="syncOhGrad()"/></div>
     </div>
     <div class="sec">재판 배지</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:4px">
@@ -911,8 +913,14 @@ function applyImgTransform(img, it) {
   const dw = iw * eff, dh = ih * eff;
   const maxOx = Math.max(0, (dw - cw) / 2);
   const maxOy = Math.max(0, (dh - ch) / 2);
+  // 이름표(.name)가 있는 칸은 그 영역이 어차피 이름표의 짙은 그라데이션(88% 검정)에
+  // 덮여 있어서, 위로만(=이름표에 가려진 사진 아랫부분을 드러내는 방향) 이름표
+  // 높이만큼 더 당길 수 있게 허용해도 실제로는 안 보임. 아래로 미는 방향(위쪽에
+  // 여백 생김)은 가려줄 게 없으므로 그대로 대칭 제한 유지
+  const nameEl = cell.querySelector(':scope > .name');
+  const upExtra = nameEl ? nameEl.clientHeight : 0;
   it.ox = Math.max(-maxOx, Math.min(maxOx, it.ox || 0));
-  it.oy = Math.max(-maxOy, Math.min(maxOy, it.oy || 0));
+  it.oy = Math.max(-(maxOy + upExtra), Math.min(maxOy, it.oy || 0));
   img.style.width = dw + 'px';
   img.style.height = dh + 'px';
   img.style.left = ((cw - dw) / 2 + it.ox) + 'px';
@@ -1490,9 +1498,15 @@ function toggleOhBox() {
   saveState();
 }
 function syncOhGrad() {
+  const s = +($('#ohGradStart') ? $('#ohGradStart').value : 0);
+  const spreadRaw = +($('#ohGradSpread') ? $('#ohGradSpread').value : 60);
   const op = ($('#ohGradOpacity') ? +$('#ohGradOpacity').value : 60) / 100;
-  const spread = $('#ohGradSpread') ? $('#ohGradSpread').value : '60';
-  const bg = `linear-gradient(to bottom, rgba(0,0,0,${op}) 0%, rgba(0,0,0,${(op*0.6).toFixed(3)}) ${spread}%, rgba(0,0,0,0) 100%)`;
+  const c = +($('#ohGradCompress') ? $('#ohGradCompress').value : 0);
+  // 압축: 퍼짐 구간을 좁혀서 더 급격하게(압축되게) 진하기가 바뀌게 함
+  const spread = Math.max(5, spreadRaw * (1 - c / 100));
+  const mid = Math.min(100, s + spread * 0.5);
+  const end = Math.min(100, s + spread);
+  const bg = `linear-gradient(to bottom, rgba(0,0,0,${op}) 0%, rgba(0,0,0,${op}) ${s}%, rgba(0,0,0,${(op*0.6).toFixed(3)}) ${mid}%, rgba(0,0,0,0) ${end}%)`;
   document.querySelectorAll('.p-hd-open').forEach(el => el.style.background = bg);
   if (_bootDone) saveState();
 }
@@ -1982,8 +1996,10 @@ function buildState() {
       ohTitleFontWeight: $('#ohTitleFontWeight') ? $('#ohTitleFontWeight').value : '900',
       ohBoxWhite,
       ohBoxOpacity: $('#ohBoxOpacity') ? $('#ohBoxOpacity').value : '40',
+      ohGradStart: $('#ohGradStart') ? $('#ohGradStart').value : '0',
       ohGradOpacity: $('#ohGradOpacity') ? $('#ohGradOpacity').value : '60',
       ohGradSpread: $('#ohGradSpread') ? $('#ohGradSpread').value : '60',
+      ohGradCompress: $('#ohGradCompress') ? $('#ohGradCompress').value : '0',
     };
 }
 
@@ -2070,8 +2086,10 @@ async function loadState() {
     if (st.ohOn && $('#chkOpenHeader')) $('#chkOpenHeader').checked = true;
     if (st.ohBoxWhite) ohBoxWhite = true;
     if (st.ohBoxOpacity && $('#ohBoxOpacity')) $('#ohBoxOpacity').value = st.ohBoxOpacity;
+    if (st.ohGradStart != null && $('#ohGradStart')) $('#ohGradStart').value = st.ohGradStart;
     if (st.ohGradOpacity && $('#ohGradOpacity')) $('#ohGradOpacity').value = st.ohGradOpacity;
     if (st.ohGradSpread && $('#ohGradSpread')) $('#ohGradSpread').value = st.ohGradSpread;
+    if (st.ohGradCompress != null && $('#ohGradCompress')) $('#ohGradCompress').value = st.ohGradCompress;
     toggleOpenHeader();
     syncOpenHeader();
     applyOhBox();
