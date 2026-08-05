@@ -79,6 +79,9 @@ button:disabled{opacity:.4;cursor:default;}
 .fillable-cell.range-hl select,.fillable-cell.range-hl input{background:#eef3ff;}
 .fill-handle{position:absolute;right:-4px;bottom:-4px;width:8px;height:8px;background:#4a7cff;border:1px solid #fff;cursor:crosshair;display:none;z-index:2;}
 .fillable-cell.selected .fill-handle{display:block;}
+.delThumbBtn{position:absolute;top:2px;right:26px;font-size:10px;line-height:1;padding:3px 5px;border-radius:4px;
+  border:1px solid #e05d5d;background:#fff;color:#b33;opacity:.85;z-index:3;cursor:pointer;font-weight:700;}
+.delThumbBtn:hover{opacity:1;background:#ffe9e9;}
 .badgeToggle{position:absolute;top:2px;right:2px;font-size:10px;line-height:1;padding:3px 5px;border-radius:4px;border:1px solid #ccc4b4;background:#fff;opacity:.85;z-index:3;cursor:pointer;}
 .badgeToggle:hover{opacity:1;}
 .downloadBtn{position:absolute;bottom:2px;right:2px;font-size:10px;line-height:1;padding:3px 5px;border-radius:4px;border:1px solid #ccc4b4;background:#fff;opacity:.85;z-index:3;cursor:pointer;}
@@ -165,6 +168,7 @@ button:disabled{opacity:.4;cursor:default;}
     <b id="selCount"></b>
     <select id="selOverlaySel"><option value="__ph__">투명 이미지 일괄 배정 ▾</option></select>
     <button id="btnSelBadgeFlip">뱃지 좌우 전환</button>
+    <button id="btnSelDelete" style="background:#fff0f0;border-color:#e05d5d;color:#b33;">선택 삭제</button>
     <button id="btnSelClear">선택 해제</button>
   </div>
   <div class="previewToolbar">
@@ -192,7 +196,7 @@ button:disabled{opacity:.4;cursor:default;}
       <button id="btnSelAll" style="font-size:11px;padding:4px 8px;">전체 선택</button>
       <button id="btnSelUnassigned" style="font-size:11px;padding:4px 8px;">투명 미배정만 선택</button>
       <button id="btnStripFrames" style="font-size:11px;padding:4px 8px;">★ 대표만 남기고 나머지 투명 제목 빼기</button>
-      <button id="btnUndoStrip" style="font-size:11px;padding:4px 8px;display:none;">되돌리기</button>
+      <button id="btnUndoAction" style="font-size:11px;padding:4px 8px;display:none;">↩ 되돌리기</button>
     </span>
   </div>
   <div id="grid"></div>
@@ -709,11 +713,34 @@ function setMainPhoto(it){
   saveMetaToCache(); // 대표 지정은 디바운스 없이 바로 저장 (직후 새로고침해도 안 날아가게)
   log(`"${folder || '(폴더 없음)'}" 대표 사진을 ${it.photoName} 으로 지정`);
 }
-// 대표 외에서 투명 제목 빼기 — 되돌리기 함수를 돌려준다
-let _undoStrip = null;
+// ---------- 되돌리기 (삭제·제목빼기 공용, 마지막 1회) ----------
+// 버튼을 기능마다 따로 두면 화면이 복잡해지므로 하나로 합치고, 무엇을 되돌리는지 버튼에 적어준다
+let _lastUndo = null;
+function setUndo(label, fn){
+  _lastUndo = fn;
+  const b = $('#btnUndoAction');
+  b.textContent = '↩ 되돌리기: ' + label;
+  b.style.display = '';
+}
+function clearUndo(){
+  _lastUndo = null;
+  const b = $('#btnUndoAction');
+  if (b) b.style.display = 'none';
+}
+$('#btnUndoAction').addEventListener('click', () => {
+  if (!_lastUndo) return;
+  const fn = _lastUndo;
+  clearUndo();
+  fn();
+});
+// 사진 목록 자체가 바뀌면 예전 되돌리기는 다른 사진을 가리키게 되므로 버린다
+function invalidateStripUndo(){ clearUndo(); }
+
+// 대표 외에서 투명 제목 빼기
 $('#btnStripFrames').addEventListener('click', () => {
   normalizeMains();
   const before = items.map(it => !!it.noFrame);
+  const snapshot = items.slice();   // 되돌릴 때 사진 순서가 바뀌어 있어도 맞게 되돌리려고 목록도 기억
   let changed = 0;
   items.forEach(it => {
     const want = !it.isMain;
@@ -723,24 +750,62 @@ $('#btnStripFrames').addEventListener('click', () => {
   normalizeMains();
   renderGrid();
   saveMetaToCache();
-  _undoStrip = () => {
-    items.forEach((it, i) => { it.noFrame = before[i]; });
+  if (changed) setUndo(`제목 ${changed}장 빼기`, () => {
+    snapshot.forEach((it, i) => { it.noFrame = before[i]; });
     normalizeMains();
     renderGrid();
     saveMetaToCache();
-    $('#btnUndoStrip').style.display = 'none';
     log('되돌렸어');
-  };
-  $('#btnUndoStrip').style.display = changed ? '' : 'none';
+  }); else clearUndo();
   log(`대표 ${foldersInOrder().length}장만 제목을 남기고 ${changed}장 변경 — 투명 배정값은 그대로 있으니 되돌리기 가능`);
 });
-$('#btnUndoStrip').addEventListener('click', () => { if (_undoStrip) _undoStrip(); });
-// 사진 목록 자체가 바뀌면 예전 되돌리기는 다른 사진을 가리키게 되므로 버린다
-function invalidateStripUndo(){
-  _undoStrip = null;
-  const b = $('#btnUndoStrip');
-  if (b) b.style.display = 'none';
+
+// ---------- 아트보드 삭제 ----------
+// 지운 사진은 되돌리기로 되살릴 수 있게 원래 위치까지 기억해둔다 (사진 데이터는 메모리에 그대로 있음)
+function deleteItems(list){
+  if (!list || !list.length) return;
+  const del = new Set(list);
+  const removed = list.map(it => ({ it, idx: items.indexOf(it) }))
+                      .filter(x => x.idx >= 0)
+                      .sort((a, b) => a.idx - b.idx);
+  if (!removed.length) return;
+
+  // 대표를 지우는 경우 같은 폴더의 이웃(뒤쪽 우선, 없으면 앞쪽)이 대표를 이어받는다
+  for (const { it, idx } of removed) {
+    if (!it.isMain) continue;
+    const survivors = items.filter(o => (o.folder || '') === (it.folder || '') && !del.has(o));
+    if (!survivors.length) continue;
+    const next = survivors.find(o => items.indexOf(o) > idx) || survivors[survivors.length - 1];
+    next.isMain = true;
+  }
+
+  items = items.filter(o => !del.has(o));
+  clearSelection();
+  normalizeMains();
+  renderGrid();
+  renderMatchListTable();
+  saveMetaToCache();
+  saveFilesToCache();
+
+  setUndo(`사진 ${removed.length}장 삭제`, () => {
+    // 작은 번호부터 되돌려 끼우면 원래 자리에 정확히 들어간다
+    for (const { it, idx } of removed) items.splice(Math.min(idx, items.length), 0, it);
+    clearSelection();
+    normalizeMains();
+    renderGrid();
+    renderMatchListTable();
+    saveMetaToCache();
+    saveFilesToCache();
+    log(`사진 ${removed.length}장 되살렸어`);
+  });
+  log(`사진 ${removed.length}장 삭제 (되돌리기 가능) — 남은 ${items.length}장`);
 }
+$('#btnSelDelete').addEventListener('click', () => {
+  const list = selectedItems();
+  if (!list.length) return;
+  if (list.length > 1 && !confirm(`선택한 ${list.length}장을 목록에서 지울까요? (되돌리기 가능)`)) return;
+  deleteItems(list);
+});
 
 let _folderPickAppendMode = false;
 // 파일 선택창을 열기 직전에 input 값을 비우는 게 중요하다 — 안 비우면 "같은 폴더를 다시 고를 때"
@@ -1524,6 +1589,14 @@ function renderGrid(){
       refreshThumb(it);
       saveMetaSoon();
     });
+    // 이 사진만 목록에서 지우기 — 되돌리기로 되살릴 수 있다
+    const delBtn = document.createElement('button');
+    delBtn.className = 'delThumbBtn';
+    delBtn.type = 'button';
+    delBtn.textContent = '✕';
+    delBtn.title = '이 사진을 목록에서 지우기 (되돌리기 가능)';
+    delBtn.addEventListener('mousedown', e => e.stopPropagation());
+    delBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteItems([it]); });
     const downloadBtn = document.createElement('button');
     downloadBtn.className = 'downloadBtn';
     downloadBtn.type = 'button';
@@ -1569,6 +1642,7 @@ function renderGrid(){
     cvWrap.className = 'thumbCv';
     cvWrap.appendChild(canvas);
     cvWrap.appendChild(badgeToggle);
+    cvWrap.appendChild(delBtn);
     cvWrap.appendChild(downloadBtn);
     cvWrap.appendChild(selChk);
     // 대표 사진 표시 — 폴더마다 한 장. 누르면 그 폴더 대표가 되고 제목이 다시 켜진다
