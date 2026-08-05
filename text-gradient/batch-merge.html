@@ -21,7 +21,9 @@ button{font-size:13px;padding:8px 16px;border-radius:8px;border:1px solid #ccc4b
 button.primary{background:#252018;color:#fff;border-color:#252018;}
 button:disabled{opacity:.4;cursor:default;}
 .previewToolbar{font-size:12px;color:#555;margin-bottom:10px;display:flex;align-items:center;}
-#grid{display:flex;flex-wrap:wrap;gap:10px;}
+#grid{display:flex;flex-wrap:wrap;gap:10px;user-select:none;}
+/* 빈 곳에서 마우스를 끌어 여러 칸을 한꺼번에 고르는 사각형 */
+#marquee{position:absolute;z-index:60;display:none;border:1px solid #4a7cff;background:rgba(74,124,255,.18);pointer-events:none;border-radius:2px;}
 .thumb{cursor:pointer;position:relative;}
 .thumb canvas{border-radius:6px;border:1px solid #ddd8ce;display:block;background:#eee;}
 .thumb .name{font-size:10px;color:#7d7568;margin-top:2px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;padding:0 2px;}
@@ -143,7 +145,7 @@ button:disabled{opacity:.4;cursor:default;}
   <div id="restoreNote" style="display:none;font-size:12px;color:#3a7d3a;margin-bottom:8px;">저장된 작업을 자동으로 불러왔어요.</div>
   <div style="font-size:12px;color:#7d7568;margin-bottom:8px;">
     각 칸 왼쪽 위 <b>투명</b> 버튼 = 그 칸 하나만 배정 (빨간 버튼 = 아직 배정 안 됨).<br/>
-    여러 장을 한꺼번에 배정하려면 칸 <b>왼쪽 아래 체크박스</b>로 골라줘 — <b>Shift+클릭</b>하면 이전에 고른 칸부터 사이 전부 한번에 선택됨. 고르면 바로 합성돼서 보입니다.
+    여러 장 고르는 방법 — ① <b>마우스로 드래그</b>해서 사각형으로 쓸어 담기 (Ctrl 누른 채 드래그하면 기존 선택에 더하기) ② 칸 <b>왼쪽 아래 체크박스</b> 클릭, <b>Shift+클릭</b>이면 이전에 고른 칸부터 사이 전부. 고르면 바로 합성돼서 보입니다.
   </div>
   <div id="selBar" style="display:none;">
     <b id="selCount"></b>
@@ -208,6 +210,7 @@ button:disabled{opacity:.4;cursor:default;}
 </div>
 
 <div id="overlayPicker"></div>
+<div id="marquee"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -888,6 +891,89 @@ $('#btnSelAssignOverlay').addEventListener('click', (e) => {
   if (!list.length) return;
   openOverlayPicker($('#btnSelAssignOverlay'), list);
 });
+// ---------- 드래그로 여러 칸 선택 (파일 탐색기에서 쓸어 담는 것과 같은 방식) ----------
+// 살짝 움직인 정도(5px 이내)는 그냥 클릭으로 보고 편집기를 열어준다 — 기존 동작을 깨지 않기 위함
+const MARQUEE_MIN_MOVE = 5;
+let _marquee = null;          // {x0, y0, baseSet, moved}
+let _suppressThumbClick = false;
+let _autoScrollRaf = null, _autoScrollDir = 0;
+
+function marqueeEl(){ return $('#marquee'); }
+function thumbPageRects(){
+  return Array.from(document.querySelectorAll('.thumb')).map(w => {
+    const r = w.getBoundingClientRect();
+    return {
+      idx: Number(w.dataset.idx),
+      left: r.left + window.scrollX, right: r.right + window.scrollX,
+      top: r.top + window.scrollY, bottom: r.bottom + window.scrollY,
+    };
+  });
+}
+function applyMarqueeSelection(x0, y0, x1, y1){
+  const L = Math.min(x0, x1), R = Math.max(x0, x1), T = Math.min(y0, y1), B = Math.max(y0, y1);
+  selectedIdx.clear();
+  _marquee.baseSet.forEach(i => selectedIdx.add(i));
+  for (const t of thumbPageRects()) {
+    const hit = t.left < R && t.right > L && t.top < B && t.bottom > T; // 사각형이 조금이라도 겹치면 선택
+    if (hit) selectedIdx.add(t.idx);
+  }
+  updateSelUi();
+}
+// 드래그 중 화면 위/아래 끝에 마우스를 대고 있으면 알아서 스크롤 (사진이 수백 장이면 화면 밖까지 끌어야 하므로)
+function startAutoScroll(){
+  if (_autoScrollRaf) return;
+  const step = () => {
+    if (!_marquee || !_autoScrollDir) { _autoScrollRaf = null; return; }
+    window.scrollBy(0, _autoScrollDir * 14);
+    _autoScrollRaf = requestAnimationFrame(step);
+  };
+  _autoScrollRaf = requestAnimationFrame(step);
+}
+
+$('#grid').addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  // 칸 안의 버튼·체크박스는 원래 동작 그대로
+  if (e.target.closest('.overlayPickBtn, .badgeToggle, .downloadBtn, .selChk')) return;
+  const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+  _marquee = {
+    x0: e.pageX, y0: e.pageY,
+    baseSet: additive ? new Set(selectedIdx) : new Set(),
+    moved: false,
+  };
+  e.preventDefault(); // 드래그하면서 글자가 파랗게 선택되는 것 방지
+});
+document.addEventListener('mousemove', (e) => {
+  if (!_marquee) return;
+  const dx = e.pageX - _marquee.x0, dy = e.pageY - _marquee.y0;
+  if (!_marquee.moved && Math.hypot(dx, dy) < MARQUEE_MIN_MOVE) return;
+  _marquee.moved = true;
+
+  const el = marqueeEl();
+  el.style.display = 'block';
+  el.style.left = Math.min(_marquee.x0, e.pageX) + 'px';
+  el.style.top = Math.min(_marquee.y0, e.pageY) + 'px';
+  el.style.width = Math.abs(e.pageX - _marquee.x0) + 'px';
+  el.style.height = Math.abs(e.pageY - _marquee.y0) + 'px';
+
+  applyMarqueeSelection(_marquee.x0, _marquee.y0, e.pageX, e.pageY);
+
+  const margin = 60;
+  _autoScrollDir = e.clientY < margin ? -1 : (e.clientY > window.innerHeight - margin ? 1 : 0);
+  if (_autoScrollDir) startAutoScroll();
+});
+document.addEventListener('mouseup', () => {
+  if (!_marquee) return;
+  const moved = _marquee.moved;
+  _marquee = null;
+  _autoScrollDir = 0;
+  marqueeEl().style.display = 'none';
+  if (moved) {
+    // 드래그로 고른 직후에는 칸 클릭(편집기 열기)이 이어서 발동하지 않게 한 번 무시
+    _suppressThumbClick = true;
+    setTimeout(() => { _suppressThumbClick = false; }, 0);
+  }
+});
+
 $('#btnSelBadgeFlip').addEventListener('click', () => {
   const list = selectedItems();
   if (!list.length) return;
@@ -1233,7 +1319,7 @@ function renderGrid(){
     wrap.appendChild(pickBtn);
     wrap.appendChild(selChk);
     wrap.appendChild(name);
-    wrap.addEventListener('click', () => openEditor(idx));
+    wrap.addEventListener('click', () => { if (_suppressThumbClick) return; openEditor(idx); });
     grid.appendChild(wrap);
     it._thumbCanvas = canvas;
     it._pickBtn = pickBtn;
