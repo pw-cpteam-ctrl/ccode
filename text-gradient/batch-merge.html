@@ -26,6 +26,14 @@ button:disabled{opacity:.4;cursor:default;}
 #marquee{position:absolute;z-index:60;display:none;border:1px solid #4a7cff;background:rgba(74,124,255,.18);pointer-events:none;border-radius:2px;}
 .thumb{cursor:pointer;position:relative;}
 .thumb .thumbCv{position:relative;line-height:0;}
+/* 폴더 구분 — 색으로 어디부터 어디까지 같은 폴더인지 보이게, 누르면 그 폴더 전체가 선택됨 */
+.folderTag{font-size:9.5px;line-height:1.3;color:#fff;padding:2px 4px;border-radius:4px 4px 0 0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;font-weight:700;}
+.folderTag:hover{filter:brightness(1.15);}
+.thumb{border-radius:6px;}
+.listFolder{font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;color:#fff;display:inline-block;margin-bottom:2px;}
+#matchListTable td.photoCell{cursor:pointer;}
+#matchListTable td.photoCell:hover{background:#eef3ff;}
 .thumb canvas{border-radius:6px;border:1px solid #ddd8ce;display:block;background:#eee;}
 .thumb .name{font-size:10px;color:#7d7568;margin-top:2px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;padding:0 2px;}
 .thumb.warn canvas{border-color:#e05d5d;}
@@ -100,7 +108,10 @@ button:disabled{opacity:.4;cursor:default;}
   <button id="btnPickFolderAppend">폴더 추가 (기존 리스트 유지, 뒤에 이어붙이기)</button>
   <input type="file" id="inPhotoFolder" webkitdirectory multiple style="display:none;"/>
   <div id="listWrap" style="display:none;margin-top:14px;">
-    <div style="font-size:12px;color:#7d7568;margin-bottom:6px;">투명파일명/스토어명 칸 선택 후, 셀 오른쪽 아래 손잡이를 드래그해서 내리면 그 값이 쭉 채워짐. 투명파일명은 고르는 즉시 위 미리보기에 합성돼서 보임.</div>
+    <div style="font-size:12px;color:#7d7568;margin-bottom:6px;">
+      <b>사진(또는 파일명) 칸을 클릭하면 그 사진이 속한 폴더 전체가 한꺼번에 선택됨</b> → 위쪽 파란 바의 드롭다운에서 투명 이미지를 고르면 그 폴더에 일괄 배정됨.<br/>
+      투명파일명/스토어명 칸은 셀 오른쪽 아래 손잡이를 드래그해서 내리면 그 값이 쭉 채워짐. 투명파일명은 고르는 즉시 위 미리보기에 합성돼서 보임.
+    </div>
     <table id="matchListTable"><thead><tr><th>사진</th><th>사진파일명</th><th>투명파일명</th><th>스토어명</th></tr></thead><tbody></tbody></table>
     <div style="margin-top:10px;">
       <span id="listProgress" style="font-size:12px;color:#7d7568;margin-right:10px;"></span>
@@ -259,6 +270,7 @@ function itemsMetaSnapshot(){
     const legacy = it.photoImg ? legacyGeomOf(it) : { scaleMul: it.scaleMul, ox: it.ox, oy: it.oy };
     return {
       photoName: it.photoName, overlayName: it.overlayName,
+      folder: it.folder || '',
       focusX: it.focusX, focusY: it.focusY, zoom: it.zoom,
       scaleMul: legacy.scaleMul, ox: legacy.ox, oy: legacy.oy, bg: it.bg,
       storeName: it.storeName || '', badgeSide: it.badgeSide || 'left'
@@ -325,6 +337,7 @@ async function restoreFromCache(){
       photoName: m.photoName, overlayName: overlayBlob ? m.overlayName : null,
       photoFile: photoBlob, overlayFile: overlayBlob, photoImg, overlayImg,
       scaleMul: m.scaleMul, ox: m.ox, oy: m.oy, bg: m.bg,
+      folder: m.folder || '',
       focusX: m.focusX, focusY: m.focusY, zoom: m.zoom,
       storeName: m.storeName || '', badgeSide: m.badgeSide || 'left'
     });
@@ -462,6 +475,7 @@ $('#btnMatch').addEventListener('click', async () => {
     items.push({
       photoName: photoFile.name, overlayName: overlayFile.name,
       photoFile, overlayFile, photoImg: null, overlayImg: null,
+      folder: folderOfFile(photoFile),
       scaleMul: 1, ox: 0, oy: 0, bg: '#ffffff',
       focusX: 0.5, focusY: 0.5, zoom: null, // zoom은 사진 크기를 알아야 정해지므로 로딩 후 채움
       storeName: '', badgeSide: 'left'
@@ -497,6 +511,42 @@ function naturalCompare(a, b){
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 }
 
+// ---------- 폴더 단위로 묶기 ----------
+// 폴더를 통째로 고르면 브라우저가 파일마다 "폴더/하위폴더/파일명" 형태의 경로를 같이 준다
+// (webkitRelativePath). 예전에는 이걸 안 쓰고 파일명만으로 정렬해서 여러 폴더 사진이 뒤섞였음
+function folderOfFile(f){
+  const rel = f.webkitRelativePath || '';
+  if (!rel) return '';
+  const parts = rel.split('/');
+  parts.pop();                          // 파일명 제거
+  if (parts.length > 1) parts.shift();  // 내가 고른 폴더 자체는 이름에서 빼고 그 안의 하위폴더만 남김
+  return parts.join('/');
+}
+// 폴더마다 색을 하나씩 배정 — 어디부터 어디까지가 같은 폴더인지 눈으로 바로 구분되게
+const FOLDER_COLORS = ['#4a7cff','#e0693a','#2f9e6e','#a855f7','#d9a406','#0ea5e9','#e0417a','#65a30d','#7c3aed','#c2410c','#0891b2','#b45309'];
+let folderColorMap = new Map();
+function rebuildFolderColors(){
+  folderColorMap = new Map();
+  let i = 0;
+  for (const it of items) {
+    const f = it.folder || '';
+    if (!folderColorMap.has(f)) folderColorMap.set(f, FOLDER_COLORS[i++ % FOLDER_COLORS.length]);
+  }
+}
+function folderColorOf(folder){ return folderColorMap.get(folder || '') || '#7d7568'; }
+// 폴더가 2개 이상일 때만 폴더 표시를 보여준다 (하나뿐이면 화면만 복잡해짐)
+function hasMultipleFolders(){ return folderColorMap.size > 1; }
+// 사진 하나를 클릭하면 그 사진이 속한 폴더 전체가 한 단위로 선택되게 한다
+function selectFolderGroup(folder){
+  selectedIdx.clear();
+  items.forEach((it, i) => { if ((it.folder || '') === (folder || '')) selectedIdx.add(i); });
+  _lastSelIdx = null;
+  updateSelUi();
+  log(`"${folder || '(폴더 없음)'}" 폴더 사진 ${selectedIdx.size}장 선택 — 위쪽 파란 바에서 투명 이미지를 고르면 한꺼번에 배정됨`);
+  const bar = $('#selBar');
+  if (bar) bar.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 let _folderPickAppendMode = false;
 // 파일 선택창을 열기 직전에 input 값을 비우는 게 중요하다 — 안 비우면 "같은 폴더를 다시 고를 때"
 // 브라우저가 "선택이 안 바뀌었다"고 보고 change 이벤트를 아예 안 보내서, 버튼을 눌러도 아무 일도
@@ -518,7 +568,8 @@ function looksLikeImageFile(f){
 $('#inPhotoFolder').addEventListener('change', async (e) => {
   const files = Array.from(e.target.files).filter(looksLikeImageFile);
   if (!files.length) { log('폴더에서 이미지 파일을 못 찾음'); return; }
-  files.sort((a, b) => naturalCompare(a.name, b.name));
+  // 폴더 먼저 정렬하고 그 안에서 파일명 순 — 이렇게 해야 같은 폴더 사진이 붙어서 들어옴
+  files.sort((a, b) => naturalCompare(folderOfFile(a), folderOfFile(b)) || naturalCompare(a.name, b.name));
 
   const appendMode = _folderPickAppendMode;
   log(appendMode ? `폴더에서 사진 ${files.length}장 추가로 불러오는 중...` : `폴더에서 사진 ${files.length}장 불러오는 중...`);
@@ -532,6 +583,7 @@ $('#inPhotoFolder').addEventListener('change', async (e) => {
       newItems.push({
         photoName: f.name, overlayName: null,
         photoFile: f, overlayFile: null, photoImg: img, overlayImg: null,
+        folder: folderOfFile(f),
         scaleMul: 1, ox: 0, oy: 0, bg: '#ffffff',
         focusX: 0.5, focusY: 0.5,
         // 가로로 넓은 사진은 처음부터 전체가 보이게 (새로 불러오는 사진에만 적용 — 기존 작업물은 안 건드림)
@@ -624,6 +676,8 @@ function drawListThumb(canvas, it){
 function renderMatchListTable(){
   const tbody = $('#matchListTable tbody');
   tbody.innerHTML = '';
+  rebuildFolderColors();
+  const showFolder = hasMultipleFolders();
   const candidates = overlayCandidateNames();
   items.forEach((it, idx) => {
     const tr = document.createElement('tr');
@@ -634,8 +688,23 @@ function renderMatchListTable(){
     drawListThumb(tcv, it);
     tdThumb.appendChild(tcv);
     tr.appendChild(tdThumb);
+    // 사진(또는 파일명) 칸을 누르면 그 사진이 속한 폴더 전체가 선택된다 — 폴더 단위로 투명을 배정할 때 씀
     const tdName = document.createElement('td');
-    tdName.textContent = it.photoName;
+    tdName.className = 'photoCell';
+    if (showFolder) {
+      const fchip = document.createElement('span');
+      fchip.className = 'listFolder';
+      fchip.style.background = folderColorOf(it.folder);
+      fchip.textContent = it.folder || '(폴더 없음)';
+      tdName.appendChild(fchip);
+      tdName.appendChild(document.createElement('br'));
+    }
+    tdName.appendChild(document.createTextNode(it.photoName));
+    tdName.title = showFolder ? `"${it.folder || '(폴더 없음)'}" 폴더 전체 선택` : '';
+    const onPickFolder = () => { if (showFolder) selectFolderGroup(it.folder); };
+    tdName.addEventListener('click', onPickFolder);
+    tdThumb.className = 'photoCell';
+    tdThumb.addEventListener('click', onPickFolder);
     tr.appendChild(tdName);
     tr.appendChild(makeFillableCell(idx, 'overlayName', 'select', candidates));
     tr.appendChild(makeFillableCell(idx, 'storeName', 'text'));
@@ -1219,6 +1288,8 @@ function thumbH(){ return Math.round(THUMB_W * CH / CW); }
 function renderGrid(){
   const grid = $('#grid');
   grid.innerHTML = '';
+  rebuildFolderColors();
+  const showFolder = hasMultipleFolders();
   const h = thumbH();
   items.forEach((it, idx) => {
     const wrap = document.createElement('div');
@@ -1293,6 +1364,19 @@ function renderGrid(){
     cvWrap.appendChild(badgeToggle);
     cvWrap.appendChild(downloadBtn);
     cvWrap.appendChild(selChk);
+    // 폴더 이름표 — 색으로 폴더를 구분하고, 누르면 그 폴더 사진 전체가 한꺼번에 선택됨
+    if (showFolder) {
+      const tag = document.createElement('div');
+      tag.className = 'folderTag';
+      tag.style.background = folderColorOf(it.folder);
+      tag.textContent = it.folder || '(폴더 없음)';
+      tag.title = `"${it.folder || '(폴더 없음)'}" 폴더 전체 선택`;
+      tag.addEventListener('click', (e) => {
+        e.stopPropagation(); // 칸 클릭(편집기 열기) 방지
+        selectFolderGroup(it.folder);
+      });
+      wrap.appendChild(tag);
+    }
     wrap.appendChild(cvWrap);
     wrap.appendChild(ovSel);
     wrap.appendChild(name);
