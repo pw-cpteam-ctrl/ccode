@@ -115,6 +115,7 @@ button:disabled{opacity:.4;cursor:default;}
     <table id="matchListTable"><thead><tr><th>사진</th><th>사진파일명</th><th>투명파일명</th><th>스토어명</th></tr></thead><tbody></tbody></table>
     <div style="margin-top:10px;">
       <span id="listProgress" style="font-size:12px;color:#7d7568;margin-right:10px;"></span>
+      <button id="btnAutoMatchFolder">폴더명으로 투명 자동 매칭</button>
       <button class="primary" id="btnApplyList">적용 (아트보드에 반영)</button>
     </div>
   </div>
@@ -146,6 +147,7 @@ button:disabled{opacity:.4;cursor:default;}
   <div style="font-size:12px;color:#7d7568;margin-bottom:8px;">
     칸 아래 <b>투명 드롭다운</b> = 그 칸 하나만 배정 (빨간 칸 = 아직 배정 안 됨).<br/>
     사진을 <b>마우스로 끌면</b> 그 자리에서 위치가 조정됨 (아트보드 밖으로는 안 밀려남). 위 체크박스를 켜면 <b>휠로 확대/축소</b>, <b>Shift+휠</b>이면 사진 전체가 보이는 크기까지 축소됨.<br/>
+    <b>여러 장을 선택한 뒤 그중 한 칸에서 휠·드래그하면 선택한 전부가 같이 조정됨</b> (폴더 이름표 클릭 → 그 폴더 전체 일괄 조정).<br/>
     여러 장 고르는 방법 — ① <b>마우스로 드래그</b>해서 사각형으로 쓸어 담기 (Ctrl 누른 채 드래그하면 기존 선택에 더하기) ② 칸 <b>왼쪽 위 체크박스</b> 클릭, <b>Shift+클릭</b>이면 이전에 고른 칸부터 사이 전부. 고른 뒤 위쪽 파란 바의 드롭다운으로 한꺼번에 배정.
   </div>
   <div id="selBar" style="display:none;">
@@ -546,6 +548,97 @@ function selectFolderGroup(folder){
   const bar = $('#selBar');
   if (bar) bar.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
+
+// ---------- 폴더명 ↔ 투명파일명 자동 매칭 (외부 AI 없이 글자 비교만으로) ----------
+// "주술회전" 폴더 ↔ "주술회전_고죠_제목.png" 처럼 이름이 겹치는 걸 찾아준다.
+// 확실한 것만 자동으로 넣고, 애매한 건 손대지 않고 남겨둔다 — 틀린 배정이 조용히 들어가면
+// 300장 중 어디가 틀렸는지 찾을 수 없기 때문
+const MATCH_MIN = 0.5;     // 이 점수 미만은 "비슷한 게 없음"으로 보고 건너뜀
+const MATCH_MARGIN = 0.08; // 1등과 2등 점수 차이가 이보다 작으면 "애매함"으로 보고 건너뜀
+function normalizeForMatch(s){
+  return String(s || '')
+    .replace(/\.[^.]+$/, '')                            // 확장자 제거
+    .replace(/제목|타이틀|타이톨|title|투명|overlay/gi, '') // 파일명에 공통으로 붙는 꼬리표 제거
+    .replace(/[_\-\s()\[\]{}.,+~!@#$%^&*]/g, '')        // 구분기호·공백 제거
+    .toLowerCase();
+}
+function bigramsOf(s){
+  const out = [];
+  for (let i = 0; i < s.length - 1; i++) out.push(s.slice(i, i + 2));
+  return out;
+}
+// 0~1 점수. 완전히 같으면 1, 한쪽이 다른 쪽에 통째로 들어있으면 0.95,
+// 그 외에는 두 글자씩 끊어서 겹치는 비율로 계산
+function nameSimilarity(a, b){
+  const A = normalizeForMatch(a), B = normalizeForMatch(b);
+  if (!A || !B) return 0;
+  if (A === B) return 1;
+  if (A.includes(B) || B.includes(A)) return 0.95;
+  const ga = bigramsOf(A), gb = bigramsOf(B);
+  if (!ga.length || !gb.length) return 0;
+  const pool = gb.slice();
+  let hit = 0;
+  for (const g of ga) {
+    const i = pool.indexOf(g);
+    if (i >= 0) { pool.splice(i, 1); hit++; }
+  }
+  return (2 * hit) / (ga.length + gb.length);
+}
+// 폴더별로 가장 비슷한 투명 이미지를 찾아 계획을 세운다 (아직 적용은 안 함)
+function buildFolderMatchPlan(){
+  const names = overlayCandidateNames();
+  const folders = [];
+  for (const it of items) {
+    const f = it.folder || '';
+    if (!folders.includes(f)) folders.push(f);
+  }
+  const plan = [], skipped = [];
+  for (const folder of folders) {
+    const targets = items.filter(it => (it.folder || '') === folder && !it.overlayName);
+    if (!folder) { skipped.push({ folder, reason: '폴더 정보가 없는 사진' }); continue; }
+    if (!targets.length) { skipped.push({ folder, reason: '이미 전부 배정돼 있어서 건드리지 않음' }); continue; }
+    const scored = names.map(n => ({ n, s: nameSimilarity(folder, n) })).sort((x, y) => y.s - x.s);
+    const best = scored[0], second = scored[1];
+    if (!best || best.s < MATCH_MIN) {
+      skipped.push({ folder, reason: `비슷한 이름이 없음 (가장 비슷한 게 ${best ? best.n + ' ' + Math.round(best.s * 100) + '%' : '없음'})` });
+      continue;
+    }
+    if (second && (best.s - second.s) < MATCH_MARGIN) {
+      skipped.push({ folder, reason: `후보 둘이 비슷해서 애매함 (${best.n} ${Math.round(best.s * 100)}% / ${second.n} ${Math.round(second.s * 100)}%)` });
+      continue;
+    }
+    plan.push({ folder, name: best.n, score: best.s, count: targets.length });
+  }
+  return { plan, skipped };
+}
+$('#btnAutoMatchFolder').addEventListener('click', async () => {
+  if (!overlayFiles.length) { log('투명 이미지를 먼저 올려줘 (위쪽 "0. 투명 이미지 올리기")'); return; }
+  if (!items.length) return;
+  const { plan, skipped } = buildFolderMatchPlan();
+
+  // 무엇이 들어가고 무엇이 안 들어가는지 먼저 보여주고 확인받는다
+  const lines = [];
+  if (plan.length) {
+    lines.push('■ 자동으로 배정할 폴더');
+    for (const p of plan) lines.push(`  ${p.folder} → ${p.name}  (${Math.round(p.score * 100)}% 일치, ${p.count}장)`);
+  }
+  if (skipped.length) {
+    lines.push('', '■ 건너뛰는 폴더 (직접 골라줘야 함)');
+    for (const sk of skipped) lines.push(`  ${sk.folder || '(폴더 없음)'} — ${sk.reason}`);
+  }
+  const report = lines.join('\n');
+  log(report);
+  if (!plan.length) { alert('자동으로 배정할 수 있는 폴더가 없어요.\n\n' + report); return; }
+  if (!confirm(report + '\n\n이대로 적용할까요? (이미 배정된 사진은 건드리지 않아요)')) { log('자동 매칭 취소함'); return; }
+
+  let total = 0;
+  for (const p of plan) {
+    const targets = items.filter(it => (it.folder || '') === p.folder && !it.overlayName);
+    await assignOverlayMany(targets, p.name);
+    total += targets.length;
+  }
+  log(`자동 매칭 완료: ${plan.length}개 폴더, 사진 ${total}장 배정 (건너뛴 폴더 ${skipped.length}개)`);
+});
 
 let _folderPickAppendMode = false;
 // 파일 선택창을 열기 직전에 input 값을 비우는 게 중요하다 — 안 비우면 "같은 폴더를 다시 고를 때"
@@ -1443,19 +1536,51 @@ loadBadgeSettings();
 // 폰트가 늦게 로딩되는 경우 대비 — 로딩 끝나면 뱃지 글자를 실제 폰트로 다시 그림
 document.fonts.ready.then(() => { if (items.length) renderGrid(); });
 
+// ---------- 여러 칸을 한꺼번에 조정할 때 쓰는 도우미 ----------
+// 수백 장을 매 프레임 전부 다시 그리면 느려지므로, 조작 중에는 화면에 보이는 칸만 즉시 갱신하고
+// 화면 밖 칸은 손을 뗀 뒤 한 번에 갱신한다 (값 자체는 전부 바로 바뀌므로 결과물엔 차이 없음)
+function isThumbOnScreen(it){
+  const cv = it._thumbCanvas;
+  if (!cv) return false;
+  const r = cv.getBoundingClientRect();
+  return r.bottom > -60 && r.top < window.innerHeight + 60;
+}
+function refreshVisibleThumbs(list){
+  for (const t of list) if (isThumbOnScreen(t)) refreshThumb(t);
+}
+let _fullRefreshT = null;
+function scheduleFullRefresh(list){
+  const arr = list.slice();
+  clearTimeout(_fullRefreshT);
+  _fullRefreshT = setTimeout(() => { for (const t of arr) refreshThumb(t); }, 250);
+}
+// 지금 조작이 "선택한 여러 장 전체"에 적용돼야 하는지 판단 — 선택된 칸을 건드렸을 때만 일괄 적용
+function targetsForBulk(it, idx){
+  return (selectedIdx.size > 1 && selectedIdx.has(idx)) ? selectedItems() : [it];
+}
+
 // 미리보기 칸에서 바로 확대/축소 (체크박스 켜졌을 때만 — 안 그러면 칸이 수백 개인 화면에서
-// 휠로 페이지를 내릴 수가 없어짐). Shift를 누르면 사진 전체가 보이는 크기까지 더 줄일 수 있다
+// 휠로 페이지를 내릴 수가 없어짐). Shift를 누르면 사진 전체가 보이는 크기까지 더 줄일 수 있다.
+// 선택된 칸 위에서 굴리면 선택한 전부가 같이 확대/축소된다 (폴더 클릭 → 폴더 전체 일괄 조정)
 $('#grid').addEventListener('wheel', e => {
   if (!$('#thumbZoomToggle').checked) return;
   const wrap = e.target.closest('.thumb');
   if (!wrap) return;
   e.preventDefault();
-  const it = items[Number(wrap.dataset.idx)];
+  const idx = Number(wrap.dataset.idx);
+  const it = items[idx];
   if (!it || !it.photoImg) return;
-  const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
-  const minZoom = e.shiftKey ? containMinZoom(pw, ph, CW, CH) : defaultZoom(pw, ph, CW, CH);
-  it.zoom = Math.max(minZoom, Math.min(4, (it.zoom ?? 1) * (e.deltaY < 0 ? 1.08 : 0.92)));
-  refreshThumb(it);
+  const targets = targetsForBulk(it, idx);
+  const factor = e.deltaY < 0 ? 1.08 : 0.92;
+  for (const t of targets) {
+    if (!t.photoImg) continue;
+    const pw = t.photoImg.naturalWidth, ph = t.photoImg.naturalHeight;
+    // 최소 배율은 사진 비율마다 다르므로 칸마다 따로 계산해서 막는다
+    const minZoom = e.shiftKey ? containMinZoom(pw, ph, CW, CH) : defaultZoom(pw, ph, CW, CH);
+    t.zoom = Math.max(minZoom, Math.min(4, (t.zoom ?? 1) * factor));
+  }
+  if (targets.length > 1) { refreshVisibleThumbs(targets); scheduleFullRefresh(targets); }
+  else refreshThumb(it);
   saveMetaSoon();
 }, { passive: false });
 
@@ -1468,27 +1593,32 @@ $('#grid').addEventListener('mousedown', e => {
   const cv = e.target.closest('.thumbCv');
   if (!cv || e.target.closest('button, input, select')) return;
   const wrap = cv.closest('.thumb');
-  const it = items[Number(wrap.dataset.idx)];
+  const idx = Number(wrap.dataset.idx);
+  const it = items[idx];
   if (!it || !it.photoImg) return;
   e.preventDefault();
-  _panDrag = { it, canvas: it._thumbCanvas, lastX: e.clientX, lastY: e.clientY, moved: false };
+  // 선택된 칸을 끌면 선택한 전부가 같은 방향으로 같이 움직인다
+  _panDrag = { it, targets: targetsForBulk(it, idx), canvas: it._thumbCanvas, lastX: e.clientX, lastY: e.clientY, moved: false };
 });
 window.addEventListener('mousemove', e => {
   if (!_panDrag) return;
-  const { it, canvas } = _panDrag;
-  const { dw, dh } = geomOf(it);
-  const overflowX = dw - CW, overflowY = dh - CH; // 아트보드보다 사진이 남는 만큼 = 움직일 수 있는 여유
+  const { canvas, targets } = _panDrag;
   // 칸은 1080 폭을 THUMB_W로 줄여서 그리므로, 화면에서 움직인 거리를 1080 기준으로 환산해야
   // 마우스와 사진이 같은 속도로 움직인다 (환산 안 하면 드래그가 9배쯤 느리게 느껴짐)
   const rect = canvas.getBoundingClientRect();
   const dxPix = (e.clientX - _panDrag.lastX) * (CW / (rect.width || 1));
   const dyPix = (e.clientY - _panDrag.lastY) * (CH / (rect.height || 1));
   if (Math.abs(dxPix) > 1 || Math.abs(dyPix) > 1) _panDrag.moved = true;
-  // 여유가 없는 축(사진이 딱 맞거나 더 작은 경우)은 아예 움직이지 않게 두고, 있는 축은 0~1 안으로 묶는다
-  if (overflowX > 0.5) it.focusX = clamp01((it.focusX ?? 0.5) - dxPix / overflowX);
-  if (overflowY > 0.5) it.focusY = clamp01((it.focusY ?? 0.5) - dyPix / overflowY);
+  for (const t of targets) {
+    const { dw, dh } = geomOf(t);
+    const overflowX = dw - CW, overflowY = dh - CH; // 아트보드보다 사진이 남는 만큼 = 움직일 수 있는 여유
+    // 여유가 없는 축(사진이 딱 맞거나 더 작은 경우)은 아예 움직이지 않게 두고, 있는 축은 0~1 안으로 묶는다
+    if (overflowX > 0.5) t.focusX = clamp01((t.focusX ?? 0.5) - dxPix / overflowX);
+    if (overflowY > 0.5) t.focusY = clamp01((t.focusY ?? 0.5) - dyPix / overflowY);
+  }
   _panDrag.lastX = e.clientX; _panDrag.lastY = e.clientY;
-  refreshThumb(it);
+  if (targets.length > 1) refreshVisibleThumbs(targets);
+  else refreshThumb(_panDrag.it);
 });
 window.addEventListener('mouseup', () => {
   if (!_panDrag) return;
@@ -1496,6 +1626,7 @@ window.addEventListener('mouseup', () => {
     // 사진을 끌고 난 직후에 칸 클릭(편집기 열기)이 이어서 발동하지 않게 한 번 무시
     _suppressThumbClick = true;
     setTimeout(() => { _suppressThumbClick = false; }, 0);
+    if (_panDrag.targets.length > 1) scheduleFullRefresh(_panDrag.targets); // 화면 밖 칸도 마무리로 갱신
     saveMetaSoon();
   }
   _panDrag = null;
