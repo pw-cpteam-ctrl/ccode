@@ -679,7 +679,14 @@ function normalizeMains(){
 }
 function setMainPhoto(it){
   const folder = it.folder || '';
-  for (const other of items) if ((other.folder || '') === folder) other.isMain = false;
+  const group = items.filter(o => (o.folder || '') === folder);
+  // 이 폴더가 이미 "대표만 제목 남기기"를 거친 상태라면, 제목을 새 대표로 옮긴다
+  // (안 그러면 예전 대표에도 제목이 남아서 한 폴더에 제목이 두 개가 됨)
+  const alreadyStripped = group.some(o => o.noFrame);
+  for (const other of group) {
+    other.isMain = false;
+    if (alreadyStripped) other.noFrame = true;
+  }
   it.isMain = true;
   it.noFrame = false; // 대표로 지정하면 빠져 있던 제목도 다시 살린다
   normalizeMains();
