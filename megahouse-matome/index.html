@@ -898,11 +898,13 @@ function applyImgTransform(img, it) {
   const ch = cell ? cell.clientHeight : 0;
   const iw = img.naturalWidth, ih = img.naturalHeight;
   if (!cw || !ch || !iw || !ih) return; // 크기를 아직 모르면(로딩 전) 다음 로드/리사이즈 때 다시 계산됨
-  // 블러 배경 연출(it.blur)은 사진이 칸을 다 못 채우고 남는 자리에 흐릿한 배경이
-  // 비쳐 보이는 게 핵심이라, 기준을 cover(항상 꽉 채움)가 아니라 contain(전체가
-  // 다 보이는 크기)으로 둬야 함 — cover를 쓰면 사진이 항상 칸을 덮어버려 블러가
-  // 보일 자리 자체가 없어짐
-  const baseScale = it.blur
+  // 블러/흰배경 연출(it.blur, it.whiteBg)은 둘 다 "사진이 칸을 다 못 채우고 남는
+  // 자리에 배경(흐린 사진 또는 흰색)이 비쳐 보이는" 같은 구조라, 기준을 cover(항상
+  // 꽉 채움)가 아니라 contain(전체가 다 보이는 크기)으로 둬야 함 — cover를 쓰면
+  // 사진이 항상 칸을 덮어버려 배경이 보일 자리 자체가 없어짐. 이 둘을 같은 기준으로
+  // 묶어둬야 블러↔흰배경을 오갈 때 사진 크기가 안 바뀌고(=줌이 리셋된 것처럼 안 보임),
+  // "없음"으로 바꿀 때만 cover로 전환됨
+  const baseScale = (it.blur || it.whiteBg)
     ? Math.min(cw / iw, ch / ih)
     : Math.max(cw / iw, ch / ih) * SLOP;
   const eff = baseScale * (it.scale || 1);
