@@ -794,7 +794,7 @@ function makeCell(it, ri, pg) {
 
     // topRow: 메모 (항상 위). 뱃지가 overflow시 여기로 이동
     const topRow = document.createElement('div');
-    topRow.style.cssText = 'display:flex;align-items:center;gap:5px;flex-wrap:wrap;';
+    topRow.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;';
     if (it.memoOn && it.memo) {
       const memoEl = document.createElement('span');
       memoEl.className = 'cell-memo';
@@ -807,7 +807,7 @@ function makeCell(it, ri, pg) {
     const mainRow = document.createElement('div');
     // overflow:visible — export(html-to-image)가 텍스트를 화면보다 미세하게 넓게 그려도
     // 강제로 잘리지 않도록. 대신 글자 크기 자동 축소(fitCellNames)로 칸 안에 맞춤.
-    mainRow.style.cssText = 'display:flex;flex-wrap:nowrap;align-items:flex-end;gap:5px;overflow:visible;';
+    mainRow.style.cssText = 'display:flex;flex-wrap:nowrap;align-items:flex-end;gap:10px;overflow:visible;';
 
     const txtSpan = document.createElement('span');
     txtSpan.className = 'name-text';
@@ -898,7 +898,13 @@ function applyImgTransform(img, it) {
   const ch = cell ? cell.clientHeight : 0;
   const iw = img.naturalWidth, ih = img.naturalHeight;
   if (!cw || !ch || !iw || !ih) return; // 크기를 아직 모르면(로딩 전) 다음 로드/리사이즈 때 다시 계산됨
-  const baseScale = Math.max(cw / iw, ch / ih) * SLOP;
+  // 블러 배경 연출(it.blur)은 사진이 칸을 다 못 채우고 남는 자리에 흐릿한 배경이
+  // 비쳐 보이는 게 핵심이라, 기준을 cover(항상 꽉 채움)가 아니라 contain(전체가
+  // 다 보이는 크기)으로 둬야 함 — cover를 쓰면 사진이 항상 칸을 덮어버려 블러가
+  // 보일 자리 자체가 없어짐
+  const baseScale = it.blur
+    ? Math.min(cw / iw, ch / ih)
+    : Math.max(cw / iw, ch / ih) * SLOP;
   const eff = baseScale * (it.scale || 1);
   const dw = iw * eff, dh = ih * eff;
   const maxOx = Math.max(0, (dw - cw) / 2);
@@ -1070,7 +1076,7 @@ function fitCellNames() {
         let topRow = (nm.firstElementChild && nm.firstElementChild !== mainRow) ? nm.firstElementChild : null;
         if (!topRow) {
           topRow = document.createElement('div');
-          topRow.style.cssText = 'display:flex;align-items:center;gap:5px;flex-wrap:wrap;';
+          topRow.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;';
           nm.insertBefore(topRow, mainRow);
         }
         badges.forEach(b => topRow.appendChild(b));
