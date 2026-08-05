@@ -550,24 +550,36 @@ function makeCell(it, ri, boardId) {
 // object-fit을 쓰지 않는 이유: object-fit:cover는 칸 크기 기준으로 이미지를 미리 크롭해서
 // 렌더링하므로, 그 위에 CSS transform을 얹어도 크롭된 부분은 이미 화면에 없어 드래그로
 // 복구 불가. 대신 naturalWidth/Height 기준으로 width/height/left/top을 JS로 직접 계산.
-const SLOP = 1.003; // 반올림 오차로 생기는 1px 미만 틈 제거용
+const SLOP = 1.003; // 반올림 오차로 1px 미만 틈이 보이는 걸 방지
+
+// zoom=1 → 칸을 꽉 채우는 최소 크기. focusX/Y(0~1)로 중심점 지정 (기본 0.5 = 가운데)
+function coverCropRect(pw, ph, W, H, focusX, focusY, zoom) {
+  const fx = focusX ?? 0.5, fy = focusY ?? 0.5;
+  const eff = Math.max(W / pw, H / ph) * SLOP * (zoom || 1);
+  const dw = pw * eff, dh = ph * eff;
+  return { dw, dh, dx: -(dw - W) * fx, dy: -(dh - H) * fy };
+}
+
+// 사진 전체가 다 보이는(letterbox) 최소 줌값 — 이 아래로 줄여도 사진은 더 안 작아짐
+function containMinZoom(pw, ph, W, H) {
+  return Math.min(W / pw, H / ph) / (Math.max(W / pw, H / ph) * SLOP);
+}
+
 function applyImgTransform(img, it) {
   const ci = img.closest('.ci');
   const cw = ci ? ci.clientWidth : 0;
   const ch = ci ? ci.clientHeight : 0;
   const iw = img.naturalWidth, ih = img.naturalHeight;
   if (!cw || !ch || !iw || !ih) return;
-  const baseScale = Math.max(cw / iw, ch / ih) * SLOP;
-  const eff = baseScale * (it.scale || 1);
-  const dw = iw * eff, dh = ih * eff;
+  const { dw, dh, dx, dy } = coverCropRect(iw, ih, cw, ch, 0.5, 0.5, it.scale || 1);
   const maxOx = Math.max(0, (dw - cw) / 2);
   const maxOy = Math.max(0, (dh - ch) / 2);
   it.ox = Math.max(-maxOx, Math.min(maxOx, it.ox || 0));
   it.oy = Math.max(-maxOy, Math.min(maxOy, it.oy || 0));
   img.style.width  = dw + 'px';
   img.style.height = dh + 'px';
-  img.style.left   = ((cw - dw) / 2 + it.ox) + 'px';
-  img.style.top    = ((ch - dh) / 2 + it.oy) + 'px';
+  img.style.left   = (dx + it.ox) + 'px';
+  img.style.top    = (dy + it.oy) + 'px';
 }
 
 // window 리스너는 전역 1벌만 — 셀마다 등록하면 리스너가 쌓임
@@ -601,8 +613,13 @@ function bindCellInteraction(cell, img, it) {
 
   cell.addEventListener('wheel', e => {
     e.preventDefault();
+    const ci = img.closest('.ci');
+    const cw = ci ? ci.clientWidth : 0, ch = ci ? ci.clientHeight : 0;
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    // Shift+휠: 사진 전체가 다 보이는 크기까지 축소 허용. 평소엔 cover(빈틈 없이 꽉 채움) 이상으로 고정
+    const minZoom = (e.shiftKey && iw && ih) ? containMinZoom(iw, ih, cw, ch) : 1;
     const delta = e.deltaY < 0 ? 0.08 : -0.08;
-    it.scale = Math.max(1, Math.min(5, (it.scale || 1) + delta));
+    it.scale = Math.max(minZoom, Math.min(5, (it.scale || 1) + delta));
     applyImgTransform(img, it);
   }, { passive: false });
 
