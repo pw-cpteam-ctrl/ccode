@@ -122,7 +122,9 @@
   .igcrop-grid { display:flex; flex-wrap:wrap; gap:16px; margin-top:16px; }
   .igcrop-item { width:160px; }
   .igcrop-canvaswrap { position:relative; }
-  .igcrop-item canvas { width:160px; height:200px; border-radius:10px; cursor:pointer; display:block; background:#ffffff; border:1px solid var(--line); box-shadow:0 2px 10px rgba(0,0,0,.14); }
+  .igcrop-item canvas { width:160px; height:200px; border-radius:10px; cursor:grab; display:block; background:#ffffff; border:1px solid var(--line); box-shadow:0 2px 10px rgba(0,0,0,.14); touch-action:none; }
+  .igcrop-item canvas:active { cursor:grabbing; }
+  .igcrop-hint { font-size:12px; color:var(--muted); margin-top:8px; }
   .igcrop-del { position:absolute; top:5px; right:5px; width:19px; height:19px; border-radius:50%; background:rgba(0,0,0,.62); color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; cursor:pointer; }
   .igcrop-del:hover { background:var(--danger); }
   .igcrop-name { font-size:11px; color:var(--muted); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -359,16 +361,17 @@
     <h2>④ 인스타 규격 크롭 (독립 도구)</h2>
     <div class="subtitle">비율이 제각각인 공개 이미지를 인스타 4:5 규격으로 미리 잘라봅니다. 위 카드 작업과는 서로 영향을 주지 않습니다.</div>
     <label class="upload igcrop-upload">
-      <span class="icon">🖼️</span><span>사진 여러 장 선택 (4:5로 자동 크롭)<br><small>클릭해서 크게 보면 드래그·휠로 크롭 위치 조정 가능</small></span>
+      <span class="icon">🖼️</span><span>사진 여러 장 선택 (4:5로 자동 크롭)<br><small>미리보기에서 바로 드래그·휠로 크롭 위치 조정 가능</small></span>
       <input type="file" id="igcropFile" accept="image/*" multiple>
     </label>
+    <div class="igcrop-hint">1페이지는 위 카드 생성기에 넣은 사진이 자동으로 채워집니다(직접 지우면 그 뒤로는 자동으로 다시 채우지 않음) · 새로 올린 사진은 2페이지부터 순서대로 추가됩니다 · 가로로 넓은 사진은 기본적으로 위아래 흰 여백을 두고 전체가 보이게 표시됩니다</div>
     <div class="igcrop-grid" id="igcropGrid"></div>
   </div>
 
   <div class="igcrop-modal" id="igcropModal">
     <div class="igcrop-modal-inner">
       <canvas id="igcropModalCanvas" width="480" height="600"></canvas>
-      <div class="igcrop-modal-hint">드래그로 위치 이동 · 휠로 확대/축소 · Shift+휠: 사진 전체 보기(흰 여백 생김)</div>
+      <div class="igcrop-modal-hint">드래그로 위치 이동 · 휠로 확대/축소 · 가로로 넓은 사진은 기본적으로 전체가 보이게(흰 여백) 시작함</div>
       <div class="igcrop-modal-btns">
         <button class="btn2" id="igcropModalDownload">다운로드</button>
         <button class="btn2" id="igcropModalClose">닫기</button>
@@ -875,7 +878,7 @@ function compressImage(img, max=1000, q=0.8){
     const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(img,0,0,w,h); return c.toDataURL('image/jpeg',q); }
   catch{ return ''; }
 }
-function loadImage(src, keepView){ return new Promise(res=>{ const im=new Image(); im.onload=()=>{ state.img=im; if(!keepView) state.fg={zoom:1,panX:0,panY:0}; state.imgData=compressImage(im); render(); runValidation(); res(im); }; im.src=src; }); }
+function loadImage(src, keepView){ return new Promise(res=>{ const im=new Image(); im.onload=()=>{ state.img=im; if(!keepView) state.fg={zoom:1,panX:0,panY:0}; state.imgData=compressImage(im); render(); runValidation(); document.dispatchEvent(new CustomEvent('igcrop:mainImage', {detail:{img:im}})); res(im); }; im.src=src; }); }
 window.__loadImage = loadImage;
 // 슬라이더/스텝퍼 UI를 state 값에 맞춰 갱신
 function syncControlsUI(){
@@ -1087,9 +1090,11 @@ function restoreSlot(s){
   const THUMB_W = 216, THUMB_H = 270;   // 미리보기용 축소 캔버스(1/5 스케일)
   const MODAL_W = modalCanvas.width, MODAL_H = modalCanvas.height; // 480×600
 
-  let items = [];      // { id, name, img, focusX, focusY, zoom, canvas, ctx }
+  let items = [];      // { id, name, img, focusX, focusY, zoom, canvas, ctx, el, fromMain }
   let nextId = 1;
   let openItem = null; // 지금 모달에서 편집 중인 항목
+  let mainItem = null;      // 카드 생성기 사진에서 자동으로 만든 1페이지 항목(있으면)
+  let mainDismissed = false; // 사용자가 1페이지를 직접 지운 적 있으면 true — 이후엔 자동으로 다시 안 채움
 
   function clamp01(v){ return Math.max(0, Math.min(1, v)); }
 
@@ -1106,8 +1111,56 @@ function restoreSlot(s){
   function containMinZoom(pw, ph){
     return Math.min(EXPORT_W/pw, EXPORT_H/ph) / (Math.max(EXPORT_W/pw, EXPORT_H/ph) * SLOP);
   }
+  // 사진이 4:5 카드보다 가로로 더 넓은 비율인가 — 이런 사진은 꽉 채우면(cover) 양옆이 잘리므로
+  // 기본값 자체를 "전체 보기"로 시작한다
+  function isWideImg(pw, ph){ return (pw/ph) > (EXPORT_W/EXPORT_H); }
+  function defaultZoom(pw, ph){ return isWideImg(pw, ph) ? containMinZoom(pw, ph) : 1; }
   function renderThumb(item){ drawItem(item, item.ctx, THUMB_W, THUMB_H); }
   function renderModal(){ if(openItem) drawItem(openItem, modalCtx, MODAL_W, MODAL_H); }
+
+  // 썸네일/모달 캔버스 공용 — 드래그로 위치 이동, 휠로 확대/축소(평소엔 최소 1배 또는
+  // 가로로 넓은 사진의 기본 전체보기 배율까지, Shift를 누르면 어떤 사진이든 전체보기까지 축소 허용)
+  function attachInteraction(canvas, getItem, W, H, onChange, onClick){
+    let dragging=false, moved=false, lastX=0, lastY=0;
+    canvas.addEventListener('pointerdown', e=>{
+      const item=getItem(); if(!item) return;
+      dragging=true; moved=false; lastX=e.clientX; lastY=e.clientY;
+      try{ canvas.setPointerCapture(e.pointerId); }catch{}
+    });
+    canvas.addEventListener('pointermove', e=>{
+      const item=getItem(); if(!dragging || !item) return;
+      const pw = item.img.naturalWidth||item.img.width, ph = item.img.naturalHeight||item.img.height;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width/rect.width, scaleY = canvas.height/rect.height;
+      const { dw, dh } = coverCropRect(pw, ph, W, H, item.focusX, item.focusY, item.zoom);
+      const overflowX = dw - W, overflowY = dh - H;
+      const dxPix = (e.clientX-lastX)*scaleX, dyPix = (e.clientY-lastY)*scaleY;
+      if(Math.abs(dxPix)>1 || Math.abs(dyPix)>1) moved=true;
+      if(overflowX>0.5) item.focusX = clamp01(item.focusX - dxPix/overflowX);
+      if(overflowY>0.5) item.focusY = clamp01(item.focusY - dyPix/overflowY);
+      lastX=e.clientX; lastY=e.clientY;
+      onChange(item);
+    });
+    function endDrag(){ dragging=false; }
+    canvas.addEventListener('pointerup', endDrag);
+    canvas.addEventListener('pointercancel', endDrag);
+    canvas.addEventListener('pointerleave', ()=>{ if(dragging) endDrag(); });
+    // 드래그로 위치를 옮긴 직후 놓는 동작이 클릭(모달 열기)으로 이어지지 않게, 클릭 처리를
+    // 이 안에서 한 곳으로 모아 판단한다(별도 리스너 두 개로 나누면 실행 순서가 불안정함)
+    canvas.addEventListener('click', e=>{
+      const item=getItem(); if(!item) return;
+      if(moved){ moved=false; return; }
+      if(onClick) onClick(item);
+    });
+    canvas.addEventListener('wheel', e=>{
+      const item=getItem(); if(!item) return;
+      e.preventDefault();
+      const pw = item.img.naturalWidth||item.img.width, ph = item.img.naturalHeight||item.img.height;
+      const minZoom = e.shiftKey ? containMinZoom(pw, ph) : defaultZoom(pw, ph);
+      item.zoom = Math.max(minZoom, Math.min(4, item.zoom*(e.deltaY<0?1.08:0.92)));
+      onChange(item);
+    }, {passive:false});
+  }
 
   function safeFileBase(name){
     return (name||'photo').replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]/g,'').trim() || 'photo';
@@ -1126,14 +1179,15 @@ function restoreSlot(s){
       let img;
       try{ img = await igLoadImage(file); }
       catch(e){ console.error(e); if(typeof showToast==='function') showToast('⚠ 불러오지 못한 사진: '+file.name, true); continue; }
-      const item = { id: nextId++, name: file.name, img, focusX:0.5, focusY:0.5, zoom:1 };
+      const pw = img.naturalWidth||img.width, ph = img.naturalHeight||img.height;
+      const item = { id: nextId++, name: file.name, img, focusX:0.5, focusY:0.5, zoom: defaultZoom(pw, ph) };
       items.push(item);
       addItemEl(item);
     }
     updateEmptyMsg();
   }
 
-  function addItemEl(item){
+  function addItemEl(item, prepend){
     const el = document.createElement('div');
     el.className = 'igcrop-item';
     el.innerHTML =
@@ -1143,22 +1197,44 @@ function restoreSlot(s){
       + '</div>'
       + '<div class="igcrop-name"></div>'
       + '<div class="igcrop-btns"><button class="btn2 igcrop-dl">다운로드</button></div>';
+    item.el = el;
     item.canvas = el.querySelector('canvas');
     item.ctx = item.canvas.getContext('2d');
     el.querySelector('.igcrop-name').textContent = item.name;
-    el.querySelector('.igcrop-del').addEventListener('click', e=>{ e.stopPropagation(); removeItem(item, el); });
+    el.querySelector('.igcrop-del').addEventListener('click', e=>{
+      e.stopPropagation();
+      if(item.fromMain){ mainDismissed = true; mainItem = null; }
+      removeItem(item);
+    });
     el.querySelector('.igcrop-dl').addEventListener('click', e=>{ e.stopPropagation(); downloadItem(item); });
-    item.canvas.addEventListener('click', ()=> openModal(item));
-    grid.appendChild(el);
+    attachInteraction(item.canvas, ()=>item, THUMB_W, THUMB_H,
+      it=>{ renderThumb(it); if(openItem && openItem.id===it.id) renderModal(); },
+      it=> openModal(it));
+    if(prepend && grid.firstChild) grid.insertBefore(el, grid.firstChild); else grid.appendChild(el);
     renderThumb(item);
   }
 
-  function removeItem(item, el){
+  function removeItem(item){
     items = items.filter(x=>x.id!==item.id);
-    el.remove();
+    if(item.el) item.el.remove();
     if(openItem && openItem.id===item.id) closeModal();
     updateEmptyMsg();
   }
+
+  // 위 카드 생성기에 넣은 사진을 1페이지로 자동 반영 — 사용자가 1페이지를 직접 지우기 전까지,
+  // 카드 생성기 쪽 사진이 바뀔 때마다(igcrop:mainImage 이벤트) 계속 따라간다
+  function syncMainImage(img){
+    if(mainDismissed || !img) return;
+    const pw = img.naturalWidth||img.width, ph = img.naturalHeight||img.height;
+    const item = { id: nextId++, name: '카드 생성기 사진', img, focusX:0.5, focusY:0.5, zoom: defaultZoom(pw, ph), fromMain:true };
+    if(mainItem) removeItem(mainItem);
+    items.unshift(item);
+    addItemEl(item, true);
+    mainItem = item;
+    updateEmptyMsg();
+  }
+  document.addEventListener('igcrop:mainImage', e=> syncMainImage(e.detail && e.detail.img));
+  if(typeof state !== 'undefined' && state.img) syncMainImage(state.img);
 
   function exportBlob(item){
     return new Promise((resolve,reject)=>{
@@ -1196,40 +1272,9 @@ function restoreSlot(s){
   modal.addEventListener('click', e=>{ if(e.target===modal) closeModal(); });
   modalDownloadBtn.addEventListener('click', ()=>{ if(openItem) downloadItem(openItem); });
 
-  let dragging=false, lastX=0, lastY=0;
-  modalCanvas.addEventListener('pointerdown', e=>{
-    if(!openItem) return;
-    dragging=true; lastX=e.clientX; lastY=e.clientY;
-    try{ modalCanvas.setPointerCapture(e.pointerId); }catch{}
-  });
-  modalCanvas.addEventListener('pointermove', e=>{
-    if(!dragging || !openItem) return;
-    const pw = openItem.img.naturalWidth||openItem.img.width, ph = openItem.img.naturalHeight||openItem.img.height;
-    const rect = modalCanvas.getBoundingClientRect();
-    const scaleX = modalCanvas.width/rect.width, scaleY = modalCanvas.height/rect.height;
-    const { dw, dh } = coverCropRect(pw, ph, MODAL_W, MODAL_H, openItem.focusX, openItem.focusY, openItem.zoom);
-    const overflowX = dw - MODAL_W, overflowY = dh - MODAL_H;
-    const dxPix = (e.clientX-lastX)*scaleX, dyPix = (e.clientY-lastY)*scaleY;
-    if(overflowX>0.5) openItem.focusX = clamp01(openItem.focusX - dxPix/overflowX);
-    if(overflowY>0.5) openItem.focusY = clamp01(openItem.focusY - dyPix/overflowY);
-    lastX=e.clientX; lastY=e.clientY;
-    renderModal();
-  });
-  function endDrag(){ dragging=false; }
-  modalCanvas.addEventListener('pointerup', endDrag);
-  modalCanvas.addEventListener('pointercancel', endDrag);
-  modalCanvas.addEventListener('pointerleave', ()=>{ if(dragging) endDrag(); });
-  modalCanvas.addEventListener('wheel', e=>{
-    if(!openItem) return;
-    e.preventDefault();
-    // 평소 휠은 최소 1배(=빈틈 없이 꽉 채움, 기존과 동일)까지만 축소.
-    // Shift를 누른 채 휠을 돌리면 그 사진의 "전체가 다 보이는" 지점까지 더 축소 허용 —
-    // 이때는 흰 여백(레터박스)이 생기는 걸 사용자가 의도적으로 선택한 것으로 간주.
-    const pw = openItem.img.naturalWidth||openItem.img.width, ph = openItem.img.naturalHeight||openItem.img.height;
-    const minZoom = e.shiftKey ? containMinZoom(pw, ph) : 1;
-    openItem.zoom = Math.max(minZoom, Math.min(4, openItem.zoom*(e.deltaY<0?1.08:0.92)));
-    renderModal();
-  }, {passive:false});
+  // 썸네일과 동일한 드래그/휠 로직 공유(attachInteraction) — 모달에서 조정한 내용은
+  // 바로 옆 썸네일에도 실시간 반영됨
+  attachInteraction(modalCanvas, ()=>openItem, MODAL_W, MODAL_H, item=>{ renderModal(); renderThumb(item); });
 
   updateEmptyMsg();
 })();
