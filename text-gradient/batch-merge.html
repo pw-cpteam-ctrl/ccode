@@ -36,6 +36,11 @@ button:disabled{opacity:.4;cursor:default;}
   background:#fff;border:1px solid #ccc4b4;color:#bbb;line-height:1;}
 .mainStar.on{color:#f07d1e;border-color:#f07d1e;}
 .mainStar:hover{border-color:#f07d1e;}
+/* 스토어명 글자색 — 옵션이 2개뿐이라 드롭다운 대신 버튼 2개로 현재 상태가 바로 보이게 */
+.storeColorBtn{font-size:11px;padding:4px 10px;border:1px solid #ccc4b4;background:#fff;cursor:pointer;border-radius:0;}
+.storeColorBtn:first-of-type{border-radius:6px 0 0 6px;}
+.storeColorBtn:last-of-type{border-radius:0 6px 6px 0;border-left:none;}
+.storeColorBtn.on{background:#252018;color:#fff;border-color:#252018;}
 .thumb{border-radius:6px;}
 .listFolder{font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;color:#fff;display:inline-block;margin-bottom:2px;}
 #matchListTable td.photoCell{cursor:pointer;}
@@ -180,6 +185,9 @@ button:disabled{opacity:.4;cursor:default;}
       </select>
     </label>
     <label style="margin-left:16px;">뱃지 색상: <input type="color" id="badgeColor" value="#ffd400"/></label>
+    <span style="margin-left:16px;">스토어명 글자색:
+      <button id="btnStoreBlack" class="storeColorBtn">검정</button><button id="btnStoreWhite" class="storeColorBtn">흰색</button>
+    </span>
     <span style="margin-left:16px;">
       <button id="btnSelAll" style="font-size:11px;padding:4px 8px;">전체 선택</button>
       <button id="btnSelUnassigned" style="font-size:11px;padding:4px 8px;">투명 미배정만 선택</button>
@@ -1186,18 +1194,23 @@ $('#btnApplyList').addEventListener('click', async () => {
 });
 
 // ---------- 3번째 레이어: 월 리본 뱃지 + 스토어명 (둘 다 캔버스에 코드로 직접 그림, 이미지 아님) ----------
-let badgeMonth = '', badgeWeight = 700, badgeColor = '#ffd400';
+let badgeMonth = '', badgeWeight = 700, badgeColor = '#ffd400', storeTextColor = '#111111';
 function loadBadgeSettings(){
   try {
     const s = JSON.parse(localStorage.getItem('batch_merge_badge_settings') || 'null');
-    if (s) { badgeMonth = s.month || ''; badgeWeight = s.weight || 700; badgeColor = s.color || '#ffd400'; }
+    if (s) { badgeMonth = s.month || ''; badgeWeight = s.weight || 700; badgeColor = s.color || '#ffd400'; storeTextColor = s.storeTextColor || '#111111'; }
   } catch (e) {}
   $('#badgeMonth').value = badgeMonth;
   $('#badgeWeight').value = String(badgeWeight);
   $('#badgeColor').value = badgeColor;
+  updateStoreColorButtons();
+}
+function updateStoreColorButtons(){
+  $('#btnStoreBlack').classList.toggle('on', storeTextColor !== '#ffffff');
+  $('#btnStoreWhite').classList.toggle('on', storeTextColor === '#ffffff');
 }
 function saveBadgeSettings(){
-  localStorage.setItem('batch_merge_badge_settings', JSON.stringify({ month: badgeMonth, weight: badgeWeight, color: badgeColor }));
+  localStorage.setItem('batch_merge_badge_settings', JSON.stringify({ month: badgeMonth, weight: badgeWeight, color: badgeColor, storeTextColor }));
 }
 
 // 스토어명 옆(좌측)에 붙는 로고 — 페이지 로딩 시 1번만 불러와서 재사용
@@ -1280,7 +1293,8 @@ function getBadgeShadowSprite(side){
 }
 
 function drawBadge(ctx, it, opts){
-  if (!it.storeName) return; // 스토어명 안 채운 사진은 뱃지도 안 그림
+  // 뱃지·스토어명은 폴더 대표(표지) 한 장에만 올린다 — 나머지 사진엔 필요 없음
+  if (!it.isMain) return;
   const withShadow = !opts || opts.shadow !== false;
   const side = it.badgeSide || 'left';
   // badge-tuner.html에서 확정한 값 그대로 (조정 도구는 삭제 예정)
@@ -1334,13 +1348,14 @@ function drawBadge(ctx, it, opts){
   const groupStartX = side === 'left' ? CW - storeMargin - groupW : storeMargin;
   const storeY = offsetY + storeTopPad;
 
-  // 딱딱한 흰 테두리(strokeText) 대신, 로고·텍스트에 공통으로 부드러운 흰 후광(soft glow)을 줘서
-  // 재질이 서로 달라 보이던 문제를 해결 (같은 shadow 설정을 텍스트/로고 둘 다에 적용)
+  // 딱딱한 흰 테두리(strokeText) 대신, 로고·텍스트에 공통으로 부드러운 후광(soft glow)을 줘서
+  // 재질이 서로 달라 보이던 문제를 해결 (같은 shadow 설정을 텍스트/로고 둘 다에 적용).
+  // 후광은 글자색의 반대색으로 준다 — 흰 글자에 흰 후광을 주면 대비가 하나도 안 생기므로
   ctx.textAlign = 'left';
-  ctx.shadowColor = 'rgba(255,255,255,0.95)';
+  ctx.shadowColor = (storeTextColor === '#ffffff') ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.95)';
   ctx.shadowBlur = 6;
-  ctx.fillStyle = '#111';
-  ctx.fillText(it.storeName, groupStartX + logoW + gap, storeY);
+  ctx.fillStyle = storeTextColor;
+  if (it.storeName) ctx.fillText(it.storeName, groupStartX + logoW + gap, storeY);
 
   if (badgeLogoLoaded) {
     const logoY = storeY + storeSize / 2 - logoH / 2 - 3; // 텍스트 세로 중앙 기준, 3px 위로 미세조정
@@ -1617,6 +1632,14 @@ $('#badgeWeight').addEventListener('change', e => {
   saveBadgeSettings();
   renderGrid();
 });
+function setStoreTextColor(c){
+  storeTextColor = c;
+  updateStoreColorButtons();
+  saveBadgeSettings();
+  renderGrid();
+}
+$('#btnStoreBlack').addEventListener('click', () => setStoreTextColor('#111111'));
+$('#btnStoreWhite').addEventListener('click', () => setStoreTextColor('#ffffff'));
 $('#badgeColor').addEventListener('input', e => {
   badgeColor = e.target.value;
   saveBadgeSettings();
