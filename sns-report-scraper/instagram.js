@@ -94,7 +94,22 @@ async function collectInstagram({ account, sessionFile, startDate, endDate, head
     for (let attempt = 0; attempt < MAX_ATTEMPTS && !parsed; attempt++) {
       try {
         await page.goto(url, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(2000);
+        // ⚠️ 예전엔 여기서 무조건 2초 고정으로 기다린 뒤 바로 읽었음 — 인스타는 페이지
+        // 뼈대(사진·캡션)를 먼저 그리고 좋아요/댓글 숫자는 뒤늦게 비동기로 채우는 방식이라,
+        // 2초 안에 그 숫자가 실제로 그려졌는지는 그때그때 네트워크 상황에 따라 달랐음(레이스
+        // 컨디션). 같은 계정·같은 세션인데도 게시물마다 성공/실패가 갈렸던 게 그 증거
+        // (TROUBLESHOOTING 07-13 참고). "숫자가 나타날 때까지" 기다리는 걸로 바꿔서 이
+        // 타이밍 문제 자체를 없앰 — 최대 6초까지 기다리되, 그래도 안 나타나면(진짜로 그
+        // 게시물엔 숫자가 없는 경우 등) 포기하고 그대로 진행해 기존 동작(null)과 같아짐.
+        await page.waitForFunction(() => {
+          const numeric = /^[\d,.]+[만천KM]?$/;
+          const hasCoordCandidate = [...document.querySelectorAll('span')].some(el => {
+            const r = el.getBoundingClientRect();
+            return r.x > 700 && r.y > 400 && r.y < 580 && numeric.test(el.innerText.trim());
+          });
+          if (hasCoordCandidate) return true;
+          return [...document.querySelectorAll('span')].some(el => /명이 좋아합니다|likes$/.test(el.innerText));
+        }, { timeout: 6000 }).catch(() => {}); // 6초 넘게 안 나타나도 에러로 죽지 않고 그냥 진행
 
         parsed = await page.evaluate((acct) => {
           const timeEl = document.querySelector('time[datetime]');
