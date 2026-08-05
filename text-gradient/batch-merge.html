@@ -65,6 +65,12 @@ button:disabled{opacity:.4;cursor:default;}
 .overlayPickBtn{position:absolute;top:2px;left:2px;font-size:10px;line-height:1;padding:3px 5px;border-radius:4px;border:1px solid #ccc4b4;background:#fff;opacity:.85;z-index:3;cursor:pointer;}
 .overlayPickBtn:hover{opacity:1;}
 .overlayPickBtn.unset{background:#ffe9e9;border-color:#e05d5d;color:#b33;opacity:1;}
+/* 여러 장 한꺼번에 배정하기 위한 선택 체크박스 + 선택된 칸 강조 */
+.selChk{position:absolute;bottom:3px;left:3px;width:17px;height:17px;margin:0;z-index:4;cursor:pointer;accent-color:#4a7cff;}
+.thumb.sel canvas{outline:3px solid #4a7cff;outline-offset:-2px;}
+#selBar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 10px;
+  background:#eef3ff;border:1px solid #4a7cff;border-radius:8px;font-size:12px;}
+#selBar button{font-size:12px;padding:6px 12px;}
 /* 투명 이미지 고르기 팝오버 — 썸네일마다 select를 300개 만들면 무거워서, 팝오버 1개만 만들어 재사용 */
 #overlayPicker{position:absolute;z-index:200;display:none;width:300px;max-height:330px;overflow-y:auto;background:#fff;border:1px solid #ccc4b4;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:8px;}
 #overlayPicker.open{display:block;}
@@ -135,7 +141,16 @@ button:disabled{opacity:.4;cursor:default;}
 <div class="panel" id="gridPanel" style="display:none;">
   <h2>미리보기 (클릭해서 조정)</h2>
   <div id="restoreNote" style="display:none;font-size:12px;color:#3a7d3a;margin-bottom:8px;">저장된 작업을 자동으로 불러왔어요.</div>
-  <div style="font-size:12px;color:#7d7568;margin-bottom:8px;">각 칸 왼쪽 위 <b>투명</b> 버튼을 누르면 사진을 보면서 투명 이미지를 고를 수 있어요 (빨간 버튼 = 아직 배정 안 됨). 고르면 바로 합성돼서 보입니다.</div>
+  <div style="font-size:12px;color:#7d7568;margin-bottom:8px;">
+    각 칸 왼쪽 위 <b>투명</b> 버튼 = 그 칸 하나만 배정 (빨간 버튼 = 아직 배정 안 됨).<br/>
+    여러 장을 한꺼번에 배정하려면 칸 <b>왼쪽 아래 체크박스</b>로 골라줘 — <b>Shift+클릭</b>하면 이전에 고른 칸부터 사이 전부 한번에 선택됨. 고르면 바로 합성돼서 보입니다.
+  </div>
+  <div id="selBar" style="display:none;">
+    <b id="selCount"></b>
+    <button id="btnSelAssignOverlay" class="primary">투명 이미지 일괄 배정</button>
+    <button id="btnSelBadgeFlip">뱃지 좌우 전환</button>
+    <button id="btnSelClear">선택 해제</button>
+  </div>
   <div class="previewToolbar">
     <label>미리보기 크기: <input type="range" id="thumbSizeSlider" min="70" max="240" value="120"/></label>
     <label style="margin-left:16px;"><input type="checkbox" id="thumbZoomToggle"/> 미리보기에서 마우스 휠로 개별 확대/축소</label>
@@ -154,6 +169,10 @@ button:disabled{opacity:.4;cursor:default;}
       </select>
     </label>
     <label style="margin-left:16px;">뱃지 색상: <input type="color" id="badgeColor" value="#ffd400"/></label>
+    <span style="margin-left:16px;">
+      <button id="btnSelAll" style="font-size:11px;padding:4px 8px;">전체 선택</button>
+      <button id="btnSelUnassigned" style="font-size:11px;padding:4px 8px;">투명 미배정만 선택</button>
+    </span>
   </div>
   <div id="grid"></div>
   <div style="margin-top:14px;">
@@ -474,29 +493,55 @@ function naturalCompare(a, b){
 }
 
 let _folderPickAppendMode = false;
-$('#btnPickFolder').addEventListener('click', () => { _folderPickAppendMode = false; $('#inPhotoFolder').click(); });
-$('#btnPickFolderAppend').addEventListener('click', () => { _folderPickAppendMode = true; $('#inPhotoFolder').click(); });
+// 파일 선택창을 열기 직전에 input 값을 비우는 게 중요하다 — 안 비우면 "같은 폴더를 다시 고를 때"
+// 브라우저가 "선택이 안 바뀌었다"고 보고 change 이벤트를 아예 안 보내서, 버튼을 눌러도 아무 일도
+// 안 일어나고 예전 리스트가 그대로 남아 있는 것처럼 보인다
+function openPhotoFolderPicker(appendMode){
+  _folderPickAppendMode = appendMode;
+  const input = $('#inPhotoFolder');
+  input.value = '';
+  input.click();
+}
+$('#btnPickFolder').addEventListener('click', () => openPhotoFolderPicker(false));
+$('#btnPickFolderAppend').addEventListener('click', () => openPhotoFolderPicker(true));
+// 폴더에서 고른 파일이 이미지인지 판단 — 브라우저가 종류(type)를 못 알아내서 빈 값으로 주는 경우가
+// 있어서, 그럴 때는 확장자로도 한 번 더 확인한다 (안 하면 사진이 전부 걸러져서 "이미지 못 찾음"이 됨)
+function looksLikeImageFile(f){
+  if (/^image\//.test(f.type)) return true;
+  return !f.type && /\.(jpe?g|png|gif|webp|bmp|avif|heic|heif|tiff?)$/i.test(f.name);
+}
 $('#inPhotoFolder').addEventListener('change', async (e) => {
-  const files = Array.from(e.target.files).filter(f => /^image\//.test(f.type));
+  const files = Array.from(e.target.files).filter(looksLikeImageFile);
   if (!files.length) { log('폴더에서 이미지 파일을 못 찾음'); return; }
   files.sort((a, b) => naturalCompare(a.name, b.name));
 
   const appendMode = _folderPickAppendMode;
   log(appendMode ? `폴더에서 사진 ${files.length}장 추가로 불러오는 중...` : `폴더에서 사진 ${files.length}장 불러오는 중...`);
   const newItems = [];
+  const failed = [];
   for (const f of files) {
-    const img = await loadImage(f);
-    newItems.push({
-      photoName: f.name, overlayName: null,
-      photoFile: f, overlayFile: null, photoImg: img, overlayImg: null,
-      scaleMul: 1, ox: 0, oy: 0, bg: '#ffffff',
-      storeName: '', badgeSide: 'left'
-    });
+    // 읽다가 실패하는 파일(손상된 파일, 브라우저가 못 읽는 형식 등)이 하나라도 있으면 예전에는
+    // 여기서 통째로 중단돼서 아래 교체·화면갱신이 아예 실행되지 않았다 → 그 파일만 건너뛰고 계속 진행
+    try {
+      const img = await loadImage(f);
+      newItems.push({
+        photoName: f.name, overlayName: null,
+        photoFile: f, overlayFile: null, photoImg: img, overlayImg: null,
+        scaleMul: 1, ox: 0, oy: 0, bg: '#ffffff',
+        storeName: '', badgeSide: 'left'
+      });
+    } catch (err) {
+      failed.push(f.name);
+    }
   }
+  if (failed.length) log(`못 읽어서 건너뜀 ${failed.length}장: ${failed.slice(0, 5).join(', ')}${failed.length > 5 ? ' ...' : ''}`);
+  if (!newItems.length) { log('불러올 수 있는 사진이 없어서 기존 리스트를 그대로 둠'); return; }
+
   items = appendMode ? items.concat(newItems) : newItems;
+  if (!appendMode) clearSelection(); // 리스트를 새로 채웠으면 예전 선택은 의미가 없음
   log(appendMode
     ? `사진 ${newItems.length}장 추가 완료 (전체 ${items.length}장, 투명 이미지는 아직 없음, 리스트에서 배정)`
-    : `사진 ${items.length}장 로딩 완료 (투명 이미지는 아직 없음, 리스트에서 배정)`);
+    : `사진 ${items.length}장으로 교체 완료 (투명 이미지는 아직 없음, 리스트에서 배정)`);
 
   $('#gridPanel').style.display = '';
   $('#restoreNote').style.display = 'none';
@@ -677,47 +722,35 @@ function syncOverlayCell(it){
   const sel = td && td.querySelector('select');
   if (sel) sel.value = it.overlayName || '';
 }
-// name이 비어있으면 배정 해제
-async function assignOverlay(it, name){
-  if (name) {
-    const img = await getOverlayImg(name);
-    if (!img) { log(`"${name}" 투명 이미지를 못 찾음 (업로드했는지 확인)`); return; }
-    it.overlayName = name;
-    it.overlayFile = overlayFiles.find(f => f.name === name) || null;
-    it.overlayImg = img;
-  } else {
-    it.overlayName = null; it.overlayFile = null; it.overlayImg = null;
-  }
-  refreshThumb(it);
-  updateOverlayPickBtn(it);
-  syncOverlayCell(it);
-  updateListProgress();
-  saveMetaSoon();
-  saveFilesSoon();
-}
-// 드래그로 여러 줄을 한꺼번에 채운 경우 — 이미지는 한 번만 읽어서 그 범위 전체에 같이 반영
-async function assignOverlayRange(startIdx, endIdx, name){
+// 아트보드 여러 개에 같은 투명 이미지를 배정 — 한 장이든 300장이든 이 함수 하나로 처리한다
+// (이미지는 몇 장에 배정하든 한 번만 읽어서 같이 씀). name이 비어있으면 배정 해제
+async function assignOverlayMany(list, name){
   let img = null, file = null;
   if (name) {
     img = await getOverlayImg(name);
     if (!img) { log(`"${name}" 투명 이미지를 못 찾음 (업로드했는지 확인)`); return; }
     file = overlayFiles.find(f => f.name === name) || null;
   }
-  for (let i = startIdx; i <= endIdx; i++) {
-    const it = items[i];
+  for (const it of list) {
     it.overlayName = name || null;
     it.overlayFile = file;
     it.overlayImg = img;
     refreshThumb(it);
     updateOverlayPickBtn(it);
+    syncOverlayCell(it);
   }
   updateListProgress();
   saveMetaSoon();
   saveFilesSoon();
 }
+function assignOverlay(it, name){ return assignOverlayMany([it], name); }
+// 표에서 드래그로 여러 줄을 한꺼번에 채운 경우
+function assignOverlayRange(startIdx, endIdx, name){
+  return assignOverlayMany(items.slice(startIdx, endIdx + 1), name);
+}
 
 // ---------- 투명 이미지 고르기 팝오버 ----------
-let _pickerTarget = null;      // 지금 고르는 중인 아트보드
+let _pickerTargets = null;     // 지금 고르는 중인 아트보드들 (한 장이면 1개, 복수선택이면 여러 개)
 let _pickerBuiltFor = null;    // 어떤 overlayFiles 목록으로 만들어뒀는지 (목록이 바뀌면 다시 만듦)
 const _pickerUrls = [];
 function buildOverlayPicker(){
@@ -760,21 +793,30 @@ function buildOverlayPicker(){
 
   grid.addEventListener('click', async (e) => {
     const cell = e.target.closest('.opItem');
-    if (!cell || !_pickerTarget) return;
-    const target = _pickerTarget;
+    if (!cell || !_pickerTargets || !_pickerTargets.length) return;
+    const targets = _pickerTargets;
     closeOverlayPicker();
-    await assignOverlay(target, cell.dataset.name || null);
+    await assignOverlayMany(targets, cell.dataset.name || null);
+    if (targets.length > 1) log(`${targets.length}개 아트보드에 "${cell.dataset.name || '(없음)'}" 배정 완료`);
   });
 
   box.appendChild(grid);
   _pickerBuiltFor = overlayFiles;
 }
-function openOverlayPicker(btn, it){
+// targets: 아트보드 배열 (한 장만 바꿀 때도 배열로 넘김)
+function openOverlayPicker(btn, targets){
   const box = $('#overlayPicker');
   if (_pickerBuiltFor !== overlayFiles) buildOverlayPicker();
-  _pickerTarget = it;
+  _pickerTargets = targets;
+  box.querySelector('.opTitle').textContent = !overlayFiles.length
+    ? '위쪽 "0. 투명 이미지 올리기"에서 파일을 먼저 올려줘'
+    : (targets.length > 1
+        ? `선택한 ${targets.length}개에 한꺼번에 배정 — 투명 이미지를 클릭`
+        : '투명 이미지를 클릭해서 배정');
+  // 여러 개를 한꺼번에 바꿀 때는 지금 값이 서로 다를 수 있어서 현재 선택 표시는 안 함
+  const cur = targets.length === 1 ? (targets[0].overlayName || null) : ' ';
   box.querySelectorAll('.opItem').forEach(c => {
-    c.classList.toggle('on', (c.dataset.name || null) === (it.overlayName || null));
+    c.classList.toggle('on', (c.dataset.name || null) === cur);
   });
   box.classList.add('open'); // 크기를 재려면 먼저 보이게 해야 함
 
@@ -793,15 +835,69 @@ function openOverlayPicker(btn, it){
 }
 function closeOverlayPicker(){
   $('#overlayPicker').classList.remove('open');
-  _pickerTarget = null;
+  _pickerTargets = null;
 }
 document.addEventListener('mousedown', (e) => {
   const box = $('#overlayPicker');
   if (!box.classList.contains('open')) return;
-  if (box.contains(e.target) || e.target.closest('.overlayPickBtn')) return;
+  if (box.contains(e.target) || e.target.closest('.overlayPickBtn') || e.target.closest('#btnSelAssignOverlay')) return;
   closeOverlayPicker();
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeOverlayPicker(); });
+
+// ---------- 아트보드 복수선택 (여러 장을 한꺼번에 처리) ----------
+const selectedIdx = new Set();
+let _lastSelIdx = null; // Shift+클릭으로 범위 선택할 때의 기준점
+function updateSelUi(){
+  document.querySelectorAll('.thumb').forEach(w => {
+    const i = Number(w.dataset.idx);
+    const on = selectedIdx.has(i);
+    w.classList.toggle('sel', on);
+    const cb = w.querySelector('.selChk');
+    if (cb) cb.checked = on;
+  });
+  const n = selectedIdx.size;
+  $('#selBar').style.display = n ? 'flex' : 'none';
+  $('#selCount').textContent = `${n}개 선택됨`;
+}
+function clearSelection(){
+  selectedIdx.clear();
+  _lastSelIdx = null;
+  updateSelUi();
+}
+function selectedItems(){
+  return Array.from(selectedIdx).sort((a, b) => a - b).map(i => items[i]).filter(Boolean);
+}
+$('#btnSelAll').addEventListener('click', () => {
+  selectedIdx.clear();
+  items.forEach((_, i) => selectedIdx.add(i));
+  _lastSelIdx = null;
+  updateSelUi();
+});
+$('#btnSelUnassigned').addEventListener('click', () => {
+  selectedIdx.clear();
+  items.forEach((it, i) => { if (!it.overlayName) selectedIdx.add(i); });
+  _lastSelIdx = null;
+  updateSelUi();
+  log(`투명 미배정 ${selectedIdx.size}개 선택함`);
+});
+$('#btnSelClear').addEventListener('click', clearSelection);
+$('#btnSelAssignOverlay').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const list = selectedItems();
+  if (!list.length) return;
+  openOverlayPicker($('#btnSelAssignOverlay'), list);
+});
+$('#btnSelBadgeFlip').addEventListener('click', () => {
+  const list = selectedItems();
+  if (!list.length) return;
+  for (const it of list) {
+    it.badgeSide = (it.badgeSide === 'right') ? 'left' : 'right';
+    refreshThumb(it);
+  }
+  saveMetaSoon();
+  log(`${list.length}개 뱃지 좌우 전환`);
+});
 
 $('#btnApplyList').addEventListener('click', async () => {
   let applied = 0;
@@ -1114,10 +1210,28 @@ function renderGrid(){
       e.stopPropagation();
       openOverlayPicker(pickBtn, it);
     });
+    // 여러 장 한꺼번에 배정하려고 고르는 체크박스 (Shift+클릭 = 이전 기준점부터 범위 선택)
+    const selChk = document.createElement('input');
+    selChk.type = 'checkbox';
+    selChk.className = 'selChk';
+    selChk.checked = selectedIdx.has(idx);
+    selChk.title = '여러 장 선택 (Shift+클릭: 이전에 고른 칸부터 사이 전부)';
+    selChk.addEventListener('click', (e) => {
+      e.stopPropagation(); // 칸 클릭(편집기 열기)까지 같이 발동하지 않게
+      if (e.shiftKey && _lastSelIdx !== null) {
+        const a = Math.min(_lastSelIdx, idx), b = Math.max(_lastSelIdx, idx);
+        for (let i = a; i <= b; i++) selectedIdx.add(i);
+      } else {
+        if (selChk.checked) selectedIdx.add(idx); else selectedIdx.delete(idx);
+        _lastSelIdx = idx;
+      }
+      updateSelUi();
+    });
     wrap.appendChild(canvas);
     wrap.appendChild(badgeToggle);
     wrap.appendChild(downloadBtn);
     wrap.appendChild(pickBtn);
+    wrap.appendChild(selChk);
     wrap.appendChild(name);
     wrap.addEventListener('click', () => openEditor(idx));
     grid.appendChild(wrap);
@@ -1125,6 +1239,7 @@ function renderGrid(){
     it._pickBtn = pickBtn;
     updateOverlayPickBtn(it);
   });
+  updateSelUi(); // 미리보기 크기 변경 등으로 다시 그릴 때도 선택 상태가 유지되게
 }
 function refreshThumb(it){
   if (!it._thumbCanvas) return;
