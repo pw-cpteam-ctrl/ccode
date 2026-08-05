@@ -807,7 +807,7 @@ function makeCell(it, ri, pg) {
     const mainRow = document.createElement('div');
     // overflow:visible — export(html-to-image)가 텍스트를 화면보다 미세하게 넓게 그려도
     // 강제로 잘리지 않도록. 대신 글자 크기 자동 축소(fitCellNames)로 칸 안에 맞춤.
-    mainRow.style.cssText = 'display:flex;flex-wrap:nowrap;align-items:flex-end;gap:10px;overflow:visible;';
+    mainRow.style.cssText = 'display:flex;flex-wrap:nowrap;align-items:center;gap:10px;overflow:visible;';
 
     const txtSpan = document.createElement('span');
     txtSpan.className = 'name-text';
