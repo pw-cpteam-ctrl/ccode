@@ -1106,7 +1106,7 @@ function applyRowHeights(pg) {
   // 그 최종 크기 기준으로 다시 맞춤 (안 그러면 사진 로드 시점의 옛 크기로 계산된 채로 남음)
   requestAnimationFrame(() => {
     gridEl.querySelectorAll('.cell').forEach(cell => {
-      const img = cell.querySelector('.ci img');
+      const img = cell.querySelector('.ci img:not(.blur-bg)'); // 블러 배경(.blur-bg)이 먼저 삽입돼있어 그냥 'img'로 찾으면 그게 잡힘
       if (!img) return;
       const it = pages[pg-1][+cell.dataset.idx];
       if (it) applyImgTransform(img, it);
