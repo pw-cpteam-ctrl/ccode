@@ -181,8 +181,14 @@ function extractKeywords(text) {
 // 라인명이 나오면 계속 추가해야 함(예: 여기 없는 라인명은 시리즈 칸이 빈 채로 나감).
 // "컬렉션"/"Collection"은 여기 없음 — 특정 라인 브랜드명이 아니라 일반 단어라 GENERIC_KEYWORDS로
 // 옮김(위 참고). 여기 있으면 GEM/G.M.G 같은 진짜 라인명보다 먼저 매칭돼서 오탐이 났었음.
+// ⚠️ "테노히라"/"손바닥"을 "GEM"보다 앞에 둠 — detectProductLine은 배열 순서상 먼저 나온
+// 후보를 우선하는데, "테노히라"(손바닥 크기 GEM 서브라인)는 GEM의 하위 개념이라 GEM 뒤에
+// 있으면 절대 안 걸림(테노히라와 GEM이 같은 문장에 있으면 늘 GEM으로만 분류됨). 실제 사례:
+// 경쟁사는 이 서브라인을 항상 "G.E.M.시리즈 손바닥 OO"로만 쓰고 "테노히라"라는 말 자체를
+// 안 써서, 자사 게시물(line=테노히라)과 라인이 GEM/테노히라로 갈려 매칭이 막힘(문호
+// 스트레이독스 게시물이 "매칭 안 됨"에 숨어버린 사례로 발견).
 const KNOWN_PRODUCT_LINES = [
-  '룩업', 'Look Up', 'GEM', 'G.E.M', '메가캣', 'MegaCat', '테노히라',
+  '룩업', 'Look Up', '테노히라', '손바닥', 'GEM', 'G.E.M', '메가캣', 'MegaCat',
   'GGG', 'G.M.G', 'GMG', '쁘띠라마', 'INSIDE FANTASY', '인사이드 판타지', '스케일', 'POP', 'P.O.P',
 ];
 
@@ -190,7 +196,8 @@ const KNOWN_PRODUCT_LINES = [
 // 예: 당사는 "원피스 스케일 피규어"(스케일)라고 쓰고 경쟁사는 "P.O.P 시리즈"(POP)라고 씀 —
 // 둘 다 같은 라인인데 문자열이 달라서 자동으로 분리돼버렸던 걸 여기서 통일.
 // "인사이드 판타지"(당사는 영문 "INSIDE FANTASY"로 씀)도 같은 이유로 추가.
-const LINE_ALIASES = { '스케일': 'POP', 'P.O.P': 'POP', 'Look Up': '룩업', 'MegaCat': '메가캣', 'G.E.M': 'GEM', 'GMG': 'G.M.G', '인사이드 판타지': 'INSIDE FANTASY' };
+// "손바닥"(경쟁사가 쓰는 한글 표현) → "테노히라"(당사가 쓰는 일본어 음역)도 같은 이유.
+const LINE_ALIASES = { '스케일': 'POP', 'P.O.P': 'POP', 'Look Up': '룩업', 'MegaCat': '메가캣', 'G.E.M': 'GEM', 'GMG': 'G.M.G', '인사이드 판타지': 'INSIDE FANTASY', '손바닥': '테노히라' };
 function canonicalLine(rawLine) {
   return rawLine ? (LINE_ALIASES[rawLine] || rawLine) : null;
 }
