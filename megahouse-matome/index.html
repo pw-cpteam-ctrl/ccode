@@ -434,7 +434,7 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
   <div class="stage-toolbar-inner" style="display:inline-flex;align-items:center;gap:10px;background:rgba(0,0,0,.25);backdrop-filter:blur(4px);border-radius:20px;padding:6px 16px;">
     <span class="stage-toolbar-handle" id="stageToolbarHandle" title="드래그해서 위치 이동">⠿</span>
     <span style="color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">미리보기</span>
-    <input type="range" id="previewZoom" min="20" max="100" value="50" step="1" style="width:120px;accent-color:#fff;cursor:pointer;" oninput="applyPreviewZoom(this.value)"/>
+    <input type="range" id="previewZoom" min="20" max="200" value="50" step="1" style="width:120px;accent-color:#fff;cursor:pointer;" oninput="applyPreviewZoom(this.value)"/>
     <span id="previewZoomVal" style="color:#fff;font-size:11px;min-width:32px;">50%</span>
     <button id="btnBoardLayout" onclick="toggleBoardLayout()" title="보드 배치 전환" style="background:rgba(255,255,255,.15);border:none;color:#fff;font-size:11px;font-weight:700;border-radius:12px;padding:5px 10px;cursor:pointer;white-space:nowrap;">가로보기</button>
   </div></div>
@@ -2136,7 +2136,7 @@ document.getElementById('stage').addEventListener('wheel', e => {
   if (e.target.closest('.poster-wrap, .stage-toolbar')) return;
   e.preventDefault();
   const delta = e.deltaY > 0 ? -2 : 2;
-  const newVal = Math.min(100, Math.max(20, _previewZoomPct + delta));
+  const newVal = Math.min(200, Math.max(20, _previewZoomPct + delta));
   applyPreviewZoom(newVal);
 }, { passive: false });
 
