@@ -912,6 +912,15 @@ function applyImgTransform(img, it) {
   img.style.transform = '';
 }
 
+// 사진 전체가 다 보이는(letterbox) 최소 배율 — Shift+휠로 그 지점까지만 축소 허용할 때 씀.
+// min(...)/(max(...)*SLOP) 비율로 "칸을 벗어나지 않으면서 사진 전체가 다 담기는" 배율을 구함.
+function containMinScale(img, cell) {
+  const cw = cell.clientWidth, ch = cell.clientHeight;
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  if (!cw || !ch || !iw || !ih) return 1;
+  return Math.min(cw / iw, ch / ih) / (Math.max(cw / iw, ch / ih) * SLOP);
+}
+
 /* ── 셀 인터랙션: 드래그(이동) + 스크롤(확대) ──
    makeCell()이 refresh()마다 새 cell/img 노드로 다시 그려지므로, 여기서 매번
    window에 mousemove/mouseup 리스너를 새로 붙이면 옛 리스너가 지워지지 않고
@@ -959,7 +968,12 @@ function bindCellInteraction(cell, img, it) {
   cell.addEventListener('wheel', e => {
     e.preventDefault();
     const delta = e.deltaY < 0 ? 0.08 : -0.08;
-    it.scale = Math.max(1, Math.min(5, (it.scale || 1) + delta)); // 1 미만이면 cover-fit 기본 크기보다 작아져 여백이 드러남
+    // 평소엔 1(=칸을 딱 채우는 최소 크기) 밑으로 못 내려가 여백이 안 생기지만,
+    // Shift를 누른 채 휠을 돌리면 "사진 전체가 다 보이는 지점"까지 축소 허용
+    // (그 아래론 칸에 여백이 생기므로 거기서 막음). Shift 떼고 다시 돌리면
+    // 1로 자동 스냅되어 안전한 범위로 돌아옴
+    const minScale = e.shiftKey ? containMinScale(img, cell) : 1;
+    it.scale = Math.max(minScale, Math.min(5, (it.scale || 1) + delta));
     applyImgTransform(img, it);
     saveStateSoon(); // 확대/축소분 저장 (연타 시 마지막 한 번만)
   }, { passive: false });
