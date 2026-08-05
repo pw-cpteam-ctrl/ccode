@@ -930,10 +930,11 @@ function startAutoScroll(){
   _autoScrollRaf = requestAnimationFrame(step);
 }
 
-$('#grid').addEventListener('mousedown', (e) => {
+// 리스너를 #grid에만 걸면 칸 사이·아래 여백에서 시작한 드래그가 안 먹히므로 미리보기 패널 전체에 건다
+$('#gridPanel').addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
-  // 칸 안의 버튼·체크박스는 원래 동작 그대로
-  if (e.target.closest('.overlayPickBtn, .badgeToggle, .downloadBtn, .selChk')) return;
+  // 칸 안의 버튼·체크박스, 툴바의 조작 요소는 원래 동작 그대로
+  if (e.target.closest('button, input, select, label, a, .previewToolbar, #selBar')) return;
   const additive = e.ctrlKey || e.metaKey || e.shiftKey;
   _marquee = {
     x0: e.pageX, y0: e.pageY,
