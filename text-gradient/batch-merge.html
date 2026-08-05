@@ -253,11 +253,16 @@ function queueIdbSet(key, val){
 }
 
 function itemsMetaSnapshot(){
-  return items.map(it => ({
-    photoName: it.photoName, overlayName: it.overlayName,
-    scaleMul: it.scaleMul, ox: it.ox, oy: it.oy, bg: it.bg,
-    storeName: it.storeName || '', badgeSide: it.badgeSide || 'left'
-  }));
+  return items.map(it => {
+    // 새 방식(focus/zoom)을 기준으로 저장하고, 옛 방식 값도 역산해서 같이 넣어둔다 (되돌림 안전장치)
+    const legacy = it.photoImg ? legacyGeomOf(it) : { scaleMul: it.scaleMul, ox: it.ox, oy: it.oy };
+    return {
+      photoName: it.photoName, overlayName: it.overlayName,
+      focusX: it.focusX, focusY: it.focusY, zoom: it.zoom,
+      scaleMul: legacy.scaleMul, ox: legacy.ox, oy: legacy.oy, bg: it.bg,
+      storeName: it.storeName || '', badgeSide: it.badgeSide || 'left'
+    };
+  });
 }
 async function saveFilesToCache(){
   const photoBlobs = {}, overlayBlobs = {};
@@ -319,8 +324,10 @@ async function restoreFromCache(){
       photoName: m.photoName, overlayName: overlayBlob ? m.overlayName : null,
       photoFile: photoBlob, overlayFile: overlayBlob, photoImg, overlayImg,
       scaleMul: m.scaleMul, ox: m.ox, oy: m.oy, bg: m.bg,
+      focusX: m.focusX, focusY: m.focusY, zoom: m.zoom,
       storeName: m.storeName || '', badgeSide: m.badgeSide || 'left'
     });
+    migrateGeom(items[items.length - 1]); // 예전에 저장된 것이면 새 방식으로 옮김 (이미 새 방식이면 그대로 둠)
   }
   if (!items.length) return false;
 
@@ -455,6 +462,7 @@ $('#btnMatch').addEventListener('click', async () => {
       photoName: photoFile.name, overlayName: overlayFile.name,
       photoFile, overlayFile, photoImg: null, overlayImg: null,
       scaleMul: 1, ox: 0, oy: 0, bg: '#ffffff',
+      focusX: 0.5, focusY: 0.5, zoom: null, // zoom은 사진 크기를 알아야 정해지므로 로딩 후 채움
       storeName: '', badgeSide: 'left'
     });
   }
@@ -465,6 +473,8 @@ $('#btnMatch').addEventListener('click', async () => {
   for (const it of items) {
     it.photoImg = await loadImage(it.photoFile);
     it.overlayImg = await loadImage(it.overlayFile);
+    // 사진 크기를 이제 알 수 있으므로 기본 배율 확정 (가로로 넓은 사진은 전체보기로 시작)
+    if (it.zoom == null) it.zoom = defaultZoom(it.photoImg.naturalWidth, it.photoImg.naturalHeight, CW, CH);
   }
   log('로딩 완료. 미리보기 생성 중...');
 
@@ -522,6 +532,9 @@ $('#inPhotoFolder').addEventListener('change', async (e) => {
         photoName: f.name, overlayName: null,
         photoFile: f, overlayFile: null, photoImg: img, overlayImg: null,
         scaleMul: 1, ox: 0, oy: 0, bg: '#ffffff',
+        focusX: 0.5, focusY: 0.5,
+        // 가로로 넓은 사진은 처음부터 전체가 보이게 (새로 불러오는 사진에만 적용 — 기존 작업물은 안 건드림)
+        zoom: defaultZoom(img.naturalWidth, img.naturalHeight, CW, CH),
         storeName: '', badgeSide: 'left'
       });
     } catch (err) {
@@ -858,8 +871,9 @@ function startAutoScroll(){
 // 리스너를 #grid에만 걸면 칸 사이·아래 여백에서 시작한 드래그가 안 먹히므로 미리보기 패널 전체에 건다
 $('#gridPanel').addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
-  // 칸 안의 버튼·체크박스, 툴바의 조작 요소는 원래 동작 그대로
-  if (e.target.closest('button, input, select, label, a, .previewToolbar, #selBar')) return;
+  // 칸 안의 버튼·체크박스, 툴바의 조작 요소는 원래 동작 그대로.
+  // 사진(.thumbCv) 위에서 시작한 드래그는 "사진 위치 조정"이므로 여기서 제외 — 여백에서 시작할 때만 선택
+  if (e.target.closest('button, input, select, label, a, .previewToolbar, #selBar, .thumbCv')) return;
   const additive = e.ctrlKey || e.metaKey || e.shiftKey;
   _marquee = {
     x0: e.pageX, y0: e.pageY,
@@ -1093,17 +1107,57 @@ function drawBadge(ctx, it, opts){
   ctx.restore();
 }
 
+// ---------- 사진 위치·배율 계산 ----------
+// 위치를 "픽셀 오프셋(ox/oy)" 대신 "사진의 어느 지점을 화면 가운데 둘지(focusX/focusY, 0~1)"로 잡는다.
+// 이렇게 하면 0~1 범위만 지키면 사진이 아트보드 밖으로 밀려나는 게 원천적으로 불가능해진다
+// (예전 방식은 제한이 없어서 사진을 밖으로 완전히 밀어내고 저장하면 배경색만 남은 이미지가 나왔음).
+const SLOP = 1.003; // 꽉 채울 때 반올림 오차로 배경이 실선처럼 비치는 걸 막는 여유값
+function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+function coverCropRect(pw, ph, W, H, focusX, focusY, zoom){
+  const fx = focusX ?? 0.5, fy = focusY ?? 0.5;
+  const eff = Math.max(W / pw, H / ph) * SLOP * (zoom || 1);
+  const dw = pw * eff, dh = ph * eff;
+  return { dw, dh, dx: -(dw - W) * fx, dy: -(dh - H) * fy };
+}
+// 사진 전체가 보이는(위아래 또는 좌우에 여백이 생기는) 최소 배율
+function containMinZoom(pw, ph, W, H){
+  return Math.min(W / pw, H / ph) / (Math.max(W / pw, H / ph) * SLOP);
+}
+function isWideImg(pw, ph, W, H){ return (pw / ph) > (W / H); }
+// 아트보드보다 가로로 넓은 사진은 꽉 채우면 양옆이 잘리므로, 처음부터 전체가 보이는 배율로 시작한다
+function defaultZoom(pw, ph, W, H){ return isWideImg(pw, ph, W, H) ? containMinZoom(pw, ph, W, H) : 1; }
+function geomOf(it){
+  return coverCropRect(it.photoImg.naturalWidth, it.photoImg.naturalHeight, CW, CH, it.focusX, it.focusY, it.zoom);
+}
+// 예전 방식(scaleMul + ox/oy)으로 저장된 조정값을 새 방식으로 옮긴다 — 이미 작업해둔 사진들의
+// 위치/배율이 틀어지지 않게 하려는 것. 옛 필드는 지우지 않고 그대로 남겨둔다
+function migrateGeom(it){
+  if (it.focusX != null && it.focusY != null && it.zoom != null) return;
+  const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
+  it.zoom = (it.scaleMul ?? 1) / SLOP; // 새 계산식에 SLOP이 들어가므로 그만큼 빼줘야 같은 크기가 된다
+  const eff = Math.max(CW / pw, CH / ph) * SLOP * it.zoom;
+  const ovX = pw * eff - CW, ovY = ph * eff - CH;
+  it.focusX = ovX > 0.5 ? clamp01(0.5 - (it.ox || 0) / ovX) : 0.5;
+  it.focusY = ovY > 0.5 ? clamp01(0.5 - (it.oy || 0) / ovY) : 0.5;
+}
+// 새 방식 값에서 옛 필드를 거꾸로 계산해 같이 저장해둔다 — 혹시 예전 버전 화면으로 되돌아가도
+// 작업물이 그대로 보이게 하는 안전장치
+function legacyGeomOf(it){
+  const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
+  const { dw, dh } = coverCropRect(pw, ph, CW, CH, it.focusX, it.focusY, it.zoom);
+  return {
+    scaleMul: (it.zoom ?? 1) * SLOP,
+    ox: (dw - CW) * (0.5 - (it.focusX ?? 0.5)),
+    oy: (dh - CH) * (0.5 - (it.focusY ?? 0.5)),
+  };
+}
+
 // ---------- 합성 로직 (1080x1350 논리 좌표, ctx는 호출부에서 scale 적용) ----------
 function drawItem(ctx, it){
   ctx.fillStyle = it.bg;
   ctx.fillRect(0, 0, CW, CH);
 
-  const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
-  const base = Math.max(CW / pw, CH / ph);
-  const eff = base * (it.scaleMul || 1);
-  const dw = pw * eff, dh = ph * eff;
-  const dx = (CW - dw) / 2 + (it.ox || 0);
-  const dy = (CH - dh) / 2 + (it.oy || 0);
+  const { dw, dh, dx, dy } = geomOf(it);
   ctx.drawImage(it.photoImg, dx, dy, dw, dh);
 
   if (it.overlayImg) ctx.drawImage(it.overlayImg, 0, 0, CW, CH);
@@ -1133,12 +1187,7 @@ function drawItemThumb(ctx, it){
   ctx.fillStyle = it.bg;
   ctx.fillRect(0, 0, CW, CH);
 
-  const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
-  const base = Math.max(CW / pw, CH / ph);
-  const eff = base * (it.scaleMul || 1);
-  const dw = pw * eff, dh = ph * eff;
-  const dx = (CW - dw) / 2 + (it.ox || 0);
-  const dy = (CH - dh) / 2 + (it.oy || 0);
+  const { dw, dh, dx, dy } = geomOf(it);
   ctx.drawImage(getThumbSourceCanvas(it), dx, dy, dw, dh);
 
   if (it.overlayImg) ctx.drawImage(it.overlayImg, 0, 0, CW, CH);
@@ -1146,15 +1195,7 @@ function drawItemThumb(ctx, it){
   drawBadge(ctx, it);
 }
 
-function computeGeom(it){
-  const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
-  const base = Math.max(CW / pw, CH / ph);
-  const eff = base * (it.scaleMul || 1);
-  const dw = pw * eff, dh = ph * eff;
-  const dx = (CW - dw) / 2 + (it.ox || 0);
-  const dy = (CH - dh) / 2 + (it.oy || 0);
-  return { dx, dy, dw, dh };
-}
+function computeGeom(it){ return geomOf(it); }
 
 // ---------- 사진 1장만 다운로드 (전체 ZIP 안 받고 테스트/개별 확인용) ----------
 async function downloadSingleItem(it){
@@ -1271,10 +1312,32 @@ function refreshThumb(it){
   drawItemThumb(ctx, it);
 }
 
+// 슬라이더를 움직일 때마다 칸을 처음부터 다시 만들면 사진 300장에서 한 번에 3초씩 멈춘다.
+// 끄는 중에는 이미 그려둔 그림을 CSS로 늘리/줄이기만 해서 즉시 반응하게 하고(살짝 흐릿함),
+// 손을 뗀 뒤 한 번만 실제 해상도로 다시 그린다. 칸 DOM은 다시 만들지 않아서 그 비용도 사라짐
+let _thumbSizeT;
 $('#thumbSizeSlider').addEventListener('input', e => {
   THUMB_W = Number(e.target.value);
-  renderGrid();
+  const h = thumbH();
+  document.querySelectorAll('.thumb').forEach(w => {
+    w.style.width = THUMB_W + 'px';
+    const cv = w.querySelector('canvas');
+    if (cv) { cv.style.width = THUMB_W + 'px'; cv.style.height = h + 'px'; }
+  });
+  clearTimeout(_thumbSizeT);
+  _thumbSizeT = setTimeout(resizeThumbsSharp, 220);
 });
+// 칸 DOM은 그대로 두고 캔버스 해상도만 새 크기에 맞춰 다시 그림
+function resizeThumbsSharp(){
+  const h = thumbH();
+  for (const it of items) {
+    const cv = it._thumbCanvas;
+    if (!cv) continue;
+    cv.width = THUMB_W; cv.height = h;
+    cv.style.width = THUMB_W + 'px'; cv.style.height = h + 'px';
+    refreshThumb(it);
+  }
+}
 
 $('#badgeMonth').addEventListener('input', e => {
   badgeMonth = e.target.value;
@@ -1295,19 +1358,63 @@ loadBadgeSettings();
 // 폰트가 늦게 로딩되는 경우 대비 — 로딩 끝나면 뱃지 글자를 실제 폰트로 다시 그림
 document.fonts.ready.then(() => { if (items.length) renderGrid(); });
 
-// 미리보기에서 마우스 휠로 개별 아트보드 확대/축소 (체크박스 켜졌을 때만)
+// 미리보기 칸에서 바로 확대/축소 (체크박스 켜졌을 때만 — 안 그러면 칸이 수백 개인 화면에서
+// 휠로 페이지를 내릴 수가 없어짐). Shift를 누르면 사진 전체가 보이는 크기까지 더 줄일 수 있다
 $('#grid').addEventListener('wheel', e => {
   if (!$('#thumbZoomToggle').checked) return;
   const wrap = e.target.closest('.thumb');
   if (!wrap) return;
   e.preventDefault();
-  const idx = Number(wrap.dataset.idx);
-  const it = items[idx];
-  const delta = e.deltaY < 0 ? 0.06 : -0.06;
-  it.scaleMul = Math.max(0.3, Math.min(3, (it.scaleMul || 1) + delta));
+  const it = items[Number(wrap.dataset.idx)];
+  if (!it || !it.photoImg) return;
+  const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
+  const minZoom = e.shiftKey ? containMinZoom(pw, ph, CW, CH) : defaultZoom(pw, ph, CW, CH);
+  it.zoom = Math.max(minZoom, Math.min(4, (it.zoom ?? 1) * (e.deltaY < 0 ? 1.08 : 0.92)));
   refreshThumb(it);
   saveMetaSoon();
 }, { passive: false });
+
+// ---------- 칸에서 사진을 직접 끌어서 위치 조정 ----------
+// mousemove/mouseup은 window에 딱 1벌만 등록한다 — 칸마다 등록하면 칸이 수백 개일 때 서로 엉키고
+// 다시 그릴 때마다 쌓인다. 지금 어느 칸을 만지는 중인지는 _panDrag에 담아서 그것만 조작한다
+let _panDrag = null;
+$('#grid').addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  const cv = e.target.closest('.thumbCv');
+  if (!cv || e.target.closest('button, input, select')) return;
+  const wrap = cv.closest('.thumb');
+  const it = items[Number(wrap.dataset.idx)];
+  if (!it || !it.photoImg) return;
+  e.preventDefault();
+  _panDrag = { it, canvas: it._thumbCanvas, lastX: e.clientX, lastY: e.clientY, moved: false };
+});
+window.addEventListener('mousemove', e => {
+  if (!_panDrag) return;
+  const { it, canvas } = _panDrag;
+  const { dw, dh } = geomOf(it);
+  const overflowX = dw - CW, overflowY = dh - CH; // 아트보드보다 사진이 남는 만큼 = 움직일 수 있는 여유
+  // 칸은 1080 폭을 THUMB_W로 줄여서 그리므로, 화면에서 움직인 거리를 1080 기준으로 환산해야
+  // 마우스와 사진이 같은 속도로 움직인다 (환산 안 하면 드래그가 9배쯤 느리게 느껴짐)
+  const rect = canvas.getBoundingClientRect();
+  const dxPix = (e.clientX - _panDrag.lastX) * (CW / (rect.width || 1));
+  const dyPix = (e.clientY - _panDrag.lastY) * (CH / (rect.height || 1));
+  if (Math.abs(dxPix) > 1 || Math.abs(dyPix) > 1) _panDrag.moved = true;
+  // 여유가 없는 축(사진이 딱 맞거나 더 작은 경우)은 아예 움직이지 않게 두고, 있는 축은 0~1 안으로 묶는다
+  if (overflowX > 0.5) it.focusX = clamp01((it.focusX ?? 0.5) - dxPix / overflowX);
+  if (overflowY > 0.5) it.focusY = clamp01((it.focusY ?? 0.5) - dyPix / overflowY);
+  _panDrag.lastX = e.clientX; _panDrag.lastY = e.clientY;
+  refreshThumb(it);
+});
+window.addEventListener('mouseup', () => {
+  if (!_panDrag) return;
+  if (_panDrag.moved) {
+    // 사진을 끌고 난 직후에 칸 클릭(편집기 열기)이 이어서 발동하지 않게 한 번 무시
+    _suppressThumbClick = true;
+    setTimeout(() => { _suppressThumbClick = false; }, 0);
+    saveMetaSoon();
+  }
+  _panDrag = null;
+});
 
 // ---------- 개별 조정 에디터 ----------
 const editOverlay = $('#editorOverlay');
@@ -1352,7 +1459,8 @@ $('#btnCloseEditor').addEventListener('click', () => {
   saveMetaToCache(); // 닫을 때는 디바운스 없이 바로 확정 저장
 });
 $('#btnResetItem').addEventListener('click', () => {
-  curItem.scaleMul = 1; curItem.ox = 0; curItem.oy = 0;
+  curItem.focusX = 0.5; curItem.focusY = 0.5;
+  curItem.zoom = defaultZoom(curItem.photoImg.naturalWidth, curItem.photoImg.naturalHeight, CW, CH);
   updateEditorGeom();
   saveMetaSoon();
 });
@@ -1381,8 +1489,9 @@ function extractDominantColor(img){
 $('#editClip').addEventListener('wheel', e => {
   if (!curItem) return;
   e.preventDefault();
-  const delta = e.deltaY < 0 ? 0.06 : -0.06;
-  curItem.scaleMul = Math.max(0.3, Math.min(3, (curItem.scaleMul || 1) + delta));
+  const pw = curItem.photoImg.naturalWidth, ph = curItem.photoImg.naturalHeight;
+  const minZoom = e.shiftKey ? containMinZoom(pw, ph, CW, CH) : defaultZoom(pw, ph, CW, CH);
+  curItem.zoom = Math.max(minZoom, Math.min(4, (curItem.zoom ?? 1) * (e.deltaY < 0 ? 1.08 : 0.92)));
   updateEditorGeom();
   saveMetaSoon();
 }, { passive: false });
@@ -1392,14 +1501,20 @@ let _drag = null;
 editPhoto.addEventListener('mousedown', e => {
   if (!curItem) return;
   e.preventDefault();
-  _drag = { sx: e.clientX, sy: e.clientY, sox: curItem.ox || 0, soy: curItem.oy || 0 };
+  _drag = { lastX: e.clientX, lastY: e.clientY };
   editPhoto.style.cursor = 'grabbing';
 });
 window.addEventListener('mousemove', e => {
   if (!_drag || !curItem) return;
   const previewScale = 0.4; // #editCanvasWrap의 transform:scale 값과 일치해야 함
-  curItem.ox = _drag.sox + (e.clientX - _drag.sx) / previewScale;
-  curItem.oy = _drag.soy + (e.clientY - _drag.sy) / previewScale;
+  const { dw, dh } = geomOf(curItem);
+  const overflowX = dw - CW, overflowY = dh - CH;
+  const dxPix = (e.clientX - _drag.lastX) / previewScale;
+  const dyPix = (e.clientY - _drag.lastY) / previewScale;
+  // 사진이 아트보드 밖으로 밀려나지 않게 0~1 범위로 묶음 (예전에는 제한이 없어서 밖으로 완전히 밀어낼 수 있었음)
+  if (overflowX > 0.5) curItem.focusX = clamp01((curItem.focusX ?? 0.5) - dxPix / overflowX);
+  if (overflowY > 0.5) curItem.focusY = clamp01((curItem.focusY ?? 0.5) - dyPix / overflowY);
+  _drag.lastX = e.clientX; _drag.lastY = e.clientY;
   updateEditorGeom();
 });
 window.addEventListener('mouseup', () => {
