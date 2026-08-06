@@ -375,6 +375,7 @@ async function restoreFromCache(){
   if (overlayPool && overlayPool.length) {
     overlayFiles = overlayPool;
     overlayPoolVersion++;
+    overlaySafeCache.clear();
     $('#overlayCount').textContent = overlayFiles.length + '개 선택됨';
   }
 
@@ -396,6 +397,7 @@ $('#btnStartOver').addEventListener('click', async () => {
   items = [];
   overlayFiles = [];
   overlayPoolVersion++;
+  overlaySafeCache.clear();
   clearSelection();          // 남아 있던 선택(사진 번호 기준)이 다음 작업에 섞이지 않게
   invalidateStripUndo();
   folderColorMap = new Map();
@@ -426,6 +428,7 @@ setupDrop('#dropPhotos', '#inPhotos', files => { photoFiles = files; $('#photoCo
 setupDrop('#dropOverlays', '#inOverlays', files => {
   overlayFiles = files;
   overlayPoolVersion++; // 후보가 바뀌었으니 칸마다 달린 드롭다운도 다음에 펼칠 때 새로 채워지게
+  overlaySafeCache.clear(); // 제목이 덮어주는 높이 측정값도 다시 재도록 버림
   $('#overlayCount').textContent = files.length + '개 선택됨';
   saveOverlayPoolToCache();
   if ($('#listWrap').style.display !== 'none') renderMatchListTable(); // 리스트가 이미 떠 있으면 후보 목록 갱신
@@ -1464,6 +1467,58 @@ function containMinZoom(pw, ph, W, H){
 function isWideImg(pw, ph, W, H){ return (pw / ph) > (W / H); }
 // 아트보드보다 가로로 넓은 사진은 꽉 채우면 양옆이 잘리므로, 처음부터 전체가 보이는 배율로 시작한다
 function defaultZoom(pw, ph, W, H){ return isWideImg(pw, ph, W, H) ? containMinZoom(pw, ph, W, H) : 1; }
+// ---------- 투명 제목이 가려주는 만큼 사진을 더 끌 수 있게 허용 ----------
+// 제목 그림이 사진 아래(또는 위)를 덮고 있으면, 그 부분에 있는 피사체를 끌어올리고 싶어도
+// "사진이 아트보드를 꽉 덮어야 한다"는 제한 때문에 못 움직였다. 제목 띠가 불투명하다면 그 높이만큼은
+// 여백이 생겨도 제목에 덮여서 안 보이므로, 그 방향으로만 한계를 열어준다.
+// 제목은 사용자가 올리는 이미지여서 높이도 불투명도도 파일마다 다르므로 추측하지 않고 알파값을 직접 재고,
+// 조금이라도 비칠 위험을 줄이려고 "가로 전체가 거의 다 불투명한 줄"만 센다 (측정값은 항상 보수적으로 나옴)
+const OV_ALPHA_MIN = 0.85 * 255;  // 이 정도 불투명해야 가려준다고 인정
+const OV_ROW_COVER = 0.97;        // 한 줄에서 이 비율 이상 불투명해야 그 줄이 덮는 것으로 봄
+const OV_MAX_RATIO = 0.4;         // 안전상 아트보드 높이의 40%까지만 허용
+const overlaySafeCache = new Map(); // 투명파일명 → {top, bottom} (여러 사진이 같은 제목을 쓰므로 1회만 측정)
+function measureOverlaySafeBands(img){
+  const W = 96, H = Math.max(1, Math.round(W * CH / CW));
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0, W, H);
+  let d;
+  try { d = ctx.getImageData(0, 0, W, H).data; } catch (e) { return { top: 0, bottom: 0 }; }
+  const rowCovers = y => {
+    let opaque = 0;
+    for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3] >= OV_ALPHA_MIN) opaque++;
+    return opaque / W >= OV_ROW_COVER;
+  };
+  let bottom = 0;
+  for (let y = H - 1; y >= 0 && rowCovers(y); y--) bottom++;
+  let top = 0;
+  for (let y = 0; y < H && rowCovers(y); y++) top++;
+  const perRow = CH / H;
+  const cap = CH * OV_MAX_RATIO;
+  // 제목이 화면 전체를 덮는 이미지라면(위아래 둘 다 꽉) 굳이 늘릴 필요가 없으니 그대로 둔다
+  if (top + bottom >= H) return { top: 0, bottom: 0 };
+  return { top: Math.min(top * perRow, cap), bottom: Math.min(bottom * perRow, cap) };
+}
+function overlaySafeBands(it){
+  if (!it.overlayImg || it.noFrame) return { top: 0, bottom: 0 }; // 제목이 없거나 빼둔 칸은 가려줄 게 없음
+  const key = it.overlayName || '';
+  if (!overlaySafeCache.has(key)) overlaySafeCache.set(key, measureOverlaySafeBands(it.overlayImg));
+  return overlaySafeCache.get(key);
+}
+// 세로 이동 허용 범위 — 기본은 0~1이고, 제목이 덮어주는 쪽만 그만큼 넘어갈 수 있다
+function focusYRange(it, overflowY){
+  if (!(overflowY > 0.5)) return { min: 0, max: 1 };
+  const b = overlaySafeBands(it);
+  return { min: -b.top / overflowY, max: 1 + b.bottom / overflowY };
+}
+function clampFocus(it){
+  it.focusX = clamp01(it.focusX ?? 0.5);
+  const { dh } = coverCropRect(it.photoImg.naturalWidth, it.photoImg.naturalHeight, CW, CH, 0.5, 0.5, it.zoom);
+  const r = focusYRange(it, dh - CH);
+  it.focusY = Math.max(r.min, Math.min(r.max, it.focusY ?? 0.5));
+}
+
 function geomOf(it){
   return coverCropRect(it.photoImg.naturalWidth, it.photoImg.naturalHeight, CW, CH, it.focusX, it.focusY, it.zoom);
 }
@@ -1561,6 +1616,8 @@ function renderGrid(){
   grid.innerHTML = '';
   rebuildFolderColors();
   normalizeMains(); // 폴더마다 대표 1장 규칙을 그릴 때마다 맞춰둔다
+  // 제목을 빼거나 바꾸면 "덮어주는 높이"가 달라지므로 위치를 다시 허용 범위 안으로 넣는다
+  for (const it of items) if (it.photoImg) clampFocus(it);
   const showFolder = hasMultipleFolders();
   const h = thumbH();
   items.forEach((it, idx) => {
@@ -1782,6 +1839,7 @@ $('#grid').addEventListener('wheel', e => {
     // 최소 배율은 사진 비율마다 다르므로 칸마다 따로 계산해서 막는다
     const minZoom = e.shiftKey ? containMinZoom(pw, ph, CW, CH) : defaultZoom(pw, ph, CW, CH);
     t.zoom = Math.max(minZoom, Math.min(4, (t.zoom ?? 1) * factor));
+    clampFocus(t); // 배율이 커지면 허용 범위가 좁아지므로 다시 범위 안으로
   }
   if (targets.length > 1) { refreshVisibleThumbs(targets); scheduleFullRefresh(targets); }
   else refreshThumb(it);
@@ -1818,7 +1876,10 @@ window.addEventListener('mousemove', e => {
     const overflowX = dw - CW, overflowY = dh - CH; // 아트보드보다 사진이 남는 만큼 = 움직일 수 있는 여유
     // 여유가 없는 축(사진이 딱 맞거나 더 작은 경우)은 아예 움직이지 않게 두고, 있는 축은 0~1 안으로 묶는다
     if (overflowX > 0.5) t.focusX = clamp01((t.focusX ?? 0.5) - dxPix / overflowX);
-    if (overflowY > 0.5) t.focusY = clamp01((t.focusY ?? 0.5) - dyPix / overflowY);
+    if (overflowY > 0.5) {
+      const r = focusYRange(t, overflowY); // 제목이 덮어주는 쪽은 조금 더 끌 수 있음
+      t.focusY = Math.max(r.min, Math.min(r.max, (t.focusY ?? 0.5) - dyPix / overflowY));
+    }
   }
   _panDrag.lastX = e.clientX; _panDrag.lastY = e.clientY;
   if (targets.length > 1) refreshVisibleThumbs(targets);
@@ -1912,6 +1973,7 @@ $('#editClip').addEventListener('wheel', e => {
   const pw = curItem.photoImg.naturalWidth, ph = curItem.photoImg.naturalHeight;
   const minZoom = e.shiftKey ? containMinZoom(pw, ph, CW, CH) : defaultZoom(pw, ph, CW, CH);
   curItem.zoom = Math.max(minZoom, Math.min(4, (curItem.zoom ?? 1) * (e.deltaY < 0 ? 1.08 : 0.92)));
+  clampFocus(curItem);
   updateEditorGeom();
   saveMetaSoon();
 }, { passive: false });
@@ -1933,7 +1995,10 @@ window.addEventListener('mousemove', e => {
   const dyPix = (e.clientY - _drag.lastY) / previewScale;
   // 사진이 아트보드 밖으로 밀려나지 않게 0~1 범위로 묶음 (예전에는 제한이 없어서 밖으로 완전히 밀어낼 수 있었음)
   if (overflowX > 0.5) curItem.focusX = clamp01((curItem.focusX ?? 0.5) - dxPix / overflowX);
-  if (overflowY > 0.5) curItem.focusY = clamp01((curItem.focusY ?? 0.5) - dyPix / overflowY);
+  if (overflowY > 0.5) {
+    const r = focusYRange(curItem, overflowY);
+    curItem.focusY = Math.max(r.min, Math.min(r.max, (curItem.focusY ?? 0.5) - dyPix / overflowY));
+  }
   _drag.lastX = e.clientX; _drag.lastY = e.clientY;
   updateEditorGeom();
 });
