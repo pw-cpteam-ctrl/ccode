@@ -1439,8 +1439,6 @@ function getBadgeShadowSprite(side){
 }
 
 function drawBadge(ctx, it, opts){
-  // 뱃지·스토어명은 폴더 대표(표지) 한 장에만 올린다 — 나머지 사진엔 필요 없음
-  if (!it.isMain) return;
   const withShadow = !opts || opts.shadow !== false;
   const side = it.badgeSide || 'left';
   // badge-tuner.html에서 확정한 값 그대로 (조정 도구는 삭제 예정)
@@ -1448,6 +1446,9 @@ function drawBadge(ctx, it, opts){
   const offsetX = 77, offsetY = 0;
   const flatH = bh - notch;
 
+  // 월 리본 뱃지는 폴더 대표(표지) 한 장에만 올린다 — 나머지 사진엔 필요 없음.
+  // 반면 스토어명(로고+글자)은 값을 넣은 아트보드마다 전부 나와야 하므로 아래에서 따로 그린다.
+  if (it.isMain) {
   // 그림자는 매번 shadowBlur로 다시 계산하지 않고, 캐싱해둔 halo 이미지를 붙여넣기만 함 (수백 개 썸네일이어도 비용 거의 없음)
   if (withShadow) {
     const shadow = getBadgeShadowSprite(side);
@@ -1475,6 +1476,10 @@ function drawBadge(ctx, it, opts){
   ctx.font = `${badgeWeight} 39px 'S-Core Dream'`;
   ctx.fillText('신제품', bw / 2, 146);
   ctx.restore();
+  }
+
+  // 스토어명을 안 넣은 아트보드에는 로고도 글자도 그리지 않는다
+  if (!it.storeName) return;
 
   // 스토어명 (뱃지 반대쪽) — 뱃지와 마찬가지로 top 정렬 + 위쪽 패딩만 살짝
   // 로고+텍스트를 한 덩어리로 보고, 그 덩어리 전체를 여백 기준으로 붙인 뒤
@@ -1946,7 +1951,7 @@ $('#grid').addEventListener('wheel', e => {
   const it = items[idx];
   if (!it || !it.photoImg) return;
   const targets = targetsForBulk(it, idx);
-  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15; // 8%는 작은 썸네일에서 변화가 안 보여서 올림
+  const factor = e.deltaY < 0 ? 1.07 : 1 / 1.07; // 휠 한 칸당 7%
   for (const t of targets) {
     if (!t.photoImg) continue;
     const pw = t.photoImg.naturalWidth, ph = t.photoImg.naturalHeight;
@@ -2096,7 +2101,7 @@ $('#editClip').addEventListener('wheel', e => {
   e.preventDefault();
   const pw = curItem.photoImg.naturalWidth, ph = curItem.photoImg.naturalHeight;
   const minZoom = e.shiftKey ? MIN_ZOOM_HARD : defaultZoom(pw, ph, CW, CH);
-  curItem.zoom = Math.max(minZoom, Math.min(4, (curItem.zoom ?? 1) * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+  curItem.zoom = Math.max(minZoom, Math.min(4, (curItem.zoom ?? 1) * (e.deltaY < 0 ? 1.07 : 1 / 1.07)));
   clampFocus(curItem);
   updateEditorGeom();
   saveMetaSoon();
