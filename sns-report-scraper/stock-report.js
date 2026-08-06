@@ -169,22 +169,98 @@ function tokenize(text) {
 }
 
 // SNS 상품(ip/line)과 네이버 재고 상품(name)은 서로 다른 데이터라 정확한 ID 매칭이 안 되므로,
-// ip를 단어 단위로 쪼개서 그 단어들이 전부 상품명에 들어있는지로 근사 매칭(있으면 line도 포함
-// 되는지 추가 확인) — ip가 "은혼 카무이"처럼 여러 단어일 때 "은혼 GEM 카무이"처럼 중간에 다른
-// 말이 끼어도 매칭되게 하려면 통짜 substring 비교로는 안 되고 단어 단위 AND 매칭이 필요함.
-// 후보가 여럿이면 재고 변화폭이 가장 큰(=가장 눈에 띄는) 것을 대표로 — "대략 가늠"이 목적이라
-// 과한 정밀도는 필요 없음.
-function findStockMatch(ip, line, rankedProducts) {
-  if (!ip || !rankedProducts || rankedProducts.length === 0) return null;
+// ip를 단어 단위로 쪼개서 그 단어들이 전부 상품명에 들어있는지로 근사 매칭(있으면 line도 확인)
+// — ip가 "은혼 카무이"처럼 여러 단어일 때 "은혼 GEM 카무이"처럼 중간에 다른 말이 끼어도
+// 매칭되게 하려면 통짜 substring 비교로는 안 되고 단어 단위 AND 매칭이 필요함.
+//
+// ⚠️ 2026-08-06: 라인 비교를 `name.includes(line)`(문자열 포함)에서 detectProductLine 결과
+// 비교로 바꿈 — "GEM 테노히라 미나토"는 이름에 "GEM"이 들어있어서 line="GEM"인 SNS 행에
+// 후보로 잡혔지만 실제로는 테노히라(손바닥) 라인이라 다른 상품임. 정식 라인명끼리 비교해야
+// 이런 상위/하위 브랜드 혼동이 안 생김.
+//
+// ⚠️ 후보가 여럿일 때 "판매량이 가장 큰 것"을 고르던 방식도 폐기 — ip가 프랜차이즈 수준
+// ("나루토 질풍전")이라 캐릭터가 다른 상품이 전부 후보로 잡히는데, 그중 판매량 큰 걸 집으면
+// 엉뚱한 상품이 붙음(실제 사례: "우치하 이타치 & 사스케 [재판]" 게시물 행에 "우즈마키 나루토
+// 닌자대전 버전"의 664개가 붙음). 지금은 hints(게시물 본문에서 뽑은 캐릭터명 등)와 겹치는
+// 정도로 점수를 매겨 고르고, 구분할 근거가 없으면(동점) 아예 매칭하지 않음 — 틀린 매칭보다
+// 빈칸이 안전.
+function findStockMatch(ip, line, rankedProducts, hints = []) {
+  const scored = scoreStockCandidates(ip, line, rankedProducts, hints);
+  if (scored.length === 0) return null;
+  // 1등이 2등과 점수가 같으면(구분 근거 없음) 매칭 포기
+  if (scored.length > 1 && scored[1].score === scored[0].score) return null;
+  return scored[0].product;
+}
+
+// findStockMatch용 후보 점수 계산 — 점수 내림차순으로 정렬해서 반환.
+// 점수 = hints(게시물에서 뽑은 키워드)와 재고 상품명이 겹치는 개수.
+function scoreStockCandidates(ip, line, rankedProducts, hints = []) {
+  if (!ip || !rankedProducts || rankedProducts.length === 0) return [];
   const ipTokens = tokenize(ip);
-  if (ipTokens.length === 0) return null;
+  if (ipTokens.length === 0) return [];
   let candidates = rankedProducts.filter(r => r.name && ipTokens.every(t => r.name.includes(t)));
-  if (candidates.length === 0) return null;
   if (line && line !== '-') {
-    const refined = candidates.filter(r => r.name.includes(line));
-    if (refined.length > 0) candidates = refined;
+    // 정식 라인명끼리 비교(문자열 포함이 아니라) — GEM ↔ 테노히라 혼동 방지.
+    // ⚠️ 예전엔 `if (refined.length > 0) candidates = refined;`라 **라인이 맞는 후보가 하나도
+    // 없으면 필터를 통째로 무시하고 전체 후보에서 아무거나 골랐음.** 재고 목록에 아직 안
+    // 올라온 신제품(예약 개시 전) 게시물이 바로 이 경우인데, 같은 프랜차이즈의 전혀 다른
+    // 라인 상품(GEM/테노히라/메가캣)이 그 자리에 붙어버림 — "매칭 안 됨"이 정답인 상황에서
+    // 틀린 숫자를 만들어내던 것. 이제 라인이 맞는 후보가 없으면 매칭하지 않는다.
+    candidates = candidates.filter(r => detectProductLine(r.name) === line);
   }
-  return candidates.reduce((best, cur) => (Math.abs(cur.totalSold ?? 0) > Math.abs(best.totalSold ?? 0) ? cur : best));
+  if (candidates.length === 0) return [];
+  const hintTokens = [...new Set(hints)].filter(h => h && !ipTokens.includes(h));
+  return candidates
+    .map(product => ({
+      product,
+      score: hintTokens.filter(h => product.name.includes(h)).length,
+    }))
+    .sort((a, b) => b.score - a.score || String(a.product.productId).localeCompare(String(b.product.productId)));
+}
+
+/**
+ * SNS 상품 행 전체에 대해 재고 상품을 **한 번에** 배정. 재고 상품 하나는 최대 한 행에만
+ * 붙는다(중복 금지).
+ *
+ * ⚠️ 예전엔 행마다 독립적으로 findStockMatch를 부르다 보니 같은 재고 상품이 여러 행에 동시에
+ * 붙어서 매출이 중복 계상됐음(실제 사례: BH "14개*"가 나루토 질풍전 3개 행에 동시에, PW
+ * "10개*"가 나루토와 도검난무 양쪽에). 행 단위로 보면 각자 "제일 그럴듯한 후보"를 고른
+ * 것이지만 전체로 보면 같은 상품을 여러 번 판 것처럼 보이는 문제.
+ *
+ * 점수가 높은 (행, 재고상품) 쌍부터 확정하는 탐욕적 배정 — 확신이 큰 짝을 먼저 확정하고,
+ * 이미 쓰인 재고 상품은 후보에서 빠진다. 남은 후보가 동점이면 그 행은 매칭하지 않음.
+ *
+ * @param {Array<{ip:?string, line:?string}>} snsRows SNS 상품 행 목록
+ * @param {object[]} rankedProducts 재고 상품 목록(rankStockProducts 결과)
+ * @param {(row:object)=>string[]} getHints 행에서 캐릭터명 등 추가 단서를 뽑는 함수
+ * @returns {Map<object, object>} SNS 행 → 재고 상품
+ */
+function assignStockMatches(snsRows, rankedProducts, getHints = () => []) {
+  const assignment = new Map();
+  if (!snsRows || !rankedProducts || rankedProducts.length === 0) return assignment;
+
+  // (행, 후보) 쌍을 전부 만들어 점수 순으로 정렬
+  const pairs = [];
+  snsRows.forEach((row, rowIdx) => {
+    scoreStockCandidates(row.ip, row.line, rankedProducts, getHints(row)).forEach(({ product, score }) => {
+      pairs.push({ rowIdx, row, product, score });
+    });
+  });
+  pairs.sort((a, b) => b.score - a.score || a.rowIdx - b.rowIdx
+    || String(a.product.productId).localeCompare(String(b.product.productId)));
+
+  const usedProducts = new Set();
+  const bestScoreOfRow = new Map(); // 확정된 행의 점수(동점 판별용)
+  for (const { row, product, score } of pairs) {
+    if (assignment.has(row) || usedProducts.has(product.productId)) continue;
+    // 이 행에 대해 아직 안 쓰인 후보 중 최고점이 동점이면(구분 근거 없음) 배정하지 않음
+    const remaining = pairs.filter(p => p.row === row && !usedProducts.has(p.product.productId));
+    if (remaining.length > 1 && remaining[1].score === score) continue;
+    assignment.set(row, product);
+    usedProducts.add(product.productId);
+    bestScoreOfRow.set(row, score);
+  }
+  return assignment;
 }
 
 // "N개 판매추정 (재고 M개)"처럼 판매추정치와 현재 재고를 한 셀에 같이 보여줌 — 예전엔 이전
@@ -583,6 +659,7 @@ module.exports = {
   rankMedal,
   rankStockProducts,
   findStockMatch,
+  assignStockMatches,
   matchPwBhStockProducts,
   buildIntegratedStockRows,
   renderStockSectionHtml,

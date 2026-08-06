@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const { formatTakenAt, rankStockProducts, findStockMatch, renderStockSectionHtml, STOCK_SECTION_STYLE } = require('./stock-report');
+const { formatTakenAt, rankStockProducts, assignStockMatches, renderStockSectionHtml, STOCK_SECTION_STYLE } = require('./stock-report');
+const { extractKeywords, PLATFORM_TEXT_FIELD } = require('./aggregate');
 
 const FIELD_LABELS = { likes: '좋아요', retweets: '리트윗', comments: '댓글' };
 const FIELD_ICONS = { likes: '♥️', retweets: '♻️', comments: '💬' };
@@ -173,6 +174,18 @@ function renderPlatformSection(platformKey, data, stockComparison) {
   const pwStockRanked = hasStock ? rankStockProducts(stockComparison.stores.PW || []) : null;
   const bhStockRanked = hasStock ? rankStockProducts(stockComparison.stores.BH || []) : null;
 
+  // ⚠️ 행마다 따로 findStockMatch를 부르면 같은 재고 상품이 여러 행에 중복으로 붙음(실제
+  // 사례: BH "14개*"가 나루토 질풍전 3개 행에 동시에). 그래서 표 전체를 한 번에 배정해서
+  // 재고 상품 하나가 최대 한 행에만 붙게 함. 캐릭터명은 ip(프랜차이즈)에 안 남는 경우가
+  // 많아서 게시물 본문 키워드를 단서(hints)로 같이 넘김 — ip만으로는 "나루토 질풍전"의
+  // 여러 상품을 구분할 수 없어서 엉뚱한 상품이 붙었음.
+  const stockTextField = PLATFORM_TEXT_FIELD[platformKey] || 'text';
+  const postHints = p => [
+    ...(p.ownPosts || []), ...(p.competitorPosts || []),
+  ].flatMap(post => extractKeywords(post[stockTextField] || ''));
+  const pwStockAssignment = hasStock ? assignStockMatches(products, pwStockRanked, postHints) : null;
+  const bhStockAssignment = hasStock ? assignStockMatches(products, bhStockRanked, postHints) : null;
+
   const pwTotals = {};
   const bhTotals = {};
   displayFields.forEach(f => {
@@ -215,7 +228,7 @@ function renderPlatformSection(platformKey, data, stockComparison) {
       `<td>${verdictBadge(p.verdict, p.needsReview)}</td>`,
       `<td><button class="toggle-btn" onclick="toggleEmbeds('${embedRowId}','${platformKey}',this)">▶ 보기</button></td>`,
       ...(hasStock ? [
-        salesBar(findStockMatch(p.ip, p.line, pwStockRanked), findStockMatch(p.ip, p.line, bhStockRanked)),
+        salesBar(pwStockAssignment.get(p) || null, bhStockAssignment.get(p) || null),
       ] : []),
     ].join('');
 
