@@ -324,6 +324,10 @@ function buildProductEntry(ownPosts, competitorPosts, fields, displayFields, tit
   // BH가 어느 쪽으로 얼마나 떨어져 있는지를 나타내는 부호 있는 값.
   const timeDiffSignedMinutes = Math.round((bhTime - pwTime) / 60000);
   const timeDiffMinutes = Math.abs(timeDiffSignedMinutes);
+  // 화면의 시각은 분까지만 표시하는데(예: "17:02") 차이는 초 단위로 계산해 반올림하다 보니
+  // "17:02 / 17:02 → −1분"처럼 모순돼 보이는 문제가 있었음(계산은 정확했고 표시가 헷갈렸던 것).
+  // 1분 미만 차이는 초로 보여주려고 초 단위 값도 같이 넘김.
+  const timeDiffSignedSeconds = Math.round((bhTime - pwTime) / 1000);
 
   const diffs = {};
   const diffText = {};
@@ -332,14 +336,21 @@ function buildProductEntry(ownPosts, competitorPosts, fields, displayFields, tit
     diffText[f] = formatDiffWithMultiplier(ownSummary[`total_${f}`], competitorSummary[`total_${f}`]);
   });
   const diffValues = displayFields.map(f => diffs[f]);
-  const verdict = diffValues.every(d => d > 0) ? '우세' : diffValues.every(d => d < 0) ? '약세' : '경합';
+  // 양쪽 지표가 전부 0이면 "경합"(접전)이 아니라 판단할 근거가 없는 것 — 예전엔 리트윗 0
+  // 좋아요 0인 행까지 "경합"으로 나와서 "박빙이었다"는 뜻으로 잘못 읽혔음(실제로는 둘 다
+  // 반응이 없었던 것). 표시를 분리해서 오해를 없앰.
+  const allZero = displayFields.every(f => ownSummary[`total_${f}`] === 0 && competitorSummary[`total_${f}`] === 0);
+  const verdict = allZero ? '지표 없음'
+    : diffValues.every(d => d > 0) ? '우세'
+    : diffValues.every(d => d < 0) ? '약세'
+    : '경합';
   const needsReview = !isManual && (ownPosts.length + competitorPosts.length) >= PRODUCT_GROUP_REVIEW_THRESHOLD;
 
   return {
     ip, line,
     own: ownSummary, competitor: competitorSummary,
     ownPosts, competitorPosts,
-    pwTime: formatKstTime(pwTime), bhTime: formatKstTime(bhTime), timeDiffMinutes, timeDiffSignedMinutes,
+    pwTime: formatKstTime(pwTime), bhTime: formatKstTime(bhTime), timeDiffMinutes, timeDiffSignedMinutes, timeDiffSignedSeconds,
     diffText, verdict, needsReview,
   };
 }

@@ -12,7 +12,8 @@ function escapeHtml(s) {
 }
 
 function verdictBadge(verdict, needsReview) {
-  const cls = { 우세: 'ok', 경합: 'mid', 약세: 'low' }[verdict] || 'mid';
+  // '지표 없음'(양쪽 다 0)은 우열 판단이 아니라 데이터가 없는 상태라 회색 중립 배지로 구분
+  const cls = { 우세: 'ok', 경합: 'mid', 약세: 'low', '지표 없음': 'none' }[verdict] || 'mid';
   const reviewBadge = needsReview
     ? ` <span class="badge review" title="게시물이 많이 묶여서 서로 다른 상품이 잘못 묶였을 수 있음 — 한 번 확인해보세요">⚠️ 확인 필요</span>`
     : '';
@@ -81,15 +82,23 @@ const TIME_SCALE_CAP_MINUTES = 10;
 function timeOnly(kstTimeText) {
   return kstTimeText.split(' ').pop(); // "7/1 12:20" -> "12:20"
 }
-function timeCell(pwTime, bhTime, diffSignedMinutes) {
+function timeCell(pwTime, bhTime, diffSignedMinutes, diffSignedSeconds) {
   const abs = Math.abs(diffSignedMinutes);
   const pct = Math.min(abs / TIME_SCALE_CAP_MINUTES, 1) * 46;
   const clipped = abs > TIME_SCALE_CAP_MINUTES;
-  const later = diffSignedMinutes > 0; // BH가 PW보다 늦게 올림 = PW 기준 +
+  // 부호/방향은 초 단위 값 기준 — 분으로 반올림하면 0분이 되면서 방향(누가 먼저)이 사라짐
+  const signedForDir = typeof diffSignedSeconds === 'number' ? diffSignedSeconds : diffSignedMinutes;
+  const later = signedForDir > 0; // BH가 PW보다 늦게 올림 = PW 기준 +
   const dotLeftPct = later ? 50 + pct : 50 - pct;
   const lineStyle = later ? `left:50%;width:${pct}%` : `right:50%;width:${pct}%`;
-  const numClass = diffSignedMinutes > 0 ? 'pw' : diffSignedMinutes < 0 ? 'bh' : '';
-  const numText = abs === 0 ? '0분' : `${diffSignedMinutes > 0 ? '+' : '−'}${abs}분`;
+  const numClass = signedForDir > 0 ? 'pw' : signedForDir < 0 ? 'bh' : '';
+  // 시각은 분까지만 표시되므로(예: "17:02"), 1분 미만 차이를 "−1분"으로 쓰면 같은 분인데
+  // 1분 차이라는 모순으로 보임 — 1분 미만은 초로 표기해서 화면 값과 어긋나지 않게 함.
+  const absSec = Math.abs(signedForDir);
+  const sign = signedForDir > 0 ? '+' : '−';
+  const numText = signedForDir === 0 ? '0초'
+    : (typeof diffSignedSeconds === 'number' && absSec < 60) ? `${sign}${absSec}초`
+    : `${sign}${abs}분`;
   return `<div class="metriccell" title="PW ${escapeHtml(pwTime)} · BH ${escapeHtml(bhTime)}">
     <div class="divbar">
       <div class="divbar-track"></div>
@@ -224,7 +233,7 @@ function renderPlatformSection(platformKey, data, stockComparison) {
       `<td class="name" title="${escapeHtml(p.ip || '(미분류)')}">${escapeHtml(p.ip || '(미분류)')}</td>`,
       `<td>${escapeHtml(p.line || '-')}</td>`,
       ...displayFields.map(f => `<td class="metric">${metricBar(p.own[`total_${f}`], p.competitor[`total_${f}`], p.diffText[f])}</td>`),
-      `<td class="metric">${timeCell(p.pwTime, p.bhTime, p.timeDiffSignedMinutes)}</td>`,
+      `<td class="metric">${timeCell(p.pwTime, p.bhTime, p.timeDiffSignedMinutes, p.timeDiffSignedSeconds)}</td>`,
       `<td>${verdictBadge(p.verdict, p.needsReview)}</td>`,
       `<td><button class="toggle-btn" onclick="toggleEmbeds('${embedRowId}','${platformKey}',this)">▶ 보기</button></td>`,
       ...(hasStock ? [
@@ -406,6 +415,7 @@ td.sm-none{color:#c9ced8;font-size:12px}
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
 .badge.ok{background:#ebfbee;color:#2f9e44}.badge.mid{background:#fff4e6;color:#e8590c}.badge.low{background:#fff0f0;color:#c0504d}
 .badge.review{background:#fff9db;color:#997404;cursor:help}
+.badge.none{background:#f1f3f5;color:#868e96}
 td.empty{color:#9099a6;padding:24px}
 .toggle-btn{border:1px solid #d0d5e0;background:#fff;color:#3b5bdb;font-size:11px;padding:4px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
 .toggle-btn:hover{background:#eef2ff}
