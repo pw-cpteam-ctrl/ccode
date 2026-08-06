@@ -140,6 +140,9 @@ const MIN_PAIR_SCORE = 0.34;
 // 유사도와 별개로, 가중치가 살아있는(=모든 게시물에 나오는 말이 아닌) 토큰이 최소 이만큼은
 // 겹쳐야 함.
 const MIN_SHARED_KEYWORDS = 2;
+// 배치 안에서 이 개수 이하의 게시물에만 등장하는 토큰은 "그 상품 고유의 말"로 본다 —
+// 이런 토큰은 하나만 겹쳐도 같은 상품이라는 근거로 충분(아래 sharedTokens 설명 참고).
+const RARE_TOKEN_MAX_DOCS = 2;
 
 // 배치 전체의 등장 빈도(document frequency)로 토큰별 가중치를 만듦 — IDF에 하한선을 둔 형태.
 //
@@ -158,20 +161,52 @@ function buildTokenWeights(entries) {
   const total = entries.length;
   const weights = new Map();
   df.forEach((count, token) => weights.set(token, 1 + Math.log(total / count)));
-  return weights;
+  return { weights, df, total };
 }
 
 function weightSum(keywords, weights) {
   return keywords.reduce((sum, k) => sum + (weights.get(k) || 0), 0);
 }
 
+/**
+ * 두 게시물이 공유하는 토큰. 정확히 같은 토큰뿐 아니라 **한쪽이 다른 쪽을 포함하는 경우**도
+ * 공유로 인정한다 — 자사/경쟁사가 같은 상품명을 붙여쓰기만 다르게 적는 일이 잦아서
+ * (실제 사례: 자사 "슈퍼커브110" vs 경쟁사 "슈퍼 커브 110" → 토큰이 `슈퍼커브` 하나 대
+ * `슈퍼`+`커브` 둘로 갈려 겹치는 게 하나도 없게 됨) 정확히 일치만 따지면 같은 상품을 놓침.
+ * 짧은 조각이 우연히 긴 단어 안에 들어가는 것을 막으려고 2글자 이상만 포함 매칭에 참여시킴.
+ */
+function sharedTokens(a, b, weights) {
+  const out = new Set();
+  for (const ka of a.keywords) {
+    if ((weights.get(ka) || 0) <= 0) continue;
+    for (const kb of b.keywords) {
+      if (ka === kb) { out.add(ka); continue; }
+      const [short, long] = ka.length <= kb.length ? [ka, kb] : [kb, ka];
+      // 첫 매칭에서 멈추면 안 됨 — 붙여쓴 한 토큰이 상대편의 여러 토큰을 품는 게 이 문제의
+      // 전형(자사 "슈퍼커브" ⊃ 경쟁사 "슈퍼" + "커브")이라, 멈추면 절반만 인정돼 점수가
+      // 기준에 못 미침(실측 0.25 < 0.34). 포함되는 조각을 전부 모은다.
+      if (short.length >= 2 && long.includes(short)) out.add(short);
+    }
+  }
+  return [...out];
+}
+
 // 두 게시물의 유사도: 겹친 토큰의 가중치 합 / 양쪽 가중치 합 중 큰 쪽.
 // 분모가 "큰 쪽"이라, 키워드가 잔뜩 붙은 게시물(다상품 공지 등)이 짧은 게시물과 일부만
 // 겹쳐서 우연히 붙는 것을 억제함(stock-report.js의 점수 계산과 같은 방침).
-function pairScore(a, b, weights) {
+//
+// "겹친 토큰 2개 이상"을 고정으로 요구하면, 상품명이 짧아서 남는 키워드가 하나뿐인 게시물이
+// 통째로 매칭에서 빠짐 — 실제 사례: 자사 "고질라 컬렉션 피규어 INSIDE FANTASY 헤도라" vs
+// 경쟁사 "인사이드 판타지 헤도라"는 라인명(INSIDE FANTASY)이 매칭 단계에서 제거되고 나면
+// 공유 토큰이 `헤도라` 하나뿐이라 차단됐음. 그런데 그 하나가 배치 안에서 두 게시물에만
+// 등장하는 고유한 말이면 오히려 확실한 근거이므로, 희귀 토큰(RARE_TOKEN_MAX_DOCS 이하)
+// 하나만 겹쳐도 통과시킨다.
+function pairScore(a, b, tokenStats) {
+  const { weights, df } = tokenStats;
   if (a.line !== b.line) return 0; // 상품 라인이 다르면 같은 상품일 수 없음(null↔라인도 금지)
-  const shared = a.keywords.filter(k => b.keywords.includes(k) && (weights.get(k) || 0) > 0);
-  if (shared.length < MIN_SHARED_KEYWORDS) return 0;
+  const shared = sharedTokens(a, b, weights);
+  const rareOnly = shared.length === 1 && (df.get(shared[0]) || Infinity) <= RARE_TOKEN_MAX_DOCS;
+  if (shared.length < MIN_SHARED_KEYWORDS && !rareOnly) return 0;
   const denom = Math.max(weightSum(a.keywords, weights), weightSum(b.keywords, weights));
   if (denom <= 0) return 0;
   return weightSum(shared, weights) / denom;
@@ -186,13 +221,13 @@ function pairScore(a, b, weights) {
  * @returns {Map<number, Array>} 그룹 대표 인덱스 → 그룹 멤버 배열
  */
 function clusterEntriesByProduct(entries) {
-  const weights = buildTokenWeights(entries);
+  const tokenStats = buildTokenWeights(entries);
   const candidates = [];
   for (let i = 0; i < entries.length; i++) {
     if (entries[i].keywords.length === 0) continue;
     for (let j = i + 1; j < entries.length; j++) {
       if (entries[j].keywords.length === 0) continue;
-      const score = pairScore(entries[i], entries[j], weights);
+      const score = pairScore(entries[i], entries[j], tokenStats);
       if (score >= MIN_PAIR_SCORE) candidates.push({ i, j, score });
     }
   }
