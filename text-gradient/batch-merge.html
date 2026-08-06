@@ -179,6 +179,7 @@ button:disabled{opacity:.4;cursor:default;}
   <div class="previewToolbar">
     <label>미리보기 크기: <input type="range" id="thumbSizeSlider" min="70" max="240" value="120"/></label>
     <label style="margin-left:16px;"><input type="checkbox" id="thumbZoomToggle"/> 미리보기에서 마우스 휠로 개별 확대/축소</label>
+    <label style="margin-left:16px;" title="켜면 사진을 아트보드 밖으로(사진 크기보다 위로) 밀어낼 수 있습니다. 끈 상태에서도 Shift를 누른 채 끌면 같은 효과."><input type="checkbox" id="freePanToggle"/> 자유 이동 (사진을 아트보드 밖으로 밀기 · Shift+드래그)</label>
     <label style="margin-left:16px;">월: <input type="number" id="badgeMonth" min="1" max="12" style="width:48px;"/></label>
     <label style="margin-left:16px;">뱃지·스토어명 글자 굵기:
       <select id="badgeWeight">
@@ -299,6 +300,7 @@ function itemsMetaSnapshot(){
       photoName: it.photoName, overlayName: it.overlayName,
       folder: it.folder || '',
       focusX: it.focusX, focusY: it.focusY, zoom: it.zoom,
+      offX: it.offX || 0, offY: it.offY || 0, // 자유 이동으로 밀어낸 양(px, 1080 기준)
       scaleMul: legacy.scaleMul, ox: legacy.ox, oy: legacy.oy, bg: it.bg,
       storeName: it.storeName || '', badgeSide: it.badgeSide || 'left',
       isMain: !!it.isMain, noFrame: !!it.noFrame
@@ -367,6 +369,7 @@ async function restoreFromCache(){
       scaleMul: m.scaleMul, ox: m.ox, oy: m.oy, bg: m.bg,
       folder: m.folder || '',
       focusX: m.focusX, focusY: m.focusY, zoom: m.zoom,
+      offX: m.offX ?? 0, offY: m.offY ?? 0, // 예전 저장분엔 없는 값이라 기본 0
       storeName: m.storeName || '', badgeSide: m.badgeSide || 'left',
       isMain: !!m.isMain, noFrame: !!m.noFrame
     });
@@ -515,6 +518,7 @@ $('#btnMatch').addEventListener('click', async () => {
       folder: folderOfFile(photoFile),
       scaleMul: 1, ox: 0, oy: 0, bg: '#ffffff',
       focusX: 0.5, focusY: 0.5, zoom: null, // zoom은 사진 크기를 알아야 정해지므로 로딩 후 채움
+      offX: 0, offY: 0,
       storeName: '', badgeSide: 'left', isMain: false, noFrame: false
     });
   }
@@ -853,7 +857,7 @@ $('#inPhotoFolder').addEventListener('change', async (e) => {
         photoFile: f, overlayFile: null, photoImg: img, overlayImg: null,
         folder: folderOfFile(f),
         scaleMul: 1, ox: 0, oy: 0, bg: '#ffffff',
-        focusX: 0.5, focusY: 0.5,
+        focusX: 0.5, focusY: 0.5, offX: 0, offY: 0,
         // 가로로 넓은 사진은 처음부터 전체가 보이게 (새로 불러오는 사진에만 적용 — 기존 작업물은 안 건드림)
         zoom: defaultZoom(img.naturalWidth, img.naturalHeight, CW, CH),
         storeName: '', badgeSide: 'left', isMain: false, noFrame: false
@@ -1329,6 +1333,7 @@ function loadBadgeSettings(){
   try {
     const s2 = JSON.parse(localStorage.getItem('batch_merge_badge_settings') || 'null');
     if (s2 && s2.wheelZoom) $('#thumbZoomToggle').checked = true;
+    if (s2 && s2.freePan) $('#freePanToggle').checked = true;
   } catch (e) {}
   updateStoreColorButtons();
 }
@@ -1338,7 +1343,7 @@ function updateStoreColorButtons(){
 }
 function saveBadgeSettings(){
   localStorage.setItem('batch_merge_badge_settings', JSON.stringify({ month: badgeMonth, weight: badgeWeight, color: badgeColor, storeTextColor,
-    wheelZoom: $('#thumbZoomToggle').checked }));
+    wheelZoom: $('#thumbZoomToggle').checked, freePan: $('#freePanToggle').checked }));
 }
 
 // 스토어명 옆(좌측)에 붙는 로고 — 페이지 로딩 시 1번만 불러와서 재사용
@@ -1603,10 +1608,39 @@ function clampFocus(it){
   const { dh } = coverCropRect(it.photoImg.naturalWidth, it.photoImg.naturalHeight, CW, CH, 0.5, 0.5, it.zoom);
   const r = focusYRange(it, dh - CH);
   it.focusY = Math.max(r.min, Math.min(r.max, it.focusY ?? 0.5));
+  // 자유 이동으로 밀어둔 값은 지우지 않고(사용자가 일부러 그렇게 둔 것), 배율이 바뀌어
+  // 사진이 화면에서 사라질 만큼 커진 경우만 범위 안으로 되돌린다
+  if (it.offX || it.offY) clampOffsets(it);
 }
 
+// ---------- 자유 이동(사진을 아트보드 밖으로 밀어내기) ----------
+// focusX/focusY는 "아트보드를 꽉 덮는 범위 안에서 어디를 보여줄지"만 정하는 값이라,
+// 사진이 아트보드와 크기가 같아지는 순간 아무리 움직여도 위치가 안 바뀐다(수학적으로 효과 0).
+// 그래서 사진을 아트보드보다 위로 올리는 것 같은 조작은 focus만으로는 불가능하다.
+// 별도의 픽셀 오프셋(offX/offY)을 더해서 그 제한 밖으로도 밀어낼 수 있게 한다.
+// 예전 저장분엔 이 값이 없으므로 항상 `|| 0`로 읽는다(있던 작업물은 그대로 보임).
+const FREE_MIN_VISIBLE = 0.1; // 사진이 아트보드를 최소 10%는 덮게 — 완전히 밖으로 빼서 배경만 남는 건 막음
+// 오프셋이 너무 커져서 사진이 화면에서 사라지지 않도록 허용 범위를 계산한다
+function offsetRange(size, canvasSize, baseD){
+  const minVis = canvasSize * FREE_MIN_VISIBLE;
+  return { min: -(baseD + size - minVis), max: canvasSize - minVis - baseD };
+}
+function clampOffsets(it){
+  const base = coverCropRect(it.photoImg.naturalWidth, it.photoImg.naturalHeight, CW, CH, it.focusX, it.focusY, it.zoom);
+  const rx = offsetRange(base.dw, CW, base.dx);
+  const ry = offsetRange(base.dh, CH, base.dy);
+  it.offX = Math.max(rx.min, Math.min(rx.max, it.offX || 0));
+  it.offY = Math.max(ry.min, Math.min(ry.max, it.offY || 0));
+  return { base, rx, ry };
+}
 function geomOf(it){
-  return coverCropRect(it.photoImg.naturalWidth, it.photoImg.naturalHeight, CW, CH, it.focusX, it.focusY, it.zoom);
+  const g = coverCropRect(it.photoImg.naturalWidth, it.photoImg.naturalHeight, CW, CH, it.focusX, it.focusY, it.zoom);
+  return { dw: g.dw, dh: g.dh, dx: g.dx + (it.offX || 0), dy: g.dy + (it.offY || 0) };
+}
+// 자유 이동 모드인지 — 체크박스가 켜져 있거나, 드래그하는 동안 Shift를 누르고 있으면
+function freePanOn(e){
+  const box = document.getElementById('freePanToggle');
+  return (box && box.checked) || (e && e.shiftKey);
 }
 // 예전 방식(scaleMul + ox/oy)으로 저장된 조정값을 새 방식으로 옮긴다 — 이미 작업해둔 사진들의
 // 위치/배율이 틀어지지 않게 하려는 것. 옛 필드는 지우지 않고 그대로 남겨둔다
@@ -1827,9 +1861,10 @@ function updatePanCursor(it){
   const cv = it._thumbCanvas;
   if (!cv || !cv.parentElement) return;
   const g = geomOf(it);
-  const movable = Math.abs(g.dw - CW) > PAN_MIN_ROOM || Math.abs(g.dh - CH) > PAN_MIN_ROOM;
+  // 자유 이동이 켜져 있으면 여유와 무관하게 항상 끌 수 있다
+  const movable = freePanOn() || Math.abs(g.dw - CW) > PAN_MIN_ROOM || Math.abs(g.dh - CH) > PAN_MIN_ROOM;
   cv.parentElement.style.cursor = movable ? 'grab' : 'default';
-  cv.parentElement.title = movable ? '' : '사진 비율이 아트보드와 거의 같아서 끌 여유가 없어요 — 확대하면 움직일 수 있어요';
+  cv.parentElement.title = movable ? '' : '사진 비율이 아트보드와 거의 같아서 끌 여유가 없어요 — 확대하거나 자유 이동(Shift+드래그)을 쓰세요';
 }
 function refreshThumb(it){
   if (!it._thumbCanvas) return;
@@ -1885,6 +1920,10 @@ function setStoreTextColor(c){
   renderGrid();
 }
 $('#thumbZoomToggle').addEventListener('change', saveBadgeSettings);
+$('#freePanToggle').addEventListener('change', () => {
+  saveBadgeSettings();
+  for (const it of items) if (it.photoImg && it._thumbCanvas) updatePanCursor(it); // 커서 안내를 바로 갱신
+});
 $('#btnStoreBlack').addEventListener('click', () => setStoreTextColor('#111111'));
 $('#btnStoreWhite').addEventListener('click', () => setStoreTextColor('#ffffff'));
 $('#badgeColor').addEventListener('input', e => {
@@ -1982,7 +2021,8 @@ $('#grid').addEventListener('mousedown', e => {
   if (!it || !it.photoImg) return;
   e.preventDefault();
   // 선택된 칸을 끌면 선택한 전부가 같은 방향으로 같이 움직인다
-  _panDrag = { it, targets: targetsForBulk(it, idx), canvas: it._thumbCanvas, lastX: e.clientX, lastY: e.clientY, moved: false };
+  _panDrag = { it, targets: targetsForBulk(it, idx), canvas: it._thumbCanvas, lastX: e.clientX, lastY: e.clientY, moved: false,
+    free: freePanOn(e) }; // 시작할 때 자유 이동인지 확정 (끄는 중에 값이 바뀌어 튀지 않게)
 });
 window.addEventListener('mousemove', e => {
   if (!_panDrag) return;
@@ -1994,6 +2034,14 @@ window.addEventListener('mousemove', e => {
   const dyPix = (e.clientY - _panDrag.lastY) * (CH / (rect.height || 1));
   if (Math.abs(dxPix) > 1 || Math.abs(dyPix) > 1) _panDrag.moved = true;
   for (const t of targets) {
+    // 자유 이동: 사진을 아트보드 밖으로도(사진 크기보다 위로도) 그대로 밀어낸다.
+    // focus는 손대지 않고 픽셀 오프셋만 더하므로 비율이 딱 맞는 사진도 움직인다
+    if (_panDrag.free) {
+      t.offX = (t.offX || 0) + dxPix;
+      t.offY = (t.offY || 0) + dyPix;
+      clampOffsets(t); // 사진이 완전히 밖으로 나가버리는 것만 막음(최소 10%는 남김)
+      continue;
+    }
     const { dw, dh } = geomOf(t);
     const overflowX = dw - CW, overflowY = dh - CH; // 아트보드보다 사진이 남는 만큼 = 움직일 수 있는 여유
     // 여유가 없는 축(사진이 딱 맞거나 더 작은 경우)은 아예 움직이지 않게 두고, 있는 축은 0~1 안으로 묶는다
@@ -2013,8 +2061,10 @@ window.addEventListener('mouseup', () => {
   if (!_panDrag) return;
   if (_panDrag.moved) {
     const t0 = _panDrag.it, g0 = geomOf(t0);
-    const room = Math.abs(g0.dw - CW) > PAN_MIN_ROOM || Math.abs(g0.dh - CH) > PAN_MIN_ROOM;
-    reportAction(room
+    const room = _panDrag.free || Math.abs(g0.dw - CW) > PAN_MIN_ROOM || Math.abs(g0.dh - CH) > PAN_MIN_ROOM;
+    reportAction(_panDrag.free
+      ? `자유 이동 ${_panDrag.targets.length}장 (아트보드 밖으로 이동 허용)`
+      : room
       ? `드래그 ${_panDrag.targets.length}장 위치 이동`
       : `이 사진은 아트보드와 비율이 거의 같아 끌 여유가 없어요 — 확대(휠 또는 슬라이더)하면 움직여요`);
     // 사진을 끌고 난 직후에 칸 클릭(편집기 열기)이 이어서 발동하지 않게 한 번 무시
@@ -2070,6 +2120,7 @@ $('#btnCloseEditor').addEventListener('click', () => {
 });
 $('#btnResetItem').addEventListener('click', () => {
   curItem.focusX = 0.5; curItem.focusY = 0.5;
+  curItem.offX = 0; curItem.offY = 0; // 자유 이동으로 밀어낸 것도 같이 되돌림
   curItem.zoom = defaultZoom(curItem.photoImg.naturalWidth, curItem.photoImg.naturalHeight, CW, CH);
   updateEditorGeom();
   saveMetaSoon();
@@ -2112,7 +2163,7 @@ let _drag = null;
 editPhoto.addEventListener('mousedown', e => {
   if (!curItem) return;
   e.preventDefault();
-  _drag = { lastX: e.clientX, lastY: e.clientY };
+  _drag = { lastX: e.clientX, lastY: e.clientY, free: freePanOn(e) };
   editPhoto.style.cursor = 'grabbing';
 });
 window.addEventListener('mousemove', e => {
@@ -2122,6 +2173,15 @@ window.addEventListener('mousemove', e => {
   const overflowX = dw - CW, overflowY = dh - CH;
   const dxPix = (e.clientX - _drag.lastX) / previewScale;
   const dyPix = (e.clientY - _drag.lastY) / previewScale;
+  // 자유 이동이면 아트보드 밖으로도 밀어낸다 (사진이 딱 맞는 크기여도 움직임)
+  if (_drag.free) {
+    curItem.offX = (curItem.offX || 0) + dxPix;
+    curItem.offY = (curItem.offY || 0) + dyPix;
+    clampOffsets(curItem);
+    _drag.lastX = e.clientX; _drag.lastY = e.clientY;
+    updateEditorGeom();
+    return;
+  }
   // 사진이 아트보드 밖으로 밀려나지 않게 0~1 범위로 묶음 (예전에는 제한이 없어서 밖으로 완전히 밀어낼 수 있었음)
   if (Math.abs(overflowX) > PAN_MIN_ROOM) curItem.focusX = clamp01((curItem.focusX ?? 0.5) - dxPix / overflowX);
   if (Math.abs(overflowY) > PAN_MIN_ROOM) {
