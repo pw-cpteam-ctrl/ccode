@@ -1087,6 +1087,14 @@ async function assignOverlayMany(list, name){
     if (!img) { log(`"${name}" 투명 이미지를 못 찾음 (업로드했는지 확인)`); return; }
     file = overlayFiles.find(f => f.name === name) || null;
   }
+  if (img && name) {
+    // 사진을 얼마나 더 끌 수 있는지 미리 알려준다 (0이면 왜 0인지도)
+    const probe = { overlayImg: img, overlayName: name, noFrame: false };
+    const band = overlaySafeBands(probe);
+    if (band.bottom >= 1) log(`"${name}" 제목이 아래 ${Math.round(band.bottom)}px를 덮음 → 사진을 그만큼 더 위로 끌 수 있음`);
+    else if (band.top >= 1) log(`"${name}" 제목이 위 ${Math.round(band.top)}px를 덮음 → 사진을 그만큼 더 아래로 끌 수 있음`);
+    else log(`"${name}" 제목은 가로 전체를 덮는 불투명한 띠가 없어서(좌우 여백이 있거나 반투명) 사진 이동 범위는 그대로임`);
+  }
   for (const it of list) {
     it.overlayName = name || null;
     it.overlayFile = file;
@@ -1285,6 +1293,11 @@ function loadBadgeSettings(){
   $('#badgeMonth').value = badgeMonth;
   $('#badgeWeight').value = String(badgeWeight);
   $('#badgeColor').value = badgeColor;
+  // 휠 확대/축소 켜둔 상태도 기억한다 — 새로고침마다 꺼져서 "갑자기 휠이 안 먹는다"로 보였음
+  try {
+    const s2 = JSON.parse(localStorage.getItem('batch_merge_badge_settings') || 'null');
+    if (s2 && s2.wheelZoom) $('#thumbZoomToggle').checked = true;
+  } catch (e) {}
   updateStoreColorButtons();
 }
 function updateStoreColorButtons(){
@@ -1292,7 +1305,8 @@ function updateStoreColorButtons(){
   $('#btnStoreWhite').classList.toggle('on', storeTextColor === '#ffffff');
 }
 function saveBadgeSettings(){
-  localStorage.setItem('batch_merge_badge_settings', JSON.stringify({ month: badgeMonth, weight: badgeWeight, color: badgeColor, storeTextColor }));
+  localStorage.setItem('batch_merge_badge_settings', JSON.stringify({ month: badgeMonth, weight: badgeWeight, color: badgeColor, storeTextColor,
+    wheelZoom: $('#thumbZoomToggle').checked }));
 }
 
 // 스토어명 옆(좌측)에 붙는 로고 — 페이지 로딩 시 1번만 불러와서 재사용
@@ -1786,6 +1800,7 @@ function setStoreTextColor(c){
   saveBadgeSettings();
   renderGrid();
 }
+$('#thumbZoomToggle').addEventListener('change', saveBadgeSettings);
 $('#btnStoreBlack').addEventListener('click', () => setStoreTextColor('#111111'));
 $('#btnStoreWhite').addEventListener('click', () => setStoreTextColor('#ffffff'));
 $('#badgeColor').addEventListener('input', e => {
