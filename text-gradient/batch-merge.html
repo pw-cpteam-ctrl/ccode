@@ -1498,6 +1498,10 @@ function drawBadge(ctx, it, opts){
 // 이렇게 하면 0~1 범위만 지키면 사진이 아트보드 밖으로 밀려나는 게 원천적으로 불가능해진다
 // (예전 방식은 제한이 없어서 사진을 밖으로 완전히 밀어내고 저장하면 배경색만 남은 이미지가 나왔음).
 const SLOP = 1.003; // 꽉 채울 때 반올림 오차로 배경이 실선처럼 비치는 걸 막는 여유값
+// 사진이 아트보드보다 이만큼(1080 기준 px)은 남아야 "끌 수 있다"고 본다.
+// 위 여유값 때문에 비율이 똑같은 사진도 3px 정도는 남는데, 그 정도는 끌어도 눈에 안 보여서
+// "드래그가 안 된다"는 오해만 생기므로 아예 움직이지 않는 것으로 취급한다
+const PAN_MIN_ROOM = 16;
 function clamp01(v){ return Math.max(0, Math.min(1, v)); }
 function coverCropRect(pw, ph, W, H, focusX, focusY, zoom){
   const fx = focusX ?? 0.5, fy = focusY ?? 0.5;
@@ -1553,7 +1557,7 @@ function overlaySafeBands(it){
 }
 // 세로 이동 허용 범위 — 기본은 0~1이고, 제목이 덮어주는 쪽만 그만큼 넘어갈 수 있다
 function focusYRange(it, overflowY){
-  if (!(overflowY > 0.5)) return { min: 0, max: 1 };
+  if (!(overflowY > PAN_MIN_ROOM)) return { min: 0, max: 1 };
   const b = overlaySafeBands(it);
   return { min: -b.top / overflowY, max: 1 + b.bottom / overflowY };
 }
@@ -1786,7 +1790,7 @@ function updatePanCursor(it){
   const cv = it._thumbCanvas;
   if (!cv || !cv.parentElement) return;
   const g = geomOf(it);
-  const movable = (g.dw - CW) > 0.5 || (g.dh - CH) > 0.5;
+  const movable = (g.dw - CW) > PAN_MIN_ROOM || (g.dh - CH) > PAN_MIN_ROOM;
   cv.parentElement.style.cursor = movable ? 'grab' : 'default';
   cv.parentElement.title = movable ? '' : '사진 비율이 아트보드와 거의 같아서 끌 여유가 없어요 — 확대하면 움직일 수 있어요';
 }
@@ -1933,8 +1937,8 @@ window.addEventListener('mousemove', e => {
     const { dw, dh } = geomOf(t);
     const overflowX = dw - CW, overflowY = dh - CH; // 아트보드보다 사진이 남는 만큼 = 움직일 수 있는 여유
     // 여유가 없는 축(사진이 딱 맞거나 더 작은 경우)은 아예 움직이지 않게 두고, 있는 축은 0~1 안으로 묶는다
-    if (overflowX > 0.5) t.focusX = clamp01((t.focusX ?? 0.5) - dxPix / overflowX);
-    if (overflowY > 0.5) {
+    if (overflowX > PAN_MIN_ROOM) t.focusX = clamp01((t.focusX ?? 0.5) - dxPix / overflowX);
+    if (overflowY > PAN_MIN_ROOM) {
       const r = focusYRange(t, overflowY); // 제목이 덮어주는 쪽은 조금 더 끌 수 있음
       t.focusY = Math.max(r.min, Math.min(r.max, (t.focusY ?? 0.5) - dyPix / overflowY));
     }
@@ -2052,8 +2056,8 @@ window.addEventListener('mousemove', e => {
   const dxPix = (e.clientX - _drag.lastX) / previewScale;
   const dyPix = (e.clientY - _drag.lastY) / previewScale;
   // 사진이 아트보드 밖으로 밀려나지 않게 0~1 범위로 묶음 (예전에는 제한이 없어서 밖으로 완전히 밀어낼 수 있었음)
-  if (overflowX > 0.5) curItem.focusX = clamp01((curItem.focusX ?? 0.5) - dxPix / overflowX);
-  if (overflowY > 0.5) {
+  if (overflowX > PAN_MIN_ROOM) curItem.focusX = clamp01((curItem.focusX ?? 0.5) - dxPix / overflowX);
+  if (overflowY > PAN_MIN_ROOM) {
     const r = focusYRange(curItem, overflowY);
     curItem.focusY = Math.max(r.min, Math.min(r.max, (curItem.focusY ?? 0.5) - dyPix / overflowY));
   }
