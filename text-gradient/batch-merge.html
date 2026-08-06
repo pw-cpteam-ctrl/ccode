@@ -1344,7 +1344,25 @@ function saveBadgeSettings(){
 // 스토어명 옆(좌측)에 붙는 로고 — 페이지 로딩 시 1번만 불러와서 재사용
 const badgeLogoImg = new Image();
 let badgeLogoLoaded = false;
-badgeLogoImg.onload = () => { badgeLogoLoaded = true; if (items.length) renderGrid(); };
+// 로고 PNG는 그림 위쪽에 투명 여백이 꽤 들어 있다(현재 파일은 약 27%). 그래서 "y=15에 그려라"라고 하면
+// 눈에 보이는 그림은 15+16=31px 아래에서 시작하고, 반대로 눈에 보이는 여백을 15px로 맞추려면
+// 그 투명 여백만큼 위로 당겨 그려야 한다. 파일이 바뀌어도 맞도록 값을 직접 재둔다
+let badgeLogoInkTopRatio = 0;
+function measureLogoInkTop(){
+  try {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const cx = c.getContext('2d');
+    cx.drawImage(badgeLogoImg, 0, 0, 64, 64);
+    const d = cx.getImageData(0, 0, 64, 64).data;
+    for (let y = 0; y < 64; y++) {
+      for (let x = 0; x < 64; x++) {
+        if (d[(y * 64 + x) * 4 + 3] > 20) { badgeLogoInkTopRatio = y / 64; return; }
+      }
+    }
+  } catch (e) { badgeLogoInkTopRatio = 0; }
+}
+badgeLogoImg.onload = () => { badgeLogoLoaded = true; measureLogoInkTop(); if (items.length) renderGrid(); };
 badgeLogoImg.src = '../assets/favicon-pw.png';
 
 // 다각형 꼭짓점을 둥글린 모서리로 이어그리는 헬퍼 (radii: 꼭짓점별 반지름, 0이면 각짐)
@@ -1461,7 +1479,9 @@ function drawBadge(ctx, it, opts){
   // 스토어명 (뱃지 반대쪽) — 뱃지와 마찬가지로 top 정렬 + 위쪽 패딩만 살짝
   // 로고+텍스트를 한 덩어리로 보고, 그 덩어리 전체를 여백 기준으로 붙인 뒤
   // 로고는 항상 텍스트 왼쪽에 오도록 배치 (뱃지가 좌/우 어느 쪽에 있든 캔버스 밖으로 안 나가게)
-  const storeSize = 30, storeMargin = 24, storeTopPad = 8, logoGap = 8;
+  // 위 여백은 "로고+텍스트 덩어리 전체" 기준이다 — 로고가 글자의 2배 크기라 글자보다 위로 튀어나오므로,
+  // 글자 기준으로 여백을 주면 로고는 아트보드 위쪽 끝에 그대로 붙어버린다 (예전에 로고가 y=0이었음)
+  const storeSize = 30, storeMargin = 24, storeTopPad = 15, logoGap = 8;
   ctx.save();
   ctx.font = `${badgeWeight} ${storeSize}px 'S-Core Dream'`;
   ctx.textBaseline = 'top';
@@ -1474,7 +1494,12 @@ function drawBadge(ctx, it, opts){
   const gap = badgeLogoLoaded ? logoGap : 0;
   const groupW = logoW + gap + textW;
   const groupStartX = side === 'left' ? CW - storeMargin - groupW : storeMargin;
-  const storeY = offsetY + storeTopPad;
+  // 위 여백은 "눈에 보이는 것" 기준이다 — 로고 그림이 실제로 시작하는 지점이 아트보드 위에서
+  // storeTopPad만큼 떨어지게, 로고 PNG의 투명 여백만큼 위로 당겨서 그린다
+  const logoY = offsetY + storeTopPad - logoH * badgeLogoInkTopRatio;
+  const storeY = badgeLogoLoaded
+    ? logoY + logoH / 2 - storeSize / 2 + 3   // 글자를 로고 세로 중앙에 맞추고 3px 아래로 미세조정
+    : offsetY + storeTopPad;
 
   // 딱딱한 흰 테두리(strokeText) 대신, 로고·텍스트에 공통으로 부드러운 후광(soft glow)을 줘서
   // 재질이 서로 달라 보이던 문제를 해결 (같은 shadow 설정을 텍스트/로고 둘 다에 적용).
@@ -1486,7 +1511,6 @@ function drawBadge(ctx, it, opts){
   if (it.storeName) ctx.fillText(it.storeName, groupStartX + logoW + gap, storeY);
 
   if (badgeLogoLoaded) {
-    const logoY = storeY + storeSize / 2 - logoH / 2 - 3; // 텍스트 세로 중앙 기준, 3px 위로 미세조정
     ctx.drawImage(badgeLogoImg, groupStartX, logoY, logoW, logoH);
   }
   ctx.shadowColor = 'transparent';
