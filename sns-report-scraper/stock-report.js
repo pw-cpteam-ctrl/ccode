@@ -13,6 +13,24 @@
  * 예약 시작 시점부터의 총 판매를 더 잘 반영하지만 여전히 추정치이므로 totalSoldIsEstimated는
  * 항상 true, 화면엔 "*"로 표시해서 정확도 한계를 숨기지 않음.
  *
+ * ⚠️ 세 번째 방향 전환(2026-08-06): 위 "**항상** 초기한도 역산"이 **이미 발매(입고)된 상품까지
+ * 싸잡아 적용되는 심각한 문제**가 실사용에서 드러남 — 재고 11개짜리 입고 상품이 "989개
+ * 판매추정"으로 표시됨(초기한도를 최소 1000으로 강제하니 1000-11=989). 완전히 지어낸 숫자이고,
+ * 그렇게 만들어진 가짜 수치가 매출 순위 1·2위를 차지해 진짜 예약 판매량을 밀어냄.
+ * 애초에 PLAN.md(313~315행)에 "9000~10000대는 예약 한도에서 줄어든 만큼이 판매량이고,
+ * 82/24/15/6처럼 낮은 숫자는 이미 발매(입고)된 상품의 진짜 물리 재고"라고 처음부터 적혀
+ * 있었는데, 2026-07-10 수정이 그 구분을 통째로 버린 것이 원인.
+ * → 이제 **예약 상품일 때만** 역산하고, 입고 상품은 totalSold를 계산하지 않음(null).
+ *   근거 없는 숫자를 만드느니 "모른다"고 두는 게 맞고, 입고 상품의 실제 판매는 stockDelta
+ *   (직전 스냅샷 대비 실측 감소량)로 이미 볼 수 있음.
+ *
+ * ⚠️ 세트 상품 수량 보정(2026-08-06): 자사(PW)는 "(6종세트)"처럼 **괄호 안에 (N종세트)로
+ * 적힌 묶음**을 1세트 단위로 파는데, 재고는 낱개 기준으로 차감됨(8종세트 1개 팔리면 재고 -8).
+ * 그래서 그런 상품은 재고/판매량을 N으로 나눠야 실제 판매 단위 수량이 됨. 실제 스냅샷 2개로
+ * 검증함: 괄호형 (N종세트) 8건은 재고 감소량이 전부 N의 배수(104÷8, 224÷8, 48÷6, 52÷4 …),
+ * 반면 괄호 밖 "2종세트 곤 키르아 룩업" 같은 묶음상품은 비배수(341, 97, 115 …)라 1판매=1차감.
+ * 경쟁사(BH)는 "(1BOX 6개 구성)"/"(6종 단품 랜덤)" 어느 표기든 12건 전부 비배수 → 나누지 않음.
+ *
  * stockDelta(직전 스냅샷 대비 변화량)는 참고용으로 그대로 남겨둠 — "최근에 얼마나 움직였는지"는
  * totalSold(누적)와는 별개 관심사.
  *
@@ -28,10 +46,44 @@ function escapeHtml(s) {
 }
 
 // 현재 재고를 가장 가까운 1000단위로 올려서 "초기 판매한도였을 것"으로 가정하고 역산 —
-// totalSold는 실제 과거 기록 유무와 무관하게 항상 이 방식으로 계산(위 파일 헤더 설명 참고).
+// **예약 상품에만** 적용한다(입고 상품엔 쓰면 안 됨 — 파일 헤더의 세 번째 방향 전환 참고).
 function estimateInitialCap(stock) {
   if (typeof stock !== 'number') return null;
   return Math.max(1000, Math.ceil(stock / 1000) * 1000);
+}
+
+// 예약판매 중인 상품으로 볼 재고 하한선. 이 아래는 예약 한도가 아니라 실제 물리 재고로 본다.
+// (사용자 확인: "2000개 이하는 다 예약수량이 아닌 재고수로 봐줘")
+const PREORDER_MIN_STOCK = 2000;
+
+/**
+ * 이 상품이 "예약판매 중"인지 판정.
+ * - 상품명에 `[예약]` 표기가 없으면 입고 상품(사용자 확인: "예약 없는 건 확실히 입고")
+ * - 표기가 있어도 재고가 PREORDER_MIN_STOCK 이하면 입고로 본다 — 재판 상품이 `[예약]` 표기를
+ *   그대로 달고 있는 경우가 실제로 있음(예: "[예약] 파피몬 룩업 l 디지몬 어드벤처 (재판)"이
+ *   재고 22개). 표기만 믿으면 이런 상품에 또 989개 같은 가짜 숫자가 붙음.
+ * ⚠️ 판정은 반드시 **세트로 나누기 전 원본 재고**로 해야 함 — 나눈 값으로 판정하면 재고
+ *   9970짜리 예약 세트상품(÷6=1661)이 입고로 오분류됨(실제 데이터로 확인).
+ */
+function isPreorderProduct(name, rawStock) {
+  if (typeof rawStock !== 'number') return false;
+  if (!/\[예약\]/.test(name || '')) return false;
+  return rawStock > PREORDER_MIN_STOCK;
+}
+
+/**
+ * 상품명에서 "1회 판매 시 재고가 몇 개씩 차감되는지"(세트 크기)를 뽑음.
+ * **괄호 안에 "(N종세트)" 형태로 적힌 것만** 해당 — 괄호 밖의 "2종세트 곤 키르아 룩업"은
+ * 서로 다른 피규어를 묶어 파는 상품이라 1판매=1차감이라서 나누면 안 됨(스냅샷으로 검증).
+ * "(6종+랜덤2종 세트)"처럼 여러 개가 적히면 합산(6+2=8).
+ */
+function parseSetSize(name) {
+  for (const group of String(name || '').match(/\(([^)]*)\)/g) || []) {
+    if (!group.includes('세트')) continue;
+    const counts = [...group.matchAll(/(\d+)\s*종/g)].map(m => Number(m[1]));
+    if (counts.length) return counts.reduce((a, b) => a + b, 0);
+  }
+  return 1;
 }
 
 // 히스토리(naver-stock-snapshot.js가 저장한 { snapshots: [...] })를 받아서 store(PW/BH)별로
@@ -58,17 +110,26 @@ function buildStockComparison(history) {
 
     const products = latestRecords.map(r => {
       const prev = prevByProductId.get(r.productId);
-      const stockDelta = prev && typeof prev.stock === 'number' && typeof r.stock === 'number'
-        ? prev.stock - r.stock // 양수 = 직전 스냅샷 대비 줄어든 수량(참고용, 화면 기본 지표 아님)
+      // 세트 크기로 나눠서 "실제 판매 단위" 기준 수량으로 환산. 판정(예약/입고)은 나누기 전
+      // 원본 재고로 해야 하므로(파일 헤더 참고) 순서에 주의.
+      const setSize = parseSetSize(r.name);
+      const perSet = v => (typeof v === 'number' ? Math.round(v / setSize) : null);
+      const preorder = isPreorderProduct(r.name, r.stock);
+
+      const rawDelta = prev && typeof prev.stock === 'number' && typeof r.stock === 'number'
+        ? prev.stock - r.stock // 양수 = 직전 스냅샷 대비 줄어든 수량(실측값)
         : null;
 
-      const estimatedCap = estimateInitialCap(r.stock);
-      const totalSold = typeof r.stock !== 'number' ? null : estimatedCap - r.stock;
+      // 예약 상품만 초기한도 역산. 입고 상품은 총 판매량을 알 방법이 없으므로 null —
+      // 지어낸 숫자를 넣지 않는다(입고 상품의 실제 판매는 stockDelta로 확인 가능).
+      const estimatedCap = preorder ? estimateInitialCap(r.stock) : null;
+      const totalSold = preorder && typeof r.stock === 'number' ? perSet(estimatedCap - r.stock) : null;
 
       return {
-        productId: r.productId, name: r.name, price: r.price, stock: r.stock,
-        prevStock: prev ? prev.stock : null, stockDelta,
-        estimatedCap, totalSold, totalSoldIsEstimated: true,
+        productId: r.productId, name: r.name, price: r.price,
+        stock: perSet(r.stock), rawStock: r.stock, setSize, isPreorder: preorder,
+        prevStock: prev ? perSet(prev.stock) : null, stockDelta: perSet(rawDelta),
+        estimatedCap, totalSold, totalSoldIsEstimated: preorder,
       };
     });
 

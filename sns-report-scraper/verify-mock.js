@@ -484,23 +484,23 @@ check('naver-stock: withPageParam — 다음 페이지 URL을 만들 때 다른 
 check('stock-report: 스냅샷 1개뿐일 땐 비교 없이 현재값만, 2개면 변화량(판매 추정) 계산', () => {
   const oneSnapshot = {
     snapshots: [
-      { takenAt: '2026-07-01T00:00:00.000Z', stores: { PW: [{ productId: 'A', name: '상품A', price: 10000, stock: 9999 }] } },
+      { takenAt: '2026-07-01T00:00:00.000Z', stores: { PW: [{ productId: 'A', name: '[예약] 상품A', price: 10000, stock: 9999 }] } },
     ],
   };
   const onlyOne = buildStockComparison(oneSnapshot);
   assert.strictEqual(onlyOne.previousTakenAt, null, '스냅샷이 1개면 비교 대상이 없어야 함');
   assert.strictEqual(onlyOne.stores.PW[0].stockDelta, null);
-  assert.strictEqual(onlyOne.stores.PW[0].totalSoldIsEstimated, true, 'totalSold는 항상 초기한도 역산 기반 추정치');
-  assert.strictEqual(onlyOne.stores.PW[0].totalSold, 1, '재고 9999 → 초기한도 10000으로 가정 → 10000-9999=1');
+  assert.strictEqual(onlyOne.stores.PW[0].totalSoldIsEstimated, true, '예약 상품의 totalSold는 초기한도 역산 기반 추정치');
+  assert.strictEqual(onlyOne.stores.PW[0].totalSold, 1, '예약 상품 재고 9999 → 초기한도 10000으로 가정 → 10000-9999=1');
 
   const twoSnapshots = {
     snapshots: [
-      { takenAt: '2026-07-01T00:00:00.000Z', stores: { PW: [{ productId: 'A', name: '상품A', price: 10000, stock: 9999 }] } },
+      { takenAt: '2026-07-01T00:00:00.000Z', stores: { PW: [{ productId: 'A', name: '[예약] 상품A', price: 10000, stock: 9999 }] } },
       {
         takenAt: '2026-07-02T00:00:00.000Z',
         stores: {
           PW: [
-            { productId: 'A', name: '상품A', price: 10000, stock: 9486 }, // 재고 감소 = 판매 추정
+            { productId: 'A', name: '[예약] 상품A', price: 10000, stock: 9486 }, // 재고 감소 = 판매 추정
             { productId: 'B', name: '신상품B', price: 5000, stock: 100 }, // 첫 등장(비교 불가)
           ],
         },
@@ -511,12 +511,64 @@ check('stock-report: 스냅샷 1개뿐일 땐 비교 없이 현재값만, 2개�
   assert.ok(compared.previousTakenAt, '스냅샷이 2개면 직전 스냅샷과 비교해야 함');
   const a = compared.stores.PW.find(p => p.productId === 'A');
   const b = compared.stores.PW.find(p => p.productId === 'B');
-  assert.strictEqual(a.stockDelta, 513, '9999 - 9486 = 513개 판매 추정(직전 스냅샷 대비, 참고용)');
+  assert.strictEqual(a.stockDelta, 513, '9999 - 9486 = 513개 판매 추정(직전 스냅샷 대비, 실측값)');
   assert.strictEqual(b.stockDelta, null, '이전 스냅샷에 없던 신규 상품은 직전 대비 비교 불가(null)');
-  assert.strictEqual(a.totalSold, 514, '실제 최초 관측(9999)과 무관하게 항상 초기한도 역산: 재고 9486 → 초기한도 10000 → 514');
-  assert.strictEqual(a.totalSoldIsEstimated, true, 'totalSold는 실제 과거 기록 유무와 무관하게 항상 초기한도 추정');
-  assert.strictEqual(b.totalSoldIsEstimated, true, 'B도 마찬가지로 초기한도 추정');
-  assert.strictEqual(b.totalSold, 900, '재고 100 → 초기한도 1000으로 가정 → 1000-100=900');
+  assert.strictEqual(a.totalSold, 514, '예약 상품은 최초 관측값과 무관하게 초기한도 역산: 재고 9486 → 초기한도 10000 → 514');
+  assert.strictEqual(a.totalSoldIsEstimated, true, '예약 상품의 totalSold는 추정치');
+  // ⚠️ 예전엔 여기서 b.totalSold === 900을 기대했음 — 재고 100개짜리 입고 상품을 "900개
+  // 팔렸다"고 지어내던 버그를 테스트가 정답으로 못박고 있었던 것(2026-08-06 실사용에서
+  // "재고 11개 → 989개 판매추정"으로 터짐). 입고 상품은 총 판매량을 알 수 없으므로 null이 맞음.
+  assert.strictEqual(b.totalSoldIsEstimated, false, '입고 상품은 추정 자체를 하지 않음');
+  assert.strictEqual(b.totalSold, null, '입고 상품(예약 표기 없음)은 총 판매량을 알 수 없으므로 지어내지 말고 null');
+});
+
+check('stock-report: 입고 상품에 가짜 판매추정을 만들지 않음 (2026-08-06 회귀 방지)', () => {
+  const snap = ts => ({
+    takenAt: ts,
+    stores: {
+      PW: [
+        // 실제 사고 사례: [예약] 표기가 붙은 재판 상품인데 재고는 22개 — 표기만 믿으면
+        // 초기한도 1000으로 역산해 "978개 판매"라는 가짜 숫자가 나옴
+        { productId: 'P1', name: '[예약] 파피몬 룩업 l 디지몬 어드벤처 (재판)', price: 40000, stock: 22 },
+        // 예약 표기 자체가 없는 입고 상품
+        { productId: 'P2', name: '토미오카 기유 멍한 버전 룩업 l 귀멸의 칼날 (재판)', price: 42000, stock: 2222 },
+        // 진짜 예약 상품
+        { productId: 'P3', name: '[예약] 상품C', price: 50000, stock: 9500 },
+      ],
+    },
+  });
+  const r = buildStockComparison({ snapshots: [snap('2026-08-01T00:00:00.000Z'), snap('2026-08-06T00:00:00.000Z')] });
+  const [p1, p2, p3] = ['P1', 'P2', 'P3'].map(id => r.stores.PW.find(p => p.productId === id));
+  assert.strictEqual(p1.totalSold, null, '[예약] 표기가 있어도 재고가 2000 이하면 입고로 보고 추정하지 않음');
+  assert.strictEqual(p1.isPreorder, false);
+  assert.strictEqual(p2.totalSold, null, '예약 표기가 없으면 재고가 2000을 넘어도 입고 상품');
+  assert.strictEqual(p3.totalSold, 500, '진짜 예약 상품만 역산: 재고 9500 → 초기한도 10000 → 500');
+  assert.strictEqual(p3.isPreorder, true);
+});
+
+check('stock-report: 괄호형 "(N종세트)" 상품은 세트 단위로 환산 (2026-08-06 추가)', () => {
+  const snap = (ts, stock) => ({
+    takenAt: ts,
+    stores: {
+      PW: [
+        // 낱개로 차감되는 세트 상품 — 8종세트 1개 팔리면 재고가 8 줄어듦
+        { productId: 'S1', name: '[예약] 메가캣 프로젝트 냐루토 (8종세트)', price: 8000, stock },
+        // "6종+랜덤2종 세트" → 합산 8
+        { productId: 'S2', name: '[예약] 오챠토모 시리즈 원피스 (6종+랜덤2종세트)', price: 9000, stock: 9888 },
+        // 괄호 밖 "2종세트"는 서로 다른 피규어를 묶어 파는 상품이라 1판매=1차감 → 나누면 안 됨
+        { productId: 'S3', name: '[예약][특전] 2종세트 곤 키르아 룩업 l 헌터x헌터', price: 104000, stock: 9000 },
+      ],
+    },
+  });
+  const r = buildStockComparison({ snapshots: [snap('2026-08-01T00:00:00.000Z', 9600), snap('2026-08-06T00:00:00.000Z', 9200)] });
+  const [s1, s2, s3] = ['S1', 'S2', 'S3'].map(id => r.stores.PW.find(p => p.productId === id));
+  assert.strictEqual(s1.setSize, 8, '괄호 안 "(8종세트)" → 세트 크기 8');
+  assert.strictEqual(s1.stock, 1150, '재고 9200 ÷ 8 = 1150세트');
+  assert.strictEqual(s1.stockDelta, 50, '재고 감소 400 ÷ 8 = 50세트 판매');
+  assert.strictEqual(s1.totalSold, 100, '(초기한도 10000 - 9200) ÷ 8 = 100세트');
+  assert.strictEqual(s2.setSize, 8, '"6종+랜덤2종 세트"는 합산해서 8');
+  assert.strictEqual(s3.setSize, 1, '괄호 밖 "2종세트"는 묶음상품이라 나누지 않음');
+  assert.strictEqual(s3.stock, 9000, '나누지 않았으므로 재고 그대로');
 });
 
 check('stock-report: rankStockProducts — 총 판매추정치를 모르는 상품은 순위 없이 "-" 처리용 null', () => {
@@ -579,10 +631,10 @@ check('html-report/stock-report: 직전 스냅샷이 있어도 특정 store만 �
   // 계속 유지되는지 보는 회귀 방지용.
   const historyWithFailedBhSnapshot = {
     snapshots: [
-      { takenAt: '2026-07-06T00:00:00.000Z', stores: { PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9999 }], BH: [] } },
+      { takenAt: '2026-07-06T00:00:00.000Z', stores: { PW: [{ productId: 'X1', name: '[예약] 은혼 GEM 카무이 ver.2', price: 220000, stock: 9999 }], BH: [] } },
       { takenAt: '2026-07-08T00:00:00.000Z', stores: {
-        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9486 }],
-        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 470 }],
+        PW: [{ productId: 'X1', name: '[예약] 은혼 GEM 카무이 ver.2', price: 220000, stock: 9486 }],
+        BH: [{ productId: 'Y1', name: '[예약] 은혼 GEM 카무이 세컨드', price: 210000, stock: 9470 }],
       } },
     ],
   };
@@ -591,11 +643,11 @@ check('html-report/stock-report: 직전 스냅샷이 있어도 특정 store만 �
   assert.strictEqual(compared.storeComparable.BH, false, 'BH는 직전 스냅샷이 0건이었으니 비교 불가로 표시돼야 함');
   const pwProduct = compared.stores.PW[0];
   const bhProduct = compared.stores.BH[0];
-  assert.strictEqual(pwProduct.totalSold, 514, 'PW도 항상 초기한도 역산: 재고 9486 → 초기한도 10000 → 514');
-  assert.strictEqual(pwProduct.totalSoldIsEstimated, true, 'totalSold는 실제 과거 기록 유무와 무관하게 항상 초기한도 추정');
-  assert.strictEqual(bhProduct.estimatedCap, 1000, '재고 470을 가장 가까운 1000단위로 올리면 1000이어야 함');
-  assert.strictEqual(bhProduct.totalSold, 530, '1000 - 470 = 530이 추정 판매량이어야 함');
-  assert.strictEqual(bhProduct.totalSoldIsEstimated, true, 'BH도 마찬가지로 초기한도 추정');
+  assert.strictEqual(pwProduct.totalSold, 514, '예약 상품은 초기한도 역산: 재고 9486 → 초기한도 10000 → 514');
+  assert.strictEqual(pwProduct.totalSoldIsEstimated, true, '예약 상품의 totalSold는 초기한도 추정');
+  assert.strictEqual(bhProduct.estimatedCap, 10000, '재고 9470을 가장 가까운 1000단위로 올리면 10000이어야 함');
+  assert.strictEqual(bhProduct.totalSold, 530, '10000 - 9470 = 530이 추정 판매량이어야 함');
+  assert.strictEqual(bhProduct.totalSoldIsEstimated, true, 'BH도 예약 상품이므로 초기한도 추정');
 
   const html = buildHtmlReport(report, compared);
   assert.ok(html.includes('class="metricbar-val pw">514개*') && html.includes('class="metricbar-val bh">530개*'),
@@ -747,12 +799,12 @@ check('stock-report: 종합표 — 많이 팔린 순(PW+BH 합산) 정렬 누락
     snapshots: [
       { takenAt: '2026-07-06T00:00:00.000Z', stores: {
         PW: [
-          { productId: 'A1', name: '적게 팔린 상품 GEM 아무개', price: 10000, stock: 990 },
-          { productId: 'B1', name: '많이 팔린 상품 GEM 누구', price: 10000, stock: 100 },
+          { productId: 'A1', name: '[예약] 적게 팔린 상품 GEM 아무개', price: 10000, stock: 9900 },
+          { productId: 'B1', name: '[예약] 많이 팔린 상품 GEM 누구', price: 10000, stock: 9100 },
         ],
         BH: [
-          { productId: 'A2', name: '적게 팔린 상품 GEM 아무개 세컨드', price: 10000, stock: 990 },
-          { productId: 'B2', name: '많이 팔린 상품 GEM 누구 세컨드', price: 10000, stock: 100 },
+          { productId: 'A2', name: '[예약] 적게 팔린 상품 GEM 아무개 세컨드', price: 10000, stock: 9900 },
+          { productId: 'B2', name: '[예약] 많이 팔린 상품 GEM 누구 세컨드', price: 10000, stock: 9100 },
         ],
       } },
     ],
@@ -760,7 +812,7 @@ check('stock-report: 종합표 — 많이 팔린 순(PW+BH 합산) 정렬 누락
   const compared = buildStockComparison(history);
   const rows = buildIntegratedStockRows(compared);
   assert.strictEqual(rows.length, 2);
-  assert.ok(rows[0].pw.name.includes('많이 팔린'), '판매추정치 합산이 더 큰 상품(초기한도-100 쪽)이 먼저 나와야 함');
+  assert.ok(rows[0].pw.name.includes('많이 팔린'), '판매추정치 합산이 더 큰 상품(재고 9100 → 900개 판매 쪽)이 먼저 나와야 함');
   assert.ok(rows[1].pw.name.includes('적게 팔린'), '판매추정치 합산이 더 작은 상품이 뒤에 나와야 함');
 });
 
