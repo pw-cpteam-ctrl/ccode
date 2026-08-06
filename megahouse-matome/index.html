@@ -1821,7 +1821,7 @@ $('#inOhStore').addEventListener('input', syncOpenHeader);
 
 // gradSlider replaced by syncGrad (gradStart/gradWidth/gradOpacity)
 
-$('#logoMega').addEventListener('change', e => { if (!e.target.files[0]) return; loadLogoFile(e.target.files[0], pages.map((_,i)=>'#logo'+(i+1)), true); });
+$('#logoMega').addEventListener('change', e => { if (!e.target.files[0]) return; loadLogoFile(e.target.files[0], pages.flatMap((_,i)=>['#logo'+(i+1), '#ohLogo'+(i+1)]), true); }); // 오픈용 헤더에선 로고가 #ohLogo{pg}로 별도 렌더링돼서 같이 갱신해야 함
 $('#logoPW').addEventListener('change', e => { if (!e.target.files[0]) return; loadLogoFile(e.target.files[0], pages.map((_,i)=>'#pwlogo'+(i+1)), false); });
 $('#btnAddPage').addEventListener('click', addPage);
 $('#btnApplyBulk').addEventListener('click', applyBulk);
