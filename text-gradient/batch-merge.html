@@ -161,14 +161,15 @@ button:disabled{opacity:.4;cursor:default;}
   <div style="font-size:12px;color:#7d7568;margin-bottom:8px;">
     칸 아래 <b>투명 드롭다운</b> = 그 칸 하나만 배정 (빨간 칸 = 아직 배정 안 됨).<br/>
     사진을 <b>마우스로 끌면</b> 그 자리에서 위치가 조정됨 (아트보드 밖으로는 안 밀려남). 위 체크박스를 켜면 <b>휠로 확대/축소</b>, <b>Shift+휠</b>이면 사진 전체가 보이는 크기까지 축소됨.<br/>
-    <b>여러 장을 선택하면 위쪽 파란 바에 "확대/축소" 슬라이더가 떠서 선택한 전부를 한꺼번에 조정할 수 있음</b> (선택한 칸에서 휠·드래그해도 같이 조정됨).<br/>
+    <b>여러 장을 선택하면 위쪽 파란 바에 "확대/축소" 슬라이더가 떠서 선택한 전부를 한꺼번에 조정할 수 있음</b> (선택한 칸에서 휠·드래그해도 같이 조정됨). 20%까지 줄이면 사방에 여백이 생기고, 그 상태에서도 사진을 끌어 위아래·좌우 위치를 맞출 수 있음.<br/>
     여러 장 고르는 방법 — ① <b>마우스로 드래그</b>해서 사각형으로 쓸어 담기 (Ctrl 누른 채 드래그하면 기존 선택에 더하기) ② 칸 <b>왼쪽 위 체크박스</b> 클릭, <b>Shift+클릭</b>이면 이전에 고른 칸부터 사이 전부. 고른 뒤 위쪽 파란 바의 드롭다운으로 한꺼번에 배정.
   </div>
   <div id="selBar" style="display:none;">
     <b id="selCount"></b>
+    <span id="selAction" style="color:#1a3d8f;font-weight:400;"></span>
     <select id="selOverlaySel"><option value="__ph__">투명 이미지 일괄 배정 ▾</option></select>
     <label style="display:flex;align-items:center;gap:6px;">확대/축소
-      <input type="range" id="selZoom" min="50" max="400" value="100" style="width:130px;"/>
+      <input type="range" id="selZoom" min="20" max="400" value="100" style="width:150px;"/>
       <b id="selZoomVal" style="min-width:42px;">100%</b>
     </label>
     <button id="btnSelBadgeFlip">뱃지 좌우 전환</button>
@@ -1134,7 +1135,7 @@ function updateSelUi(){
   if (n) { // 슬라이더를 선택한 사진의 현재 배율에 맞춰둔다 (안 맞추면 슬라이더를 잡는 순간 값이 튄다)
     const first = selectedItems()[0];
     const pct = Math.round(((first && first.zoom) || 1) * 100);
-    $('#selZoom').value = String(Math.max(50, Math.min(400, pct)));
+    $('#selZoom').value = String(Math.max(20, Math.min(400, pct)));
     $('#selZoomVal').textContent = $('#selZoom').value + '%';
   }
 }
@@ -1274,8 +1275,8 @@ function setSelectionZoom(pct){
   for (const t of list) {
     if (!t.photoImg) continue;
     const pw = t.photoImg.naturalWidth, ph = t.photoImg.naturalHeight;
-    const minZ = containMinZoom(pw, ph, CW, CH); // 슬라이더는 사진 전체가 보이는 크기까지 허용
-    t.zoom = Math.max(minZ, Math.min(4, pct / 100));
+    // 슬라이더는 전체보기보다 더 작게(사방 여백) 줄이는 것까지 허용
+    t.zoom = Math.max(MIN_ZOOM_HARD, Math.min(4, pct / 100));
     clampFocus(t);
   }
   refreshVisibleThumbs(list);
@@ -1502,6 +1503,9 @@ const SLOP = 1.003; // 꽉 채울 때 반올림 오차로 배경이 실선처럼
 // 위 여유값 때문에 비율이 똑같은 사진도 3px 정도는 남는데, 그 정도는 끌어도 눈에 안 보여서
 // "드래그가 안 된다"는 오해만 생기므로 아예 움직이지 않는 것으로 취급한다
 const PAN_MIN_ROOM = 16;
+// 사진 전체가 보이는 크기(전체보기)보다 더 작게도 줄일 수 있게 하는 하한 — 사방에 여백을 두고
+// 사진을 작게 배치하고 싶은 경우가 있어서 열어둔다
+const MIN_ZOOM_HARD = 0.2;
 function clamp01(v){ return Math.max(0, Math.min(1, v)); }
 function coverCropRect(pw, ph, W, H, focusX, focusY, zoom){
   const fx = focusX ?? 0.5, fy = focusY ?? 0.5;
@@ -1557,9 +1561,13 @@ function overlaySafeBands(it){
 }
 // 세로 이동 허용 범위 — 기본은 0~1이고, 제목이 덮어주는 쪽만 그만큼 넘어갈 수 있다
 function focusYRange(it, overflowY){
-  if (!(overflowY > PAN_MIN_ROOM)) return { min: 0, max: 1 };
-  const b = overlaySafeBands(it);
-  return { min: -b.top / overflowY, max: 1 + b.bottom / overflowY };
+  // 사진이 아트보드보다 큰 경우(잘리는 상태): 제목이 덮어주는 쪽만 0~1을 넘어갈 수 있다
+  if (overflowY > PAN_MIN_ROOM) {
+    const b = overlaySafeBands(it);
+    return { min: -b.top / overflowY, max: 1 + b.bottom / overflowY };
+  }
+  // 사진이 아트보드보다 작은 경우(사방에 여백): 0=위쪽 붙임 ~ 1=아래쪽 붙임 으로 위치만 조정
+  return { min: 0, max: 1 };
 }
 function clampFocus(it){
   it.focusX = clamp01(it.focusX ?? 0.5);
@@ -1790,7 +1798,7 @@ function updatePanCursor(it){
   const cv = it._thumbCanvas;
   if (!cv || !cv.parentElement) return;
   const g = geomOf(it);
-  const movable = (g.dw - CW) > PAN_MIN_ROOM || (g.dh - CH) > PAN_MIN_ROOM;
+  const movable = Math.abs(g.dw - CW) > PAN_MIN_ROOM || Math.abs(g.dh - CH) > PAN_MIN_ROOM;
   cv.parentElement.style.cursor = movable ? 'grab' : 'default';
   cv.parentElement.title = movable ? '' : '사진 비율이 아트보드와 거의 같아서 끌 여유가 없어요 — 확대하면 움직일 수 있어요';
 }
@@ -1881,12 +1889,32 @@ function scheduleFullRefresh(list){
 function targetsForBulk(it, idx){
   return (selectedIdx.size > 1 && selectedIdx.has(idx)) ? selectedItems() : [it];
 }
+// 조작이 실제로 몇 장에 적용됐는지 화면에 바로 보여준다 — 아무 표시도 안 뜨면 조작 자체가
+// 코드에 도달하지 못한 것이고, "1장"이라고 뜨면 선택이 안 잡힌 것이므로 원인을 바로 구분할 수 있다
+let _actionMsgT;
+function reportAction(text){
+  const el = $('#selAction');
+  if (el) {
+    el.textContent = '· ' + text;
+    clearTimeout(_actionMsgT);
+    _actionMsgT = setTimeout(() => { el.textContent = ''; }, 4000);
+  }
+}
 
 // 미리보기 칸에서 바로 확대/축소 (체크박스 켜졌을 때만 — 안 그러면 칸이 수백 개인 화면에서
 // 휠로 페이지를 내릴 수가 없어짐). Shift를 누르면 사진 전체가 보이는 크기까지 더 줄일 수 있다.
 // 선택된 칸 위에서 굴리면 선택한 전부가 같이 확대/축소된다 (폴더 클릭 → 폴더 전체 일괄 조정)
+let _wheelHintT = 0;
 $('#grid').addEventListener('wheel', e => {
-  if (!$('#thumbZoomToggle').checked) return;
+  if (!$('#thumbZoomToggle').checked) {
+    // 켜야 동작한다는 걸 모르고 계속 굴리는 상황을 막는다 (스크롤은 그대로 두고 안내만)
+    if (e.target.closest('.thumb') && Date.now() - _wheelHintT > 2000) {
+      _wheelHintT = Date.now();
+      reportAction('휠 확대/축소는 위 "미리보기에서 마우스 휠로 개별 확대/축소" 체크박스를 켜야 동작해요');
+      log('휠 확대/축소는 위 "미리보기에서 마우스 휠로 개별 확대/축소" 체크박스를 켜야 동작해요');
+    }
+    return;
+  }
   const wrap = e.target.closest('.thumb');
   if (!wrap) return;
   e.preventDefault();
@@ -1899,12 +1927,15 @@ $('#grid').addEventListener('wheel', e => {
     if (!t.photoImg) continue;
     const pw = t.photoImg.naturalWidth, ph = t.photoImg.naturalHeight;
     // 최소 배율은 사진 비율마다 다르므로 칸마다 따로 계산해서 막는다
-    const minZoom = e.shiftKey ? containMinZoom(pw, ph, CW, CH) : defaultZoom(pw, ph, CW, CH);
+    // Shift를 누르면 전체보기보다 더 작게(사방 여백)까지 축소 허용
+    const minZoom = e.shiftKey ? MIN_ZOOM_HARD : defaultZoom(pw, ph, CW, CH);
     t.zoom = Math.max(minZoom, Math.min(4, (t.zoom ?? 1) * factor));
     clampFocus(t); // 배율이 커지면 허용 범위가 좁아지므로 다시 범위 안으로
   }
   if (targets.length > 1) { refreshVisibleThumbs(targets); scheduleFullRefresh(targets); }
   else refreshThumb(it);
+  reportAction(`휠 ${targets.length}장 배율 ${Math.round((it.zoom ?? 1) * 100)}%` +
+    (targets.length === 1 && selectedIdx.size > 1 ? ' (이 칸은 선택에 안 들어있어서 1장만)' : ''));
   saveMetaSoon();
 }, { passive: false });
 
@@ -1937,8 +1968,10 @@ window.addEventListener('mousemove', e => {
     const { dw, dh } = geomOf(t);
     const overflowX = dw - CW, overflowY = dh - CH; // 아트보드보다 사진이 남는 만큼 = 움직일 수 있는 여유
     // 여유가 없는 축(사진이 딱 맞거나 더 작은 경우)은 아예 움직이지 않게 두고, 있는 축은 0~1 안으로 묶는다
-    if (overflowX > PAN_MIN_ROOM) t.focusX = clamp01((t.focusX ?? 0.5) - dxPix / overflowX);
-    if (overflowY > PAN_MIN_ROOM) {
+    // 여유가 양수(사진이 커서 잘림)든 음수(사진이 작아서 여백)든 그 폭만큼 움직일 수 있다.
+    // 계산식은 부호가 자동으로 맞아서 그대로 쓰면 되고, 판정만 절댓값으로 한다
+    if (Math.abs(overflowX) > PAN_MIN_ROOM) t.focusX = clamp01((t.focusX ?? 0.5) - dxPix / overflowX);
+    if (Math.abs(overflowY) > PAN_MIN_ROOM) {
       const r = focusYRange(t, overflowY); // 제목이 덮어주는 쪽은 조금 더 끌 수 있음
       t.focusY = Math.max(r.min, Math.min(r.max, (t.focusY ?? 0.5) - dyPix / overflowY));
     }
@@ -1950,6 +1983,11 @@ window.addEventListener('mousemove', e => {
 window.addEventListener('mouseup', () => {
   if (!_panDrag) return;
   if (_panDrag.moved) {
+    const t0 = _panDrag.it, g0 = geomOf(t0);
+    const room = Math.abs(g0.dw - CW) > PAN_MIN_ROOM || Math.abs(g0.dh - CH) > PAN_MIN_ROOM;
+    reportAction(room
+      ? `드래그 ${_panDrag.targets.length}장 위치 이동`
+      : `이 사진은 아트보드와 비율이 거의 같아 끌 여유가 없어요 — 확대(휠 또는 슬라이더)하면 움직여요`);
     // 사진을 끌고 난 직후에 칸 클릭(편집기 열기)이 이어서 발동하지 않게 한 번 무시
     _suppressThumbClick = true;
     setTimeout(() => { _suppressThumbClick = false; }, 0);
@@ -2033,8 +2071,8 @@ $('#editClip').addEventListener('wheel', e => {
   if (!curItem) return;
   e.preventDefault();
   const pw = curItem.photoImg.naturalWidth, ph = curItem.photoImg.naturalHeight;
-  const minZoom = e.shiftKey ? containMinZoom(pw, ph, CW, CH) : defaultZoom(pw, ph, CW, CH);
-  curItem.zoom = Math.max(minZoom, Math.min(4, (curItem.zoom ?? 1) * (e.deltaY < 0 ? 1.08 : 0.92)));
+  const minZoom = e.shiftKey ? MIN_ZOOM_HARD : defaultZoom(pw, ph, CW, CH);
+  curItem.zoom = Math.max(minZoom, Math.min(4, (curItem.zoom ?? 1) * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
   clampFocus(curItem);
   updateEditorGeom();
   saveMetaSoon();
@@ -2056,8 +2094,8 @@ window.addEventListener('mousemove', e => {
   const dxPix = (e.clientX - _drag.lastX) / previewScale;
   const dyPix = (e.clientY - _drag.lastY) / previewScale;
   // 사진이 아트보드 밖으로 밀려나지 않게 0~1 범위로 묶음 (예전에는 제한이 없어서 밖으로 완전히 밀어낼 수 있었음)
-  if (overflowX > PAN_MIN_ROOM) curItem.focusX = clamp01((curItem.focusX ?? 0.5) - dxPix / overflowX);
-  if (overflowY > PAN_MIN_ROOM) {
+  if (Math.abs(overflowX) > PAN_MIN_ROOM) curItem.focusX = clamp01((curItem.focusX ?? 0.5) - dxPix / overflowX);
+  if (Math.abs(overflowY) > PAN_MIN_ROOM) {
     const r = focusYRange(curItem, overflowY);
     curItem.focusY = Math.max(r.min, Math.min(r.max, (curItem.focusY ?? 0.5) - dyPix / overflowY));
   }
