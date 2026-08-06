@@ -243,7 +243,13 @@ function splitIpAndLine(title, lineOverride) {
     .replace(/\d+\s*(년|월|일)?/g, ' ') // "26년", "7월" 등 날짜 표현 통째로 제거
     .replace(/\s+/g, ' ')
     .trim()
-    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''); // 앞뒤에 남은 이모지/기호("📢", "!") 제거
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '') // 앞뒤에 남은 이모지/기호("📢", "!") 제거
+    // 가운데에 홀로 남은 기호도 제거 — "G.E.M."을 "GEM"으로 바꿀 때 뒤의 점이 남고, 그 뒤
+    // GEM이 라인명으로 빠지면서 점만 덩그러니 남음(실제 표시: "은혼 . Carat 긴토키",
+    // "나루토 질풍전 . . 나미카제 미나토"). 글자/숫자가 하나도 없는 토막은 이름이 아니므로 정리.
+    .split(' ')
+    .filter(tok => /[\p{L}\p{N}]/u.test(tok))
+    .join(' ');
 
   return { ip: remaining || null, line };
 }
