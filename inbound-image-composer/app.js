@@ -885,7 +885,7 @@ function renderDataTable() {
       <div class="thumb"></div>
       <div class="fields">
         <div class="fields-row">
-          <input class="ip-input" value="${item.ip}" placeholder="IP명" ${dis} />
+          <textarea class="ip-input" placeholder="IP명 (Enter로 줄바꿈)" rows="1" ${dis}>${item.ip}</textarea>
           <select class="tag-select" ${dis}>${tagOptions}</select>
         </div>
         <div class="suggest-slot">${item.aiUncertain ? '<span class="warn-badge">⚠ AI 추정 - 확인 필요</span> ' : ''}${ipDictSuggestionHtml(item.ip)}</div>
@@ -1293,9 +1293,6 @@ function openItemDialog(itemId) {
   } else {
     shipMode.value = 'custom'; shipCustom.style.display = 'block'; shipCustom.value = item.ship;
   }
-
-  const ipDatalist = document.getElementById('ipNameDatalist');
-  ipDatalist.innerHTML = Object.values(state.dict.ipNameMap).map((v) => `<option value="${v}">`).join('');
 
   document.getElementById('itemDialog').showModal();
 }

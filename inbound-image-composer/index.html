@@ -83,7 +83,8 @@
   @media (max-width: 480px) { .step2-card { flex-direction: column; gap: 8px; } .step2-card .thumb { align-self: flex-start; } }
   .step2-card .fields-row { display: flex; gap: 6px; }
   .step2-card .fields-row > * { flex: 1; min-width: 0; }
-  .step2-card input, .step2-card select { font-size: 13px; padding: 5px 6px; border: 1px solid var(--line2); border-radius: 5px; width: 100%; }
+  .step2-card input, .step2-card select, .step2-card textarea { font-size: 13px; padding: 5px 6px; border: 1px solid var(--line2); border-radius: 5px; width: 100%; }
+  .step2-card textarea.ip-input { resize: vertical; min-height: 30px; font-family: inherit; }
   .warn-badge { color: #b06a00; background: #fff3d6; border-radius: 4px; padding: 2px 6px; font-size: 11px; white-space: nowrap; display: inline-block; }
   .dict-suggest { font-size: 11px; color: var(--accent); }
   @media (max-width: 900px) { .step2-grid { grid-template-columns: repeat(2, 1fr); } }
@@ -126,7 +127,7 @@
   .step2-card.text-locked input, .step2-card.text-locked select { background: #f0f1f3; color: #9aa0a8; cursor: not-allowed; }
   .pcard.text-locked .edit-btn { opacity: .35; cursor: not-allowed; }
   @media (max-width: 480px) { .pcard { min-height: 100px; } .pcard .edit-btn { font-size: 10px; padding: 4px 6px; } }
-  .pcard .ip { font-weight: 800; font-size: 13px; margin-top: 6px; color: var(--text); }
+  .pcard .ip { font-weight: 800; font-size: 13px; margin-top: 6px; color: var(--text); white-space: pre-line; }
   .pcard .tag { display: inline-block; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 5px; margin-left: 4px; }
   .pcard .price { font-size: 11px; color: #3b3b3b; margin-top: 2px; }
   .pcard .ship { font-size: 10px; color: #9aa0a8; }
@@ -340,8 +341,7 @@
 <dialog id="itemDialog">
   <div class="dialog-body">
     <h3>항목 수정</h3>
-    <div class="field"><label>IP명</label><input id="editIp" list="ipNameDatalist" /></div>
-    <datalist id="ipNameDatalist"></datalist>
+    <div class="field"><label>IP명 (Enter로 줄바꿈 가능)</label><textarea id="editIp" rows="2"></textarea></div>
     <div class="field"><label>라인업 태그</label><select id="editTag"></select></div>
     <div class="field"><label>가격</label><input id="editPrice" placeholder="44,400원" /></div>
     <div class="field">

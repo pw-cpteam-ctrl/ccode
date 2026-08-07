@@ -121,6 +121,20 @@ function ipTextPlan(ctx, item) {
     reserve = ctx.measureText(item.tag).width + 14;
   }
   const maxWidth = photo - 2 - reserve;
+
+  // 편집칸에서 Enter로 직접 줄바꿈을 넣은 경우 — 자동 줄바꿈 대신 그 지점을 그대로
+  // 존중한다. 셋째 줄부터는 레이아웃이 2줄까지만 지원하므로 둘째 줄에 이어붙인다.
+  if (ip.includes('\n')) {
+    const [first, ...rest] = ip.split('\n').map((s) => s.trim());
+    const second = rest.filter((s) => s.length).join(' ');
+    if (!second) return { lines: [first], size: fitFont(ctx, first, maxWidth, ipSize, 15) };
+    const size = Math.min(
+      fitFont(ctx, first, maxWidth, IP_TWO_LINE_SIZE, 15),
+      fitFont(ctx, second, maxWidth, IP_TWO_LINE_SIZE, 15),
+    );
+    return { lines: [first, second], size };
+  }
+
   const oneLineSize = fitFont(ctx, ip, maxWidth, ipSize, 15);
   if (!ip || oneLineSize >= IP_TWO_LINE_THRESHOLD) return { lines: [ip], size: oneLineSize };
 
