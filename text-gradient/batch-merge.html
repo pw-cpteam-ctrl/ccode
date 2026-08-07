@@ -46,7 +46,18 @@ button:disabled{opacity:.4;cursor:default;}
 #matchListTable td.photoCell{cursor:pointer;}
 #matchListTable td.photoCell:hover{background:#eef3ff;}
 .thumb canvas{border-radius:6px;border:1px solid #ddd8ce;display:block;background:#eee;}
-.thumb .name{font-size:10px;color:#7d7568;margin-top:2px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;padding:0 2px;}
+.thumb .name{font-size:10px;color:#7d7568;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;padding:0 2px;flex:1;min-width:0;}
+/* 파일명 줄 — 체크박스를 사진 위가 아니라 여기로 옮겨서 사진을 가리지 않게 함 */
+.thumb .nameRow{display:flex;align-items:center;gap:3px;margin-top:2px;}
+/* 순서 변경 손잡이(≡) — 사진 좌상단(예전 체크박스 자리). 여기를 잡고 끌면 칸 순서가 바뀐다 */
+.dragHandle{position:absolute;top:2px;left:2px;z-index:5;width:18px;height:18px;border-radius:4px;
+  display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;
+  background:rgba(255,255,255,.9);border:1px solid #ccc4b4;color:#5b5346;cursor:grab;user-select:none;}
+.dragHandle:hover{background:#fff;border-color:#4a7cff;color:#4a7cff;}
+.thumb.dragging{opacity:.45;}
+/* 끌어다 놓을 자리 표시 — 이 칸의 앞/뒤 어디에 들어가는지 보이게 */
+.thumb.dropBefore{box-shadow:-3px 0 0 0 #4a7cff;}
+.thumb.dropAfter{box-shadow:3px 0 0 0 #4a7cff;}
 .thumb.warn canvas{border-color:#e05d5d;}
 #editorOverlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:100;}
 #editorOverlay.open{display:flex;}
@@ -92,7 +103,7 @@ button:disabled{opacity:.4;cursor:default;}
   background:#fff;font-family:inherit;color:#252018;box-sizing:border-box;}
 .ovSel.unset{background:#ffe9e9;border-color:#e05d5d;color:#b33;}
 /* 여러 장 한꺼번에 배정하기 위한 선택 체크박스 + 선택된 칸 강조 */
-.selChk{position:absolute;top:2px;left:2px;width:17px;height:17px;margin:0;z-index:4;cursor:pointer;accent-color:#4a7cff;}
+.selChk{width:14px;height:14px;margin:0;flex:none;cursor:pointer;accent-color:#4a7cff;}
 .thumb.sel canvas{outline:3px solid #4a7cff;outline-offset:-2px;}
 #selBar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 10px;
   background:#eef3ff;border:1px solid #4a7cff;border-radius:8px;font-size:12px;}
@@ -1792,9 +1803,13 @@ function renderGrid(){
     ovSel.addEventListener('focus', openFill);
     ovSel.addEventListener('keydown', openFill);
     ovSel.addEventListener('click', (e) => e.stopPropagation());   // 칸 클릭(편집기 열기) 방지
-    ovSel.addEventListener('change', (e) => {
+    ovSel.addEventListener('change', async (e) => {
       e.stopPropagation();
-      assignOverlay(it, ovSel.value || null);
+      // 여러 장을 골라둔 상태(폴더 이름표 클릭 등)에서 고르면 고른 전부에 한꺼번에 적용된다
+      const list = targetsForBulk(it, idx);
+      await assignOverlayMany(list, ovSel.value || null);
+      reportAction(`투명 배정 ${list.length}장 → ${ovSel.value || '(없음)'}`);
+      if (list.length > 1) log(`${list.length}개 아트보드에 "${ovSel.value || '(없음)'}" 배정 완료`);
     });
     // 여러 장 한꺼번에 배정하려고 고르는 체크박스 (Shift+클릭 = 이전 기준점부터 범위 선택)
     const selChk = document.createElement('input');
@@ -1821,7 +1836,15 @@ function renderGrid(){
     cvWrap.appendChild(badgeToggle);
     cvWrap.appendChild(delBtn);
     cvWrap.appendChild(downloadBtn);
-    cvWrap.appendChild(selChk);
+    // 순서 변경 손잡이 — 예전에 체크박스가 있던 자리. 여기를 잡고 끌어야 순서가 바뀐다
+    // (사진 아무 데나 끌면 사진 위치 조정이므로 손잡이로 조작을 분리)
+    const handle = document.createElement('div');
+    handle.className = 'dragHandle';
+    handle.textContent = '≡';
+    handle.title = '끌어서 순서 바꾸기 (여러 장 선택 중이면 선택한 전부가 같이 이동)';
+    handle.addEventListener('mousedown', e => startOrderDrag(e, idx));
+    handle.addEventListener('click', e => e.stopPropagation());
+    cvWrap.appendChild(handle);
     // 대표 사진 표시 — 폴더마다 한 장. 누르면 그 폴더 대표가 되고 제목이 다시 켜진다
     const star = document.createElement('div');
     star.className = 'mainStar' + (it.isMain ? ' on' : '');
@@ -1845,7 +1868,12 @@ function renderGrid(){
     }
     wrap.appendChild(cvWrap);
     wrap.appendChild(ovSel);
-    wrap.appendChild(name);
+    // 체크박스는 파일명 왼쪽에 둔다 — 사진 위에 있으면 사진을 가리고 오조작도 잦았음
+    const nameRow = document.createElement('div');
+    nameRow.className = 'nameRow';
+    nameRow.appendChild(selChk);
+    nameRow.appendChild(name);
+    wrap.appendChild(nameRow);
     wrap.addEventListener('click', () => { if (_suppressThumbClick) return; openEditor(idx); });
     grid.appendChild(wrap);
     it._thumbCanvas = canvas;
@@ -2006,6 +2034,67 @@ $('#grid').addEventListener('wheel', e => {
     (targets.length === 1 && selectedIdx.size > 1 ? ' (이 칸은 선택에 안 들어있어서 1장만)' : ''));
   saveMetaSoon();
 }, { passive: false });
+
+// ---------- 손잡이(≡)를 끌어서 칸 순서 바꾸기 ----------
+// 사진 위 아무 데나 끌면 "사진 위치 조정"이라 순서 변경과 겹친다. 그래서 손잡이에서 시작한 드래그만
+// 순서 변경으로 처리한다(조작 분리). 여러 장을 골라둔 상태면 고른 전부가 한 덩어리로 움직인다
+let _orderDrag = null; // {moving:[아이템], moved:boolean, targetIdx, after}
+function startOrderDrag(e, idx){
+  if (e.button !== 0) return;
+  e.preventDefault();
+  e.stopPropagation(); // 사진 끌기(위치 조정)로 넘어가지 않게
+  const it = items[idx];
+  if (!it) return;
+  _orderDrag = { moving: targetsForBulk(it, idx), moved: false, targetIdx: null, after: false };
+  document.querySelectorAll('.thumb').forEach(w => {
+    if (_orderDrag.moving.includes(items[Number(w.dataset.idx)])) w.classList.add('dragging');
+  });
+}
+function clearOrderMarks(){
+  document.querySelectorAll('.thumb').forEach(w => w.classList.remove('dropBefore', 'dropAfter'));
+}
+window.addEventListener('mousemove', e => {
+  if (!_orderDrag) return;
+  _orderDrag.moved = true;
+  // 화면 위/아래 끝에 가까우면 목록을 따라 스크롤 (긴 목록에서 멀리 옮길 수 있게)
+  if (e.clientY < 60) window.scrollBy(0, -18);
+  else if (e.clientY > window.innerHeight - 60) window.scrollBy(0, 18);
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const wrap = el && el.closest ? el.closest('.thumb') : null;
+  clearOrderMarks();
+  if (!wrap) { _orderDrag.targetIdx = null; return; }
+  const r = wrap.getBoundingClientRect();
+  const after = e.clientX > r.left + r.width / 2; // 칸의 오른쪽 절반이면 그 뒤에 삽입
+  _orderDrag.targetIdx = Number(wrap.dataset.idx);
+  _orderDrag.after = after;
+  wrap.classList.add(after ? 'dropAfter' : 'dropBefore');
+});
+window.addEventListener('mouseup', () => {
+  if (!_orderDrag) return;
+  const { moving, targetIdx, after, moved } = _orderDrag;
+  clearOrderMarks();
+  document.querySelectorAll('.thumb').forEach(w => w.classList.remove('dragging'));
+  _orderDrag = null;
+  _suppressThumbClick = true;                                  // 놓자마자 편집기가 열리지 않게
+  setTimeout(() => { _suppressThumbClick = false; }, 0);
+  if (!moved || targetIdx === null) return;
+  const target = items[targetIdx];
+  if (!target || moving.includes(target)) return;              // 자기 자신 위에 놓으면 아무 일도 안 함
+  const keepSel = selectedItems();                             // 순서가 바뀌면 번호도 바뀌므로 선택은 '아이템'으로 기억
+  const movingSet = new Set(moving);
+  const rest = items.filter(x => !movingSet.has(x));
+  const pos = rest.indexOf(target) + (after ? 1 : 0);
+  rest.splice(pos, 0, ...moving);
+  items.length = 0;
+  items.push(...rest);
+  selectedIdx.clear();
+  keepSel.forEach(x => { const i = items.indexOf(x); if (i >= 0) selectedIdx.add(i); });
+  _lastSelIdx = null;
+  renderGrid();
+  if ($('#listWrap').style.display !== 'none') renderMatchListTable(); // 아래 표도 같은 순서로 맞춤
+  reportAction(`순서 변경 ${moving.length}장`);
+  saveMetaSoon();
+});
 
 // ---------- 칸에서 사진을 직접 끌어서 위치 조정 ----------
 // mousemove/mouseup은 window에 딱 1벌만 등록한다 — 칸마다 등록하면 칸이 수백 개일 때 서로 엉키고
