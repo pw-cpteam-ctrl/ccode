@@ -75,16 +75,16 @@ button:disabled{opacity:.4;cursor:default;}
 .hidden{display:none !important;}
 
 /* 표는 화면 폭을 따라가지 않고 고정폭 — 넓은 모니터에서 끝없이 늘어나 마우스 이동만 길어졌음.
-   사진칸 56 + 사진파일명 300 + 투명파일명 200 + 스토어명 200 = 756px */
-#matchListTable{border-collapse:collapse;width:756px;max-height:360px;font-size:12px;}
+   사진칸 56 + 사진파일명 300 + 투명파일명 300 + 스토어명 200 = 856px */
+#matchListTable{border-collapse:collapse;width:856px;max-height:360px;font-size:12px;}
 #matchListTable th,#matchListTable td{border:1px solid #ddd8ce;padding:4px 6px;text-align:left;}
 #matchListTable thead th{background:#faf9f6;position:sticky;top:0;}
 /* 세로 스크롤만 쓴다 — 세로 스크롤바가 차지하는 폭 때문에 가로 스크롤바까지 생기던 것을 막음 */
 #matchListTable tbody{display:block;max-height:340px;overflow-y:auto;overflow-x:hidden;}
-#matchListTable thead,#matchListTable tbody tr{display:table;width:756px;table-layout:fixed;}
+#matchListTable thead,#matchListTable tbody tr{display:table;width:856px;table-layout:fixed;}
 #matchListTable td:nth-child(1),#matchListTable th:nth-child(1){width:56px;}
 #matchListTable td:nth-child(2),#matchListTable th:nth-child(2){width:300px;word-break:break-all;}
-#matchListTable td:nth-child(3),#matchListTable th:nth-child(3){width:200px;}
+#matchListTable td:nth-child(3),#matchListTable th:nth-child(3){width:300px;}
 #matchListTable td:nth-child(4),#matchListTable th:nth-child(4){width:200px;}
 /* 파일명이 해시처럼 생겨서 글자만으론 어떤 사진인지 알 수 없으므로, 표 왼쪽에 눈으로 식별할 작은 사진을 넣음 */
 .listThumb{width:40px;height:50px;border-radius:3px;border:1px solid #ddd8ce;display:block;background:#eee;}
@@ -267,6 +267,16 @@ const CW = 1080, CH = 1350;
 // 새로 불러오는 사진의 스토어명 기본값 — 매번 입력하지 않아도 되게 미리 채워둔다
 // (표에서 지우거나 다른 이름으로 고치면 그 값이 그대로 저장됨)
 const DEFAULT_STORE_NAME = '메가하우스 공식 스토어';
+// 기본값이 생기기 전에 저장해둔 작업물은 스토어명이 비어 있다. 그런 칸을 딱 한 번만 채워준다.
+// (한 번 채운 뒤에는 사용자가 일부러 비운 칸을 다시 채우지 않는다 — 비운 건 비운 대로 저장됨)
+const STORE_DEFAULT_KEY = 'batch_merge_store_default_filled_v1';
+function fillStoreDefaultOnce(){
+  if (localStorage.getItem(STORE_DEFAULT_KEY)) return 0;
+  localStorage.setItem(STORE_DEFAULT_KEY, '1');
+  let n = 0;
+  for (const it of items) if (!it.storeName) { it.storeName = DEFAULT_STORE_NAME; n++; }
+  return n;
+}
 let items = []; // {photoName, overlayName, photoFile, overlayFile, photoImg, overlayImg, folder, focusX, focusY, zoom, bg, storeName, badgeSide, isMain, noFrame}
 let curItem = null;
 
@@ -412,6 +422,8 @@ async function restoreFromCache(){
 
   $('#gridPanel').style.display = '';
   $('#restoreNote').style.display = '';
+  const filled = fillStoreDefaultOnce();
+  if (filled) { saveMetaSoon(); log(`스토어명이 비어 있던 ${filled}장에 기본값을 채웠어요 (필요 없으면 칸을 비우고 적용)`); }
   renderGrid();
   renderMatchListTable();
   $('#listWrap').style.display = '';
@@ -940,7 +952,7 @@ function makeFillableCell(idx, field, kind, candidates){
   } else {
     control = document.createElement('input');
     control.type = 'text';
-    control.placeholder = '예: 메가하우스 공식 스토어 (비우면 아무것도 안 찍힘)';
+    control.placeholder = '예: 메가하우스 공식 스토어';
     control.value = items[idx][field] || '';
     control.addEventListener('input', () => {
       items[idx][field] = control.value;
