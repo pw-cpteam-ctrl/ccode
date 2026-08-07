@@ -1286,12 +1286,6 @@ function openItemDialog(itemId) {
     .concat(whitelist.map((t) => `<option value="${t}">${t}</option>`)).join('');
   if (whitelist.includes(item.tag)) tagSelect.value = item.tag;
 
-  const vtuberField = document.getElementById('editVtuberField');
-  const vtuberInput = document.getElementById('editVtuberAffil');
-  const isVtuber = item.ip === 'VTuber';
-  vtuberField.style.display = isVtuber ? 'block' : 'none';
-  vtuberInput.value = isVtuber && !whitelist.includes(item.tag) ? item.tag : '';
-
   const shipMode = document.getElementById('editShipMode');
   const shipCustom = document.getElementById('editShipCustom');
   if (item.ship === '무료배송' || item.ship === '3,000원') {
@@ -1307,9 +1301,6 @@ function openItemDialog(itemId) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('editIp').addEventListener('input', (e) => {
-    document.getElementById('editVtuberField').style.display = e.target.value.trim() === 'VTuber' ? 'block' : 'none';
-  });
   document.getElementById('editShipMode').addEventListener('change', (e) => {
     document.getElementById('editShipCustom').style.display = e.target.value === 'custom' ? 'block' : 'none';
   });
@@ -1317,9 +1308,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('saveItemDialog').addEventListener('click', () => {
     const item = state.items.find((i) => i.id === editingItemId);
     item.ip = document.getElementById('editIp').value.trim();
-    const isVtuber = item.ip === 'VTuber';
-    const vtuberAffil = document.getElementById('editVtuberAffil').value.trim();
-    item.tag = isVtuber && vtuberAffil ? vtuberAffil : document.getElementById('editTag').value;
+    item.tag = document.getElementById('editTag').value;
     item.price = document.getElementById('editPrice').value.trim();
     const shipMode = document.getElementById('editShipMode').value;
     item.ship = shipMode === 'custom' ? document.getElementById('editShipCustom').value.trim() : shipMode;
