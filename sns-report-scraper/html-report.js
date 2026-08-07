@@ -273,7 +273,8 @@ function renderPlatformSection(platformKey, data, stockComparison) {
       const link = post.link || post.url || '';
       const preview = escapeHtml((post[textField] || '').replace(/\n/g, ' ').slice(0, 70));
       const postJson = escapeHtml(JSON.stringify(post));
-      return `<li data-post="${postJson}">
+      return `<li data-post="${postJson}" data-side="${side}">
+        <input type="checkbox" class="unmatched-check" title="같은 상품인 PW/BH 게시물끼리 체크하고 아래 '합치기' 버튼을 누르세요" />
         <b>${label} #${i + 1}</b> <a href="${escapeHtml(link)}" target="_blank" rel="noopener">${preview || '(본문 없음)'}</a>
         <button class="add-btn" onclick="promoteUnmatched(this,'${platformKey}','${side}')">표에 추가</button>
       </li>`;
@@ -303,9 +304,15 @@ function renderPlatformSection(platformKey, data, stockComparison) {
     </div>
     <details class="unmatched">
       <summary>매칭 안 된 게시물 (PW ${ownUnmatched.length} · BH ${competitorUnmatched.length})</summary>
+      <p class="manual-add-help">같은 상품인데 표현이 달라서 못 묶인 PW/BH 게시물이 있다면, 아래에서 서로 같은 상품인 게시물들을 체크하고 "합치기"를 누르면 표에 한 행으로 합쳐서 보여줍니다(양쪽 다 최소 1개 이상 체크). "표에 추가"(개별 버튼)와 달리 PW/BH가 진짜 짝지어진 한 행이 됩니다.</p>
       <div class="unmatched-cols">
         <div><h3>PW</h3>${unmatchedList('PW', ownUnmatched, textField)}</div>
         <div><h3>BH</h3>${unmatchedList('BH', competitorUnmatched, textField)}</div>
+      </div>
+      <div class="combine-row">
+        <label>합쳐질 상품명(선택, 비우면 자동 인식) <input type="text" id="combine-label-${platformKey}" placeholder="예: 은혼 카구라" /></label>
+        <button class="add-btn primary" onclick="combineSelected('${platformKey}')">✓ 체크한 PW+BH 게시물 하나로 합치기</button>
+        <span id="combine-error-${platformKey}" class="manual-add-error"></span>
       </div>
     </details>
     <details class="manual-add">
@@ -435,7 +442,12 @@ details.unmatched summary{cursor:pointer;color:#6b7280;font-size:13px}
 .unmatched-list{list-style:none;margin:0;padding:0;font-size:12px}
 .unmatched-list li{padding:4px 0;border-bottom:1px solid #f4f6fb;display:flex;align-items:center;gap:8px}
 .unmatched-list a{color:#374151;text-decoration:none;flex:1;min-width:0}.unmatched-list a:hover{text-decoration:underline}
+.unmatched-list input.unmatched-check{flex:none;margin:0}
 .unmatched-empty{color:#9099a6;font-size:12px}
+.combine-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid #eef0f4}
+.combine-row label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#374151}
+.combine-row input{border:1px solid #d0d5e0;border-radius:8px;padding:6px 8px;font-size:12px;min-width:200px}
+tr.manual-match-row{background:#eef4ff}
 .add-btn{border:1px solid #d0d5e0;background:#fff;color:#2f9e44;font-size:11px;padding:3px 8px;border-radius:8px;cursor:pointer;white-space:nowrap;flex:none}
 .add-btn:hover{background:#ebfbee}
 .add-btn.primary{color:#fff;background:#3b5bdb;border-color:#3b5bdb;padding:6px 14px;font-size:12px}
@@ -487,6 +499,14 @@ ${renderStockSectionHtml(stockComparison)}
   <textarea id="export-textarea" readonly onclick="this.select()"></textarea>
   <div class="manual-add-row" style="margin-top:8px">
     <button class="add-btn primary" onclick="copyExport()">복사</button>
+  </div>
+</div>
+<div class="export-box" id="export-box-matches" style="display:none">
+  <h3>🔗 합친 상품(PW+BH 짝) 저장</h3>
+  <p>아래 내용을 통째로 복사해서 <code>manual-matches.json</code> 파일에 붙여넣으면, 다음에 <code>rebuild-report.js</code>를 다시 돌려도 이 PW+BH 짝이 그대로 한 상품으로 유지됩니다(자동 매칭보다 우선 적용). 이미 <code>manual-matches.json</code>에 다른 내용이 있다면 통째로 덮어쓰지 말고 <code>twitter</code>/<code>instagram</code> 배열 안에 이어붙여주세요. 이 리포트 파일을 다시 열면 지금 합친 내용은 초기화됩니다.</p>
+  <textarea id="export-matches-textarea" readonly onclick="this.select()"></textarea>
+  <div class="manual-add-row" style="margin-top:8px">
+    <button class="add-btn primary" onclick="copyExportMatches()">복사</button>
   </div>
 </div>
 </div>
@@ -652,6 +672,234 @@ function promoteUnmatched(btn, platform, side) {
   var post = JSON.parse(li.dataset.post);
   addManualPost(platform, side, post);
   li.remove();
+}
+
+// "합치기" 기능: "표에 추가"(addManualPost)는 PW/BH를 각각 따로 짝 없는 행으로 추가할
+// 뿐이라, 같은 상품인데 자동 매칭이 놓친 PW+BH 게시물을 한 행으로 보여줄 방법이 없었음
+// (반대쪽 짝 없음"만 표시됨). 이 기능은 사용자가 직접 "이 PW 게시물들 + 이 BH 게시물들은
+// 같은 상품"이라고 선택한 걸 aggregate.js의 buildProductEntry와 같은 방식(합산 총계,
+// 최초 게시 시각, 결과 판정)으로 계산해서 진짜 비교 행 하나로 만든다. 저장 형식은
+// manual-matches.json(aggregate.js의 extractManualMatches가 rebuild-report.js에서
+// 자동 매칭보다 먼저 적용)과 동일한 {pw, bh, label} 구조.
+window._manualMatches = { twitter: [], instagram: [] };
+
+function fieldLabelsMapJs() { return { likes: '좋아요', retweets: '리트윗', comments: '댓글' }; }
+
+function parseCountSafeJs(v) { var n = parseCount(v); return n === null ? 0 : n; }
+
+// aggregate.js의 formatDiffWithMultiplier와 동일한 계산(브라우저에는 aggregate.js가
+// 안 실려 있어서 — matching-core.js만 임베드됨 — 여기서 그대로 다시 구현).
+function formatDiffWithMultiplierJs(pw, bh) {
+  var diff = Math.round((pw - bh) * 10) / 10;
+  if (pw === bh) return String(diff);
+  var multiplier = pw > bh
+    ? (bh === 0 ? null : Math.round((pw / bh) * 10) / 10)
+    : (pw === 0 ? null : -Math.round((bh / pw) * 10) / 10);
+  return multiplier === null ? String(diff) : diff + ' (' + multiplier + '배)';
+}
+
+function formatKstTimeJs(isoDatetime) {
+  var utc = new Date(isoDatetime);
+  var kst = new Date(utc.getTime() + 9 * 3600 * 1000);
+  var month = kst.getUTCMonth() + 1;
+  var day = kst.getUTCDate();
+  return month + '/' + day + ' ' + kst.getUTCHours() + ':' + String(kst.getUTCMinutes()).padStart(2, '0');
+}
+
+function earliestDatetimeJs(posts) {
+  return posts.reduce(function (min, p) {
+    var d = new Date(p.datetime);
+    return !min || d < min ? d : min;
+  }, null);
+}
+
+function escapeHtmlJs(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+}
+
+// html-report.js의 metricBar/timeCell/verdictBadge와 동일 로직의 브라우저용 사본 —
+// 합쳐진 행도 자동 매칭 행과 똑같은 분할 바/기준선 시각화로 보여주기 위함.
+function metricBarHtmlJs(pw, bh, diffText) {
+  var total = pw + bh;
+  var title = 'PW ' + pw.toLocaleString() + ' · BH ' + bh.toLocaleString();
+  var pwPct = total > 0 ? (pw / total) * 100 : 0;
+  var track = total > 0
+    ? '<div class="metricbar-pw" style="width:' + pwPct + '%"></div><div class="metricbar-bh" style="width:' + (100 - pwPct) + '%"></div>'
+    : '';
+  return '<div class="metriccell" title="' + escapeHtmlJs(title) + '">' +
+    '<div class="metricbar">' +
+    '<span class="metricbar-val pw">' + pw.toLocaleString() + '</span>' +
+    '<div class="metricbar-track">' + track + '</div>' +
+    '<span class="metricbar-val bh">' + bh.toLocaleString() + '</span>' +
+    '</div>' +
+    '<div class="metric-diff">' + escapeHtmlJs(diffText) + '</div>' +
+    '</div>';
+}
+
+var TIME_SCALE_CAP_MINUTES_JS = 10;
+function timeOnlyJs(kstTimeText) { return kstTimeText.split(' ').pop(); }
+function timeCellHtmlJs(pwTime, bhTime, diffSignedMinutes, diffSignedSeconds) {
+  var abs = Math.abs(diffSignedMinutes);
+  var pct = Math.min(abs / TIME_SCALE_CAP_MINUTES_JS, 1) * 46;
+  var clipped = abs > TIME_SCALE_CAP_MINUTES_JS;
+  var signedForDir = typeof diffSignedSeconds === 'number' ? diffSignedSeconds : diffSignedMinutes;
+  var later = signedForDir > 0;
+  var dotLeftPct = later ? 50 + pct : 50 - pct;
+  var lineStyle = later ? 'left:50%;width:' + pct + '%' : 'right:50%;width:' + pct + '%';
+  var numClass = signedForDir > 0 ? 'pw' : signedForDir < 0 ? 'bh' : '';
+  var absSec = Math.abs(signedForDir);
+  var sign = signedForDir > 0 ? '+' : '−';
+  var numText = signedForDir === 0 ? '0초'
+    : (typeof diffSignedSeconds === 'number' && absSec < 60) ? sign + absSec + '초'
+    : sign + abs + '분';
+  return '<div class="metriccell" title="PW ' + escapeHtmlJs(pwTime) + ' · BH ' + escapeHtmlJs(bhTime) + '">' +
+    '<div class="divbar">' +
+    '<div class="divbar-track"></div>' +
+    '<div class="divbar-baseline"></div>' +
+    (abs > 0 ? '<div class="divbar-line" style="' + lineStyle + '"></div>' : '') +
+    '<div class="divbar-dot' + (clipped ? ' clipped' : '') + '" style="left:' + dotLeftPct + '%"></div>' +
+    '</div>' +
+    '<div class="time-row">' +
+    '<span class="time-raw">' + escapeHtmlJs(timeOnlyJs(pwTime)) + '</span>' +
+    '<span class="time-diff-num ' + numClass + '">' + numText + '</span>' +
+    '<span class="time-raw">' + escapeHtmlJs(timeOnlyJs(bhTime)) + '</span>' +
+    '</div>' +
+    '</div>';
+}
+
+function verdictBadgeHtmlJs(verdict) {
+  var cls = { 우세: 'ok', 경합: 'mid', 약세: 'low', '지표 없음': 'none' }[verdict] || 'mid';
+  return '<span class="badge ' + cls + '">' + escapeHtmlJs(verdict) + '</span>';
+}
+
+function refreshMatchExportBox() {
+  var box = document.getElementById('export-box-matches');
+  var total = window._manualMatches.twitter.length + window._manualMatches.instagram.length;
+  if (total === 0) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  var clean = {};
+  ['twitter', 'instagram'].forEach(function (platform) {
+    clean[platform] = window._manualMatches[platform].map(function (m) {
+      return { pw: m.pw, bh: m.bh, label: m.label };
+    });
+  });
+  document.getElementById('export-matches-textarea').value = JSON.stringify(clean, null, 2);
+}
+function copyExportMatches() {
+  var ta = document.getElementById('export-matches-textarea');
+  ta.select();
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(ta.value).catch(function () { document.execCommand('copy'); });
+  } else {
+    document.execCommand('copy');
+  }
+}
+
+function combineSelected(platform) {
+  var errorBox = document.getElementById('combine-error-' + platform);
+  errorBox.textContent = '';
+  var section = document.getElementById('platform-' + platform);
+  var checked = section.querySelectorAll('.unmatched-cols .unmatched-check:checked');
+  var pwPosts = [], bhPosts = [], pickedLis = [];
+  checked.forEach(function (cb) {
+    var li = cb.closest('li');
+    var post = JSON.parse(li.dataset.post);
+    pickedLis.push(li);
+    if (li.dataset.side === 'pw') pwPosts.push(post); else bhPosts.push(post);
+  });
+  if (pwPosts.length === 0 || bhPosts.length === 0) {
+    errorBox.textContent = 'PW와 BH 양쪽에서 최소 1개씩 체크해주세요.';
+    return;
+  }
+
+  var textField = platformTextField(platform);
+  var tbody = document.getElementById('tbody-' + platform);
+  var fields = tbody.dataset.fields.split(',');
+  var hasStock = tbody.dataset.hasStock === '1';
+
+  var labelInput = document.getElementById('combine-label-' + platform).value.trim();
+  var autoTitle = extractOwnProductName(pwPosts[0][textField] || '') || extractCompetitorProductName(bhPosts[0][textField] || '');
+  var lineHint = detectProductLine((pwPosts[0][textField] || '') + ' ' + (bhPosts[0][textField] || ''));
+  var split = splitIpAndLine(labelInput || autoTitle || '', lineHint);
+  var ip = labelInput || split.ip || '(미분류)';
+  var line = split.line || '-';
+
+  function sumField(posts, f) { return posts.reduce(function (s, p) { return s + parseCountSafeJs(p[f]); }, 0); }
+
+  var pwTimeRaw = earliestDatetimeJs(pwPosts);
+  var bhTimeRaw = earliestDatetimeJs(bhPosts);
+  var pwTime = formatKstTimeJs(pwTimeRaw.toISOString());
+  var bhTime = formatKstTimeJs(bhTimeRaw.toISOString());
+  var timeDiffSignedMinutes = Math.round((bhTimeRaw - pwTimeRaw) / 60000);
+  var timeDiffSignedSeconds = Math.round((bhTimeRaw - pwTimeRaw) / 1000);
+
+  var diffValues = [];
+  var pwTotalAll = 0, bhTotalAll = 0;
+  var fieldCells = fields.map(function (f) {
+    var pw = sumField(pwPosts, f);
+    var bh = sumField(bhPosts, f);
+    diffValues.push(pw - bh);
+    pwTotalAll += pw; bhTotalAll += bh;
+    return '<td class="metric">' + metricBarHtmlJs(pw, bh, formatDiffWithMultiplierJs(pw, bh)) + '</td>';
+  });
+
+  var allZero = pwTotalAll === 0 && bhTotalAll === 0;
+  var verdict = allZero ? '지표 없음'
+    : diffValues.every(function (d) { return d > 0; }) ? '우세'
+    : diffValues.every(function (d) { return d < 0; }) ? '약세'
+    : '경합';
+
+  var manualId = ++window._manualIdCounter;
+  var linkField = platform === 'twitter' ? 'link' : 'url';
+  var pwLinks = pwPosts.map(function (p) { return p[linkField] || p.link || p.url; }).filter(Boolean);
+  var bhLinks = bhPosts.map(function (p) { return p[linkField] || p.link || p.url; }).filter(Boolean);
+  window._manualMatches[platform].push({ pw: pwLinks, bh: bhLinks, label: ip, _manualId: manualId });
+  refreshMatchExportBox();
+
+  var tr = document.createElement('tr');
+  tr.className = 'manual-row manual-match-row';
+  tr.dataset.platform = platform;
+  tr.dataset.manualMatchId = String(manualId);
+  var cells = ['<td class="rank">🆕</td>',
+    '<td class="name"><span class="manual-tag">수동합침·PW' + pwPosts.length + '+BH' + bhPosts.length + '</span>' + escapeHtmlJs(ip) + '</td>',
+    '<td>' + escapeHtmlJs(line) + '</td>'];
+  cells = cells.concat(fieldCells);
+  cells.push('<td class="metric">' + timeCellHtmlJs(pwTime, bhTime, timeDiffSignedMinutes, timeDiffSignedSeconds) + '</td>');
+  cells.push('<td>' + verdictBadgeHtmlJs(verdict) + '</td>');
+  var allLinksHtml = pwLinks.concat(bhLinks).map(function (l) { return '<a href="' + escapeHtmlJs(l) + '" target="_blank" rel="noopener">링크</a>'; }).join(' ');
+  cells.push('<td>' + allLinksHtml + ' <button class="add-btn danger" onclick="removeManualMatch(this)">삭제</button></td>');
+  if (hasStock) cells.push('<td>-</td>');
+  tr.innerHTML = cells.join('');
+  var emptyRow = tbody.querySelector('td.empty');
+  if (emptyRow) emptyRow.closest('tr').remove();
+  tbody.insertBefore(tr, tbody.firstChild);
+
+  pickedLis.forEach(function (li) { li.remove(); });
+  document.getElementById('combine-label-' + platform).value = '';
+  section.querySelectorAll('.unmatched-cols .unmatched-list').forEach(function (ul) {
+    if (!ul.querySelector('li')) {
+      var p = document.createElement('p');
+      p.className = 'unmatched-empty';
+      p.textContent = '매칭 안 된 게시물 없음';
+      ul.replaceWith(p);
+    }
+  });
+}
+
+function removeManualMatch(btn) {
+  var tr = btn.closest('tr');
+  var platform = tr.dataset.platform;
+  var manualId = parseInt(tr.dataset.manualMatchId, 10);
+  window._manualMatches[platform] = window._manualMatches[platform].filter(function (m) {
+    return m._manualId !== manualId;
+  });
+  var tbody = tr.parentElement;
+  tr.remove();
+  if (!tbody.querySelector('tr')) {
+    var cols = parseInt(tbody.dataset.cols, 10);
+    tbody.innerHTML = '<tr><td colspan="' + cols + '" class="empty">매칭된 상품 없음</td></tr>';
+  }
+  refreshMatchExportBox();
 }
 
 function parseAndAddPost(platform) {
