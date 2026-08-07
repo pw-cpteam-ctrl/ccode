@@ -207,7 +207,20 @@ function pairScore(a, b, tokenStats) {
   const shared = sharedTokens(a, b, weights);
   const rareOnly = shared.length === 1 && (df.get(shared[0]) || Infinity) <= RARE_TOKEN_MAX_DOCS;
   if (shared.length < MIN_SHARED_KEYWORDS && !rareOnly) return 0;
-  const denom = Math.max(weightSum(a.keywords, weights), weightSum(b.keywords, weights));
+  const aSum = weightSum(a.keywords, weights);
+  const bSum = weightSum(b.keywords, weights);
+  // ⚠️ 희귀 토큰 하나만 겹쳐도 "통과시킨다"는 주석과 달리, 분모를 항상 "큰 쪽"으로 고정하면
+  // 실제로는 통과가 잘 안 됨 — 반대쪽에 다른 단어가 조금만 많아도(예: 자사 "고질라 컬렉션
+  // 피규어 INSIDE FANTASY 헤도라" vs 경쟁사 "인사이드 판타지 헤도라") 분모가 커져 비율이
+  // 기준(0.34) 밑으로 떨어짐 — 위 예시 그대로가 실제 데이터(2026-08 수집분)에서 재현됨
+  // (계산값 0.30). 희귀 토큰 하나가 상대편 게시물 자체를 사실상 대표하는 경우(그 게시물
+  // 쪽 키워드가 그 토큰 위주)까지는 통과시켜야 하므로, 희귀 토큰 케이스에 한해 분모를
+  // "작은 쪽"으로 봄 — 두 게시물 중 더 짧은/단순한 쪽 기준으로 "이 토큰이 그 쪽을 얼마나
+  // 대표하는가"를 재는 것. 단, 이건 "우연히 무관한 두 문장이 흔치 않은 단어 하나만 우연히
+  // 겹치는" 경우까지 통과시키면 안 되므로(둘 다 다른 단어가 많은 경우는 작은 쪽 기준으로도
+  // 비율이 낮게 나와 자연히 걸러짐 — verify-mock의 ignore-posts 테스트로 확인), 겹친 토큰이
+  // 2개 이상인 일반적인 경우는 다상품 공지 게시물 오매칭 방지 목적 그대로 "큰 쪽" 기준을 유지.
+  const denom = rareOnly ? Math.min(aSum, bSum) : Math.max(aSum, bSum);
   if (denom <= 0) return 0;
   return weightSum(shared, weights) / denom;
 }

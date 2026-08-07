@@ -35,6 +35,7 @@ function parseCount(raw) {
 // 당사 템플릿: 본문 첫 줄이 상품명 ("[예약시작] 은혼 GEM 피규어\n\n..." → "은혼 GEM 피규어")
 function extractOwnProductName(text) {
   if (!text) return null;
+  text = text.normalize('NFC');
   const firstLine = text.split('\n').map(l => l.trim()).find(Boolean);
   if (!firstLine) return null;
   return firstLine.replace(/^\[[^\]]*\]\s*/, '').trim() || null; // 앞의 "[예약시작]" 등 태그 제거
@@ -48,6 +49,7 @@ const STRUCTURAL_LABEL_LINE = /^(박스|단품|특전|특전\s*세트|일반품\
 // ("✔️G.E.M. 시리즈 손바닥 엘런 & 리바이 병장 세트\n\n🛍️바로가기 : https://...")
 function extractCompetitorProductName(text) {
   if (!text) return null;
+  text = text.normalize('NFC');
   const lines = text.split('\n').map(l => l.trim());
   const linkIdx = lines.findIndex(l => /바로가기|http/i.test(l));
   if (linkIdx > 0) {
@@ -160,6 +162,12 @@ function stripUrlNoise(text) {
 // 토큰은 한글/영문 글자만 인정(숫자 제외) — "26년", "7월" 같은 날짜가 자동으로 안 걸림.
 function extractKeywords(text) {
   if (!text) return [];
+  // ⚠️ 인스타그램 자사 계정 캡션 일부가 자모 분리형(NFD, 예: "구매" → ㄱ+ㅜ+ㅁ+ㅐ 낱자
+  // 4개)으로 들어옴(원인: TROUBLESHOOTING 2026-08-07 참고) — 코드의 GENERIC_KEYWORDS는
+  // 전부 정상 완성형(NFC)이라 NFD 텍스트와는 절대 겹치지 않아서, "구매는 프로필 링크 참고
+  // 해주세요" 같은 반복 CTA 문구가 하나도 안 걸러지고 키워드로 살아남아 있었음. 완성형으로
+  // 정규화해서 텍스트 형태와 무관하게 항상 같은 결과가 나오게 함.
+  text = text.normalize('NFC');
   let cleaned = stripUrlNoise(text)
     .replace(/×/g, 'x') // "헌터×헌터"(곱셈 기호)와 "헌터x헌터"(영문 x)가 서로 다른 토큰으로
                         // 갈라져서 같은 프랜차이즈인데도 겹치는 키워드가 0개로 나오던 문제 —
@@ -207,7 +215,7 @@ function canonicalLine(rawLine) {
 // 단계에서도 씀.
 function detectProductLine(text) {
   if (!text) return null;
-  const normalized = text.replace(/(?<=[A-Za-z])\.(?=[A-Za-z])/g, '');
+  const normalized = text.normalize('NFC').replace(/(?<=[A-Za-z])\.(?=[A-Za-z])/g, '');
   for (const candidate of KNOWN_PRODUCT_LINES) {
     if (normalized.toLowerCase().includes(candidate.toLowerCase())) return canonicalLine(candidate);
   }
@@ -219,7 +227,7 @@ function detectProductLine(text) {
 // 있는 걸 찾아서 지우고, line은 항상 정식 명칭(lineOverride)으로 확정.
 function splitIpAndLine(title, lineOverride) {
   if (!title) return { ip: null, line: lineOverride || null };
-  let remaining = title.replace(/(?<=[A-Za-z])\.(?=[A-Za-z])/g, ''); // "G.E.M." → "GEM"
+  let remaining = title.normalize('NFC').replace(/(?<=[A-Za-z])\.(?=[A-Za-z])/g, ''); // "G.E.M." → "GEM"
 
   let line = null;
   const candidates = lineOverride

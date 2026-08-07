@@ -255,6 +255,48 @@ check('ignore-posts: 상품 아닌 공지 게시물은 "매칭 안 됨" 목록�
   assert.strictEqual(result.competitorUnmatched[0].link, 'https://x.com/comp/1', 'comp/2(ignore 대상)만 매칭 안 됨 목록에서 빠져야 함');
 });
 
+check('희귀 토큰 1개만 겹쳐도 매칭돼야 함 (2026-08-07 회귀 방지: 반대쪽에 다른 단어가 많으면 다시 기준 미달로 떨어지던 버그)', () => {
+  // 실제 2026-08 수집분 재현 — 자사는 "고질라 컬렉션 피규어"까지 붙여서 길게 쓰고 경쟁사는
+  // "헤도라" 한 단어뿐이라, 겹친 토큰(헤도라)이 배치 안에서 희귀해도(rareOnly) 자사 쪽 다른
+  // 단어들 때문에 분모가 커져 비율이 다시 기준(0.34) 밑으로 떨어졌던 실제 버그.
+  const own = [
+    { link: 'https://x.com/own/hedora', datetime: '2026-08-06T08:00:00.000Z', likes: '10', retweets: '5', text: '[예약시작] 고질라 컬렉션 피규어\n\nINSIDE FANTASY 헤도라\n\nhttps://mkt.shopping.naver.com/link/a' },
+    // 배치 크기를 늘려서 실제 데이터(70여 건)처럼 "헤도라"가 진짜 희귀 토큰이 되게 함
+    ...Array.from({ length: 20 }, (_, i) => ({ link: `https://x.com/own/filler${i}`, datetime: '2026-08-06T08:00:00.000Z', likes: '1', retweets: '1', text: `무관한 상품 ${i}번 안내\n\nhttps://mkt.shopping.naver.com/link/f${i}` })),
+  ];
+  const comp = [
+    { link: 'https://x.com/comp/hedora', datetime: '2026-08-06T09:00:00.000Z', likes: '3', retweets: '1', text: '【 메가하우스 8월 신제품 예약 개시 】\n\n인사이드 판타지 헤도라\n\n바로가기 : https://mkt.shopping.naver.com/link/b' },
+    ...Array.from({ length: 20 }, (_, i) => ({ link: `https://x.com/comp/filler${i}`, datetime: '2026-08-06T09:00:00.000Z', likes: '1', retweets: '1', text: `【 신제품 안내 】\n\n무관한 경쟁사 상품 ${i}번\n\n바로가기 : https://mkt.shopping.naver.com/link/g${i}` })),
+  ];
+  const result = buildProductComparison(own, comp, ['likes', 'retweets'], 'text', ['retweets', 'likes']);
+  const hedora = result.products.find(p => p.line === 'INSIDE FANTASY');
+  assert.ok(hedora, '헤도라(INSIDE FANTASY 라인) 게시물이 PW+BH 한 상품으로 매칭돼야 함');
+  assert.strictEqual(hedora.ownPosts.length, 1);
+  assert.strictEqual(hedora.competitorPosts.length, 1);
+});
+
+check('우연히 짧은 단어 하나만 겹치는 무관한 게시물끼리는 매칭되면 안 됨 (위 희귀 토큰 완화가 과하게 관대해지는 것 방지)', () => {
+  // 양쪽 다 다른 단어가 여러 개라 "그 상대편을 사실상 대표하는 토큰"이 아닌 경우 —
+  // 희귀 토큰 완화가 이런 우연의 일치까지 통과시키면 안 됨.
+  const own = [{ link: 'https://x.com/own/1', datetime: '2026-07-01T01:00:00.000Z', likes: '10', retweets: '5', text: '전혀 안 겹치는 문구' }];
+  const comp = [{ link: 'https://x.com/comp/1', datetime: '2026-07-01T02:00:00.000Z', likes: '3', retweets: '1', text: '완전히 다른 문구' }];
+  const result = buildProductComparison(own, comp, ['likes', 'retweets'], 'text', ['retweets', 'likes']);
+  assert.strictEqual(result.products.length, 0, '무관한 두 게시물이 매칭되면 안 됨');
+  assert.strictEqual(result.ownUnmatched.length, 1);
+  assert.strictEqual(result.competitorUnmatched.length, 1);
+});
+
+check('인스타그램 자사 캡션이 자모분리(NFD)로 들어와도 CTA 상용구가 정상적으로 걸러져야 함 (2026-08-07 회귀 방지)', () => {
+  // 실제 2026-08 수집분 재현 — 자사 인스타 계정 캡션의 "구매는 프로필 링크 참고 해주세요"
+  // 부분만 유독 유니코드 자모분리형(NFD)으로 들어와서, GENERIC_KEYWORDS(완성형/NFC)로
+  // 안 걸러지고 그대로 키워드에 남아 가중치를 흐려 매칭 점수가 기준 밑으로 떨어졌던 버그.
+  const nfdCta = '🛒 :구매는 프로필 링크 참고 해주세요'.normalize('NFD');
+  const kw = extractKeywords(`📢[예약시작] 나루토 질풍전 G.E.M. 시리즈\n\nG.E.M. 테노히라\n나미카제 미나토\n${nfdCta}`);
+  assert.ok(!kw.includes('구매는') && !kw.includes('프로필') && !kw.includes('링크') && !kw.includes('참고') && !kw.includes('해주세요'),
+    'NFD로 들어온 CTA 상용구도 GENERIC_KEYWORDS로 걸러져야 함 — 남은 키워드: ' + kw.join(','));
+  assert.ok(kw.includes('미나토'), '실제 상품명 키워드는 그대로 남아야 함');
+});
+
 check('같은 IP(원피스)라도 상품 라인(룩업/GEM)이 다르면 분리돼야 함', () => {
   // 실제 데이터에서 "원피스" 하나로 룩업/스케일/컬렉션 등 완전히 다른 라인이 다 뭉쳐버리는
   // 문제가 있었음. 아래는 키워드는 3개나 겹치지만("원피스","루피","기어") 라인이 다른
