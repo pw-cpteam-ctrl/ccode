@@ -1548,6 +1548,9 @@ const SLOP = 1.003; // 꽉 채울 때 반올림 오차로 배경이 실선처럼
 // 위 여유값 때문에 비율이 똑같은 사진도 3px 정도는 남는데, 그 정도는 끌어도 눈에 안 보여서
 // "드래그가 안 된다"는 오해만 생기므로 아예 움직이지 않는 것으로 취급한다
 const PAN_MIN_ROOM = 16;
+// 클릭과 드래그를 가르는 문턱 (화면 기준 px) — 이보다 적게 움직였으면 "그냥 클릭"으로 보고
+// 크게보기(편집기)를 연다. 사람 손은 클릭할 때도 1~3px은 흔들린다
+const DRAG_MIN_MOVE = 5;
 // 사진 전체가 보이는 크기(전체보기)보다 더 작게도 줄일 수 있게 하는 하한 — 사방에 여백을 두고
 // 사진을 작게 배치하고 싶은 경우가 있어서 열어둔다
 const MIN_ZOOM_HARD = 0.2;
@@ -2110,18 +2113,28 @@ $('#grid').addEventListener('mousedown', e => {
   if (!it || !it.photoImg) return;
   e.preventDefault();
   // 선택된 칸을 끌면 선택한 전부가 같은 방향으로 같이 움직인다
-  _panDrag = { it, targets: targetsForBulk(it, idx), canvas: it._thumbCanvas, lastX: e.clientX, lastY: e.clientY, moved: false,
+  _panDrag = { it, targets: targetsForBulk(it, idx), canvas: it._thumbCanvas,
+    startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, moved: false,
     free: freePanOn(e) }; // 시작할 때 자유 이동인지 확정 (끄는 중에 값이 바뀌어 튀지 않게)
 });
 window.addEventListener('mousemove', e => {
   if (!_panDrag) return;
   const { canvas, targets } = _panDrag;
+  // 클릭인지 드래그인지부터 가른다 — 누른 자리에서 화면 기준 DRAG_MIN_MOVE px 넘게 움직여야 드래그로 본다.
+  // (예전엔 1080 기준으로 환산한 값이 1을 넘으면 바로 드래그로 봤는데, 환산 배율이 9배쯤이라
+  //  화면에서 1px만 흔들려도 드래그가 돼서 "그냥 눌렀는데 크게보기가 안 열린다"가 됐다)
+  if (!_panDrag.moved) {
+    const dist = Math.hypot(e.clientX - _panDrag.startX, e.clientY - _panDrag.startY);
+    if (dist < DRAG_MIN_MOVE) return;
+    _panDrag.moved = true;
+    _panDrag.lastX = e.clientX; _panDrag.lastY = e.clientY; // 문턱을 넘는 순간 사진이 툭 튀지 않게 기준점 재설정
+    return;
+  }
   // 칸은 1080 폭을 THUMB_W로 줄여서 그리므로, 화면에서 움직인 거리를 1080 기준으로 환산해야
   // 마우스와 사진이 같은 속도로 움직인다 (환산 안 하면 드래그가 9배쯤 느리게 느껴짐)
   const rect = canvas.getBoundingClientRect();
   const dxPix = (e.clientX - _panDrag.lastX) * (CW / (rect.width || 1));
   const dyPix = (e.clientY - _panDrag.lastY) * (CH / (rect.height || 1));
-  if (Math.abs(dxPix) > 1 || Math.abs(dyPix) > 1) _panDrag.moved = true;
   for (const t of targets) {
     // 자유 이동: 사진을 아트보드 밖으로도(사진 크기보다 위로도) 그대로 밀어낸다.
     // focus는 손대지 않고 픽셀 오프셋만 더하므로 비율이 딱 맞는 사진도 움직인다
