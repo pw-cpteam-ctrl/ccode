@@ -17,11 +17,13 @@
 // 이 결과물은 git에 올리지 않는다(.gitignore). 원본에서 언제든 다시 만들 수
 // 있는 파생물이고, 5MB짜리 파일이 커밋마다 쌓이면 저장소가 무거워지기 때문이다.
 
-const fs = require('fs');
-const path = require('path');
-const { execFileSync } = require('child_process');
+// package.json에 "type": "module"이 있으므로 이 파일도 ESM 문법(import)을 쓴다.
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const DIR = __dirname;
+const DIR = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.join(DIR, 'standalone');
 const CACHE_DIR = path.join(DIR, '.vendor-cache');
 

@@ -179,7 +179,7 @@ function FinalOption() {
       {tab === 'example' && <Final_Example />}
       {tab === 'rules'   && <Final_Rules />}
       {tab === 'reward'  && <Final_Reward />}
-      {tab === 'faq'     && <Final_Faq openFaq={openFaq} setOpenFaq={setOpenFaq} />}
+      {tab === 'faq'     && <Final_Faq openFaq={openFaq} setOpenFaq={setOpenFaq} onGoTab={(id) => { setTab(id); scrollTop(); }} />}
 
       <div className="final-chapter-nav">
         {tabIdx > 0 ? (
@@ -597,36 +597,7 @@ function Final_Reward() {
 }
 
 // ─── 챕터 5: FAQ ──────────────────────────────
-function Final_Faq({ openFaq, setOpenFaq }) {
-  const [msg, setMsg] = React.useState('');
-  const [toast, setToast] = React.useState('');
-
-  const copy = async () => {
-    const text = msg.trim();
-    if (!text) { setToast('먼저 문의 내용을 작성해주세요!'); setTimeout(() => setToast(''), 2200); return; }
-    let ok = false;
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-        ok = true;
-      }
-    } catch { /* fallthrough */ }
-    if (!ok) {
-      // Fallback — works inside iframes/non-secure contexts
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed'; ta.style.top = '-1000px'; ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.focus(); ta.select();
-        ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-      } catch { ok = false; }
-    }
-    setToast(ok ? '복사 완료! 담당자에게 전달해보세요 :)' : '복사에 실패했어요. 길게 눌러 직접 복사해주세요.');
-    setTimeout(() => setToast(''), 2800);
-  };
-
+function Final_Faq({ openFaq, setOpenFaq, onGoTab }) {
   return (
     <div className="section">
       <p style={{ fontSize: 13, color: 'var(--ink-800)', marginTop: 0, marginBottom: 16, lineHeight: 1.7 }}>
@@ -645,33 +616,8 @@ function Final_Faq({ openFaq, setOpenFaq }) {
         </div>
       ))}
 
-      {/* 문의 입력 박스 */}
-      <div className="inquiry-card">
-        <div className="inquiry-head">
-          <div style={{ fontSize: 22 }}>💬</div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '-0.01em' }}>FAQ에 없는 문의가 있어요!</div>
-            <div style={{ fontSize: 12, color: 'var(--ink-600)', marginTop: 2, lineHeight: 1.5 }}>
-              아래에 작성 후 복사해서 담당자에게 전달해주세요.
-            </div>
-          </div>
-        </div>
-        <textarea
-          className="inquiry-textarea"
-          placeholder="궁금하신 문의사항을 입력해주세요"
-          value={msg}
-          onChange={(e) => setMsg(e.target.value)}
-          rows={4}
-        />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 10 }}>
-          <button className="inquiry-copy" onClick={copy}>
-            <svg className="ic" viewBox="0 0 24 24" style={{ width: 14, height: 14 }}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            복사하기
-          </button>
-        </div>
-      </div>
-
-      {toast && <div className="toast">{toast}</div>}
+      {/* 문의 입력 박스 → 챗봇으로 대체 (chat-widget.jsx) */}
+      <ChatBox brand="megahouse" onGoTab={onGoTab} />
     </div>
   );
 }
