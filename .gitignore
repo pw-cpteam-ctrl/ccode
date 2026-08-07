@@ -1,2 +1,7 @@
 scratchpad_*.png
 node_modules/
+
+# creator-guide: 원본에서 다시 만들 수 있는 파생물이라 저장소에 두지 않는다.
+# 만드는 법: node creator-guide/build-standalone.js
+creator-guide/standalone/
+creator-guide/.vendor-cache/

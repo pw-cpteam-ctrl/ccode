@@ -26,10 +26,26 @@ creator-guide/
 ├─ assets/                 # 가이드에 쓰는 이미지
 ├─ knowledge-megahouse.md  # 챗봇 지식 베이스 — 메가하우스
 ├─ knowledge-brand2.md     # 챗봇 지식 베이스 — 굿스마일·부시로드
+├─ build-standalone.js     # 배포용 단일 파일 생성 스크립트
+├─ standalone/             # ↑의 결과물 (git에 안 올림 — 언제든 다시 만들 수 있음)
 ├─ api/chat.js             # (예정) 서버리스 함수 — 챗봇 API 1개
 ├─ chat-widget.js          # (예정) 채팅 UI — 두 가이드가 공유
 └─ vercel.json             # (예정) 이 폴더만 재배포되도록 제한
 ```
+
+### 배포용 단일 파일 만들기
+
+```
+node creator-guide/build-standalone.js
+```
+
+원본(html·jsx·css·이미지)에 React·Babel·웹폰트까지 전부 한 파일에 넣어
+`standalone/` 에 만들어 준다. 인터넷 없이 열리고, 메신저로 파일 하나만 보내도
+된다. Netlify에는 이 결과물을 올린다.
+
+**결과물은 git에 올리지 않는다.** 파일당 8MB이고 원본에서 언제든 다시 만들 수
+있는 파생물이라, 커밋마다 쌓이면 저장소만 무거워진다. 가이드를 고쳤으면
+위 명령을 다시 실행해서 새로 만들면 된다 — 예전처럼 손으로 동기화할 필요가 없다.
 
 두 브랜드 버전은 데이터·렌더링·스타일 파일이 완전히 분리되어 서로 영향이 없다.
 
@@ -140,6 +156,9 @@ API 요금이 나갈 수 있다. `insta-gen/api/log-download.js`에 이미 있�
 |---|---|
 | `shared.jsx` | `knowledge-megahouse.md` |
 | `shared-brand2.jsx` | `knowledge-brand2.md` |
+
+standalone 배포본은 `node creator-guide/build-standalone.js` 한 줄로 다시 만들면
+되므로 이 표에 없다 — 손으로 맞출 필요가 없다.
 
 이 수동 동기화가 이 설계의 **가장 약한 고리**다(아래 7번). 잊어버리는 걸 막기
 위해, 구현 단계에서 `npm run check-sync` 한 줄로 "가이드가 지식 파일보다
