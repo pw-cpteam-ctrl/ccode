@@ -7,6 +7,13 @@
 <title>상품 SNS 포맷터</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✏️</text></svg>"/>
 <style>
+/* 캐러셀 하단 글자용 폰트 — 프리젠테이션(Freesentation). 상업용 무료(SIL OFL)이고
+   구글폰트에는 없어서 눈누가 올려둔 jsdelivr 주소를 쓴다. 굵기마다 파일이 따로라
+   실제로 쓰는 700/800만 불러온다(각 약 250KB, 한 번 받으면 브라우저가 캐시함). */
+@font-face{font-family:'Freesentation';font-weight:700;font-style:normal;font-display:swap;
+  src:url('https://cdn.jsdelivr.net/gh/projectnoonnu/2404@1.0/Freesentation-7Bold.woff2') format('woff2');}
+@font-face{font-family:'Freesentation';font-weight:800;font-style:normal;font-display:swap;
+  src:url('https://cdn.jsdelivr.net/gh/projectnoonnu/2404@1.0/Freesentation-8ExtraBold.woff2') format('woff2');}
 :root{
   --ui-bg:#f0ede7; --ui-panel:#faf8f4; --ui-border:#ddd8ce;
   --ui-text:#252018; --ui-sub:#7d7568; --ui-accent:#1452c0; --ui-card:#fff; --ui-warn:#b3661a;
@@ -817,11 +824,30 @@ function wrapCanvasText(ctx, text, maxWidth) {
   }
   return lines.length ? lines : [''];
 }
+// 캐러셀 하단 글자에 쓰는 폰트. 프리젠테이션이 아직 안 받아졌거나 CDN이 막힌 환경에서는
+// 뒤에 적어둔 시스템 폰트로 자연히 되돌아간다(글자가 안 나오는 것보다 폰트가 다른 게 낫다).
+const CANVAS_FONT = `'Freesentation',-apple-system,"Malgun Gothic",sans-serif`;
+// 캔버스는 폰트가 아직 안 받아졌으면 오류도 없이 조용히 기본 폰트로 그려버린다. 그래서
+// 그리기 전에 로딩을 반드시 기다려야 한다. 실제로 쓰는 굵기만 확인한다.
+const CANVAS_FONT_WEIGHTS = [700, 800];
+let canvasFontPromise = null;
+function ensureCanvasFont() {
+  if (canvasFontPromise) return canvasFontPromise;
+  if (!document.fonts || !document.fonts.load) return Promise.resolve(); // 아주 구형 브라우저
+  const load = Promise.all(CANVAS_FONT_WEIGHTS.map(
+    w => document.fonts.load(`${w} 44px 'Freesentation'`).catch(() => null)));
+  // 사내망 등에서 CDN이 막히면 무한정 기다리게 되므로 시간 제한을 둔다 —
+  // 넘기면 시스템 폰트로 그냥 그린다(화면이 빈 채로 멈추는 것을 막는 게 우선).
+  canvasFontPromise = Promise.race([load, new Promise(r => setTimeout(r, 4000))]);
+  return canvasFontPromise;
+}
 // maxLines 안에 들어올 때까지 글자 크기를 minSize까지 줄여가며 wrapCanvasText를 재시도.
 function fitWrappedText(ctx, text, maxWidth, baseFontSize, fontWeight, maxLines, minSize) {
   let fontSize = baseFontSize, lines;
   for (;;) {
-    ctx.font = `${fontWeight} ${fontSize}px -apple-system,"Malgun Gothic",sans-serif`;
+    // 줄바꿈 계산도 실제로 그릴 폰트로 해야 한다 — 폰트가 다르면 글자 너비가 달라져서
+    // 줄이 어디서 넘어갈지가 어긋난다.
+    ctx.font = `${fontWeight} ${fontSize}px ${CANVAS_FONT}`;
     lines = wrapCanvasText(ctx, text, maxWidth);
     if (lines.length <= maxLines || fontSize <= minSize) break;
     fontSize -= 4;
@@ -901,14 +927,14 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText,
     const maxTextWidth = FIW - 80; // 좌우 여백 (틀 테두리에 안 붙게)
     let ty = FRAME_INNER.y1 - 26; // 투명 창 하단에서 살짝 띄운 기준선(테두리에 안 붙게)
     if (textSub) {
-      ctx.font = `600 ${subFontSize ?? 27}px -apple-system,"Malgun Gothic",sans-serif`;
+      ctx.font = `700 ${subFontSize ?? 27}px ${CANVAS_FONT}`; // 프리젠테이션은 굵기마다 파일이 따로라 700(Bold)로 통일
       ctx.fillText(textSub, cx, ty);
       ty -= 46;
     }
     // 제목이 길면 2줄까지 자동 줄바꿈, 그래도 안 들어가면 글자 크기를 줄여가며 맞춤 —
     // 예전엔 무조건 한 줄로 그려서 긴 제목이 캔버스 밖으로 잘려 나갔음.
     const { lines: titleLines, fontSize: resolvedTitleFontSize } = fitWrappedText(ctx, textTitle || '', maxTextWidth, titleFontSize ?? 44, 800, 2, 24);
-    ctx.font = `800 ${resolvedTitleFontSize}px -apple-system,"Malgun Gothic",sans-serif`;
+    ctx.font = `800 ${resolvedTitleFontSize}px ${CANVAS_FONT}`;
     const lineHeight = resolvedTitleFontSize + 8;
     for (let i = titleLines.length - 1; i >= 0; i--) {
       ctx.fillText(titleLines[i], cx, ty);
@@ -932,7 +958,8 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText,
     }
   }
 }
-function exportSlidePng(p, idx) {
+async function exportSlidePng(p, idx) {
+  await ensureCanvasFont(); // 내보내는 파일에까지 기본 폰트로 굳어버리지 않게 한 번 더 확인
   const slide = p.images[idx];
   const c = document.createElement('canvas');
   c.width = CW; c.height = CH;
@@ -946,7 +973,9 @@ let composerScale = 1; // #composerCanvas CSS 표시폭 / CW (드래그 이동�
 function renderImageStage(p) {
   const stageEl = $('#stage3');
   if (!stageEl) return;
-  loadFrameImage().catch(() => {}).then(() => {
+  // 틀 PNG와 폰트를 함께 기다린다 — 폰트가 늦게 도착하면 캔버스가 조용히 기본 폰트로
+  // 그려버리고, 그 뒤에 폰트가 와도 이미 그려진 그림은 안 바뀐다.
+  Promise.all([loadFrameImage().catch(() => {}), ensureCanvasFont()]).then(() => {
     stageEl.innerHTML = imageStageHtml(p);
     wireImageStage(p);
     drawAllThumbs(p);
