@@ -782,7 +782,7 @@ check('stock-report: matchPwBhStockProducts — 점수가 완전히 동률이면
   assert.strictEqual(pairs.length, 0, 'BH 두 후보가 동점이면(박스/단품 구성 차이만) 어느 쪽인지 확정할 수 없으니 매칭하면 안 됨');
 });
 
-check('stock-report: 종합표 — PW/BH 매칭 + 점유율 + 직전/전전 스냅샷 대비 + 추이 그래프(스냅샷 3개 이상)', () => {
+check('stock-report: 종합표 — PW/BH 매칭 + 점유율 + 직전/전전 스냅샷 대비 + 추이 그래프(스냅샷 2개 이상)', () => {
   const history = {
     snapshots: [
       { takenAt: '2026-07-04T00:00:00.000Z', stores: {
@@ -811,11 +811,13 @@ check('stock-report: 종합표 — PW/BH 매칭 + 점유율 + 직전/전전 스�
   const html = renderStockSectionHtml(compared);
   assert.ok(html.includes('🔗 종합'), '종합표 헤더가 있어야 함');
   assert.ok(html.includes('전체 펼치기') && html.includes('전체 접기'), 'SNS 표처럼 전체 펼치기/접기 버튼이 있어야 함');
-  assert.ok(html.includes('<svg'), '스냅샷 3개 이상이면 추이 그래프(svg)가 그려져야 함');
+  assert.ok(html.includes('<svg'), '스냅샷 2개 이상이면 추이 그래프(svg)가 그려져야 함');
   assert.ok(html.includes('점유율'), 'PW/BH 총판매추정 칸에 점유율이 표시돼야 함');
 });
 
-check('stock-report: 종합표 — 스냅샷이 2개뿐이면 "그 전 스냅샷 대비"는 계산 불가(null), 추이는 안내 문구로 대체', () => {
+check('stock-report: 종합표 — 스냅샷이 2개뿐이면 "그 전 스냅샷 대비"는 계산 불가(null)지만 추이 그래프는 2개 시점부터 표시', () => {
+  // 2026-08-07: "3개 이상"이던 최소 시점 기준을 사용자 요청으로 2개로 낮춤 — 시점이 2개면
+  // 이미 선 하나(시작→끝)를 그릴 수 있어서 굳이 3개까지 기다릴 필요가 없었음.
   const history = {
     snapshots: [
       { takenAt: '2026-07-06T00:00:00.000Z', stores: {
@@ -833,8 +835,23 @@ check('stock-report: 종합표 — 스냅샷이 2개뿐이면 "그 전 스냅샷
   assert.strictEqual(rows[0].pwDelta2, null, '스냅샷이 2개뿐이면 전전 대비를 계산할 과거가 없어야 함');
 
   const html = renderStockSectionHtml(compared);
-  assert.ok(html.includes('스냅샷이 3개 시점 이상 쌓이면 추이 그래프'), '시점이 2개뿐이면 그래프 대신 안내 문구가 나와야 함');
-  assert.ok(html.includes('이 상품은 지금까지 2개 시점에서만 관측됨'),
+  assert.ok(html.includes('<svg'), '시점이 2개면 안내 문구 대신 추이 그래프(svg)가 나와야 함');
+  assert.ok(!html.includes('아직 한 시점에서만 관측'), '시점이 2개면 "1개 시점" 안내 문구가 나오면 안 됨');
+});
+
+check('stock-report: 종합표 — 시점이 1개뿐이면 추이 그래프 대신 안내 문구로 대체', () => {
+  const history = {
+    snapshots: [
+      { takenAt: '2026-07-06T00:00:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9999 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 900 }],
+      } },
+    ],
+  };
+  const compared = buildStockComparison(history);
+  const html = renderStockSectionHtml(compared);
+  assert.ok(html.includes('스냅샷이 2개 시점 이상 쌓이면 추이 그래프'), '시점이 1개뿐이면 그래프 대신 안내 문구가 나와야 함');
+  assert.ok(html.includes('이 상품은 아직 한 시점에서만 관측됨'),
     '안내 문구는 전체 스냅샷 수가 아니라 "이 상품이 관측된 시점 수"임을 밝혀야 함 — 예전 문구("현재 N개 시점")는 전체 히스토리가 유실된 것처럼 읽혔음');
 });
 

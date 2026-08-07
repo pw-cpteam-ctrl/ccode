@@ -442,15 +442,12 @@ function deltaPairText(pwDelta, bhDelta) {
 // 되는 경우엔 위아래로 최소 여백을 줘서 선이 차트 중앙에 보이게 함.
 function stockTrendChart(pwSeries, bhSeries, pwName, bhName) {
   const allDates = [...new Set([...pwSeries, ...bhSeries].map(p => p.takenAt))].sort();
-  if (allDates.length < 3) {
+  if (allDates.length < 2) {
     // ⚠️ 문구 주의: 여기 개수는 **전체 스냅샷 수가 아니라 "이 상품이 관측된 시점 수"**임.
     // 새로 예약 개시된 신상품은 이전 스냅샷에 아예 없어서 1개로 나오는데, 예전 문구가
     // "현재 1개 시점"이라고만 해서 마치 전체 히스토리가 날아간 것처럼 읽혔음(실제로 그렇게
     // 오해해서 데이터 유실을 의심한 적 있음 — 스냅샷은 3개 다 멀쩡했음).
-    const note = allDates.length <= 1
-      ? '이 상품은 아직 한 시점에서만 관측됨(최근에 추가된 상품일 수 있음)'
-      : `이 상품은 지금까지 ${allDates.length}개 시점에서만 관측됨`;
-    return `<div class="trend-empty">${note} — 스냅샷이 3개 시점 이상 쌓이면 추이 그래프가 표시됩니다.</div>`;
+    return '<div class="trend-empty">이 상품은 아직 한 시점에서만 관측됨(최근에 추가된 상품일 수 있음) — 스냅샷이 2개 시점 이상 쌓이면 추이 그래프가 표시됩니다.</div>';
   }
 
   // 각 시점의 재고를 그 시점 기준 총판매추정치(estimateInitialCap 역산)로 환산.
