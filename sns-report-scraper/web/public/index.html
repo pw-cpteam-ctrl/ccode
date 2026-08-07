@@ -97,7 +97,18 @@ button.secondary:hover{background:#eef2ff}
   </div>
 
   <div class="panel">
-    <h2>4. 날짜가 떨어진 여러 기간 비교하기</h2>
+    <h2>4. 재고만 찍기 (SNS 수집 없이)</h2>
+    <p class="desc">
+      네이버 스토어의 지금 재고만 기록해요. SNS 수집(몇 분)과 로그인 없이 수십 초면 끝나요.
+      리포트의 재고 추이 그래프는 같은 상품이 <b>3번 이상 기록</b>돼야 나오니, 그래프를 보고
+      싶으면 며칠에 걸쳐 이 버튼을 몇 번 눌러두면 돼요. (SNS 수집을 할 때는 재고도 자동으로
+      같이 기록되니 그때는 따로 누르지 않아도 돼요)
+    </p>
+    <button onclick="stockSnapshot()">📦 재고만 찍기</button>
+  </div>
+
+  <div class="panel">
+    <h2>5. 날짜가 떨어진 여러 기간 비교하기</h2>
     <p class="desc">
       예: 6/10~13, 6/18~22처럼 사이에 공백이 있는 여러 기간을 각각 "오늘 실적 수집"으로
       미리 모아뒀다면, 그 기간들을 나란히 비교하는 표를 만들어요. 아래에 이미 수집해둔
@@ -110,7 +121,7 @@ button.secondary:hover{background:#eef2ff}
   </div>
 
   <div class="panel">
-    <h2>5. 특정 계정 하나만 단독으로 보기</h2>
+    <h2>6. 특정 계정 하나만 단독으로 보기</h2>
     <p class="desc">
       자사·경쟁사 비교가 아니라, 임의의 트위터 계정 하나만 골라서 그 계정 게시물 성과만
       순위표로 보고 싶을 때 사용해요.
@@ -125,7 +136,7 @@ button.secondary:hover{background:#eef2ff}
   </div>
 
   <div class="panel">
-    <h2>6. 노션으로 보내기</h2>
+    <h2>7. 노션으로 보내기</h2>
     <p class="desc">
       방금 만든 리포트의 표를 스크린샷이 아니라 진짜 노션 표로 만들어줘요(검색·정렬·편집 가능).
     </p>
@@ -253,6 +264,10 @@ function collect(mode) {
 
 function rebuild() {
   runOrAlert(() => fetch('/api/rebuild', { method: 'POST' }));
+}
+
+function stockSnapshot() {
+  runOrAlert(() => fetch('/api/stock-snapshot', { method: 'POST' }));
 }
 
 function exportNotion() {

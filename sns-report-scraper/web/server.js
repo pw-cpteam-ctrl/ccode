@@ -148,6 +148,19 @@ app.post('/api/rebuild', (req, res) => {
   }
 });
 
+// ── 재고만 찍기 (naver-stock-snapshot.js) ──
+// SNS 수집은 몇 분씩 걸리고 로그인 세션도 필요한데, 재고 스냅샷은 공개 페이지라 세션 없이
+// 수십 초면 끝남. 추이 그래프는 같은 상품이 3개 시점 이상 관측돼야 나오므로, SNS 수집과
+// 무관하게 재고만 자주 쌓고 싶을 때 쓰라고 분리한 버튼.
+app.post('/api/stock-snapshot', (req, res) => {
+  try {
+    const id = startJob('재고 스냅샷 찍기', 'naver-stock-snapshot.js', []);
+    res.json({ jobId: id });
+  } catch (e) {
+    badRequest(res, e.message);
+  }
+});
+
 // ── 노션으로 보내기 (notion-export.js) ──
 app.post('/api/export-notion', (req, res) => {
   try {
