@@ -791,7 +791,9 @@ check('stock-report: 종합표 — 스냅샷이 2개뿐이면 "그 전 스냅샷
   assert.strictEqual(rows[0].pwDelta2, null, '스냅샷이 2개뿐이면 전전 대비를 계산할 과거가 없어야 함');
 
   const html = renderStockSectionHtml(compared);
-  assert.ok(html.includes('스냅샷이 더 쌓이면 추이 그래프'), '시점이 2개뿐이면 그래프 대신 안내 문구가 나와야 함');
+  assert.ok(html.includes('스냅샷이 3개 시점 이상 쌓이면 추이 그래프'), '시점이 2개뿐이면 그래프 대신 안내 문구가 나와야 함');
+  assert.ok(html.includes('이 상품은 지금까지 2개 시점에서만 관측됨'),
+    '안내 문구는 전체 스냅샷 수가 아니라 "이 상품이 관측된 시점 수"임을 밝혀야 함 — 예전 문구("현재 N개 시점")는 전체 히스토리가 유실된 것처럼 읽혔음');
 });
 
 check('stock-report: 종합표 — 많이 팔린 순(PW+BH 합산) 정렬 누락 버그 수정 확인', () => {
