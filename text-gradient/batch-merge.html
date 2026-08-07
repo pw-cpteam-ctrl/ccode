@@ -74,17 +74,18 @@ button:disabled{opacity:.4;cursor:default;}
 #exportStatus{font-size:12px;color:#555;margin-top:8px;}
 .hidden{display:none !important;}
 
-/* 표는 화면 폭을 따라가지 않고 고정폭 — 넓은 모니터에서 끝없이 늘어나 마우스 이동만 길어졌음 */
-#matchListTable{border-collapse:collapse;width:1856px;max-height:360px;font-size:12px;}
+/* 표는 화면 폭을 따라가지 않고 고정폭 — 넓은 모니터에서 끝없이 늘어나 마우스 이동만 길어졌음.
+   1920 모니터에서 가로의 약 65%(1256px = 사진칸 56 + 데이터 3칸 x 400)만 차지한다 */
+#matchListTable{border-collapse:collapse;width:1256px;max-height:360px;font-size:12px;}
 #matchListTable th,#matchListTable td{border:1px solid #ddd8ce;padding:4px 6px;text-align:left;}
 #matchListTable thead th{background:#faf9f6;position:sticky;top:0;}
 #matchListTable tbody{display:block;max-height:340px;overflow-y:auto;}
-#matchListTable thead,#matchListTable tbody tr{display:table;width:1856px;table-layout:fixed;}
+#matchListTable thead,#matchListTable tbody tr{display:table;width:1256px;table-layout:fixed;}
 #matchListTable td:nth-child(1),#matchListTable th:nth-child(1){width:56px;}
-#matchListTable td:nth-child(2),#matchListTable th:nth-child(2){width:600px;word-break:break-all;}
-#matchListTable td:nth-child(3),#matchListTable th:nth-child(3){width:600px;}
-#matchListTable td:nth-child(4),#matchListTable th:nth-child(4){width:600px;}
-/* 화면이 1856px보다 좁을 때만 가로 스크롤 */
+#matchListTable td:nth-child(2),#matchListTable th:nth-child(2){width:400px;word-break:break-all;}
+#matchListTable td:nth-child(3),#matchListTable th:nth-child(3){width:400px;}
+#matchListTable td:nth-child(4),#matchListTable th:nth-child(4){width:400px;}
+/* 화면이 1256px보다 좁을 때만 가로 스크롤 */
 #listTableScroll{overflow-x:auto;}
 /* 파일명이 해시처럼 생겨서 글자만으론 어떤 사진인지 알 수 없으므로, 표 왼쪽에 눈으로 식별할 작은 사진을 넣음 */
 .listThumb{width:40px;height:50px;border-radius:3px;border:1px solid #ddd8ce;display:block;background:#eee;}
