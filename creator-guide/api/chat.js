@@ -7,6 +7,14 @@
 //   - 매 요청을 새로 시작한다(stateless). 규칙 변경은 파일 수정으로만 한다
 //
 // 환경변수: ANTHROPIC_API_KEY (Vercel 대시보드에 등록)
+//
+// ⚠️ 환경변수를 새로 등록하거나 값을 바꿨다면 반드시 '새 빌드'가 한 번 돌아야 한다.
+//    Vercel은 빌드하는 순간에 환경변수를 서버에 넣기 때문에, 대시보드에 값이
+//    등록돼 있어도 빌드가 새로 돌지 않으면 서버는 그 값을 모른다.
+//    이 프로젝트는 vercel.json의 ignoreCommand 때문에 creator-guide/ 폴더에
+//    변경이 없으면 재배포가 Skipped 처리된다 — 그래서 대시보드에서 Redeploy를
+//    눌러도 반영되지 않는 경우가 있다. 그럴 땐 이 폴더의 파일을 한 줄이라도
+//    고쳐서 push하면 빌드가 정상적으로 돈다.
 
 import Anthropic from '@anthropic-ai/sdk';
 import fs from 'node:fs';
