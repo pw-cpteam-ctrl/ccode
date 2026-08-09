@@ -6,7 +6,7 @@
 //   구멍이다.
 //
 // 어디에 쌓이나:
-//   같은 GitHub 저장소의  logs/creator-guide-questions-YYYY-MM.jsonl  파일.
+//   같은 GitHub 저장소의  creator-guide-logs/questions-YYYY-MM.jsonl  파일.
 //   ⚠️ 반드시 creator-guide/ 폴더 '바깥'에 쌓아야 한다. 폴더 안에 쌓으면 로그가
 //   하나 남을 때마다 Vercel이 이 프로젝트를 재배포한다(vercel.json의 ignoreCommand가
 //   creator-guide/ 폴더 변경만 감지하기 때문).
@@ -81,7 +81,7 @@ export default async function handler(req, res) {
   try {
     await appendToGithubFile({
       ...gh,
-      path: `logs/creator-guide-questions-${month}.jsonl`,
+      path: `creator-guide-logs/questions-${month}.jsonl`,
       newLine: line,
       message: `creator-guide 문의 로그 (${month})`,
     });

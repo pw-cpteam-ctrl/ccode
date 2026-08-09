@@ -1,11 +1,11 @@
-# logs/ — 서버가 자동으로 쌓는 기록 폴더
+# creator-guide-logs/ — 크리에이터 가이드 챗봇 문의 기록
 
 이 폴더의 파일은 **사람이 직접 만들지 않는다.** 배포된 서버(Vercel)가 GitHub에
 직접 커밋해서 쌓는다.
 
-## creator-guide 문의 로그
+## 쌓이는 파일
 
-- 파일: `creator-guide-questions-YYYY-MM.jsonl` (월별로 새 파일)
+- 파일: `questions-YYYY-MM.jsonl` (월별로 새 파일)
 - 쌓는 곳: `creator-guide/api/log-question.js`
 - 한 줄 = 문의 1건. 형식:
 
