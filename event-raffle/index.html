@@ -32,6 +32,7 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 .tbl-wrap{overflow-x:auto;margin-top:10px;border:1px solid var(--ui-border);border-radius:8px;}
 table{border-collapse:collapse;width:100%;font-size:12.5px;}
 th,td{padding:6px 10px;border-bottom:1px solid var(--ui-border);text-align:left;word-break:break-word;}
+td a{color:var(--ui-accent);text-decoration:underline;}
 th{background:var(--ui-card);position:sticky;top:0;white-space:nowrap;}
 tr:last-child td{border-bottom:none;}
 tbody tr{cursor:pointer;}
@@ -108,6 +109,10 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
         <label>SNS 게시물 링크 컬럼 (선택, 트위터/인스타그램 링크가 있으면 필터링 후 실제 게시물을 바로 볼 수 있음)</label>
         <select id="selPostLinkCol"></select>
       </div>
+      <div class="field">
+        <label>조회수 컬럼 (선택, 후보 표에서 조회수 기준 정렬용)</label>
+        <select id="selViewCountCol"></select>
+      </div>
     </div>
     <div class="status" id="lengthStats" style="display:none;margin-top:10px;"></div>
   </div>
@@ -168,6 +173,7 @@ let lastWinners = [];   // [{ row, reason }]
 let contentColumn = ''; // 필터링 조건이 적용될 "댓글/후기 본문" 컬럼명
 let nicknameColumn = ''; // 결과 표시용 닉네임 컬럼명 (선택)
 let postLinkColumn = ''; // 트위터/인스타그램 게시물 링크 컬럼명 (선택, 임베드용)
+let viewCountColumn = ''; // 조회수 컬럼명 (선택, 정렬용)
 let embedsShown = false; // "필터링된 게시물 보기" 토글 상태
 let lengthStats = null; // 본문 글자 수 분포 통계 (파일마다 새로 계산, 고정 구간 아님)
 let lastCombinedCondition = ''; // 마지막으로 실행한 조건(다운로드/저장 기록용)
@@ -220,6 +226,7 @@ function snapshotState() {
     contentColumn,
     nicknameColumn,
     postLinkColumn,
+    viewCountColumn,
   };
 }
 function slotLabel(s) {
@@ -245,6 +252,10 @@ function applySlot(s) {
   if (s.postLinkColumn && allColumns.includes(s.postLinkColumn)) {
     postLinkColumn = s.postLinkColumn;
     $('#selPostLinkCol').value = s.postLinkColumn;
+  }
+  if (s.viewCountColumn && allColumns.includes(s.viewCountColumn)) {
+    viewCountColumn = s.viewCountColumn;
+    $('#selViewCountCol').value = s.viewCountColumn;
   }
   renderTable('#previewWrap', participants.slice(0, 5), getMeaningfulColumns(participants, allColumns), { onDeleteColumn: removeParticipantColumn });
   resetDownstream();
@@ -357,6 +368,28 @@ function guessPostLinkColumn(columns, rows) {
   }
   return '';
 }
+// 조회수처럼 순수 숫자(쉼표·만/천 단위 포함)로만 채워진 컬럼을 추정한다. 이미 본문/
+// 닉네임/게시물 링크로 쓰기로 한 컬럼은 후보에서 제외한다(닉네임이 숫자로만 된 경우 등
+// 오추정 방지).
+function guessViewCountColumn(columns, rows, excludeCols) {
+  for (const col of columns) {
+    if (excludeCols.includes(col)) continue;
+    const sample = rows.find(r => String(r[col] ?? '').trim());
+    if (sample && /^[\d,]+(\.\d+)?\s*(만|천)?$/.test(String(sample[col]).trim())) return col;
+  }
+  return '';
+}
+// "12,345", "1.2만" 같은 표기를 실제 숫자로 변환한다 (정렬용, 못 읽으면 0).
+function parseViewCount(v) {
+  const s = String(v ?? '').trim();
+  const m = s.match(/^([\d,]+(?:\.\d+)?)\s*(만|천)?$/);
+  if (!m) return 0;
+  let n = parseFloat(m[1].replace(/,/g, ''));
+  if (Number.isNaN(n)) return 0;
+  if (m[2] === '만') n *= 10000;
+  if (m[2] === '천') n *= 1000;
+  return n;
+}
 function sampleValueFor(col, rows) {
   const found = rows.find(r => String(r[col] ?? '').trim());
   const v = found ? String(found[col]) : '';
@@ -366,6 +399,7 @@ function populateColumnSelectors(columns, rows) {
   const guessedContent = guessContentColumn(columns, rows);
   const guessedNickname = guessNicknameColumn(columns, rows, guessedContent);
   const guessedPostLink = guessPostLinkColumn(columns, rows);
+  const guessedViewCount = guessViewCountColumn(columns, rows, [guessedContent, guessedNickname, guessedPostLink]);
   $('#selContentCol').innerHTML = columns.map(c =>
     `<option value="${escapeHtml(c)}" ${c === guessedContent ? 'selected' : ''}>${escapeHtml(c)} (예: "${escapeHtml(sampleValueFor(c, rows))}")</option>`
   ).join('');
@@ -375,15 +409,20 @@ function populateColumnSelectors(columns, rows) {
   $('#selPostLinkCol').innerHTML = '<option value="">(사용 안 함)</option>' + columns.map(c =>
     `<option value="${escapeHtml(c)}" ${c === guessedPostLink ? 'selected' : ''}>${escapeHtml(c)} (예: "${escapeHtml(sampleValueFor(c, rows))}")</option>`
   ).join('');
+  $('#selViewCountCol').innerHTML = '<option value="">(사용 안 함)</option>' + columns.map(c =>
+    `<option value="${escapeHtml(c)}" ${c === guessedViewCount ? 'selected' : ''}>${escapeHtml(c)} (예: "${escapeHtml(sampleValueFor(c, rows))}")</option>`
+  ).join('');
   contentColumn = guessedContent;
   nicknameColumn = guessedNickname;
   postLinkColumn = guessedPostLink;
+  viewCountColumn = guessedViewCount;
   $('#colMapWrap').style.display = 'flex';
   updateLengthStats(rows);
 }
 $('#selContentCol').addEventListener('change', (e) => { contentColumn = e.target.value; updateLengthStats(participants); pushSlot(snapshotState(), true); });
 $('#selNicknameCol').addEventListener('change', (e) => { nicknameColumn = e.target.value; pushSlot(snapshotState(), true); });
 $('#selPostLinkCol').addEventListener('change', (e) => { postLinkColumn = e.target.value; pushSlot(snapshotState(), true); });
+$('#selViewCountCol').addEventListener('change', (e) => { viewCountColumn = e.target.value; pushSlot(snapshotState(), true); });
 
 // 미리보기 표의 컬럼 제목 옆 ✕ 버튼 — 필요 없는 컬럼(스크래퍼 잔재 등)을 참가자
 // 데이터에서 통째로 지운다. participants 자체를 바꾸므로 미리보기·후보 표·다운로드
@@ -394,7 +433,7 @@ function removeParticipantColumn(col) {
   if (!participants.length) return;
   const ok = confirm(`"${col}" 컬럼을 지울까요? 지금 불러온 데이터에서만 지워지고 원본 파일은 그대로예요(다시 업로드하면 복구됨).`);
   if (!ok) return;
-  const prevContent = contentColumn, prevNickname = nicknameColumn, prevPostLink = postLinkColumn;
+  const prevContent = contentColumn, prevNickname = nicknameColumn, prevPostLink = postLinkColumn, prevViewCount = viewCountColumn;
   participants = participants.map(r => {
     const copy = { ...r };
     delete copy[col];
@@ -414,6 +453,10 @@ function removeParticipantColumn(col) {
   if (prevPostLink !== col && allColumns.includes(prevPostLink)) {
     postLinkColumn = prevPostLink;
     $('#selPostLinkCol').value = prevPostLink;
+  }
+  if (prevViewCount !== col && allColumns.includes(prevViewCount)) {
+    viewCountColumn = prevViewCount;
+    $('#selViewCountCol').value = prevViewCount;
   }
   renderTable('#previewWrap', participants.slice(0, 5), getMeaningfulColumns(participants, allColumns), { onDeleteColumn: removeParticipantColumn });
   resetDownstream();
@@ -492,20 +535,21 @@ function renderTable(wrapSel, rows, columns, opts = {}) {
       opts.onDeleteColumn ? ` <button type="button" class="secondary col-delete" data-col="${escapeHtml(c)}" title="이 컬럼 삭제">✕</button>` : ''
     }</th>`
   ).join('') + (opts.onDelete ? '<th></th>' : '') + '</tr>';
-  const body = rows.map((r, i) => '<tr>' + cols.map(c => `<td>${escapeHtml(String(r[c] ?? ''))}</td>`).join('')
+  const body = rows.map((r, i) => '<tr>' + cols.map(c => `<td>${renderCellValue(r[c])}</td>`).join('')
     + (opts.onDelete ? `<td><button type="button" class="secondary row-delete" data-i="${i}">삭제</button></td>` : '')
     + '</tr>').join('');
+  const sortToggles = opts.sortToggles || [];
   wrap.innerHTML = `
     <div class="tbl-toolbar">
       <button type="button" class="secondary tbl-toggle-all">전체 접기</button>
-      ${opts.onSortToggle ? `<button type="button" class="secondary tbl-sort-toggle">${escapeHtml(opts.sortLabel || '본문 글자 수 정렬')}</button>` : ''}
+      ${sortToggles.map((s, i) => `<button type="button" class="secondary tbl-sort-toggle" data-sort-i="${i}">${escapeHtml(s.label)}</button>`).join('')}
     </div>
     <table><thead>${head}</thead><tbody>${body}</tbody></table>
     <div class="tbl-hint">기본은 전체 펼침 상태예요. 행을 클릭하면 그 줄만 접혔다 펴져요.${opts.onDelete ? ' "삭제" 버튼으로 후보에서 개별 제외할 수 있어요.' : ''}${opts.onDeleteColumn ? ' 컬럼 제목 옆 ✕로 필요 없는 컬럼을 통째로 지울 수 있어요.' : ''}</div>`;
   wrap.style.display = '';
   const tbody = wrap.querySelector('tbody');
   tbody.addEventListener('click', (e) => {
-    if (e.target.closest('.row-delete')) return;
+    if (e.target.closest('.row-delete') || e.target.closest('a')) return;
     const tr = e.target.closest('tr');
     if (tr) tr.classList.toggle('collapsed');
   });
@@ -525,9 +569,9 @@ function renderTable(wrapSel, rows, columns, opts = {}) {
       });
     });
   }
-  if (opts.onSortToggle) {
-    wrap.querySelector('.tbl-sort-toggle').addEventListener('click', () => opts.onSortToggle());
-  }
+  wrap.querySelectorAll('.tbl-sort-toggle').forEach((btn) => {
+    btn.addEventListener('click', () => sortToggles[+btn.dataset.sortI].onClick());
+  });
   const toggleAllBtn = wrap.querySelector('.tbl-toggle-all');
   toggleAllBtn.addEventListener('click', () => {
     const trs = [...tbody.querySelectorAll('tr')];
@@ -538,6 +582,16 @@ function renderTable(wrapSel, rows, columns, opts = {}) {
 }
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+// 표 셀 값이 URL이면 클릭 가능한 하이퍼링크로 보여준다("필터링된 게시물 보기"를
+// 누르기 전에도 링크 자체는 바로 눌러서 확인할 수 있게).
+function renderCellValue(v) {
+  const s = String(v ?? '');
+  const trimmed = s.trim();
+  if (/^https?:\/\//i.test(trimmed)) {
+    return `<a href="${escapeHtml(trimmed)}" target="_blank" rel="noopener noreferrer">${escapeHtml(trimmed)}</a>`;
+  }
+  return escapeHtml(s);
 }
 
 /* ── 2단계: 조건 필터링 ──
@@ -666,6 +720,7 @@ async function runFilter() {
   if (!condition) { alert('조건을 한 개 이상 입력해주세요.'); return; }
   lastCombinedCondition = condition;
   candidateSortDir = null;
+  candidateSortField = null;
 
   const btn = $('#btnRunFilter');
   btn.disabled = true;
@@ -760,23 +815,34 @@ async function runFilter() {
 function useAllAsFallback() {
   if (!participants.length) { alert('먼저 참가자 파일을 업로드해주세요.'); return; }
   candidateSortDir = null;
+  candidateSortField = null;
   candidates = participants.map(row => ({ row, reason: '(필터링 없이 전체 명단)' }));
   applyCandidates(false);
   $('#filterStatus').textContent = `필터링 없이 전체 ${candidates.length}명을 후보로 사용 중`;
 }
 
 let lastWithReason = true; // 후보 삭제 후 같은 방식(판단근거 포함 여부)으로 다시 그리기 위해 기억해둠
-let candidateSortDir = null; // null(원래 순서) | 'asc' | 'desc' — 본문 글자 수 기준
+let candidateSortField = null; // null(원래 순서) | 'length' | 'viewCount'
+let candidateSortDir = null;   // null | 'asc' | 'desc'
 
-// 후보 표 정렬 버튼 — 누를 때마다 본문 글자 수 오름차순/내림차순으로 전환한다.
-// 정렬은 화면 순서뿐 아니라 클립보드 복사·엑셀 다운로드에도 그대로 반영되고
-// (전부 candidates 배열을 그대로 읽으므로), 실제 당첨자 추첨은 이미 무작위라
-// 정렬 순서와 무관하게 공정성에 영향이 없다.
-function toggleCandidateSort() {
-  candidateSortDir = candidateSortDir === 'asc' ? 'desc' : 'asc';
+// 후보 표 정렬 버튼(본문 글자 수 / 조회수) — 누를 때마다 오름차순/내림차순으로
+// 전환한다. 정렬은 화면 순서뿐 아니라 클립보드 복사·엑셀 다운로드에도 그대로
+// 반영되고(전부 candidates 배열을 그대로 읽으므로), 실제 당첨자 추첨은 이미
+// 무작위라 정렬 순서와 무관하게 공정성에 영향이 없다.
+function toggleCandidateSort(field, keyFn) {
+  if (candidateSortField === field) {
+    candidateSortDir = candidateSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    candidateSortField = field;
+    candidateSortDir = 'asc';
+  }
   const dir = candidateSortDir === 'asc' ? 1 : -1;
-  candidates.sort((a, b) => dir * (String(a.row[contentColumn] ?? '').length - String(b.row[contentColumn] ?? '').length));
+  candidates.sort((a, b) => dir * (keyFn(a) - keyFn(b)));
   applyCandidates(lastWithReason);
+}
+function sortToggleLabel(field, name) {
+  if (candidateSortField !== field) return `${name}로 정렬`;
+  return candidateSortDir === 'asc' ? `${name} ▲ (오름차순, 클릭 시 내림차순)` : `${name} ▼ (내림차순, 클릭 시 오름차순)`;
 }
 
 function applyCandidates(withReason) {
@@ -785,10 +851,13 @@ function applyCandidates(withReason) {
   const allColumns = candidates.length ? Object.keys(candidates[0].row) : [];
   const cols = getMeaningfulColumns(rawRows, allColumns).concat(withReason ? ['__판단근거'] : []);
   const rowsForTable = candidates.map(c => withReason ? { ...c.row, __판단근거: c.reason } : c.row);
-  const sortLabel = candidateSortDir === 'asc' ? '본문 글자 수 ▲ (오름차순, 클릭 시 내림차순)'
-    : candidateSortDir === 'desc' ? '본문 글자 수 ▼ (내림차순, 클릭 시 오름차순)'
-    : '본문 글자 수로 정렬';
-  renderTable('#candidateWrap', rowsForTable, cols, { onDelete: removeCandidate, onSortToggle: toggleCandidateSort, sortLabel });
+  const sortToggles = [
+    { label: sortToggleLabel('length', '본문 글자 수'), onClick: () => toggleCandidateSort('length', c => String(c.row[contentColumn] ?? '').length) },
+  ];
+  if (viewCountColumn) {
+    sortToggles.push({ label: sortToggleLabel('viewCount', '조회수'), onClick: () => toggleCandidateSort('viewCount', c => parseViewCount(c.row[viewCountColumn])) });
+  }
+  renderTable('#candidateWrap', rowsForTable, cols, { onDelete: removeCandidate, sortToggles });
   $('#candidateCount').textContent = `후보 ${candidates.length}명`;
   $('#btnDownloadCandidates').style.display = candidates.length ? '' : 'none';
   $('#btnCopyCandidates').style.display = candidates.length ? '' : 'none';
