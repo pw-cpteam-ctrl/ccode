@@ -374,8 +374,13 @@ function guessPostLinkColumn(columns, rows) {
 function guessViewCountColumn(columns, rows, excludeCols) {
   for (const col of columns) {
     if (excludeCols.includes(col)) continue;
-    const sample = rows.find(r => String(r[col] ?? '').trim());
-    if (sample && /^[\d,]+(\.\d+)?\s*(만|천)?$/.test(String(sample[col]).trim())) return col;
+    const values = rows.slice(0, 20).map(r => String(r[col] ?? '').trim()).filter(Boolean);
+    if (!values.length || !values.every(v => /^[\d,]+(\.\d+)?\s*(만|천)?$/.test(v))) continue;
+    // "번호"처럼 1,2,3,4...로 한 칸씩 올라가는 순번 컬럼은 조회수가 아니므로 제외한다.
+    const nums = values.map(parseViewCount);
+    const isSequential = nums.length > 1 && nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+    if (isSequential) continue;
+    return col;
   }
   return '';
 }
