@@ -64,6 +64,7 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 .slot-row .slot-load{flex:1;min-width:0;text-align:left;background:var(--ui-card);color:var(--ui-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .slot-row .slot-delete{flex:0 0 auto;}
 .row-delete{padding:4px 10px;font-size:12px;white-space:nowrap;}
+.col-delete{padding:1px 5px;font-size:10.5px;font-weight:400;border-radius:4px;vertical-align:middle;}
 .embed-card{margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--ui-border);}
 .embed-card:last-child{border-bottom:none;}
 .embed-label{font-size:13px;font-weight:700;margin-bottom:6px;}
@@ -245,7 +246,7 @@ function applySlot(s) {
     postLinkColumn = s.postLinkColumn;
     $('#selPostLinkCol').value = s.postLinkColumn;
   }
-  renderTable('#previewWrap', participants.slice(0, 5), getMeaningfulColumns(participants, allColumns));
+  renderTable('#previewWrap', participants.slice(0, 5), getMeaningfulColumns(participants, allColumns), { onDeleteColumn: removeParticipantColumn });
   resetDownstream();
 }
 function renderSlots() {
@@ -287,7 +288,7 @@ $('#inFile').addEventListener('change', async (e) => {
     const allColumns = Object.keys(rows[0]);
     $('#uploadStatus').textContent = `${rows.length}명 인식 완료`;
     populateColumnSelectors(allColumns, rows);
-    renderTable('#previewWrap', rows.slice(0, 5), getMeaningfulColumns(rows, allColumns));
+    renderTable('#previewWrap', rows.slice(0, 5), getMeaningfulColumns(rows, allColumns), { onDeleteColumn: removeParticipantColumn });
     resetDownstream();
     pushSlot(snapshotState());
   } catch (err) {
@@ -384,6 +385,41 @@ $('#selContentCol').addEventListener('change', (e) => { contentColumn = e.target
 $('#selNicknameCol').addEventListener('change', (e) => { nicknameColumn = e.target.value; pushSlot(snapshotState(), true); });
 $('#selPostLinkCol').addEventListener('change', (e) => { postLinkColumn = e.target.value; pushSlot(snapshotState(), true); });
 
+// 미리보기 표의 컬럼 제목 옆 ✕ 버튼 — 필요 없는 컬럼(스크래퍼 잔재 등)을 참가자
+// 데이터에서 통째로 지운다. participants 자체를 바꾸므로 미리보기·후보 표·다운로드
+// 등 이후 모든 화면에 그대로 반영된다. 지금 지정된 본문/닉네임/게시물 링크 컬럼이
+// 아니면 선택을 그대로 유지하고, 지워진 컬럼이 그중 하나였을 때만 남은 컬럼 기준으로
+// 다시 추정한다.
+function removeParticipantColumn(col) {
+  if (!participants.length) return;
+  const ok = confirm(`"${col}" 컬럼을 지울까요? 지금 불러온 데이터에서만 지워지고 원본 파일은 그대로예요(다시 업로드하면 복구됨).`);
+  if (!ok) return;
+  const prevContent = contentColumn, prevNickname = nicknameColumn, prevPostLink = postLinkColumn;
+  participants = participants.map(r => {
+    const copy = { ...r };
+    delete copy[col];
+    return copy;
+  });
+  const allColumns = participants.length ? Object.keys(participants[0]) : [];
+  populateColumnSelectors(allColumns, participants);
+  if (prevContent !== col && allColumns.includes(prevContent)) {
+    contentColumn = prevContent;
+    $('#selContentCol').value = prevContent;
+    updateLengthStats(participants);
+  }
+  if (prevNickname !== col && allColumns.includes(prevNickname)) {
+    nicknameColumn = prevNickname;
+    $('#selNicknameCol').value = prevNickname;
+  }
+  if (prevPostLink !== col && allColumns.includes(prevPostLink)) {
+    postLinkColumn = prevPostLink;
+    $('#selPostLinkCol').value = prevPostLink;
+  }
+  renderTable('#previewWrap', participants.slice(0, 5), getMeaningfulColumns(participants, allColumns), { onDeleteColumn: removeParticipantColumn });
+  resetDownstream();
+  pushSlot(snapshotState(), true);
+}
+
 function normalizeRow(row) {
   return { 본문: String(row[contentColumn] ?? '') };
 }
@@ -452,7 +488,9 @@ function renderTable(wrapSel, rows, columns, opts = {}) {
   if (!rows.length) { wrap.style.display = 'none'; return; }
   const cols = columns.length ? columns : ['reason'];
   const head = '<tr>' + cols.map(c =>
-    `<th${c === contentColumn ? ' style="min-width:260px;"' : ''}>${escapeHtml(c)}</th>`
+    `<th${c === contentColumn ? ' style="min-width:260px;"' : ''}>${escapeHtml(c)}${
+      opts.onDeleteColumn ? ` <button type="button" class="secondary col-delete" data-col="${escapeHtml(c)}" title="이 컬럼 삭제">✕</button>` : ''
+    }</th>`
   ).join('') + (opts.onDelete ? '<th></th>' : '') + '</tr>';
   const body = rows.map((r, i) => '<tr>' + cols.map(c => `<td>${escapeHtml(String(r[c] ?? ''))}</td>`).join('')
     + (opts.onDelete ? `<td><button type="button" class="secondary row-delete" data-i="${i}">삭제</button></td>` : '')
@@ -463,7 +501,7 @@ function renderTable(wrapSel, rows, columns, opts = {}) {
       ${opts.onSortToggle ? `<button type="button" class="secondary tbl-sort-toggle">${escapeHtml(opts.sortLabel || '본문 글자 수 정렬')}</button>` : ''}
     </div>
     <table><thead>${head}</thead><tbody>${body}</tbody></table>
-    <div class="tbl-hint">기본은 전체 펼침 상태예요. 행을 클릭하면 그 줄만 접혔다 펴져요.${opts.onDelete ? ' "삭제" 버튼으로 후보에서 개별 제외할 수 있어요.' : ''}</div>`;
+    <div class="tbl-hint">기본은 전체 펼침 상태예요. 행을 클릭하면 그 줄만 접혔다 펴져요.${opts.onDelete ? ' "삭제" 버튼으로 후보에서 개별 제외할 수 있어요.' : ''}${opts.onDeleteColumn ? ' 컬럼 제목 옆 ✕로 필요 없는 컬럼을 통째로 지울 수 있어요.' : ''}</div>`;
   wrap.style.display = '';
   const tbody = wrap.querySelector('tbody');
   tbody.addEventListener('click', (e) => {
@@ -476,6 +514,14 @@ function renderTable(wrapSel, rows, columns, opts = {}) {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         opts.onDelete(+btn.dataset.i);
+      });
+    });
+  }
+  if (opts.onDeleteColumn) {
+    wrap.querySelectorAll('.col-delete').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        opts.onDeleteColumn(btn.dataset.col);
       });
     });
   }
