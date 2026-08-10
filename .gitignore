@@ -6,3 +6,7 @@ node_modules/
 creator-guide/standalone/
 creator-guide/node_modules/
 creator-guide/.vendor-cache/
+
+# 접속 코드로 잠근 가이드 본문. Vercel이 배포할 때마다 새로 만든다(build-lock.js).
+# 저장소에 두면 잠금이 풀린 시점의 낡은 사본이 남을 뿐이라 커밋하지 않는다.
+creator-guide/locked/
