@@ -64,6 +64,9 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 .slot-row .slot-load{flex:1;min-width:0;text-align:left;background:var(--ui-card);color:var(--ui-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .slot-row .slot-delete{flex:0 0 auto;}
 .row-delete{padding:4px 10px;font-size:12px;white-space:nowrap;}
+.embed-card{margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--ui-border);}
+.embed-card:last-child{border-bottom:none;}
+.embed-label{font-size:13px;font-weight:700;margin-bottom:6px;}
 </style>
 </head>
 <body>
@@ -100,6 +103,10 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
         <label>닉네임 컬럼 (선택, 결과 화면 표시용)</label>
         <select id="selNicknameCol"></select>
       </div>
+      <div class="field">
+        <label>SNS 게시물 링크 컬럼 (선택, 트위터/인스타그램 링크가 있으면 필터링 후 실제 게시물을 바로 볼 수 있음)</label>
+        <select id="selPostLinkCol"></select>
+      </div>
     </div>
     <div class="status" id="lengthStats" style="display:none;margin-top:10px;"></div>
   </div>
@@ -126,7 +133,9 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     <div class="count-badge" id="candidateCount"></div>
     <button class="secondary" onclick="copyCandidatesToClipboard()" id="btnCopyCandidates" style="display:none;margin-top:10px;">후보 명단 클립보드로 복사</button>
     <button class="secondary" onclick="downloadCandidates()" id="btnDownloadCandidates" style="display:none;margin-top:10px;">후보 명단 다운로드 (엑셀)</button>
+    <button class="secondary" onclick="toggleEmbeds()" id="btnToggleEmbeds" style="display:none;margin-top:10px;">필터링된 게시물 보기 (트위터/인스타)</button>
     <div class="status" id="copyStatus"></div>
+    <div id="embedWrap" style="display:none;margin-top:12px;"></div>
   </div>
 
   <div class="step">
@@ -142,6 +151,13 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- 트위터/인스타그램 게시물 임베드용 위젯 스크립트. 실제 임베드 마크업은 "필터링된
+     게시물 보기" 버튼을 누를 때만 <template>에서 꺼내 화면에 넣는다 — 처음부터 화면에
+     있거나 숨겨진 채로 있으면 인스타그램 위젯(window.instgrm.Embeds.process())이 페이지
+     전체를 한 번 훑고 지나간 뒤 "이미 처리했다"고 보고 다시 안 그려주는 문제가 있어서다
+     (트위터는 twttr.widgets.load(특정 영역)으로 범위 지정이 되지만 인스타그램은 안 됨). -->
+<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+<script async src="https://www.instagram.com/embed.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 
@@ -150,6 +166,8 @@ let candidates = [];    // [{ row, reason }]
 let lastWinners = [];   // [{ row, reason }]
 let contentColumn = ''; // 필터링 조건이 적용될 "댓글/후기 본문" 컬럼명
 let nicknameColumn = ''; // 결과 표시용 닉네임 컬럼명 (선택)
+let postLinkColumn = ''; // 트위터/인스타그램 게시물 링크 컬럼명 (선택, 임베드용)
+let embedsShown = false; // "필터링된 게시물 보기" 토글 상태
 let lengthStats = null; // 본문 글자 수 분포 통계 (파일마다 새로 계산, 고정 구간 아님)
 let lastCombinedCondition = ''; // 마지막으로 실행한 조건(다운로드/저장 기록용)
 let lastFileName = ''; // 슬롯 캐시 라벨용 (업로드한 파일명)
@@ -200,6 +218,7 @@ function snapshotState() {
     participants: JSON.parse(JSON.stringify(participants)),
     contentColumn,
     nicknameColumn,
+    postLinkColumn,
   };
 }
 function slotLabel(s) {
@@ -221,6 +240,10 @@ function applySlot(s) {
   if (s.nicknameColumn && allColumns.includes(s.nicknameColumn)) {
     nicknameColumn = s.nicknameColumn;
     $('#selNicknameCol').value = s.nicknameColumn;
+  }
+  if (s.postLinkColumn && allColumns.includes(s.postLinkColumn)) {
+    postLinkColumn = s.postLinkColumn;
+    $('#selPostLinkCol').value = s.postLinkColumn;
   }
   renderTable('#previewWrap', participants.slice(0, 5), getMeaningfulColumns(participants, allColumns));
   resetDownstream();
@@ -299,11 +322,17 @@ function getMeaningfulColumns(rows, columns, threshold = 0.1) {
 function guessContentColumn(columns, rows) {
   let best = columns[0], bestLen = -1;
   for (const col of columns) {
-    let total = 0, count = 0;
+    let total = 0, count = 0, urlCount = 0;
     for (const r of rows.slice(0, 20)) {
       const v = String(r[col] ?? '').trim();
-      if (v) { total += v.length; count++; }
+      if (v) {
+        total += v.length; count++;
+        if (/^https?:\/\//i.test(v)) urlCount++;
+      }
     }
+    // 게시물 링크처럼 URL이 대부분인 컬럼은 값이 길어도 실제 댓글 본문일 수 없으니
+    // 후보에서 제외한다 — 안 그러면 URL이 짧은 댓글보다 평균 길이가 길어서 잘못 뽑힘.
+    if (count && urlCount / count > 0.5) continue;
     const avg = count ? total / count : 0;
     if (avg > bestLen) { bestLen = avg; best = col; }
   }
@@ -317,6 +346,16 @@ function guessNicknameColumn(columns, rows, excludeCol) {
   }
   return '';
 }
+// 트위터(x.com)/인스타그램 게시물 링크가 적힌 컬럼을 자동으로 추정한다 —
+// SNS 이벤트 참가 인증용으로 게시물 URL을 받는 경우가 많아서, 이 컬럼을 지정해두면
+// 필터링된 후보의 실제 게시물을 바로 볼 수 있다(선택 사항, 없으면 그냥 비워둠).
+function guessPostLinkColumn(columns, rows) {
+  for (const col of columns) {
+    const sample = rows.find(r => String(r[col] ?? '').trim());
+    if (sample && /^https?:\/\/(www\.)?(twitter\.com|x\.com|instagram\.com)\//i.test(String(sample[col]).trim())) return col;
+  }
+  return '';
+}
 function sampleValueFor(col, rows) {
   const found = rows.find(r => String(r[col] ?? '').trim());
   const v = found ? String(found[col]) : '';
@@ -325,19 +364,25 @@ function sampleValueFor(col, rows) {
 function populateColumnSelectors(columns, rows) {
   const guessedContent = guessContentColumn(columns, rows);
   const guessedNickname = guessNicknameColumn(columns, rows, guessedContent);
+  const guessedPostLink = guessPostLinkColumn(columns, rows);
   $('#selContentCol').innerHTML = columns.map(c =>
     `<option value="${escapeHtml(c)}" ${c === guessedContent ? 'selected' : ''}>${escapeHtml(c)} (예: "${escapeHtml(sampleValueFor(c, rows))}")</option>`
   ).join('');
   $('#selNicknameCol').innerHTML = '<option value="">(사용 안 함)</option>' + columns.map(c =>
     `<option value="${escapeHtml(c)}" ${c === guessedNickname ? 'selected' : ''}>${escapeHtml(c)} (예: "${escapeHtml(sampleValueFor(c, rows))}")</option>`
   ).join('');
+  $('#selPostLinkCol').innerHTML = '<option value="">(사용 안 함)</option>' + columns.map(c =>
+    `<option value="${escapeHtml(c)}" ${c === guessedPostLink ? 'selected' : ''}>${escapeHtml(c)} (예: "${escapeHtml(sampleValueFor(c, rows))}")</option>`
+  ).join('');
   contentColumn = guessedContent;
   nicknameColumn = guessedNickname;
+  postLinkColumn = guessedPostLink;
   $('#colMapWrap').style.display = 'flex';
   updateLengthStats(rows);
 }
 $('#selContentCol').addEventListener('change', (e) => { contentColumn = e.target.value; updateLengthStats(participants); pushSlot(snapshotState(), true); });
 $('#selNicknameCol').addEventListener('change', (e) => { nicknameColumn = e.target.value; pushSlot(snapshotState(), true); });
+$('#selPostLinkCol').addEventListener('change', (e) => { postLinkColumn = e.target.value; pushSlot(snapshotState(), true); });
 
 function normalizeRow(row) {
   return { 본문: String(row[contentColumn] ?? '') };
@@ -702,6 +747,11 @@ function applyCandidates(withReason) {
   $('#btnDownloadCandidates').style.display = candidates.length ? '' : 'none';
   $('#btnCopyCandidates').style.display = candidates.length ? '' : 'none';
   $('#copyStatus').textContent = '';
+  $('#btnToggleEmbeds').style.display = (candidates.length && postLinkColumn) ? '' : 'none';
+  $('#btnToggleEmbeds').textContent = '필터링된 게시물 보기 (트위터/인스타)';
+  embedsShown = false;
+  $('#embedWrap').style.display = 'none';
+  $('#embedWrap').innerHTML = '';
   lastWinners = [];
   $('#winnerResult').innerHTML = '';
   $('#btnDownloadResult').style.display = 'none';
@@ -714,6 +764,55 @@ function applyCandidates(withReason) {
 function removeCandidate(i) {
   candidates.splice(i, 1);
   applyCandidates(lastWithReason);
+}
+
+// 게시물 링크(URL)를 보고 트위터/인스타그램 중 어떤 서비스인지 판별해서 각 서비스
+// 위젯이 요구하는 blockquote 마크업을 만들어준다. 알 수 없는 링크는 빈 문자열.
+function buildEmbedMarkup(url) {
+  const u = String(url ?? '').trim();
+  if (!u) return '';
+  if (/instagram\.com/i.test(u)) {
+    return `<blockquote class="instagram-media" data-instgrm-permalink="${escapeHtml(u)}" data-instgrm-version="14"><a href="${escapeHtml(u)}">${escapeHtml(u)}</a></blockquote>`;
+  }
+  if (/(twitter\.com|x\.com)/i.test(u)) {
+    return `<blockquote class="twitter-tweet" data-dnt="true"><a href="${escapeHtml(u)}">${escapeHtml(u)}</a></blockquote>`;
+  }
+  return '';
+}
+
+// "필터링된 게시물 보기" 토글 — 기본으로는 아무것도 안 보여주고, 이 버튼을 눌렀을 때만
+// 지금 후보 명단의 실제 트위터/인스타그램 게시물을 임베드로 보여준다. 처음부터 화면에
+// 마크업을 넣어두면 인스타그램 위젯이 페이지를 훑고 지나가면서 "이미 처리했다"고 보고
+// 나중에 다시 보여줘도 카드로 안 바뀌는 문제가 있어서, 버튼을 누르기 전까지는 실제
+// 임베드 마크업을 <template> 안에만 넣어두고 누른 순간에만 진짜 DOM으로 옮긴다.
+function toggleEmbeds() {
+  const wrap = $('#embedWrap');
+  if (embedsShown) {
+    wrap.style.display = 'none';
+    wrap.innerHTML = '';
+    embedsShown = false;
+    $('#btnToggleEmbeds').textContent = '필터링된 게시물 보기 (트위터/인스타)';
+    return;
+  }
+  if (!postLinkColumn) { alert('먼저 1단계에서 "SNS 게시물 링크 컬럼"을 지정해주세요.'); return; }
+  const withLinks = candidates
+    .map(c => ({ c, markup: buildEmbedMarkup(c.row[postLinkColumn]) }))
+    .filter(x => x.markup);
+  if (!withLinks.length) { alert('후보 중에 트위터/인스타그램 링크를 가진 사람이 없어요.'); return; }
+  wrap.innerHTML = withLinks.map((x, i) => `
+    <div class="embed-card">
+      <div class="embed-label">${escapeHtml(winnerLabel(x.c.row))}</div>
+      <template id="embed-src-${i}">${x.markup}</template>
+      <div class="embed-mount" id="embed-mount-${i}"></div>
+    </div>`).join('');
+  withLinks.forEach((_, i) => {
+    $(`#embed-mount-${i}`).innerHTML = $(`#embed-src-${i}`).innerHTML;
+  });
+  if (window.instgrm && window.instgrm.Embeds) window.instgrm.Embeds.process();
+  if (window.twttr && window.twttr.widgets) window.twttr.widgets.load();
+  wrap.style.display = '';
+  embedsShown = true;
+  $('#btnToggleEmbeds').textContent = `게시물 숨기기 (${withLinks.length}개 표시 중)`;
 }
 
 // 후보 명단(필터링 결과 + 수동 삭제 반영본)을 마크다운(| 구분) 표로 만든다 —
