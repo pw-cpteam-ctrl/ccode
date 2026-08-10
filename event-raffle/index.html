@@ -521,10 +521,20 @@ function isRepeatSpam(text, n) {
 
 function resetDownstream() {
   candidates = []; lastWinners = [];
+  candidateSortField = null; candidateSortDir = null;
   $('#candidateWrap').style.display = 'none';
+  $('#candidateWrap').innerHTML = '';
   $('#candidateCount').textContent = '';
   $('#filterFallback').style.display = 'none';
   $('#filterStatus').textContent = '';
+  $('#btnDownloadCandidates').style.display = 'none';
+  $('#btnCopyCandidates').style.display = 'none';
+  $('#copyStatus').textContent = '';
+  $('#btnToggleEmbeds').style.display = 'none';
+  $('#btnToggleEmbeds').textContent = '필터링된 게시물 보기 (트위터/인스타)';
+  embedsShown = false;
+  $('#embedWrap').style.display = 'none';
+  $('#embedWrap').innerHTML = '';
   $('#winnerResult').innerHTML = '';
   $('#btnDownloadResult').style.display = 'none';
   $('#btnSaveResult').style.display = 'none';
@@ -533,7 +543,7 @@ function resetDownstream() {
 
 function renderTable(wrapSel, rows, columns, opts = {}) {
   const wrap = $(wrapSel);
-  if (!rows.length) { wrap.style.display = 'none'; return; }
+  if (!rows.length) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
   const cols = columns.length ? columns : ['reason'];
   const head = '<tr>' + cols.map(c =>
     `<th${c === contentColumn ? ' style="min-width:260px;"' : ''}>${escapeHtml(c)}${
