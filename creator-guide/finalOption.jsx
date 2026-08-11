@@ -96,7 +96,11 @@ function CalendarPicker({ value, onChange }) {
       <div className="cal-head">
         <button type="button" className="cal-nav" disabled={!canPrev}
           onClick={() => moveMonth(-1)} aria-label="이전 달">‹</button>
-        <div className="cal-title">{year}년 {month + 1}월</div>
+        {/* 범례를 아래 별도 줄이 아니라 제목 옆에 둔다 — 설명은 남기고 높이는 아낀다 */}
+        <div className="cal-titlebox">
+          <span className="cal-title">{year}년 {month + 1}월</span>
+          <span className="cal-legend"><span className="cal-legend-dot" />오픈일</span>
+        </div>
         <button type="button" className="cal-nav" disabled={!canNext}
           onClick={() => moveMonth(1)} aria-label="다음 달">›</button>
       </div>
@@ -123,14 +127,12 @@ function CalendarPicker({ value, onChange }) {
               aria-label={`${month + 1}월 ${day}일${day === openDay ? ' 메가하우스 오픈일' : ''}`}
               onClick={() => onChange(toValue(date))}
             >
-              {day}
+              {/* 누르는 영역은 칸 전체, 눈에 보이는 동그라미는 그 안의 span —
+                  동그라미를 작게 줄여도 손가락으로 누르기는 그대로 편하게 둔다 */}
+              <span className="cal-dot">{day}</span>
             </button>
           );
         })}
-      </div>
-
-      <div className="cal-legend">
-        <span className="cal-legend-dot" /> 메가하우스 오픈일 — 매월 첫 번째 목요일
       </div>
     </div>
   );
