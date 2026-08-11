@@ -28,6 +28,23 @@ function buildReplyText(dateLabel, reward) {
   ].join('\n');
 }
 
+// 메가하우스 오픈일은 매월 첫 번째 목요일로 고정돼 있다. 크리에이터가 초안 일정을
+// 잡을 때 기준이 되는 날짜라, 다음 오픈일이 실제로 며칠인지 계산해서 보여준다
+// (문구로만 "매월 첫 목요일"이라고 적으면 직접 달력을 세어봐야 하기 때문).
+// 오늘이 이번 달 오픈일을 이미 지났으면 다음 달 오픈일을 알려준다.
+function firstThursday(year, month) {
+  const first = new Date(year, month, 1);
+  // 0=일 … 4=목. 1일이 목요일이면 그대로, 아니면 다음 목요일까지 더한다
+  return new Date(year, month, 1 + ((4 - first.getDay() + 7) % 7));
+}
+
+function nextOpenDate(today = new Date()) {
+  const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const thisMonth = firstThursday(base.getFullYear(), base.getMonth());
+  if (thisMonth >= base) return thisMonth;
+  return firstThursday(base.getFullYear(), base.getMonth() + 1);
+}
+
 // 2026-08-18 → "8월 18일 (화)"
 function formatDate(value) {
   const [y, m, d] = value.split('-').map(Number);
@@ -51,6 +68,12 @@ function FinalOption() {
 
   const reward = REWARD_CHOICES.find(r => r.id === rewardId);
   const canCopy = Boolean(draftDate && reward);
+
+  // 오픈일은 페이지를 여는 시점 기준이므로 매 렌더마다 다시 계산할 필요가 없다
+  const openDateLabel = React.useMemo(() => {
+    const d = nextOpenDate();
+    return `${d.getMonth() + 1}월 ${d.getDate()}일 (목)`;
+  }, []);
 
   const copyReply = async () => {
     if (!canCopy) return;
@@ -205,6 +228,10 @@ function FinalOption() {
                 onChange={(e) => setDraftDate(e.target.value)}
                 aria-label="초안 공유 예정일"
               />
+              <div className="reply-open">
+                📌 메가하우스 오픈일은 <strong>매월 첫 번째 목요일</strong>이에요
+                <span className="reply-open-next">다음 오픈일 · {openDateLabel}</span>
+              </div>
               <div className="reply-hint">대략적인 날짜여도 괜찮아요.<br />나중에 바뀌어도 됩니다 🙂</div>
             </div>
 

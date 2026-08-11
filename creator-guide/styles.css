@@ -791,6 +791,19 @@ body {
   margin-top: 6px; font-size: 11.5px; line-height: 1.55;
   color: var(--ink-600);
 }
+/* 오픈일 안내 — 초안 일정을 잡는 기준이라 눈에 띄게 둔다 */
+.reply-open {
+  margin-top: 7px; padding: 8px 10px;
+  background: #fff; border: 1px solid var(--blue-100);
+  border-radius: 9px;
+  font-size: 11.5px; line-height: 1.5; color: var(--ink-800);
+}
+.reply-open strong { color: var(--blue-700); font-weight: 700; }
+.reply-open-next {
+  display: block; margin-top: 3px;
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: 0.02em; color: var(--blue-600); font-weight: 700;
+}
 .reply-link {
   padding: 0; border: 0; background: none; cursor: pointer;
   font: inherit; color: var(--blue-600); font-weight: 700;
