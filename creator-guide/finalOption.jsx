@@ -22,7 +22,7 @@ const REWARD_CHOICES = [
 // — 크리에이터가 "내가 고른 게 그대로 갔구나"를 바로 알 수 있어야 하기 때문.
 function buildReplyText(dateLabel, reward) {
   return [
-    '[크리에이터 협업 회신]',
+    '[협업 진행 정보]',
     `① 초안 공유 예정일 : ${dateLabel}`,
     `② 리워드 수령 방식 : ${reward.copy}`,
   ].join('\n');
