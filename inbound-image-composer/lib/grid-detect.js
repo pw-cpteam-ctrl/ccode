@@ -5,75 +5,110 @@
 //
 // 원본 소스 이미지는 보통 1000px 폭, 5열 그리드. 행 간격(row pitch)은
 // 이미지 내에서 불규칙할 수 있어 절대 고정 피치로 계산하지 않고 매번 픽셀 스캔한다.
+//
+// minGapPx: 흰 픽셀을 몇 픽셀 연속으로 봐야 "진짜 칸 사이 여백(거터)"으로 인정할지.
+// 원래는 흰 픽셀 딱 1개만 봐도 그 자리에서 칸을 끊었는데, 실제 상품 사진 중에는
+// 한 칸 안에 캐릭터 여러 명을 늘어놓은 콜라주형 이미지(예: "RICH BOX 5종 세트")가 있고,
+// 이런 사진은 캐릭터와 캐릭터 사이에 좁게 흰 배경이 비치는 경우가 흔하다. 그 좁은
+// 틈까지 진짜 칸 경계로 오인하면 사진 한 장이 두 칸으로 쪼개져 잡힌다(실사용 중 발견 —
+// 부시로드 스토어의 "조조의기묘한모험 컬렉션" 사진에서 재현). 진짜 칸 사이 여백은
+// 이 틈보다 훨씬 넓으므로, 흰 구간이 최소 길이(minGapPx) 이상 이어질 때만 칸 경계로
+// 인정하도록 해서 카드 내부의 짧은 흰 틈은 무시한다.
 // ============================================================
 
 function detectRowTops(ctx, x, imgHeight, scale = 1, params = {}) {
   const whiteThreshold = params.whiteThreshold ?? 240;
   const [runMin, runMax] = params.rowRunBounds ?? [150, 200];
+  const minGap = Math.max(1, Math.round((params.minGapPx ?? 8) * scale));
   const col = ctx.getImageData(x, 0, 1, imgHeight).data;
   const tops = [];
   const heights = [];
   let runStart = -1;
+  let lastNonWhite = -1;
+  let whiteStreak = 0;
+
+  const closeRun = (endExclusive) => {
+    const runLen = endExclusive - runStart;
+    // photo cells are roughly 170-200px tall at the 1000px-wide baseline — scaled
+    // proportionally below for captures that aren't 1000px wide (reject shorter
+    // (text lines) or longer (merged) runs relative to that baseline). The actual
+    // measured runLen of each accepted run becomes a cardH sample below — real
+    // screenshots aren't always a clean linear rescale of the 1000px reference, so
+    // the crop size has to come from what's actually on the page, not from scale alone.
+    if (runLen > runMin * scale && runLen < runMax * scale) {
+      tops.push(runStart);
+      heights.push(runLen);
+    }
+    runStart = -1;
+  };
+
   for (let y = 0; y < imgHeight; y++) {
     const r = col[y * 4], g = col[y * 4 + 1], b = col[y * 4 + 2];
     const isWhite = r > whiteThreshold && g > whiteThreshold && b > whiteThreshold;
-    if (!isWhite && runStart < 0) {
-      runStart = y;
-    } else if (isWhite && runStart >= 0) {
-      const runLen = y - runStart;
-      // photo cells are roughly 170-200px tall at the 1000px-wide baseline — scaled
-      // proportionally below for captures that aren't 1000px wide (reject shorter
-      // (text lines) or longer (merged) runs relative to that baseline). The actual
-      // measured runLen of each accepted run becomes a cardH sample below — real
-      // screenshots aren't always a clean linear rescale of the 1000px reference, so
-      // the crop size has to come from what's actually on the page, not from scale alone.
-      if (runLen > runMin * scale && runLen < runMax * scale) {
-        tops.push(runStart);
-        heights.push(runLen);
-      }
-      runStart = -1;
+    if (!isWhite) {
+      if (runStart < 0) runStart = y;
+      lastNonWhite = y;
+      whiteStreak = 0;
+    } else if (runStart >= 0) {
+      whiteStreak++;
+      if (whiteStreak >= minGap) closeRun(lastNonWhite + 1);
     }
   }
+  if (runStart >= 0) closeRun(lastNonWhite + 1);
+
   return { tops, heights };
 }
 
 function detectColStarts(ctx, y, imgWidth, scale = 1, params = {}) {
   const whiteThreshold = params.whiteThreshold ?? 240;
   const [runMin, runMax] = params.colRunBounds ?? [90, 260];
+  const minGap = Math.max(1, Math.round((params.minGapPx ?? 8) * scale));
   const row = ctx.getImageData(0, y, imgWidth, 1).data;
   const cols = [];
   const widths = [];
   let runStart = -1;
+  let lastNonWhite = -1;
+  let whiteStreak = 0;
+
+  const closeRun = (endExclusive) => {
+    const runLen = endExclusive - runStart;
+    // upper bound rejects runs where two adjacent cards' non-white pixels merged
+    // into one (no white gutter between them at this particular y) — a real single
+    // card is never wider than ~1.5x the 1000px-baseline card width.
+    if (runLen > runMin * scale && runLen < runMax * scale) {
+      cols.push(runStart);
+      widths.push(runLen);
+    }
+    runStart = -1;
+  };
+
   for (let x = 0; x < imgWidth; x++) {
     const r = row[x * 4], g = row[x * 4 + 1], b = row[x * 4 + 2];
     const isWhite = r > whiteThreshold && g > whiteThreshold && b > whiteThreshold;
-    if (!isWhite && runStart < 0) {
-      runStart = x;
-    } else if (isWhite && runStart >= 0) {
-      const runLen = x - runStart;
-      // upper bound rejects runs where two adjacent cards' non-white pixels merged
-      // into one (no white gutter between them at this particular y) — a real single
-      // card is never wider than ~1.5x the 1000px-baseline card width.
-      if (runLen > runMin * scale && runLen < runMax * scale) {
-        cols.push(runStart);
-        widths.push(runLen);
-      }
-      runStart = -1;
+    if (!isWhite) {
+      if (runStart < 0) runStart = x;
+      lastNonWhite = x;
+      whiteStreak = 0;
+    } else if (runStart >= 0) {
+      whiteStreak++;
+      if (whiteStreak >= minGap) closeRun(lastNonWhite + 1);
     }
   }
+  if (runStart >= 0) closeRun(lastNonWhite + 1);
+
   return { cols, widths };
 }
 
 // "다시 검출"이 의미를 가지려면 같은 이미지를 다시 넣었을 때 전과 다른 시도를 해봐야 한다
 // — detectGrid가 순수하게 픽셀만 보는 결정론적 함수라서, 예전엔 몇 번을 다시 눌러도
 // 정확히 똑같은 결과만 나오는 게 당연했다(사용자가 "이 버튼 대체 무슨 의미냐"고 지적한
-// 지점). 아래 3가지 변형(흰색 판정 임계값, 사진 한 칸으로 인정하는 세로/가로 길이 범위)을
-// 순환하면서 시도해, 기본값이 안 맞는 이미지(배경이 살짝 회색빛이거나 카드 비율이 다른
-// 경우 등)에서 재검출을 누를 때마다 실제로 다른 결과를 시도해볼 수 있게 한다.
+// 지점). 아래 3가지 변형(흰색 판정 임계값, 사진 한 칸으로 인정하는 세로/가로 길이 범위,
+// 최소 여백 길이)을 순환하면서 시도해, 기본값이 안 맞는 이미지(배경이 살짝 회색빛이거나
+// 카드 비율이 다른 경우 등)에서 재검출을 누를 때마다 실제로 다른 결과를 시도해볼 수 있게 한다.
 const DETECT_VARIANTS = [
-  { whiteThreshold: 240, rowRunBounds: [150, 200], colRunBounds: [90, 260] }, // 기본값
-  { whiteThreshold: 225, rowRunBounds: [130, 220], colRunBounds: [80, 280] }, // 배경이 살짝 회색빛인 경우
-  { whiteThreshold: 248, rowRunBounds: [155, 195], colRunBounds: [95, 240] }, // 더 엄격하게(잡음 배제)
+  { whiteThreshold: 240, rowRunBounds: [150, 200], colRunBounds: [90, 260], minGapPx: 8 }, // 기본값
+  { whiteThreshold: 225, rowRunBounds: [130, 220], colRunBounds: [80, 280], minGapPx: 10 }, // 배경이 살짝 회색빛인 경우
+  { whiteThreshold: 248, rowRunBounds: [155, 195], colRunBounds: [95, 240], minGapPx: 14 }, // 더 엄격하게(카드 내부 흰 틈에 더 안 흔들림)
 ];
 
 function median(nums) {
