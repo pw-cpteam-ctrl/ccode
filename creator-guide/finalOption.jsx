@@ -11,10 +11,79 @@ const CHAPTER_META = {
   faq:    { tag: '보충: 협업 관련 FAQ', emoji: '❓', title: '자주 묻는 문의', lead: '미리 받은 주요 문의를 정리했어요. 탭해서 답변을 펼쳐보세요.' },
 };
 
+// 완료 페이지의 리워드 선택지. 유입 수(750)에 따른 금액·구성은 업로드 뒤에 정해지므로,
+// 여기서는 "금액으로 받을지 상품으로 받을지"만 고르게 한다. (06 보상 탭 기준)
+const REWARD_CHOICES = [
+  { id: 'coupon', emoji: '💳', label: '금액 쿠폰', desc: '스토어에서 쓰는\n금액으로 받기', copy: '금액 쿠폰 (스토어 쿠폰)' },
+  { id: 'goods',  emoji: '🎁', label: '상품 쿠폰', desc: '해당 월 룩업\n상품으로 받기', copy: '상품 쿠폰 (해당 월 룩업)' },
+];
+
+// 담당자에게 붙여넣을 회신 문구를 만든다. 항목 이름은 화면에 보이는 것과 똑같이 맞춘다
+// — 크리에이터가 "내가 고른 게 그대로 갔구나"를 바로 알 수 있어야 하기 때문.
+function buildReplyText(dateLabel, reward) {
+  return [
+    '[크리에이터 협업 회신]',
+    `① 초안 공유 예정일 : ${dateLabel}`,
+    `② 리워드 수령 방식 : ${reward.copy}`,
+  ].join('\n');
+}
+
+// 2026-08-18 → "8월 18일 (화)"
+function formatDate(value) {
+  const [y, m, d] = value.split('-').map(Number);
+  if (!y || !m || !d) return value;
+  const days = ['일', '월', '화', '수', '목', '금', '토'];
+  return `${m}월 ${d}일 (${days[new Date(y, m - 1, d).getDay()]})`;
+}
+
 function FinalOption() {
   const [phase, setPhase] = React.useState('cover');
   const [tab, setTab] = React.useState('flow');
   const [openFaq, setOpenFaq] = React.useState(-1);
+
+  // ─── 완료 페이지: 담당자 회신 폼 ───────────────
+  // 두 항목을 다 고르기 전에는 복사 버튼이 눌리지 않는다. 예전에는 안내 문장만 있어서
+  // 둘 중 하나만 알려주거나 아예 안 알려주는 경우가 많았는데, 폼으로 만들면 빠뜨리는 것
+  // 자체가 불가능해진다.
+  const [draftDate, setDraftDate] = React.useState('');
+  const [rewardId, setRewardId] = React.useState('');
+  const [copied, setCopied] = React.useState(false);
+
+  const reward = REWARD_CHOICES.find(r => r.id === rewardId);
+  const canCopy = Boolean(draftDate && reward);
+
+  const copyReply = async () => {
+    if (!canCopy) return;
+    const text = buildReplyText(formatDate(draftDate), reward);
+
+    // 클립보드 API가 막힌 환경(구형 브라우저 등)을 대비해 대체 방법을 함께 둔다
+    // (chat-widget.jsx의 copy()와 같은 방식 — 파일끼리 의존시키지 않으려고 따로 갖고 있음)
+    let ok = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      }
+    } catch { /* 아래 대체 방법으로 */ }
+    if (!ok) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed'; ta.style.top = '-1000px'; ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch { ok = false; }
+    }
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2200);
+    } else {
+      // 복사가 안 되면 직접 긁어갈 수 있도록 화면에 문구를 띄운다
+      window.prompt('아래 내용을 복사해 담당자에게 보내주세요.', text);
+    }
+  };
 
   const tabs = [
     { id: 'flow',    label: '진행 순서' },
@@ -110,7 +179,7 @@ function FinalOption() {
               모두 확인 완료했어요
             </h1>
             <div style={{ fontSize: 13, lineHeight: 1.6, opacity: 0.9 }}>
-              수고하셨어요! 아래 안내를 확인해주세요.
+              마지막으로 두 가지만 알려주시면<br />바로 협업 시작할 수 있어요!
             </div>
           </div>
         </div>
@@ -120,11 +189,64 @@ function FinalOption() {
           <div className="done-card">
             <div className="done-card-head">
               <span className="done-card-icon">📨</span>
-              <span className="done-card-title">다음 할 일</span>
+              <span className="done-card-title">담당자에게 보낼 내용</span>
             </div>
-            <p className="done-card-text">
-              담당자에게 <strong>(1) 초안 작업 일정</strong>과 <strong>(2) 리워드 수령 방식 (금액/상품)</strong>을 함께 알려주세요. 추가로 궁금하거나 협의가 필요한 부분이 있다면 언제든 편히 말씀해주세요.
+            <p className="done-card-text" style={{ marginBottom: 14 }}>
+              리워드 지급 준비를 위해 필요해요.
             </p>
+
+            {/* ① 초안 공유 예정일 */}
+            <div className="reply-field">
+              <div className="reply-label"><span className="reply-num">①</span> 초안 공유 예정일</div>
+              <input
+                type="date"
+                className={`reply-date${draftDate ? ' is-filled' : ''}`}
+                value={draftDate}
+                onChange={(e) => setDraftDate(e.target.value)}
+                aria-label="초안 공유 예정일"
+              />
+              <div className="reply-hint">대략적인 날짜여도 괜찮아요.<br />나중에 바뀌어도 됩니다 🙂</div>
+            </div>
+
+            {/* ② 리워드 수령 방식 */}
+            <div className="reply-field">
+              <div className="reply-label"><span className="reply-num">②</span> 리워드 수령 방식</div>
+              <div className="reply-choices">
+                {REWARD_CHOICES.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={`reply-choice${rewardId === c.id ? ' is-on' : ''}`}
+                    aria-pressed={rewardId === c.id}
+                    onClick={() => setRewardId(c.id)}
+                  >
+                    <span className="reply-choice-emoji">{c.emoji}</span>
+                    <span className="reply-choice-label">{c.label}</span>
+                    <span className="reply-choice-desc">{c.desc}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="reply-hint">
+                금액·구성은 업로드 후 유입 수에 따라 정해져요{' '}
+                <button type="button" className="reply-link" onClick={() => { setPhase('main'); setTab('reward'); scrollTop(); }}>
+                  06 보상 탭
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className={`reply-copy${copied ? ' is-done' : ''}`}
+              disabled={!canCopy}
+              onClick={copyReply}
+            >
+              {copied ? '✓  복사됐어요!' : '📋  복사하기'}
+            </button>
+            <div className="reply-guide">
+              {canCopy
+                ? '담당자에게 붙여넣기만 하면 끝!'
+                : '위 두 가지를 모두 골라주세요'}
+            </div>
           </div>
 
           <div className="done-signoff">

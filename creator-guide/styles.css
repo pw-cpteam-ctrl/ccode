@@ -763,6 +763,73 @@ body {
   color: var(--ink-900);
 }
 .done-card-text strong { color: var(--blue-700); font-weight: 700; }
+/* ─── 완료 페이지: 담당자 회신 폼 ───────────────────────────────
+   두 항목을 다 고르기 전엔 복사 버튼이 잠긴다. 무엇이 남았는지 눈에 보여야
+   하므로, 채워진 항목과 빈 항목의 테두리 색을 다르게 둔다. */
+.reply-field { margin-bottom: 14px; }
+.reply-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 700; color: var(--ink-900);
+  margin-bottom: 7px;
+}
+.reply-num {
+  font-family: var(--font-mono); font-size: 12px;
+  color: var(--blue-600); font-weight: 800;
+}
+.reply-date {
+  width: 100%; box-sizing: border-box;
+  height: 44px; padding: 0 12px;
+  font-size: 16px;               /* 16px 미만이면 iOS에서 화면이 확대된다 */
+  font-family: inherit; color: var(--ink-900);
+  background: #fff; border: 1.5px solid var(--ink-300);
+  border-radius: 10px; outline: none;
+  transition: border-color .15s, background .15s;
+}
+.reply-date:focus { border-color: var(--blue-500); }
+.reply-date.is-filled { border-color: var(--blue-500); background: var(--blue-50); font-weight: 600; }
+.reply-hint {
+  margin-top: 6px; font-size: 11.5px; line-height: 1.55;
+  color: var(--ink-600);
+}
+.reply-link {
+  padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; color: var(--blue-600); font-weight: 700;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.reply-choices { display: flex; gap: 8px; }
+.reply-choice {
+  flex: 1; min-width: 0; padding: 11px 8px 10px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: #fff; border: 1.5px solid var(--ink-300);
+  border-radius: 10px; cursor: pointer;
+  font-family: inherit; text-align: center;
+  transition: border-color .15s, background .15s;
+}
+.reply-choice.is-on { border-color: var(--blue-500); background: var(--blue-50); }
+.reply-choice-emoji { font-size: 18px; line-height: 1; }
+.reply-choice-label { font-size: 13px; font-weight: 700; color: var(--ink-900); }
+.reply-choice-desc {
+  font-size: 10.5px; line-height: 1.45; color: var(--ink-600);
+  white-space: pre-line;         /* desc의 줄바꿈(\n)을 그대로 살린다 */
+}
+.reply-choice.is-on .reply-choice-label { color: var(--blue-700); }
+.reply-copy {
+  width: 100%; height: 46px; margin-top: 4px;
+  border: none; border-radius: 11px;
+  background: var(--blue-500); color: #fff;
+  font-family: inherit; font-size: 14px; font-weight: 700;
+  cursor: pointer; transition: background .15s, opacity .15s;
+}
+.reply-copy:disabled {
+  background: var(--ink-300); color: #fff;
+  cursor: not-allowed; opacity: .75;
+}
+.reply-copy.is-done { background: #16a34a; }
+.reply-guide {
+  margin-top: 7px; text-align: center;
+  font-size: 11.5px; color: var(--ink-600);
+}
+
 .done-signoff {
   padding: 10px 2px 2px;
 }
