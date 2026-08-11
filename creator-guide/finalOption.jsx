@@ -31,19 +31,12 @@ function buildReplyText(dateLabel, reward) {
 // 메가하우스 오픈일은 매월 첫 번째 목요일로 고정돼 있다. 크리에이터가 초안 일정을
 // 잡을 때 기준이 되는 날짜라, 다음 오픈일이 실제로 며칠인지 계산해서 보여준다
 // (문구로만 "매월 첫 목요일"이라고 적으면 직접 달력을 세어봐야 하기 때문).
-// 오늘이 이번 달 오픈일을 이미 지났으면 다음 달 오픈일을 알려준다.
 function firstThursday(year, month) {
   const first = new Date(year, month, 1);
   // 0=일 … 4=목. 1일이 목요일이면 그대로, 아니면 다음 목요일까지 더한다
   return new Date(year, month, 1 + ((4 - first.getDay() + 7) % 7));
 }
 
-function nextOpenDate(today = new Date()) {
-  const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const thisMonth = firstThursday(base.getFullYear(), base.getMonth());
-  if (thisMonth >= base) return thisMonth;
-  return firstThursday(base.getFullYear(), base.getMonth() + 1);
-}
 
 // 2026-08-18 → "8월 18일 (화)"
 function formatDate(value) {
@@ -51,6 +44,96 @@ function formatDate(value) {
   if (!y || !m || !d) return value;
   const days = ['일', '월', '화', '수', '목', '금', '토'];
   return `${m}월 ${d}일 (${days[new Date(y, m - 1, d).getDay()]})`;
+}
+
+// ─── 달력 ────────────────────────────────────────────────────────
+// 브라우저 기본 날짜 선택기 대신 직접 그린다. 기본 선택기는 내부를 꾸밀 수 없어서
+// 메가하우스 오픈일(매월 첫 목요일)에 표시를 넣을 방법이 없기 때문.
+//
+// 규칙
+//   - 이번 달부터 다음 달까지만 이동 가능 (인플루언서 연락이 월말부터 나가는 흐름 기준)
+//   - 지난 날짜는 고를 수 없음 (초안 예정일이 과거일 수는 없으므로)
+//   - 오픈일은 빨간 동그라미로 표시만 하고, 고르는 것 자체는 막지 않음
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+const MONTHS_AHEAD = 1;   // 다음 달까지만
+
+// Date → "2026-09-02" (기존 폼 값 형식을 그대로 유지한다)
+function toValue(d) {
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+function CalendarPicker({ value, onChange }) {
+  const today = React.useMemo(() => {
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  }, []);
+
+  // 화면에 보여줄 달 (1일 기준). 처음엔 이번 달부터 시작한다
+  const [view, setView] = React.useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+
+  const minMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const maxMonth = new Date(today.getFullYear(), today.getMonth() + MONTHS_AHEAD, 1);
+  const canPrev = view > minMonth;
+  const canNext = view < maxMonth;
+
+  const year = view.getFullYear();
+  const month = view.getMonth();
+  const openDay = firstThursday(year, month).getDate();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const leading = new Date(year, month, 1).getDay();   // 1일 앞의 빈 칸 수
+
+  const cells = [
+    ...Array.from({ length: leading }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+
+  const moveMonth = (step) => setView(new Date(year, month + step, 1));
+
+  return (
+    <div className="cal">
+      <div className="cal-head">
+        <button type="button" className="cal-nav" disabled={!canPrev}
+          onClick={() => moveMonth(-1)} aria-label="이전 달">‹</button>
+        <div className="cal-title">{year}년 {month + 1}월</div>
+        <button type="button" className="cal-nav" disabled={!canNext}
+          onClick={() => moveMonth(1)} aria-label="다음 달">›</button>
+      </div>
+
+      <div className="cal-grid cal-week">
+        {WEEKDAYS.map((w) => <div key={w} className="cal-wd">{w}</div>)}
+      </div>
+
+      <div className="cal-grid">
+        {cells.map((day, i) => {
+          if (day === null) return <div key={`b${i}`} />;
+          const date = new Date(year, month, day);
+          const past = date < today;
+          const cls = [
+            'cal-day',
+            past ? 'is-past' : '',
+            day === openDay ? 'is-open' : '',
+            value === toValue(date) ? 'is-sel' : '',
+          ].filter(Boolean).join(' ');
+          return (
+            <button
+              key={day} type="button" className={cls} disabled={past}
+              aria-pressed={value === toValue(date)}
+              aria-label={`${month + 1}월 ${day}일${day === openDay ? ' 메가하우스 오픈일' : ''}`}
+              onClick={() => onChange(toValue(date))}
+            >
+              {day}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="cal-legend">
+        <span className="cal-legend-dot" /> 메가하우스 오픈일 — 매월 첫 번째 목요일
+      </div>
+    </div>
+  );
 }
 
 function FinalOption() {
@@ -68,12 +151,6 @@ function FinalOption() {
 
   const reward = REWARD_CHOICES.find(r => r.id === rewardId);
   const canCopy = Boolean(draftDate && reward);
-
-  // 오픈일은 페이지를 여는 시점 기준이므로 매 렌더마다 다시 계산할 필요가 없다
-  const openDateLabel = React.useMemo(() => {
-    const d = nextOpenDate();
-    return `${d.getMonth() + 1}월 ${d.getDate()}일 (목)`;
-  }, []);
 
   const copyReply = async () => {
     if (!canCopy) return;
@@ -221,17 +298,10 @@ function FinalOption() {
             {/* ① 초안 공유 예정일 */}
             <div className="reply-field">
               <div className="reply-label"><span className="reply-num">①</span> 초안 공유 예정일</div>
-              <input
-                type="date"
-                className={`reply-date${draftDate ? ' is-filled' : ''}`}
-                value={draftDate}
-                onChange={(e) => setDraftDate(e.target.value)}
-                aria-label="초안 공유 예정일"
-              />
-              <div className="reply-open">
-                📌 메가하우스 오픈일은 <strong>매월 첫 번째 목요일</strong>이에요
-                <span className="reply-open-next">다음 오픈일 · {openDateLabel}</span>
-              </div>
+              <CalendarPicker value={draftDate} onChange={setDraftDate} />
+              {draftDate && (
+                <div className="reply-picked">선택한 날짜 · <strong>{formatDate(draftDate)}</strong></div>
+              )}
               <div className="reply-hint">대략적인 날짜여도 괜찮아요.<br />나중에 바뀌어도 됩니다 🙂</div>
             </div>
 

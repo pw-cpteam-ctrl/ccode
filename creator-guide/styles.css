@@ -776,33 +776,69 @@ body {
   font-family: var(--font-mono); font-size: 12px;
   color: var(--blue-600); font-weight: 800;
 }
-.reply-date {
-  width: 100%; box-sizing: border-box;
-  height: 44px; padding: 0 12px;
-  font-size: 16px;               /* 16px 미만이면 iOS에서 화면이 확대된다 */
-  font-family: inherit; color: var(--ink-900);
-  background: #fff; border: 1.5px solid var(--ink-300);
-  border-radius: 10px; outline: none;
-  transition: border-color .15s, background .15s;
+/* ─── 달력 ─────────────────────────────────────────────────────
+   오픈일(빨간 테두리)과 내가 고른 날(파란 채움)이 한눈에 구분되도록
+   서로 다른 방식으로 표시한다 — 같은 날이 둘 다일 수도 있기 때문. */
+.cal {
+  background: #fff; border: 1px solid var(--blue-100);
+  border-radius: 11px; padding: 10px 10px 8px;
 }
-.reply-date:focus { border-color: var(--blue-500); }
-.reply-date.is-filled { border-color: var(--blue-500); background: var(--blue-50); font-weight: 600; }
+.cal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.cal-title { font-size: 13px; font-weight: 800; color: var(--ink-900); }
+.cal-nav {
+  width: 30px; height: 30px; flex: 0 0 auto;
+  border: 1px solid var(--ink-300); border-radius: 8px;
+  background: #fff; color: var(--ink-800);
+  font-size: 16px; line-height: 1; cursor: pointer;
+}
+.cal-nav:disabled { opacity: .3; cursor: default; }
+.cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+}
+.cal-week { margin-bottom: 2px; }
+.cal-wd {
+  text-align: center; font-size: 10.5px; font-weight: 700;
+  color: var(--ink-600); padding: 3px 0;
+}
+.cal-wd:first-child { color: #dc2626; }   /* 일요일 */
+.cal-wd:last-child  { color: var(--blue-600); }
+.cal-day {
+  aspect-ratio: 1 / 1; min-height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid transparent; border-radius: 50%;
+  background: none; color: var(--ink-900);
+  font-family: inherit; font-size: 12.5px; font-weight: 600;
+  cursor: pointer; padding: 0;
+  transition: background .12s, border-color .12s;
+}
+.cal-day:hover:not(:disabled) { background: var(--blue-50); }
+.cal-day.is-past { color: var(--ink-300); cursor: default; }
+.cal-day.is-open { border-color: #dc2626; color: #dc2626; font-weight: 800; }
+.cal-day.is-open.is-past { border-color: #fca5a5; color: #fca5a5; }
+.cal-day.is-sel {
+  background: var(--blue-500); color: #fff; font-weight: 800;
+}
+.cal-day.is-sel.is-open { border-color: #dc2626; }
+.cal-legend {
+  display: flex; align-items: center; gap: 5px;
+  margin-top: 7px; padding-top: 7px;
+  border-top: 1px solid var(--blue-100);
+  font-size: 11px; color: var(--ink-600);
+}
+.cal-legend-dot {
+  width: 11px; height: 11px; flex: 0 0 auto;
+  border: 1.5px solid #dc2626; border-radius: 50%;
+}
+.reply-picked {
+  margin-top: 7px; font-size: 12px; color: var(--ink-800);
+}
+.reply-picked strong { color: var(--blue-700); font-weight: 800; }
 .reply-hint {
   margin-top: 6px; font-size: 11.5px; line-height: 1.55;
   color: var(--ink-600);
-}
-/* 오픈일 안내 — 초안 일정을 잡는 기준이라 눈에 띄게 둔다 */
-.reply-open {
-  margin-top: 7px; padding: 8px 10px;
-  background: #fff; border: 1px solid var(--blue-100);
-  border-radius: 9px;
-  font-size: 11.5px; line-height: 1.5; color: var(--ink-800);
-}
-.reply-open strong { color: var(--blue-700); font-weight: 700; }
-.reply-open-next {
-  display: block; margin-top: 3px;
-  font-family: var(--font-mono); font-size: 11px;
-  letter-spacing: 0.02em; color: var(--blue-600); font-weight: 700;
 }
 .reply-link {
   padding: 0; border: 0; background: none; cursor: pointer;
