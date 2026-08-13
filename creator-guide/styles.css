@@ -780,6 +780,10 @@ body {
    오픈일(빨간 테두리)과 내가 고른 날(파란 채움)이 한눈에 구분되도록
    서로 다른 방식으로 표시한다 — 같은 날이 둘 다일 수도 있기 때문. */
 .cal {
+  /* 고정폭 — 화면이 넓어져도 달력만 늘어나 납작해지는 것을 막는다.
+     (PC에서 642px까지 벌어져 한 칸이 87px이 되던 문제)
+     화면이 이보다 좁으면 max-width가 받아서 알아서 줄어든다. */
+  width: 300px; max-width: 100%; margin: 0 auto;
   background: #fff; border: 1px solid var(--blue-100);
   border-radius: 11px; padding: 10px 10px 8px;
 }
