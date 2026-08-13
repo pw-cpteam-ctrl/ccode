@@ -79,6 +79,58 @@ function fitFont(ctx, text, maxWidth, base, min) {
   return size;
 }
 
+// 캔버스 텍스트를 단어(공백) 단위로 줄바꿈 — 한 줄에 넣어보고 maxWidth를 넘기면
+// 방금 넣은 단어를 다음 줄로 밀어낸다. 글자 단위로 자르지 않아서 단어가 중간에
+// 끊기지 않는다(글자수 절반으로 자르면 "가끔씩 툭하고 러시" / "아어로 ..."처럼
+// 단어 한가운데가 잘려서 부자연스러웠음).
+function wrapTextByWord(ctx, text, font, maxWidth) {
+  ctx.font = font;
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines = [];
+  let cur = '';
+
+  for (const word of words) {
+    // 줄이 비어있는 상태에서도 이 단어 하나가 그 자체로 maxWidth보다 길면(첫 단어부터
+    // 너무 긴 영단어나 공백 없는 긴 문자열 전체 등) — 원래는 "다음 줄로 밀어낼 이전
+    // 내용이 없다"는 이유로 폭 체크 없이 그냥 통과시켜서 조용히 넘쳤던 부분. 빈
+    // 줄이어도 똑같이 체크해서 글자 단위로 쪼갠다.
+    if (!cur && ctx.measureText(word).width > maxWidth) {
+      const parts = breakLongWord(ctx, word, maxWidth);
+      lines.push(...parts.slice(0, -1));
+      cur = parts[parts.length - 1] || '';
+      continue;
+    }
+    const trial = cur ? cur + ' ' + word : word;
+    if (!cur || ctx.measureText(trial).width <= maxWidth) {
+      cur = trial;
+    } else {
+      lines.push(cur);
+      // 단어 하나가 그 자체로 maxWidth보다 길면(긴 영단어 등) 어쩔 수 없이 글자 단위로 쪼갠다.
+      if (ctx.measureText(word).width > maxWidth) {
+        const parts = breakLongWord(ctx, word, maxWidth);
+        lines.push(...parts.slice(0, -1));
+        cur = parts[parts.length - 1] || '';
+      } else {
+        cur = word;
+      }
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+function breakLongWord(ctx, word, maxWidth) {
+  const parts = [];
+  let cur = '';
+  for (const ch of word) {
+    const trial = cur + ch;
+    if (cur && ctx.measureText(trial).width > maxWidth) { parts.push(cur); cur = ch; }
+    else cur = trial;
+  }
+  if (cur) parts.push(cur);
+  return parts;
+}
+
 // Draws a rounded-rect "sticker" badge (used for 테노히라/메가캣/GEM
 // lineup tags) at (x, baselineY).
 function drawTagBadge(ctx, x, baselineY, text, tagSize = 13) {
@@ -138,17 +190,46 @@ function ipTextPlan(ctx, item) {
   const oneLineSize = fitFont(ctx, ip, maxWidth, ipSize, 15);
   if (!ip || oneLineSize >= IP_TWO_LINE_THRESHOLD) return { lines: [ip], size: oneLineSize };
 
-  // 1줄로는 너무 작아지는 경우 → 2줄로 나눠서 더 큰 글자로 보여준다. 글자 수 절반
-  // 지점에서 자르는 이유: 한글 IP명은 공백이 없거나 애매한 경우가 많아서 "폭에 맞는
-  // 최대 글자수까지 채우고 나머지는 둘째 줄로" 방식(예전 로직)을 썼었는데, 그러면
-  // 첫 줄만 폭에 맞고 둘째 줄은 검증 없이 나머지를 통째로 떠넘겨서 제목이 아주 긴
-  // 경우(예: "가끔씩 툭하고 러시아어로 부끄러워하는 옆자리의 아랴 양") 둘째 줄이
-  // 카드 폭을 훨씬 넘어 옆 칸까지 튀어나오는 버그가 있었다. 절반 지점으로 나누고
-  // 두 줄을 각각 fitFont로 폭에 맞출 때까지(최소 15px) 줄여서, 두 줄 다 반드시
-  // maxWidth 안에 들어가도록 보장한다.
-  const mid = Math.ceil(ip.length / 2);
-  const first = ip.slice(0, mid);
-  const second = ip.slice(mid);
+  // 1줄로는 너무 작아지는 경우 → 2줄로 나눠서 더 큰 글자로 보여준다. 단어(공백)
+  // 단위로 줄바꿈해야 단어 한가운데가 잘리지 않는다(글자수 절반으로 자르던 이전
+  // 방식은 "가끔씩 툭하고 러시" / "아어로 부끄러워하는 ..."처럼 단어를 반토막
+  // 내서 부자연스러웠음). IP_TWO_LINE_SIZE(20px)부터 시작해 2줄 안에 들어올
+  // 때까지 폰트를 낮춰가며(최소 15px) 시도 — 폰트를 낮출수록 한 줄에 더 많은
+  // 단어가 들어가서 줄 수가 줄어든다.
+  for (let size = IP_TWO_LINE_SIZE; size >= 15; size--) {
+    const lines = wrapTextByWord(ctx, ip, `800 ${size}px ${FONT}`, maxWidth);
+    if (lines.length <= 2) return { lines, size };
+  }
+
+  // 최소 크기(15px)로 단어 단위 줄바꿈을 해도 2줄을 넘기는 경우(제목이 극단적으로
+  // 긴 경우) — 앞 2줄만 보여주고 나머지를 자르면 제목 일부가 화면에서 통째로
+  // 사라진다(예: "...옆자리의 아랴 양"에서 "아랴 양"이 누락됨). 폭 초과보다 글자가
+  // 사라지는 게 더 나쁜 문제이므로, 단어 경계는 지키되 두 줄 폭이 최대한 비슷해지는
+  // 분할점을 찾아 전체 텍스트를 반드시 2줄에 담는다(약간의 폭 초과는 감수).
+  const words = ip.split(/\s+/).filter(Boolean);
+  if (words.length <= 1) {
+    // 공백이 아예 없는 한 덩어리 텍스트(긴 영단어 등)는 단어 경계가 없어 어쩔 수
+    // 없이 글자 단위로 절반씩 나눈다.
+    const mid = Math.ceil(ip.length / 2);
+    const first = ip.slice(0, mid);
+    const second = ip.slice(mid);
+    const size = Math.min(
+      fitFont(ctx, first, maxWidth, IP_TWO_LINE_SIZE, 15),
+      fitFont(ctx, second, maxWidth, IP_TWO_LINE_SIZE, 15),
+    );
+    return { lines: [first, second], size };
+  }
+  ctx.font = `800 ${IP_TWO_LINE_SIZE}px ${FONT}`;
+  let bestSplit = 1;
+  let bestMax = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const w1 = ctx.measureText(words.slice(0, i).join(' ')).width;
+    const w2 = ctx.measureText(words.slice(i).join(' ')).width;
+    const max = Math.max(w1, w2);
+    if (max < bestMax) { bestMax = max; bestSplit = i; }
+  }
+  const first = words.slice(0, bestSplit).join(' ');
+  const second = words.slice(bestSplit).join(' ');
   const size = Math.min(
     fitFont(ctx, first, maxWidth, IP_TWO_LINE_SIZE, 15),
     fitFont(ctx, second, maxWidth, IP_TWO_LINE_SIZE, 15),
@@ -324,6 +405,7 @@ if (typeof window !== 'undefined') {
     renderContinuousStrip,
     ensureFontsLoaded,
     fitFont,
+    wrapTextByWord,
     drawTagBadge,
     drawCartIcon,
     drawCard,
