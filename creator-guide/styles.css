@@ -841,6 +841,29 @@ body {
 .cal-day.is-open.is-past .cal-dot { border-color: #fca5a5; color: #fca5a5; }
 .cal-day.is-sel .cal-dot { background: var(--blue-500); color: #fff; font-weight: 800; }
 .cal-day.is-sel.is-open .cal-dot { border-color: #dc2626; }
+/* 마지막 페이지 — 06에서 고른 내용을 확인시켜 주는 줄 */
+.sum-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 0; border-bottom: 1px solid var(--blue-100);
+  font-size: 12.5px;
+}
+.sum-check { font-size: 13px; line-height: 1; flex: 0 0 auto; }
+.sum-label { color: var(--ink-800); font-weight: 600; }
+.sum-value {
+  margin-left: auto; text-align: right;
+  color: var(--blue-700); font-weight: 800;
+}
+.sum-row.is-todo .sum-label { color: var(--ink-600); }
+.sum-row.is-todo .sum-value { color: var(--ink-400); font-weight: 600; }
+.sum-edit {
+  width: 100%; margin-top: 8px; padding: 8px;
+  background: none; border: 0; cursor: pointer;
+  font-family: inherit; font-size: 12px; color: var(--ink-600);
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.done-card .sum-row:first-of-type { margin-top: 2px; }
+.done-card .reply-copy { margin-top: 12px; }
+
 .reply-picked {
   margin-top: 7px; font-size: 12px; color: var(--ink-800);
 }

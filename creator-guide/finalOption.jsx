@@ -138,6 +138,90 @@ function CalendarPicker({ value, onChange }) {
   );
 }
 
+// ─── 고른 값 임시 저장 ────────────────────────────────────────────
+// 06 탭에서 고른 값을 마지막 페이지까지 들고 가야 하는데, 중간에 새로고침하면
+// 날아간다. 브라우저에 하루만 남겨둔다 — 같은 날 다시 열면 유지되고,
+// 다음 협업(다음 달) 때는 남은 값이 없이 새로 시작한다.
+const REPLY_KEY = 'cg-reply';
+const REPLY_TTL_MS = 24 * 60 * 60 * 1000;
+
+function loadReply() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(REPLY_KEY) || 'null');
+    if (!saved || !saved.savedAt || Date.now() - saved.savedAt > REPLY_TTL_MS) return {};
+    // 예전에 저장된 값에 없는 항목이 있어도 깨지지 않도록 항상 기본값을 깔아둔다
+    return { date: saved.date ?? '', reward: saved.reward ?? '' };
+  } catch {
+    return {};   // 저장값이 망가져 있어도 화면은 정상 동작해야 한다
+  }
+}
+
+function saveReply(date, reward) {
+  try {
+    localStorage.setItem(REPLY_KEY, JSON.stringify({ v: 1, date, reward, savedAt: Date.now() }));
+  } catch { /* 저장 실패해도 이번 이용엔 지장 없다 */ }
+}
+
+// ─── 담당자에게 알려줄 내용 (06 보상 탭 맨 아래) ──────────────────
+// 원래는 마지막 페이지에 있었는데, 다 읽고 "끝났다" 상태에서는 그냥 넘겨버려서
+// 회신율이 낮았다. 가이드 원문이 이미 이 자리에서 "수령 방식을 사전 공유해달라"고
+// 부탁하고 있으므로, 부탁하는 문장 바로 옆에 답하는 칸을 둔다.
+function ReplyForm({ draftDate, setDraftDate, rewardId, setRewardId, canCopy, copied, onCopy, onGoReward }) {
+  return (
+    <div className="done-card">
+      <div className="done-card-head">
+        <span className="done-card-icon">📨</span>
+        <span className="done-card-title">담당자에게 알려주실 내용</span>
+      </div>
+      <p className="done-card-text" style={{ marginBottom: 14 }}>
+        리워드 지급 준비를 위해 필요해요.
+      </p>
+
+      <div className="reply-field">
+        <div className="reply-label"><span className="reply-num">①</span> 초안 공유 예정일</div>
+        <CalendarPicker value={draftDate} onChange={setDraftDate} />
+        {draftDate && (
+          <div className="reply-picked">선택한 날짜 · <strong>{formatDate(draftDate)}</strong></div>
+        )}
+        <div className="reply-hint">대략적인 날짜여도 괜찮아요.<br />나중에 바뀌어도 됩니다 🙂</div>
+      </div>
+
+      <div className="reply-field">
+        <div className="reply-label"><span className="reply-num">②</span> 리워드 수령 방식</div>
+        <div className="reply-choices">
+          {REWARD_CHOICES.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className={`reply-choice${rewardId === c.id ? ' is-on' : ''}`}
+              aria-pressed={rewardId === c.id}
+              onClick={() => setRewardId(c.id)}
+            >
+              <span className="reply-choice-emoji">{c.emoji}</span>
+              <span className="reply-choice-label">{c.label}</span>
+              <span className="reply-choice-desc">{c.desc}</span>
+            </button>
+          ))}
+        </div>
+        <div className="reply-hint">
+          금액·구성은 업로드 후 유입 수에 따라 정해져요
+          {onGoReward && (
+            <> <button type="button" className="reply-link" onClick={onGoReward}>06 보상 탭</button></>
+          )}
+        </div>
+      </div>
+
+      <button type="button" className={`reply-copy${copied ? ' is-done' : ''}`}
+        disabled={!canCopy} onClick={onCopy}>
+        {copied ? '✓  복사됐어요!' : '📋  복사하기'}
+      </button>
+      <div className="reply-guide">
+        {canCopy ? '담당자에게 붙여넣기만 하면 끝!' : '위 두 가지를 모두 골라주세요'}
+      </div>
+    </div>
+  );
+}
+
 function FinalOption() {
   const [phase, setPhase] = React.useState('cover');
   const [tab, setTab] = React.useState('flow');
@@ -147,9 +231,12 @@ function FinalOption() {
   // 두 항목을 다 고르기 전에는 복사 버튼이 눌리지 않는다. 예전에는 안내 문장만 있어서
   // 둘 중 하나만 알려주거나 아예 안 알려주는 경우가 많았는데, 폼으로 만들면 빠뜨리는 것
   // 자체가 불가능해진다.
-  const [draftDate, setDraftDate] = React.useState('');
-  const [rewardId, setRewardId] = React.useState('');
+  const [draftDate, setDraftDate] = React.useState(() => loadReply().date ?? '');
+  const [rewardId, setRewardId] = React.useState(() => loadReply().reward ?? '');
   const [copied, setCopied] = React.useState(false);
+
+  // 고른 값이 바뀔 때마다 저장 — 중간에 새로고침해도 남아 있게
+  React.useEffect(() => { saveReply(draftDate, rewardId); }, [draftDate, rewardId]);
 
   const reward = REWARD_CHOICES.find(r => r.id === rewardId);
   const canCopy = Boolean(draftDate && reward);
@@ -220,6 +307,9 @@ function FinalOption() {
   };
   const prevTab = () => { if (tabIdx > 0) { setTab(tabs[tabIdx - 1].id); scrollTop(); } };
 
+  // 마지막 페이지에서 "고르러 가기"를 누르면 06 보상 탭으로 보낸다
+  const goReward = () => { setPhase('main'); setTab('reward'); scrollTop(); };
+
   // ─── 환영 커버 ─────────────────────────────
   if (phase === 'cover') {
     return (
@@ -281,71 +371,62 @@ function FinalOption() {
               모두 확인 완료했어요
             </h1>
             <div style={{ fontSize: 13, lineHeight: 1.6, opacity: 0.9 }}>
-              마지막으로 두 가지만 알려주시면<br />바로 협업 시작할 수 있어요!
+              {canCopy
+                ? <>담당자에게 아래 내용만 보내주시면<br />바로 협업 시작할 수 있어요!</>
+                : <>두 가지만 알려주시면<br />바로 협업 시작할 수 있어요!</>}
             </div>
           </div>
         </div>
 
         {/* 하단 본문 — 하얀 영역 */}
+        {/* 여기서 새로 묻지 않는다. 06 보상 탭에서 이미 고른 내용을 확인시켜 주고,
+            아직 안 골랐으면 그 자리로 보내준다 — 다 읽고 "끝났다" 상태에서 새로
+            입력을 요구하면 그냥 넘겨버리기 때문. */}
         <div className="done-body">
           <div className="done-card">
             <div className="done-card-head">
               <span className="done-card-icon">📨</span>
-              <span className="done-card-title">담당자에게 보낼 내용</span>
-            </div>
-            <p className="done-card-text" style={{ marginBottom: 14 }}>
-              리워드 지급 준비를 위해 필요해요.
-            </p>
-
-            {/* ① 초안 공유 예정일 */}
-            <div className="reply-field">
-              <div className="reply-label"><span className="reply-num">①</span> 초안 공유 예정일</div>
-              <CalendarPicker value={draftDate} onChange={setDraftDate} />
-              {draftDate && (
-                <div className="reply-picked">선택한 날짜 · <strong>{formatDate(draftDate)}</strong></div>
-              )}
-              <div className="reply-hint">대략적인 날짜여도 괜찮아요.<br />나중에 바뀌어도 됩니다 🙂</div>
+              <span className="done-card-title">담당자에게 알려주실 내용</span>
             </div>
 
-            {/* ② 리워드 수령 방식 */}
-            <div className="reply-field">
-              <div className="reply-label"><span className="reply-num">②</span> 리워드 수령 방식</div>
-              <div className="reply-choices">
-                {REWARD_CHOICES.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className={`reply-choice${rewardId === c.id ? ' is-on' : ''}`}
-                    aria-pressed={rewardId === c.id}
-                    onClick={() => setRewardId(c.id)}
-                  >
-                    <span className="reply-choice-emoji">{c.emoji}</span>
-                    <span className="reply-choice-label">{c.label}</span>
-                    <span className="reply-choice-desc">{c.desc}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="reply-hint">
-                금액·구성은 업로드 후 유입 수에 따라 정해져요{' '}
-                <button type="button" className="reply-link" onClick={() => { setPhase('main'); setTab('reward'); scrollTop(); }}>
-                  06 보상 탭
+            {canCopy ? (
+              <>
+                <div className="sum-row">
+                  <span className="sum-check">✅</span>
+                  <span className="sum-label"><span className="reply-num">①</span> 초안 공유 예정일</span>
+                  <span className="sum-value">{formatDate(draftDate)}</span>
+                </div>
+                <div className="sum-row">
+                  <span className="sum-check">✅</span>
+                  <span className="sum-label"><span className="reply-num">②</span> 리워드 수령 방식</span>
+                  <span className="sum-value">{reward.label}</span>
+                </div>
+
+                <button type="button" className={`reply-copy${copied ? ' is-done' : ''}`} onClick={copyReply}>
+                  {copied ? '✓  복사됐어요!' : '📋  복사하기'}
                 </button>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className={`reply-copy${copied ? ' is-done' : ''}`}
-              disabled={!canCopy}
-              onClick={copyReply}
-            >
-              {copied ? '✓  복사됐어요!' : '📋  복사하기'}
-            </button>
-            <div className="reply-guide">
-              {canCopy
-                ? '담당자에게 붙여넣기만 하면 끝!'
-                : '위 두 가지를 모두 골라주세요'}
-            </div>
+                <div className="reply-guide">담당자에게 붙여넣기만 하면 끝!</div>
+                <button type="button" className="sum-edit" onClick={goReward}>내용 수정하기</button>
+              </>
+            ) : (
+              <>
+                <p className="done-card-text" style={{ marginBottom: 12 }}>
+                  아래 내용을 아직 안 고르셨어요. 리워드 지급 준비를 위해 필요해요.
+                </p>
+                <div className={`sum-row${draftDate ? '' : ' is-todo'}`}>
+                  <span className="sum-check">{draftDate ? '✅' : '⬜'}</span>
+                  <span className="sum-label"><span className="reply-num">①</span> 초안 공유 예정일</span>
+                  <span className="sum-value">{draftDate ? formatDate(draftDate) : '미선택'}</span>
+                </div>
+                <div className={`sum-row${reward ? '' : ' is-todo'}`}>
+                  <span className="sum-check">{reward ? '✅' : '⬜'}</span>
+                  <span className="sum-label"><span className="reply-num">②</span> 리워드 수령 방식</span>
+                  <span className="sum-value">{reward ? reward.label : '미선택'}</span>
+                </div>
+                <button type="button" className="reply-copy" onClick={goReward}>고르러 가기</button>
+                <div className="reply-guide">06 보상 탭으로 이동해요</div>
+              </>
+            )}
           </div>
 
           <div className="done-signoff">
@@ -399,7 +480,11 @@ function FinalOption() {
       {tab === 'body'    && <Final_Body />}
       {tab === 'example' && <Final_Example />}
       {tab === 'rules'   && <Final_Rules />}
-      {tab === 'reward'  && <Final_Reward />}
+      {tab === 'reward'  && (
+        <Final_Reward
+          reply={{ draftDate, setDraftDate, rewardId, setRewardId, canCopy, copied, onCopy: copyReply }}
+        />
+      )}
       {tab === 'faq'     && <Final_Faq openFaq={openFaq} setOpenFaq={setOpenFaq} onGoTab={(id) => { setTab(id); scrollTop(); }} />}
 
       <div className="final-chapter-nav">
@@ -765,7 +850,7 @@ function Final_Rules() {
 }
 
 // ─── 챕터 5: 보상 ──────────────────────────────
-function Final_Reward() {
+function Final_Reward({ reply }) {
   return (
     <div className="section">
       <div className="card" style={{ background: 'var(--blue-500)', color: '#fff', borderColor: 'var(--blue-500)' }}>
@@ -813,6 +898,9 @@ function Final_Reward() {
       <div className="alert info" style={{ marginTop: 10 }}>
         <Icon.info /><span>쿠폰 보상 조정 관련하여 문의가 있으실 경우 <strong>07 FAQ</strong> 단락을 참조해주세요.</span>
       </div>
+
+      {/* 보상 내용을 방금 읽은 자리에서 바로 고르게 한다 — 판단이 가장 쉬운 순간 */}
+      {reply && <div style={{ marginTop: 14 }}><ReplyForm {...reply} /></div>}
     </div>
   );
 }
