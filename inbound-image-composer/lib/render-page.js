@@ -138,13 +138,22 @@ function ipTextPlan(ctx, item) {
   const oneLineSize = fitFont(ctx, ip, maxWidth, ipSize, 15);
   if (!ip || oneLineSize >= IP_TWO_LINE_THRESHOLD) return { lines: [ip], size: oneLineSize };
 
-  // 1줄로는 너무 작아지는 경우 → 2줄로 나눠서 더 큰 글자로 보여준다. 띄어쓰기 기준이
-  // 아니라 글자 단위로 자르는 이유: 한글 IP명은 공백이 없거나 애매한 경우가 많아서,
-  // "폭에 맞는 최대 글자수까지" 자르는 방식이 더 안전하다.
-  ctx.font = `800 ${IP_TWO_LINE_SIZE}px ${FONT}`;
-  let splitAt = ip.length;
-  while (splitAt > 1 && ctx.measureText(ip.slice(0, splitAt)).width > maxWidth) splitAt--;
-  return { lines: [ip.slice(0, splitAt), ip.slice(splitAt)], size: IP_TWO_LINE_SIZE };
+  // 1줄로는 너무 작아지는 경우 → 2줄로 나눠서 더 큰 글자로 보여준다. 글자 수 절반
+  // 지점에서 자르는 이유: 한글 IP명은 공백이 없거나 애매한 경우가 많아서 "폭에 맞는
+  // 최대 글자수까지 채우고 나머지는 둘째 줄로" 방식(예전 로직)을 썼었는데, 그러면
+  // 첫 줄만 폭에 맞고 둘째 줄은 검증 없이 나머지를 통째로 떠넘겨서 제목이 아주 긴
+  // 경우(예: "가끔씩 툭하고 러시아어로 부끄러워하는 옆자리의 아랴 양") 둘째 줄이
+  // 카드 폭을 훨씬 넘어 옆 칸까지 튀어나오는 버그가 있었다. 절반 지점으로 나누고
+  // 두 줄을 각각 fitFont로 폭에 맞출 때까지(최소 15px) 줄여서, 두 줄 다 반드시
+  // maxWidth 안에 들어가도록 보장한다.
+  const mid = Math.ceil(ip.length / 2);
+  const first = ip.slice(0, mid);
+  const second = ip.slice(mid);
+  const size = Math.min(
+    fitFont(ctx, first, maxWidth, IP_TWO_LINE_SIZE, 15),
+    fitFont(ctx, second, maxWidth, IP_TWO_LINE_SIZE, 15),
+  );
+  return { lines: [first, second], size };
 }
 
 // 한 행(row)에 속한 카드들 중 하나라도 IP명이 2줄로 넘어가면, 그 행 전체 높이를
