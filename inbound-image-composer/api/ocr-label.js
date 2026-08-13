@@ -43,7 +43,11 @@ const RESULT_SCHEMA = {
   additionalProperties: false,
 };
 
-function buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, productLineNames }) {
+// parse-image.js와 같은 이유로 buildSystemPrompt/buildLayoutInstruction으로 나눔 —
+// 원본 스크린샷 1개를 행 단위(AI_ROWS_PER_BATCH=1)로 나눠 여러 번 호출하는 동안 규칙+사전
+// 텍스트가 완전히 동일하게 반복되는데, system + cache_control(ephemeral)로 분리하면
+// 첫 호출만 정가로 과금되고 이후 호출은 캐시 읽기 단가(약 10%)로 처리된다.
+function buildSystemPrompt({ ipDictHint, tagWhitelist, moodClusters, productLineNames }) {
   const dictLines = Object.entries(ipDictHint || {})
     .slice(0, 60)
     .map(([k, v]) => `- ${k} → ${v}`)
@@ -61,8 +65,8 @@ function buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, pr
   return [
     '너는 피규어/굿즈 입고안내 텍스트 라벨에서 상품 정보를 읽어내는 파서야. 사진은 주지',
     '않는다 — 사진 아래 텍스트(상품명/가격/배송비 등) 부분만 잘라낸 이미지다.',
-    `각 칸은 빨간 테두리로 구분되어 있고 왼쪽 위에 #1, #2... 번호가 붙어 있다. 왼쪽에서 오른쪽 순서.`,
-    `정확히 ${expectedCount}개의 번호가 있으니, 그 번호 순서대로 정확히 ${expectedCount}개 항목을 출력해라.`,
+    '각 칸은 빨간 테두리로 구분되어 있고 왼쪽 위에 #1, #2... 번호가 붙어 있다. 왼쪽에서 오른쪽 순서.',
+    '이번 배치의 정확한 항목 개수는 사용자 메시지에서 별도로 안내된다.',
     '',
     '## IP명 판단 규칙',
     '- 상품명 전체가 아니라 IP명(원작명)만 뽑아라. 구구절절한 설명/버전 텍스트는 제거.',
@@ -107,6 +111,11 @@ function buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, pr
   ].join('\n');
 }
 
+// 호출마다(=행 배치마다) 실제로 달라지는 부분(이번 배치의 항목 개수)만 여기 남긴다.
+function buildLayoutInstruction({ expectedCount }) {
+  return `정확히 ${expectedCount}개의 번호가 있으니, 그 번호 순서대로 정확히 ${expectedCount}개 항목을 출력해라.`;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'POST 요청만 지원합니다.' });
@@ -137,11 +146,18 @@ export default async function handler(req, res) {
         model: 'claude-sonnet-5',
         max_tokens: 4096,
         output_config: { format: { type: 'json_schema', schema: RESULT_SCHEMA } },
+        // 규칙+사전 텍스트는 한 스크린샷을 행 단위로 나눠 호출하는 동안(AI_ROWS_PER_BATCH=1)
+        // 매번 완전히 동일하므로 system으로 분리해 캐싱한다 — parse-image.js와 동일한 이유.
+        system: [{
+          type: 'text',
+          text: buildSystemPrompt({ ipDictHint, tagWhitelist, moodClusters, productLineNames }),
+          cache_control: { type: 'ephemeral' },
+        }],
         messages: [{
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/png', data: imageBase64 } },
-            { type: 'text', text: buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, productLineNames }) },
+            { type: 'text', text: buildLayoutInstruction({ expectedCount }) },
           ],
         }],
       }),

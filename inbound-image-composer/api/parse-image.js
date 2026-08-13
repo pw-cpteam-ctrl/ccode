@@ -68,7 +68,15 @@ const RESULT_SCHEMA = {
 // - IP명 판단 규칙: 사전 활용 → 새로운 항목은 uncertain 표시
 // - 배송비/태그 규칙: 화이트리스트 기반, 불확실하면 빈 값
 // - expectedCount 강제: AI가 정확히 N개 항목을 반환하도록
-function buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, layout, productLineNames }) {
+//
+// buildSystemPrompt/buildLayoutInstruction로 나눈 이유(비용 절감): 원본 스크린샷 1개를
+// 행 단위(AI_ROWS_PER_BATCH=1)로 나눠 여러 번 호출하는 구조라, 규칙+사전 텍스트가 매
+// 행마다 토큰 그대로 다시 청구되고 있었다. 이 부분은 같은 세션 안에서는 매 호출마다
+// 내용이 완전히 동일하므로 system 프롬프트로 분리해 cache_control(ephemeral)을
+// 붙이면, 첫 호출만 정가로 과금되고 이후 호출은 캐시 읽기 단가(정가의 약 10%)로
+// 처리된다. 호출마다 실제로 달라지는 부분(레이아웃 종류 + 이번 배치의 항목 개수)만
+// buildLayoutInstruction()으로 분리해 캐시되지 않는 user 메시지 쪽에 남긴다.
+function buildSystemPrompt({ ipDictHint, tagWhitelist, moodClusters, productLineNames }) {
   const dictLines = Object.entries(ipDictHint || {})
     .slice(0, 60)
     .map(([k, v]) => `- ${k} → ${v}`)
@@ -88,26 +96,9 @@ function buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, la
     .map((c) => `- ${c.name}: ${c.members.slice(0, 20).join(', ')}`)
     .join('\n');
 
-  // cardStrip: 원본 그리드에서 1개 행(보통 5개 상품)을 항목별로 자르지 않고 원본 레이아웃
-  // 그대로 통째로 잘라 보낸 이미지. 항목별로 오려서 재조합하면 좌표 계산이 조금만 어긋나도
-  // 엉뚱한 크롭이 만들어지는 문제가 있어, 원본을 그대로 유지한 채 순서 확인용 #1,#2...
-  // 번호만 각 칸 위에 덧그렸다. 한 번에 너무 많은 항목을 보내면 인식 정확도가 급격히
-  // 떨어져서(실사용 중 25개 중 4개만 인식되는 문제 발견) 한 행씩만 나눠 보낸다.
-  const layoutInstruction = layout === 'cardStrip'
-    ? [
-      `이미지는 원본 상품 목록 그리드에서 일부 행을 그대로 잘라낸 것이다(사진+상품명+가격 등 원본 레이아웃 그대로).`,
-      `각 상품 칸은 빨간 테두리로 구분되어 있고 왼쪽 위에 #1, #2... 번호가 붙어 있다. 왼쪽에서 오른쪽 순서.`,
-      `텍스트가 흐리거나 일부 잘려 있으면, 같이 보이는 사진(캐릭터/작품 그림체, 피규어 형태)을 보고 어떤 IP/캐릭터인지 유추해서 채워라.`,
-      `정확히 ${expectedCount}개의 번호가 있으니, 그 번호 순서대로 정확히 ${expectedCount}개 항목을 출력해라.`,
-    ]
-    : [
-      `이미지는 5열 그리드이고, 위에서 아래로 행 순서, 각 행에서는 왼쪽에서 오른쪽 열 순서로 정확히 ${expectedCount}개의 상품 칸이 있다.`,
-      `반드시 ${expectedCount}개 항목을 그 순서 그대로 출력해라 (칸이 비어있어도 빈 항목으로 채워서 개수를 맞출 것).`,
-    ];
-
   return [
     '너는 피규어/굿즈 입고안내 스크린샷에서 상품 정보를 읽어내는 파서야.',
-    ...layoutInstruction,
+    '이미지와, 이번 배치의 레이아웃/항목 개수 안내는 사용자 메시지에서 별도로 전달된다.',
     '',
     '## IP명 판단 규칙',
     '- 상품명 전체가 아니라 IP명(원작명)만 뽑아라. 구구절절한 설명/버전 텍스트는 제거.',
@@ -159,13 +150,34 @@ function buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, la
   ].join('\n');
 }
 
+// 호출마다(=행 배치마다) 실제로 달라지는 부분만 여기 남긴다 — cardStrip: 원본 그리드에서
+// 1개 행(보통 5개 상품)을 항목별로 자르지 않고 원본 레이아웃 그대로 통째로 잘라 보낸
+// 이미지. 항목별로 오려서 재조합하면 좌표 계산이 조금만 어긋나도 엉뚱한 크롭이 만들어지는
+// 문제가 있어, 원본을 그대로 유지한 채 순서 확인용 #1,#2... 번호만 각 칸 위에 덧그렸다.
+// 한 번에 너무 많은 항목을 보내면 인식 정확도가 급격히 떨어져서(실사용 중 25개 중 4개만
+// 인식되는 문제 발견) 한 행씩만 나눠 보낸다.
+function buildLayoutInstruction({ expectedCount, layout }) {
+  return (layout === 'cardStrip'
+    ? [
+      `이미지는 원본 상품 목록 그리드에서 일부 행을 그대로 잘라낸 것이다(사진+상품명+가격 등 원본 레이아웃 그대로).`,
+      `각 상품 칸은 빨간 테두리로 구분되어 있고 왼쪽 위에 #1, #2... 번호가 붙어 있다. 왼쪽에서 오른쪽 순서.`,
+      `텍스트가 흐리거나 일부 잘려 있으면, 같이 보이는 사진(캐릭터/작품 그림체, 피규어 형태)을 보고 어떤 IP/캐릭터인지 유추해서 채워라.`,
+      `정확히 ${expectedCount}개의 번호가 있으니, 그 번호 순서대로 정확히 ${expectedCount}개 항목을 출력해라.`,
+    ]
+    : [
+      `이미지는 5열 그리드이고, 위에서 아래로 행 순서, 각 행에서는 왼쪽에서 오른쪽 열 순서로 정확히 ${expectedCount}개의 상품 칸이 있다.`,
+      `반드시 ${expectedCount}개 항목을 그 순서 그대로 출력해라 (칸이 비어있어도 빈 항목으로 채워서 개수를 맞출 것).`,
+    ]
+  ).join('\n');
+}
+
 /**
  * Vercel 서버리스 함수: 이미지 인식 요청 처리
  *
  * 요청 흐름:
  * 1. 환경변수 검증: ANTHROPIC_API_KEY 필수
  * 2. 파라미터 검증: imageBase64, expectedCount
- * 3. 프롬프트 생성: buildPrompt()로 상세 지시 작성
+ * 3. 프롬프트 생성: buildSystemPrompt()(캐싱 대상) + buildLayoutInstruction()(호출별 가변)
  * 4. Claude API 호출: vision + JSON Schema 포맷 강제
  * 5. 응답 파싱 및 검증: textBlock 추출 → JSON 파싱
  * 6. 결과 반환: items[] + usage 정보
@@ -204,11 +216,20 @@ export default async function handler(req, res) {
         model: 'claude-sonnet-5',
         max_tokens: 4096,
         output_config: { format: { type: 'json_schema', schema: RESULT_SCHEMA } },
+        // 규칙+사전 텍스트는 한 스크린샷을 행 단위로 나눠 호출하는 동안(AI_ROWS_PER_BATCH=1)
+        // 매번 완전히 동일하므로 system으로 분리해 캐싱한다 — 첫 호출만 정가, 이후 호출은
+        // 캐시 읽기 단가(약 10%)로 처리됨. 사전이 작은 경우 캐싱 최소 크기(claude-sonnet-5
+        // 기준 1,024토큰)에 못 미쳐 캐시가 안 걸릴 수 있는데, 그래도 손해는 없다.
+        system: [{
+          type: 'text',
+          text: buildSystemPrompt({ ipDictHint, tagWhitelist, moodClusters, productLineNames }),
+          cache_control: { type: 'ephemeral' },
+        }],
         messages: [{
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/png', data: imageBase64 } },
-            { type: 'text', text: buildPrompt({ expectedCount, ipDictHint, tagWhitelist, moodClusters, layout, productLineNames }) },
+            { type: 'text', text: buildLayoutInstruction({ expectedCount, layout }) },
           ],
         }],
       }),
