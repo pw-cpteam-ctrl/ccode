@@ -307,7 +307,7 @@ function drawCard(ctx, item, cx, cy, showShipping = true) {
 async function renderPage(items, headerImg, options = {}) {
   await ensureFontsLoaded();
 
-  const { cols = 5, rows = 4, pageW = 1080, pageH = 1350, scale = 2, showShipping = true } = options;
+  const { cols = 5, rows = 4, pageW = 1080, pageH = 1350, scale = 2, showShipping = true, padTop = 24 } = options;
 
   const canvas = document.createElement('canvas');
   canvas.width = pageW * scale;
@@ -336,9 +336,10 @@ async function renderPage(items, headerImg, options = {}) {
     const rowItems = items.slice(r * cols, r * cols + cols);
     rowHeights.push(cardBlock + rowExtraHeight(ctx, rowItems));
   }
-  const totalRowsHeight = rowHeights.reduce((a, b) => a + b, 0) + (usedRows - 1) * rowGap;
-  const padTop = Math.round((pageH - headerH - totalRowsHeight) / 2);
 
+  // 최대 개수(rows*cols)보다 상품이 적어서 행이 덜 채워진 경우, 남는 세로 공간을
+  // 절반씩 위아래로 나눠서 그리드를 페이지 정중앙에 놓던 방식(center 정렬)에서
+  // 헤더 바로 아래에 고정 여백만 두고 위쪽부터 채우는 방식(top 정렬)으로 변경.
   let yCursor = headerH + padTop;
   for (let r = 0; r < usedRows; r++) {
     for (let c = 0; c < cols; c++) {
