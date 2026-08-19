@@ -9,7 +9,10 @@
 <style>
   :root { --bg:#f3f4f6; --panel:#ffffff; --line:#e3e5ea; --line2:#d2d6dd; --accent:#e0668f; --text:#1f2329; --muted:#6b7280; --danger:#d83a52; }
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', sans-serif; }
-  body { background: var(--bg); color: var(--text); display: flex; flex-wrap: wrap; min-height: 100vh; gap: 28px; padding: 28px; align-items: flex-start; }
+  /* 데스크톱(861px~)에선 줄바꿈으로 아래로 내려보내는 대신 가로 스크롤로 뺀다 — 안 그러면
+     화면이 좁아질 때 ④ 인스타 규격 크롭 섹션이 저 아래로 밀려서 존재 자체를 놓치기 쉬움.
+     모바일(≤860px)은 아래 media query가 flex-direction:column으로 덮어써서 이 규칙과 무관. */
+  body { background: var(--bg); color: var(--text); display: flex; flex-wrap: nowrap; overflow-x: auto; min-height: 100vh; gap: 28px; padding: 28px; align-items: flex-start; }
 
   .left { flex: 0 0 auto; width: 432px; display: flex; flex-direction: column; gap: 16px; }
   #stage { width: 324px; height: 405px; border-radius: 14px; box-shadow: 0 10px 36px rgba(0,0,0,.16); cursor: grab; touch-action: none; background: #e9eaee; display:block; } /* 미리보기만 75% 축소 — canvas width/height(1080x1350) 속성은 그대로 = 다운로드 화질 무관 */
@@ -114,10 +117,12 @@
   #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
   #toast.warn { background:#8a2f3d; }
 
-  /* ===== 하단 "인스타 규격 크롭" — 위 카드 생성기와 완전히 독립된 별도 도구.
-     body가 flex-wrap:wrap이라 이 섹션에 flex:1 1 100%를 주면 위 2열(.left/.panel)
-     밑으로 자동으로 줄바꿈돼서 내려간다. ===== */
-  .igcrop-wrap { flex: 1 1 100%; max-width: 890px; } /* 위 .left(432)+gap(28)+.panel(430) 합계에 맞춤 — 안 하면 body 전체 폭으로 늘어나 오른쪽으로 튀어나와 보임 */
+  /* ===== "인스타 규격 크롭" — 위 카드 생성기와 완전히 독립된 별도 도구.
+     데스크톱에선 .left/.panel 옆에 세 번째 칸으로 나란히 붙인다(줄바꿈 안 함) — 창이
+     좁아 세 칸이 다 안 들어가면 body가 가로 스크롤되면서 오른쪽에 그대로 남아있게 되고,
+     이 섹션이 화면 밖으로 밀려서 안 보이는 문제가 없어짐. 폭은 아이템 4~5개가 한 줄에
+     들어가는 890px로 고정. ===== */
+  .igcrop-wrap { flex: 0 0 890px; width: 890px; }
   .igcrop-upload { max-width: 460px; }
   .igcrop-grid { display:flex; flex-wrap:wrap; gap:16px; margin-top:16px; }
   .igcrop-item { width:160px; }
@@ -145,7 +150,8 @@
      미리보기는 기본 펼침(사진 넣으면 바로 보이게) + 큰 버튼으로 원하면 접을 수 있게 한다. ===== */
   .mobile-preview-toggle { display:none; } /* 데스크톱에선 숨김(미리보기 항상 표시) */
   @media (max-width: 860px) {
-    body { flex-direction: column; gap: 14px; padding: 14px 12px; align-items: stretch; }
+    body { flex-direction: column; flex-wrap: wrap; overflow-x: visible; gap: 14px; padding: 14px 12px; align-items: stretch; }
+    .igcrop-wrap { flex: 1 1 auto; width: auto; } /* 데스크톱 전용 고정폭(890px) 해제 — 안 하면 좁은 화면에서 가로로 넘침 */
     /* .left/.panel 박스 자체를 없애(display:contents) 그 안 카드들이 body 세로 흐름에
        직접 참여하게 만든 뒤, order로 '입력 먼저 → 미리보기 → 원고 → 다운로드' 순서로 재배치.
        (두 열에 흩어져 있던 카드라 order 없이 그냥 쌓으면 순서가 뒤죽박죽이 됨) */
