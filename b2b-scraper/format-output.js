@@ -16,12 +16,17 @@ function buildOfficialText(f) {
   return lines.join('\n');
 }
 
-// f: { id, title, work, releaseDate, rerelease, size, manufacturer, photoFilenames: string[] }
+// f: { id, title, work, titleJa, workJa, releaseDate, rerelease, size, manufacturer, photoFilenames: string[] }
+// titleJa/workJa(일본어 원제)는 사람이 한국 정식 표기를 확인할 때 쓰는 참고 정보라
+// officialText(=AI가 받는 원문)에는 일부러 넣지 않는다 — 영어·일본어를 한꺼번에 주면
+// 둘을 섞은 엉뚱한 제목이 나올 수 있어서, AI 입력은 기존대로 영어 기준을 유지한다.
 function buildOutputProduct(f) {
   return {
     id: f.id,
     title: f.title || '',
     work: f.work || '',
+    titleJa: f.titleJa || '',
+    workJa: f.workJa || '',
     releaseDate: f.releaseDate || '',
     rerelease: !!f.rerelease,
     size: f.size || '',

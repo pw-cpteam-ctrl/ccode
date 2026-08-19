@@ -84,6 +84,31 @@ function askDateChoice(dateOptions) {
   });
 }
 
+// 같은 상품의 일본어 페이지에서 상품명·작품명만 더 받아온다.
+// 한국 정식 제목은 일본어 원제를 옮긴 것이고 영문판은 아예 다른 작명인 경우가 많아서
+// (Demon Slayer ↔ 鬼滅の刃 ↔ 귀멸의 칼날), 사람이 정식 표기를 확인할 때 원제가 있으면
+// 훨씬 빠르다. 다만 기준 페이지는 영어판 그대로 두고 여기서는 두 항목만 덧붙인다 —
+// 성인 상품 판정처럼 이미 검증된 로직이 일본어 라벨 때문에 조용히 깨지는 걸 막기 위해서다.
+async function extractJapaneseNames(page, enUrl) {
+  const jaUrl = enUrl.replace('/b2b/en/', '/b2b/ja/');
+  if (jaUrl === enUrl) return { titleJa: '', workJa: '' };
+  try {
+    await page.goto(jaUrl, { waitUntil: 'networkidle', timeout: 20000 });
+    const titleJa = ((await page.locator('.b-product-info__title').first().textContent().catch(() => '')) || '').trim();
+    const pairs = await page.locator('#section_spec .b-text-group__unit').evaluateAll(units =>
+      units.map(u => ({
+        label: u.querySelector('h3')?.textContent.trim() || '',
+        value: u.querySelector('p')?.textContent.trim() || '',
+      }))
+    );
+    const workJa = ((pairs.find(p => /シリーズ|series/i.test(p.label)) || {}).value || '').trim();
+    return { titleJa, workJa };
+  } catch (err) {
+    // 일본어판이 없거나 느려도 수집 전체를 실패시키지 않는다 — 없으면 없는 대로 진행.
+    return { titleJa: '', workJa: '', jaFailed: err.message };
+  }
+}
+
 async function extractProductFromDetailPage(page, url) {
   await page.goto(url, { waitUntil: 'networkidle' });
 
@@ -162,6 +187,7 @@ async function main() {
 
   const detailUrls = target.urls;
   const products = [];
+  let jaMissing = 0;
   for (const url of detailUrls) {
     const raw = await extractProductFromDetailPage(page, url);
     if (!raw) continue;
@@ -171,6 +197,10 @@ async function main() {
       await page.waitForTimeout(400);
       continue;
     }
+
+    // 성인 상품은 위에서 이미 걸러졌으므로 여기서만 일본어 페이지를 한 번 더 연다.
+    const ja = await extractJapaneseNames(page, url);
+    if (!ja.titleJa && !ja.workJa) jaMissing += 1;
 
     const photoFilenames = [];
     for (let i = 0; i < raw.photoUrls.length; i += 1) {
@@ -184,13 +214,18 @@ async function main() {
       }
     }
 
-    products.push(buildOutputProduct({ ...raw, photoFilenames }));
+    products.push(buildOutputProduct({ ...raw, titleJa: ja.titleJa, workJa: ja.workJa, photoFilenames }));
     console.log(`✅ ${raw.title || raw.id} 처리 완료`);
     await page.waitForTimeout(400); // 하루 10~30건 수준이라 과한 딜레이는 필요 없음 — 상식적인 간격만
   }
 
   const outPath = writeOutputFile(products, OUT_DIR, { guidanceDate: target.date });
   console.log(`\n완료: ${formatDateLabel(target.date)} 발표분 ${products.length}건 -> ${outPath}`);
+  if (jaMissing) {
+    // 일본어 원제는 "있으면 좋은" 참고 정보라 없어도 작업은 그대로 된다 — 다만 몇 건이
+    // 비었는지는 알려줘야 사이트 구조가 바뀐 걸 눈치챌 수 있다.
+    console.log(`※ ${jaMissing}건은 일본어 원제를 못 받았어요 (없어도 원고 작업에는 지장 없어요)`);
+  }
   console.log('product-sns-formatter의 "B2B에서 오늘 상품 가져오기" 버튼에서 이 output.json과');
   console.log(`${path.join(OUT_DIR, 'photos')} 폴더 안의 사진들을 함께 선택해서 가져오면 됨.`);
 
