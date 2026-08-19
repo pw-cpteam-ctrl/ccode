@@ -169,6 +169,19 @@ button.danger{background:var(--ui-warn);color:#fff;}
 .badge-x{background:#222;color:#fff;border-radius:5px;padding:1px 7px;font-size:10.5px;font-weight:800;}
 .dbsearch-row{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;}
 .dbchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+.wk-block{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:8px;padding:9px 11px;}
+.wk-block label{display:flex;align-items:center;gap:8px;}
+.wk-locale{padding:2px 8px;font-size:11px;font-weight:700;border-radius:6px;background:var(--ui-card);color:var(--ui-accent);border:1px solid var(--ui-border);}
+.wk-orig{font-size:13px;margin-top:4px;word-break:break-word;}
+.wk-dim{color:var(--ui-sub);font-size:12px;}
+.wk-search{font-size:11.5px;font-weight:700;color:var(--ui-accent);text-decoration:none;margin-left:4px;white-space:nowrap;}
+.wk-search:hover{text-decoration:underline;}
+.wk-ok{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:13.5px;font-weight:800;color:var(--ui-ok);}
+.wk-edit{padding:2px 8px;font-size:11px;font-weight:700;border-radius:6px;background:var(--ui-card);color:var(--ui-sub);border:1px solid var(--ui-border);}
+.wk-need{margin-top:6px;font-size:12.5px;font-weight:700;color:var(--ui-warn);background:var(--ui-pending-bg);border-radius:6px;padding:5px 8px;}
+.wk-row{display:flex;gap:6px;margin-top:6px;}
+.wk-input{flex:1;min-width:120px;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:6px 9px;font-size:13px;font-family:inherit;color:var(--ui-text);}
+.wk-save{padding:6px 14px;font-size:12.5px;white-space:nowrap;}
 .dbchip{font-size:11px;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:4px 9px;color:var(--ui-text);cursor:pointer;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .dbchip:hover{border-color:var(--ui-accent);}
 .mini-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center;}
@@ -655,11 +668,100 @@ function newImageKey(productId) {
 function getSelectedDayBrand() {
   return document.querySelector('input[name="dayBrand"]:checked')?.value || DEFAULT_BRAND;
 }
+/* ══════════════════ 작품명 정식표기 사전 ══════════════════
+   작품의 한국 정식 제목은 번역으로 맞힐 수 있는 게 아니다 — 국내 판권사가 따로 정한
+   이름인 경우가 많다(しゅごキャラ! → 캐릭캐릭 체인지, アイカツ! → 아이엠스타).
+   그래서 "추론"이 아니라 "조회"로 다룬다: 한 번 사람이 확인한 표기를 저장해두고,
+   저장된 게 없으면 지어내지 말고 확인해달라고 띄운다.
+
+   두 층으로 나뉜다.
+   1) 확정 사전 — (원문 → 한국 정식 표기) 쌍. 사람이 확인한 것만 들어간다.
+   2) 표기 후보 — 팀이 실제로 올린 게시물(참고 DB)에 쓰인 한국어 작품명 목록.
+      참고 DB에는 영문 원문이 안 남아 있어서 연결표로는 못 쓰지만, 확정 사전에 없을 때
+      AI에게 "이 중에 해당하는 게 있으면 그걸 써라"고 좁혀주는 데는 쓸 수 있다. */
+const WORK_DICT_STORAGE_KEY = 'sns-formatter-work-titles-v1';
+let WORK_DICT = new Map();   // 정규화한 원문 → { ko, source }
+let WORK_CANDIDATES = [];    // 한국어 표기 후보 목록
+
+function normalizeWorkKey(s) {
+  return String(s || '').toLowerCase().replace(/[\s　]+/g, ' ')
+    .replace(/[!！?？.。,、:：;；~〜\-—–_'"“”‘’()（）\[\]【】]/g, '').trim();
+}
+function loadLocalWorkDict() {
+  try { return JSON.parse(localStorage.getItem(WORK_DICT_STORAGE_KEY) || '[]'); }
+  catch { return []; }
+}
+function persistLocalWorkDict(list) {
+  try { localStorage.setItem(WORK_DICT_STORAGE_KEY, JSON.stringify(list)); }
+  catch (err) { console.warn('작품명 사전 로컬 저장 실패:', err); }
+}
+function addToWorkDict(entry) {
+  for (const raw of [entry.work, entry.workJa]) {
+    const key = normalizeWorkKey(raw);
+    if (key) WORK_DICT.set(key, { ko: entry.ko, source: entry.source || 'local' });
+  }
+}
+/** 영문/일문 어느 쪽으로든 찾는다 — 둘 중 하나만 저장돼 있어도 걸리게. */
+function lookupWorkTitle(work, workJa) {
+  for (const raw of [work, workJa]) {
+    const hit = WORK_DICT.get(normalizeWorkKey(raw));
+    if (hit) return hit.ko;
+  }
+  return '';
+}
+async function loadWorkTitleDict() {
+  WORK_DICT = new Map();
+  // 서버에 커밋된 공용 사전(팀 전체가 공유) — 아직 파일이 없으면 조용히 넘어간다.
+  try {
+    const res = await fetch('./data/work-titles.json', { cache: 'no-store' });
+    if (res.ok) {
+      const body = await res.json();
+      for (const e of (body.entries || [])) if (e && e.ko) addToWorkDict({ ...e, source: 'shared' });
+    }
+  } catch { /* 없거나 못 읽어도 로컬 사전만으로 계속 쓴다 */ }
+  // 방금 이 브라우저에서 저장한 것 — 서버 반영(배포)까지 몇 분 걸리므로 로컬을 나중에 덮어쓴다.
+  for (const e of loadLocalWorkDict()) if (e && e.ko) addToWorkDict({ ...e, source: 'local' });
+  // 표기 후보: 참고 DB에 실제로 쓰인 한국어 작품명
+  try {
+    const all = await ensureRefDb();
+    const set = new Set();
+    for (const e of all) for (const w of (e.works || (e.work ? [e.work] : []))) if (w) set.add(w);
+    WORK_CANDIDATES = [...set];
+  } catch { WORK_CANDIDATES = []; }
+}
+/** 사람이 확인한 표기를 저장 — 화면 즉시 반영 + 로컬 저장 + 팀 공유용 서버 저장 순. */
+async function saveWorkTitle({ work, workJa, ko }) {
+  const entry = { work: work || '', workJa: workJa || '', ko: String(ko || '').trim() };
+  if (!entry.ko || (!entry.work && !entry.workJa)) return { ok: false, error: '저장할 내용이 부족해요.' };
+  addToWorkDict({ ...entry, source: 'local' });
+  const list = loadLocalWorkDict().filter(e => normalizeWorkKey(e.work) !== normalizeWorkKey(entry.work)
+                                            || normalizeWorkKey(e.workJa) !== normalizeWorkKey(entry.workJa));
+  list.push(entry);
+  persistLocalWorkDict(list);
+  try {
+    const res = await fetch('/api/save-work-title', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
+    return { ok: true, shared: true };
+  } catch (err) {
+    // 서버 저장이 안 돼도 이 브라우저에는 남아있으므로 작업은 계속할 수 있다.
+    return { ok: true, shared: false, error: err.message };
+  }
+}
+
 function makeBlankProduct() {
   return {
     id: newProductId(),
     brand: getSelectedDayBrand(),
     title: '',
+    // 작품명(시리즈) — 수집한 원문과, 사람이 확인한 한국 정식 표기를 따로 들고 있는다.
+    // 예전에 저장된 상품에는 이 항목들이 없으므로 읽을 때 항상 `?? ''`로 받는다.
+    work: '',      // 영문 원문
+    workJa: '',    // 일본어 원제
+    workKo: '',    // 한국 정식 표기 (사람이 확인해서 확정한 것)
+    titleJa: '',   // 상품명 일본어 원제
     officialText: '',
     memoText: '',
     extraInstruction: '',
@@ -983,7 +1085,15 @@ function renderImageStage(p) {
   // 틀 PNG와 폰트를 함께 기다린다 — 폰트가 늦게 도착하면 캔버스가 조용히 기본 폰트로
   // 그려버리고, 그 뒤에 폰트가 와도 이미 그려진 그림은 안 바뀐다.
   Promise.all([loadFrameImage().catch(() => {}), ensureCanvasFont()]).then(() => {
-    stageEl.innerHTML = imageStageHtml(p);
+    // 기다리는 사이에 화면이 다시 그려졌으면(다른 상품 선택, 원문 언어 전환 등) 위에서
+    // 잡아둔 자리는 이미 화면에서 떨어져 나간 껍데기다. 거기에 그리면 내용이 안 보이는 건
+    // 물론이고, 이어서 버튼을 찾는 코드가 못 찾아서 오류가 난다. 그래서 다시 찾고,
+    // 그 사이 다른 상품으로 넘어갔으면 아예 그리지 않는다.
+    const liveStage = $('#stage3');
+    if (!liveStage) return;
+    const active = getActiveProduct();
+    if (active && active.id !== p.id) return;
+    liveStage.innerHTML = imageStageHtml(p);
     wireImageStage(p);
     drawAllThumbs(p);
     drawComposer(p);
@@ -1467,6 +1577,88 @@ async function selectProduct(id) {
 }
 
 /* ══════════════════ 상품 상세 (우) ══════════════════ */
+/* ── 작품명 확인 블록 (상품정보 단계 안) ──
+   원문(일본어/영어)을 보여주고, 확정된 한국 정식 표기가 있으면 그대로 쓰고 없으면
+   "확인 필요"로 띄운다. 지어낸 표기가 조용히 원고로 나가는 걸 막는 게 목적. */
+const WORK_LOCALE_KEY = 'sns-formatter-work-locale-v1';
+// 기본을 일본어로 두는 이유: 한국 정식 제목이 일본어 원제에서 나온 것이라 검색이 빠르다.
+let workLocale = (() => { try { return localStorage.getItem(WORK_LOCALE_KEY) || 'ja'; } catch { return 'ja'; } })();
+function originalOf(p, kind) {
+  const ja = kind === 'work' ? (p.workJa || '') : (p.titleJa || '');
+  const en = kind === 'work' ? (p.work || '') : (p.title || '');
+  if (workLocale === 'ja') return ja || en;   // 일본어가 없으면 영어라도 보여준다
+  return en || ja;
+}
+function workSearchUrl(p) {
+  const q = (p.workJa || p.work || '').trim();
+  return q ? `https://www.google.com/search?q=${encodeURIComponent(q + ' 한국어 정식 제목')}` : '';
+}
+function workBlockHtml(p) {
+  const workOrig = originalOf(p, 'work');
+  const titleOrig = originalOf(p, 'title');
+  if (!workOrig && !titleOrig) return ''; // 손으로 만든 상품 등 원문이 아예 없으면 안 띄운다
+  const hasBoth = (p.workJa || p.titleJa) && (p.work || p.title);
+  const confirmed = (p.workKo || '').trim();
+  const searchUrl = workSearchUrl(p);
+  const toggle = hasBoth
+    ? `<button type="button" class="wk-locale" id="btnWorkLocale">${workLocale === 'ja' ? '일본어' : '영어'} 원문 ⇄</button>`
+    : '';
+  const search = searchUrl
+    ? `<a class="wk-search" href="${searchUrl}" target="_blank" rel="noopener">🔍 검색</a>` : '';
+  const body = confirmed
+    ? `<div class="wk-ok">✓ ${escapeHtml(confirmed)}
+         <button type="button" class="wk-edit" id="btnWorkEdit">고치기</button></div>`
+    : `<div class="wk-need">⚠ 처음 보는 작품이에요 — 한국 정식 제목을 확인해서 넣어주세요</div>
+       <div class="wk-row">
+         <input type="text" id="workKoInput" class="wk-input" placeholder="예) 귀멸의 칼날" value=""/>
+         <button type="button" class="wk-save" id="btnWorkSave">저장</button>
+       </div>`;
+  return `
+    <div class="field wk-block">
+      <label>작품명 ${toggle}</label>
+      <div class="wk-orig">${workOrig ? escapeHtml(workOrig) : '<span class="wk-dim">(작품명 원문 없음)</span>'} ${search}</div>
+      ${titleOrig ? `<div class="wk-orig wk-dim">상품명 원문: ${escapeHtml(titleOrig)}</div>` : ''}
+      ${body}
+      <div class="status" id="workSaveStatus"></div>
+    </div>`;
+}
+function wireWorkBlock(p) {
+  const loc = $('#btnWorkLocale');
+  if (loc) loc.addEventListener('click', () => {
+    workLocale = workLocale === 'ja' ? 'en' : 'ja';
+    try { localStorage.setItem(WORK_LOCALE_KEY, workLocale); } catch { /* 저장 실패해도 화면은 바뀜 */ }
+    renderDetail();
+  });
+  const edit = $('#btnWorkEdit');
+  if (edit) edit.addEventListener('click', () => { p.workKo = ''; saveProducts(); renderDetail(); });
+  const save = $('#btnWorkSave');
+  if (save) save.addEventListener('click', async () => {
+    const input = $('#workKoInput');
+    const ko = (input.value || '').trim();
+    const statusEl = $('#workSaveStatus');
+    if (!ko) { statusEl.textContent = '한국 정식 제목을 입력해주세요.'; return; }
+    statusEl.textContent = '저장 중...';
+    p.workKo = ko;
+    saveProducts();
+    const r = await saveWorkTitle({ work: p.work, workJa: p.workJa, ko });
+    // 같은 작품의 다른 상품에도 바로 반영 — 하루에 같은 작품이 여러 개 오는 일이 잦다.
+    let alsoFilled = 0;
+    for (const other of PRODUCTS) {
+      if (other === p || (other.workKo || '').trim()) continue;
+      const hit = lookupWorkTitle(other.work, other.workJa);
+      if (hit) { other.workKo = hit; alsoFilled += 1; }
+    }
+    saveProducts();
+    renderDetail();
+    renderList();
+    const extra = alsoFilled ? ` (같은 작품 ${alsoFilled}건에도 반영)` : '';
+    const el = $('#workSaveStatus');
+    if (el) el.textContent = r.shared
+      ? `저장했어요 — 팀 전체에 공유돼요${extra}`
+      : `이 브라우저에 저장했어요${extra}. 팀 공유 저장은 실패했어요 (${r.error || '원인 불명'})`;
+  });
+}
+
 function renderDetail() {
   const box = $('#mdDetail');
   const p = getActiveProduct();
@@ -1490,6 +1682,7 @@ function renderDetail() {
         </div>
         <div class="dbchips" id="dbChips"></div>
       </div>
+      ${workBlockHtml(p)}
     </div>
 
     <div class="stage">
@@ -1555,6 +1748,7 @@ function renderCorrectionBox(p) {
   box.innerHTML = p.reviewIssues.length ? '<div class="c-title">⚠️ 맞춤법/표현 — 뭐가 달라졌는지</div><ul>' + p.reviewIssues.map(c => `<li>${boldKeyParts(c)}</li>`).join('') + '</ul>' : '';
 }
 function wireDetail(p) {
+  wireWorkBlock(p);
   const titleInput = $('#titleInput');
   titleInput.addEventListener('input', () => { p.title = titleInput.value; renderList(); saveProductsSoon(); });
 
@@ -1661,7 +1855,13 @@ async function generateDraftCore(p) {
     const res = await fetch('/api/format', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productText, extraInstruction: p.extraInstruction, brand: p.brand }),
+      // workKo: 사람이 확인한 한국 정식 작품명. 있으면 AI가 번역·음역하지 않고 그대로 쓴다.
+      // workCandidates: 확정된 게 없을 때, 팀이 실제로 써온 표기 중에서 고르게 하는 후보 목록.
+      body: JSON.stringify({
+        productText, extraInstruction: p.extraInstruction, brand: p.brand,
+        workKo: (p.workKo || '').trim(),
+        workCandidates: (p.workKo || '').trim() ? [] : WORK_CANDIDATES,
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
@@ -2090,6 +2290,11 @@ async function importB2BFiles(files) {
     const p = makeBlankProduct();
     p.brand = dayBrand;
     p.title = entry.title || '';
+    // 예전 스크래퍼가 만든 output.json에는 이 항목들이 없다 — 없으면 빈 값으로 둔다.
+    p.work = entry.work || '';
+    p.workJa = entry.workJa || '';
+    p.titleJa = entry.titleJa || '';
+    p.workKo = lookupWorkTitle(p.work, p.workJa) || '';
     p.officialText = entry.officialText || '';
     autoFillProductLineSub(p);
     for (const filename of entry.photos || []) {
@@ -2353,8 +2558,13 @@ bushiImportZone.addEventListener('drop', e => {
 (async function init() {
   await loadProperNounDictionary();
   await loadProductLineMatcher();
+  await loadWorkTitleDict(); // 상품을 그리기 전에 사전을 올려둬야 "확인 필요"가 잘못 뜨지 않는다
   loadGradSettings();
   PRODUCTS = loadProductsFromStorage().map(p => ({ ...makeBlankProduct(), ...p }));
+  // 예전에 담아둔 상품도, 그 사이 사전에 등록된 작품이면 확정 표기를 채워준다.
+  for (const p of PRODUCTS) {
+    if (!(p.workKo || '').trim()) p.workKo = lookupWorkTitle(p.work, p.workJa) || '';
+  }
   await preloadMainThumbnails();
   renderList();
   if (PRODUCTS.length) selectProduct(PRODUCTS[0].id);

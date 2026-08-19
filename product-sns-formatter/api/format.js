@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { productText, extraInstruction, brand } = req.body || {};
+  const { productText, extraInstruction, brand, workKo, workCandidates } = req.body || {};
   if (!productText || !productText.trim()) {
     res.status(400).json({ error: '상품정보(productText)가 비어 있어요.' });
     return;
@@ -37,7 +37,7 @@ export default async function handler(req, res) {
       model: 'claude-haiku-4-5',
       max_tokens: 1024,
       output_config: { format: { type: 'json_schema', schema: RESULT_SCHEMA } },
-      messages: [{ role: 'user', content: buildPrompt(productText, extraInstruction, BRANDS[brand]) }],
+      messages: [{ role: 'user', content: buildPrompt(productText, extraInstruction, BRANDS[brand], { workKo, workCandidates }) }],
     });
     const text = message.content.find((block) => block.type === 'text')?.text || '{}';
     const parsed = JSON.parse(text);
@@ -136,7 +136,19 @@ const RESULT_SCHEMA = {
   additionalProperties: false,
 };
 
-function buildPrompt(productText, extraInstruction, brand) {
+function buildPrompt(productText, extraInstruction, brand, workInfo = {}) {
+  // 작품(시리즈)의 한국 정식 제목은 번역으로 맞힐 수 있는 게 아니다 — 국내 판권사가 따로
+  // 정한 이름인 경우가 많다(しゅごキャラ! → 캐릭캐릭 체인지). 그래서 사람이 확인한 표기가
+  // 있으면 그걸 강제하고, 없으면 팀이 실제로 써온 표기 목록에서 고르게 좁혀준다.
+  const workKo = String(workInfo.workKo || '').trim();
+  const workCandidates = Array.isArray(workInfo.workCandidates) ? workInfo.workCandidates : [];
+  const workLines = [];
+  if (workKo) {
+    workLines.push(`이 상품이 속한 작품(시리즈)의 한국 정식 제목은 "${workKo}"이다. 상품정보에 그 작품명이 영어나 일본어로 적혀 있더라도, 결과에서는 반드시 이 표기를 그대로 써라 — 번역하거나 발음대로 옮기지 말고, 다른 이름으로 바꾸지도 마라.`);
+  } else if (workCandidates.length) {
+    workLines.push(`아래는 우리 팀이 실제로 써온 작품명 표기 목록이다. 상품정보의 작품(시리즈)이 이 중 하나에 해당하면 반드시 그 표기를 그대로 써라(발음을 추측해서 새로 만들지 마라): ${workCandidates.join(', ')}.`);
+    workLines.push('작품(시리즈) 이름은 번역이 아니라 국내 판권사가 정한 정식 제목을 쓰는 것이 원칙이다. 위 목록에 없고 한국 정식 제목을 확신할 수 없으면, 뜻을 번역해서 새 제목을 만들어내지 말고 원어 발음 그대로 한글로 옮겨라 (예: 영문 "Demon Slayer"를 "악마 학살자"처럼 뜻으로 옮기는 것은 금지).');
+  }
   return [
     `너는 상품 정보 텍스트를 "${brand.label}" 브랜드의 회사 SNS 포맷으로 변환하는 변환기야.`,
     '이번 요청은 이전 요청과 완전히 독립적이다 — 직전 대화나 이전 변환 내용을 기억하거나 참고하지 마라.',
@@ -149,6 +161,7 @@ function buildPrompt(productText, extraInstruction, brand) {
     '시리즈명·캐릭터명·상품 애칭 등 영문 고유명사는 전부 한글로 표기해라 — 영문을 그대로 남겨두지 마라. 한국에 이미 알려진 공식/통용 표기가 있으면 그걸 쓰고(예: "Blue Archive" → "블루아카이브"), 그런 표기를 확신할 수 없으면 지어내지 말고 원어 발음 그대로 소리 나는 대로 한글로 옮겨 적어라(예: "Purple Lollipop" → "퍼플 롤리팝", "Saori" → "사오리"). 즉 "모르면 영어 그대로 둔다"가 아니라 "모르면 발음대로 한글 표기한다"이다. 이 규칙은 낯설거나 실존 인명인지 확신이 안 서는 단어(가상의 이름, 처음 보는 조어 등)에도 예외 없이 적용된다 — 확신이 안 선다고 영문을 그대로 두지 말고 일단 소리 나는 대로 한글로 옮겨라(예: "Komissa" → "코미사"). 이 규칙은 제목(【】 안)에도 동일하게 적용된다 — 제목 안에 있다는 이유로 고유명사를 영문 그대로 남기지 마라.',
     '고유명사를 한글로 옮길 때 절대로 뜻을 창작해서 별명·수식어로 바꿔치기하지 마라 — 오직 소리 나는 대로만 옮겨라. 예를 들어 "Hatsune Miku"는 반드시 "하츠네 미쿠"로만 써라. "초음속 미쿠", "미래소녀 미쿠"처럼 원문에 없는 의미를 상상해서 지어낸 별명으로 바꾸는 것은 절대 금지다.',
     `아래는 자주 나오는 고정 표기 사전이다. 상품정보에 이 목록의 표현이 등장하면(대소문자 무관) 발음을 추측하지 말고 반드시 이 표기 그대로 써라: ${PROPER_NOUNS.map(([en, ko]) => `${en}=${ko}`).join(', ')}.`,
+    ...workLines,
     '상품정보 원문에 명백한 맞춤법/띄어쓰기/문법 오류가 있으면 결과(result)에서는 자연스럽게 교정해서 반영하고, 교정한 각 건마다 무엇을 왜 어떻게 고쳤는지 한국어로 짧게 설명해서 corrections 배열에 담아라. 교정한 게 없으면 corrections는 빈 배열로 응답해라.',
     '상품정보 원문에 상품과 무관한 문장(잡담, 질문, 채팅 메시지 조각 등)이 섞여 있으면 그 문장은 결과(result)에 포함하지 마라. 이 경우 corrections에는 "오탈자"나 "의미 없는 단어"라고 둘러대지 말고, "상품 정보와 무관한 문장으로 판단되어 제외했습니다: <원문 그대로>" 형식으로 실제 사유를 정확히 밝혀라.',
     '결과(result)는 전부 한국어로 작성해라. 상품정보에 원래 없던 일본어(가나·한자 등)를 새로 만들어 넣지 마라. 이건 특히 중요한 규칙이다 — 상품정보의 대사나 문장이 이미 한국어로 되어 있으면, 그 부분을 일본어로 번역하거나 바꿔치기하지 마라 (예: 입력이 "최고의 『지금』을 함께─"인데 결과에 "最高の『今』を共に─"처럼 일본어로 바꿔 쓰는 것은 금지). 입력에 원래부터 일본어로 적혀 있던 부분만 그대로 옮긴다.',

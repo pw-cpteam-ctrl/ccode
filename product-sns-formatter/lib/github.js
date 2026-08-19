@@ -27,6 +27,26 @@ export async function readGithubFile({ token, owner, repo, branch, path }) {
   return { sha: file.sha, content: Buffer.from(file.content, 'base64').toString('utf-8') };
 }
 
+// 파일 전체를 새 내용으로 덮어쓴다(없으면 새로 만든다). 줄 단위로 이어붙이는
+// appendToGithubFile과 달리, JSON처럼 "읽어서 고친 뒤 통째로 다시 쓰는" 경우에 쓴다.
+export async function writeGithubFile({ token, owner, repo, branch, path, content, message, sha }) {
+  const putRes = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${path}`, {
+    method: 'PUT',
+    headers: authHeaders(token),
+    body: JSON.stringify({
+      message,
+      content: Buffer.from(content, 'utf-8').toString('base64'),
+      branch,
+      ...(sha ? { sha } : {}),
+    }),
+  });
+  if (!putRes.ok) {
+    const errText = await putRes.text();
+    throw new Error(`커밋 실패 (${putRes.status}): ${errText}`);
+  }
+  return putRes.json();
+}
+
 export async function appendToGithubFile({ token, owner, repo, branch, path, newLine, message }) {
   const headers = authHeaders(token);
 
