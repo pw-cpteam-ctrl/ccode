@@ -55,7 +55,7 @@
   .field-head select { padding-left:8px; padding-right:4px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; }
   .field-work { flex:1 1 auto; min-width:0; }
 
-  .panel { flex: 1; max-width: 430px; display: flex; flex-direction: column; gap: 16px; }
+  .panel { flex: 0 0 430px; width: 430px; display: flex; flex-direction: column; gap: 16px; } /* 1·3번 칸처럼 고정폭 — flex:1이면 이 칸만 줄어들면서 화면이 찌그러짐 */
   h1 { font-size: 20px; font-weight: 700; }
   h1 small { font-weight: 300; color: var(--muted); font-size: 13px; display: block; margin-top: 4px; }
 
