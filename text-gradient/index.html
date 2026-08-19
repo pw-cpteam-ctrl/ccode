@@ -38,11 +38,13 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Mal
 .row3{display:flex;gap:6px;}.row3 .field-col,.row3 .field{flex:1;min-width:0;}
 .col-title{font-size:12px;font-weight:700;color:var(--ui-sub);text-align:center;margin-bottom:4px;}
 .sec{font-size:15px;font-weight:800;color:var(--ui-text);margin:16px 0 9px;padding-bottom:6px;border-bottom:2px solid var(--ui-border);}
-/* 다른 도구로 가는 링크 — 지금 도구의 진짜 제목(h1)보다 톤을 낮춰서, 시선이 h1로 먼저 가게 함 */
-.toolLink{display:inline-block;font-size:12.5px;color:#7d7568;text-decoration:none;padding:5px 10px;
-  border:1px solid var(--ui-border);border-radius:6px;background:var(--ui-card);}
+/* 다른 도구로 가는 링크 — 지금 도구의 진짜 제목(h1)보다 톤을 낮춰서, 시선이 h1로 먼저 가게 함.
+   패널 폭(380px)에 맞춰 꽉 채우고, 글씨도 잘 읽히게 키움 */
+.toolLink{display:block;width:100%;box-sizing:border-box;font-size:16px;font-weight:600;color:#7d7568;
+  text-decoration:none;text-align:center;padding:12px 10px;
+  border:1px solid var(--ui-border);border-radius:8px;background:var(--ui-card);}
 .toolLink:hover{color:var(--ui-text);border-color:#b8b0a0;}
-.toolLinkSep{border-bottom:1px solid var(--ui-border);margin:12px 0 14px;}
+.toolLinkSep{border-bottom:1px solid var(--ui-border);margin:14px 0 16px;}
 .subsec{font-size:12.5px;font-weight:800;color:var(--ui-accent);margin:10px 0 6px;padding:4px 9px;background:rgba(20,82,192,.08);border-left:3px solid var(--ui-accent);border-radius:4px;}
 .panel code{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:4px;padding:1px 5px;font-size:11.5px;}
 .actions{position:sticky;bottom:0;padding-top:10px;margin-top:12px;background:linear-gradient(transparent,var(--ui-panel) 35%);display:flex;gap:7px;}
