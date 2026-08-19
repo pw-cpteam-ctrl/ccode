@@ -187,7 +187,9 @@ button.danger{background:var(--ui-warn);color:#fff;}
 .thumbwrap .th-del{position:absolute;top:-5px;right:-5px;font-size:10px;background:#fff;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--ui-border);color:var(--ui-sub);}
 .thumbwrap .th-del:hover{color:var(--ui-warn);}
 .thumbwrap.dragover canvas{outline:2px dashed var(--ui-accent);outline-offset:2px;}
-#b2bImportZone{border-radius:8px;transition:background .15s;}
+#b2bImportZone,#bushiImportZone{border-radius:8px;transition:background .15s;}
+#bushiImportZone{margin-top:8px;}
+#bushiImportZone.dragover{outline:2px dashed var(--ui-accent);outline-offset:3px;background:rgba(240,125,30,.06);}
 #b2bImportZone.dragover{outline:2px dashed var(--ui-accent);outline-offset:3px;background:rgba(240,125,30,.06);}
 .thumbwrap.drag-source{opacity:.4;}
 .thumbwrap .th-frame{position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;background:#fff;border-radius:8px;padding:0 5px;height:14px;line-height:14px;cursor:pointer;border:1px solid var(--ui-border);color:var(--ui-accent);white-space:nowrap;}
@@ -242,6 +244,11 @@ button.danger{background:var(--ui-warn);color:#fff;}
         <button id="btnB2BImport" class="secondary" style="width:100%;">🔄 B2B에서 오늘 상품 가져오기 (폴더 선택 또는 드래그)</button>
         <input type="file" id="b2bImportInput" webkitdirectory directory multiple style="display:none;"/>
         <div class="status" id="b2bImportStatus">스크래퍼 프로그램을 실행하면 자동으로 만들어지는 <b>날짜 이름의 폴더</b>(예: <code>2026-07-30</code>)를 통째로 선택하거나, 그 폴더를 여기로 끌어다 놓으면 사진까지 전부 자동으로 채워져요. 폴더 이름은 <b>상품이 발표된 날짜</b>예요 — 저녁에 돌리면 다음날 날짜 폴더가 만들어질 수 있어요.</div>
+      </div>
+      <div id="bushiImportZone">
+        <button id="btnBushiImport" class="secondary" style="width:100%;">📦 부시로드 메일 ZIP 가져오기 (파일 선택 또는 드래그)</button>
+        <input type="file" id="bushiImportInput" accept=".zip" multiple style="display:none;"/>
+        <div class="status" id="bushiImportStatus">메일로 받은 <b>ZIP 파일을 압축 풀지 말고 그대로</b> 올리면 사진이 들어와요. 발주서 엑셀이 같이 들어있으면 상품과 스펙(사이즈·재질·마감일 등)까지 자동으로 채워져요. 여러 개를 한 번에 올려도 돼요.</div>
       </div>
       <div class="action-row">
         <div class="action-col-stack">
@@ -1985,12 +1992,22 @@ $('#btnHarvestCopyIns').addEventListener('click', () => harvestCopy('ins'));
 
 /* ══════════════════ 초기화 ══════════════════ */
 $('#dayLabel').textContent = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' }) + ' 작업';
+// 가져오기 입구는 브랜드마다 다르다(굿스마일=스크래퍼 폴더, 부시로드=메일 ZIP). 둘 다 항상
+// 띄우면 화면이 번잡해지고 잘못된 입구에 넣기도 쉬워서, 위에서 고른 브랜드의 것만 보여준다.
+function syncImportZones() {
+  const brand = getSelectedDayBrand();
+  const gs = $('#b2bImportZone'), bu = $('#bushiImportZone');
+  if (gs) gs.style.display = brand === 'goodsmile' ? '' : 'none';
+  if (bu) bu.style.display = brand === 'bushiroad' ? '' : 'none';
+}
 document.querySelectorAll('#dayBrandRadios input[name="dayBrand"]').forEach(el => {
   el.addEventListener('change', () => {
     document.querySelectorAll('#dayBrandRadios .brand-opt').forEach(o => o.classList.toggle('selected', o.querySelector('input').checked));
+    syncImportZones();
   });
 });
 document.querySelectorAll('#dayBrandRadios .brand-opt').forEach(o => o.classList.toggle('selected', o.querySelector('input').checked));
+syncImportZones();
 
 $('#btnAddProduct').addEventListener('click', addProduct);
 $('#btnB2BImport').addEventListener('click', () => $('#b2bImportInput').click());
@@ -2092,6 +2109,246 @@ async function importB2BFiles(files) {
   statusEl.textContent = `✓ ${imported}건 가져옴` + (missingPhotos ? ` (사진 ${missingPhotos}장은 같이 선택 안 돼서 못 채움)` : '');
   $('#b2bImportInput').value = ''; // 같은 파일을 다시 선택해도 change가 뜨도록 초기화
 }
+
+/* ══════════════════ 부시로드 메일 ZIP 가져오기 ══════════════════
+   부시로드는 굿스마일과 달리 스크랩할 사이트가 없고, 사진(과 때때로 발주서 엑셀)이
+   메일 첨부 ZIP으로 온다. 팀원이 압축을 풀고 사진을 하나씩 올리던 단계를 없애려고
+   ZIP을 그대로 받아서 처리한다. 엑셀이 없는 ZIP도 자주 오므로(사진만 오는 경우)
+   그때는 상품 한 개를 만들고 사진을 전부 담아 사람이 이어서 쓰게 한다. */
+
+// 일본에서 만든 ZIP이라 파일명이 UTF-8이 아니라 일본어 인코딩(Shift_JIS)인 경우가 있다.
+// 그대로 두면 한글 환경에서 이름이 깨져서 사진/엑셀 구분이 안 되므로 직접 디코딩한다.
+function decodeZipFileName(bytes) {
+  const tryDecode = enc => {
+    try { return new TextDecoder(enc, { fatal: true }).decode(bytes); } catch { return null; }
+  };
+  return tryDecode('utf-8') || tryDecode('shift_jis') || new TextDecoder('utf-8').decode(bytes);
+}
+function unescapeXml(s) {
+  return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+          .replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, d) => String.fromCharCode(+d))
+          .replace(/&amp;/g, '&');
+}
+// 엑셀 날짜는 숫자(1899-12-30부터 센 일수)로 저장돼 있어서 그대로 두면 46281 같은 값이 보인다.
+function excelSerialToDateText(n) {
+  const ms = Math.round((n - 25569) * 86400000); // 25569 = 1970-01-01의 엑셀 일련번호
+  const d = new Date(ms);
+  if (isNaN(d)) return String(n);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+// .xlsx는 사실 압축 파일이라, 이미 쓰고 있는 JSZip으로 열어서 표를 읽는다(라이브러리 추가 없음).
+async function readXlsxCells(blob) {
+  const wb = await JSZip.loadAsync(blob);
+  const ssEntry = wb.file('xl/sharedStrings.xml');
+  let shared = [];
+  if (ssEntry) {
+    const xml = await ssEntry.async('string');
+    shared = [...xml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)].map(m =>
+      [...m[1].matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)].map(t => unescapeXml(t[1])).join(''));
+  }
+  const sheetName = Object.keys(wb.files)
+    .filter(n => /^xl\/worksheets\/sheet\d+\.xml$/.test(n)).sort()[0];
+  if (!sheetName) throw new Error('엑셀 안에서 시트를 찾지 못했어요');
+  const sx = await wb.file(sheetName).async('string');
+  const rows = new Map();
+  // 빈 칸은 <c r="A1"/>처럼 닫힘 태그 없이 오기도 해서 두 형태를 모두 받는다.
+  for (const rm of sx.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
+    const rn = Number((rm[1].match(/\br="(\d+)"/) || [])[1]);
+    if (!rn || !rm[2]) continue;
+    const cells = {};
+    for (const cm of rm[2].matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+      const col = (cm[1].match(/\br="([A-Z]+)\d+"/) || [])[1];
+      if (!col || cm[2] == null) continue;
+      const type = (cm[1].match(/\bt="([^"]+)"/) || [])[1];
+      let val;
+      if (type === 'inlineStr') {
+        val = [...cm[2].matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)].map(t => unescapeXml(t[1])).join('');
+      } else {
+        const raw = (cm[2].match(/<v>([\s\S]*?)<\/v>/) || [])[1];
+        if (raw == null) continue;
+        val = type === 's' ? (shared[Number(raw)] ?? '') : unescapeXml(raw);
+      }
+      if (String(val).trim() !== '') cells[col] = String(val).trim();
+    }
+    if (Object.keys(cells).length) rows.set(rn, cells);
+  }
+  return rows;
+}
+const HAS_JAPANESE = /[぀-ヿ㐀-鿿]/;
+// 열 위치(D열, G열…)를 고정해두면 발주서 양식이 조금만 바뀌어도 조용히 빈 값이 되므로,
+// 굿스마일 스크래퍼에서 겪었던 방식대로 "라벨 글자"로 열을 찾는다.
+const XLSX_FIELDS = [
+  ['jan', /^jan$/i], ['category', /^(カテゴリ|category)$/i], ['size', /^size$/i],
+  ['material', /^material$/i], ['country', /^country$/i], ['release', /^release\s*date$/i],
+  ['delivery', /^delivery/i], ['deadline', /^order\s*deadline$/i], ['price', /^retail\s*price/i],
+];
+function findXlsxHeader(rows) {
+  for (const [rn, cells] of [...rows.entries()].sort((a, b) => a[0] - b[0])) {
+    const entries = Object.entries(cells);
+    if (!entries.some(([, v]) => /^jan$/i.test(v))) continue;
+    const map = {}, nameCols = [];
+    for (const [col, label] of entries) {
+      if (/^product\s*name$/i.test(label)) { nameCols.push(col); continue; }
+      const hit = XLSX_FIELDS.find(([, re]) => re.test(label));
+      if (hit && !map[hit[0]]) map[hit[0]] = col;
+    }
+    return { headerRow: rn, map, nameCols: nameCols.sort() };
+  }
+  return null;
+}
+function readXlsxProducts(rows) {
+  const header = findXlsxHeader(rows);
+  if (!header) return [];
+  const { headerRow, map, nameCols } = header;
+  const out = [];
+  for (const [rn, cells] of [...rows.entries()].sort((a, b) => a[0] - b[0])) {
+    if (rn <= headerRow) continue;
+    const jan = map.jan ? cells[map.jan] : '';
+    if (!jan || !/^\d{8,}$/.test(jan)) continue;
+    // 상품명 칸이 일본어/영문 두 개인데 순서가 늘 같다고 볼 수 없어서, 글자를 보고 가른다.
+    const names = nameCols.map(c => cells[c]).filter(Boolean);
+    const nameJa = names.find(n => HAS_JAPANESE.test(n)) || '';
+    const nameEn = names.find(n => n !== nameJa) || '';
+    const get = k => (map[k] ? cells[map[k]] || '' : '');
+    let deadline = get('deadline');
+    if (deadline && /^\d+(\.\d+)?$/.test(deadline)) deadline = excelSerialToDateText(Number(deadline));
+    out.push({
+      jan, nameJa, nameEn, size: get('size'), material: get('material'),
+      country: get('country'), release: get('release'), delivery: get('delivery'), deadline,
+    });
+  }
+  return out;
+}
+function buildBushiOfficialText(p) {
+  const lines = [];
+  if (p.nameJa) lines.push(`상품명(원어): ${p.nameJa}`);
+  if (p.nameEn) lines.push(`상품명(영문): ${p.nameEn}`);
+  if (p.size) lines.push(`사이즈: ${p.size}`);
+  if (p.material) lines.push(`재질: ${p.material}`);
+  if (p.country) lines.push(`원산지: ${p.country}`);
+  if (p.release) lines.push(`발매: ${p.release}`);
+  if (p.delivery) lines.push(`입고예정: ${p.delivery}`);
+  if (p.deadline) lines.push(`수주마감: ${p.deadline}`);
+  if (p.jan) lines.push(`JAN: ${p.jan}`);
+  return lines.join('\n');
+}
+// 사진 파일명에 상품 종류가 일본식 약어로 들어있다(can=캔뱃지, acsta=아크릴스탠드 등).
+// 확정이 아니라 "후보 고르기"용이며, 못 고른 사진은 버리지 않고 첫 상품에 담고 알려준다.
+const PHOTO_HINTS = [
+  ['acsta', ['acrylic']], ['acrylic', ['acrylic']], ['acst', ['acrylic']],
+  ['can', ['can badge', 'badge']], ['badge', ['badge']],
+  ['key', ['key']], ['shisyu', ['key', 'embroider']], ['keyholder', ['key']],
+  ['poster', ['poster']], ['sticker', ['sticker']], ['towel', ['towel']],
+  ['clearfile', ['clear file']], ['file', ['clear file']],
+  ['plush', ['plush']], ['putish', ['plush']], ['tapestry', ['tapestry']],
+  ['mascot', ['mascot']], ['charm', ['charm']], ['card', ['card']],
+];
+function pickProductForPhoto(filename, products) {
+  const base = filename.toLowerCase().replace(/\.[a-z0-9]+$/, '');
+  if (/fullset|full_set/.test(base)) return -1; // 전체 세트 컷은 특정 상품 것이 아님
+  const tokens = base.split(/[^a-z0-9]+/).filter(Boolean);
+  const scores = products.map(p => {
+    const name = `${p.nameEn} ${p.nameJa}`.toLowerCase();
+    let s = 0;
+    for (const t of tokens) {
+      // 약어가 다른 말에 붙어서 오기도 한다(dioramaacsta = 디오라마 + acsta).
+      const hint = PHOTO_HINTS.find(([k]) => t === k || t.includes(k));
+      if (hint) { if (hint[1].some(w => name.includes(w))) s += 2; }
+      else if (t.length >= 4 && name.includes(t)) s += 1;
+    }
+    return s;
+  });
+  const best = Math.max(...scores, 0);
+  if (best === 0) return -1;
+  return scores.filter(s => s === best).length === 1 ? scores.indexOf(best) : -1;
+}
+const IMAGE_RE = /\.(jpe?g|png|gif|webp)$/i;
+async function importBushiroadZips(files) {
+  const statusEl = $('#bushiImportStatus');
+  if (typeof JSZip === 'undefined') { statusEl.textContent = 'ZIP 라이브러리 로딩 실패 — 새로고침 후 다시 시도해주세요.'; return; }
+  const zips = files.filter(f => /\.zip$/i.test(f.name));
+  if (!zips.length) { statusEl.textContent = 'ZIP 파일이 아니에요. 메일에 첨부된 ZIP을 그대로 올려주세요.'; return; }
+
+  statusEl.textContent = '읽는 중...';
+  // 이 입구로 들어온 건 무조건 부시로드다 — 위쪽 브랜드 선택이 굿스마일이어도 여기 맞춰준다.
+  const dayBrand = 'bushiroad';
+  let madeTotal = 0, photoTotal = 0, firstNewId = null;
+  const notes = [];
+
+  for (const zipFile of zips) {
+    let zip;
+    try {
+      zip = await JSZip.loadAsync(zipFile, { decodeFileName: decodeZipFileName });
+    } catch (err) {
+      notes.push(`${zipFile.name}: 열지 못했어요 (${err.message})`);
+      continue;
+    }
+    const entries = Object.values(zip.files).filter(f => !f.dir);
+    const imageEntries = entries.filter(f => IMAGE_RE.test(f.name) && !/^__MACOSX/.test(f.name));
+    const xlsxEntry = entries.find(f => /\.xlsx$/i.test(f.name) && !/^__MACOSX/.test(f.name));
+
+    let specs = [];
+    if (xlsxEntry) {
+      try {
+        specs = readXlsxProducts(await readXlsxCells(await xlsxEntry.async('blob')));
+        if (!specs.length) notes.push(`${zipFile.name}: 엑셀은 있는데 상품 줄을 못 찾았어요 — 사진만 가져왔어요`);
+      } catch (err) {
+        notes.push(`${zipFile.name}: 엑셀을 읽지 못해 사진만 가져왔어요 (${err.message})`);
+      }
+    }
+
+    // 엑셀이 없으면(사진만 오는 메일) 상품 한 개를 만들고 사진을 전부 담는다.
+    const targets = specs.length ? specs : [{
+      nameJa: '', nameEn: '', size: '', material: '', country: '',
+      release: '', delivery: '', deadline: '', jan: '',
+      _fallbackTitle: (imageEntries[0]?.name.split('/')[0] || zipFile.name)
+        .replace(/\.zip$/i, '').replace(/^mdpics[_\s-]*/i, '').trim(),
+    }];
+
+    const made = targets.map(spec => {
+      const p = makeBlankProduct();
+      p.brand = dayBrand;
+      p.title = spec.nameJa || spec.nameEn || spec._fallbackTitle || '';
+      p.officialText = specs.length ? buildBushiOfficialText(spec) : '';
+      autoFillProductLineSub(p);
+      PRODUCTS.push(p);
+      if (!firstNewId) firstNewId = p.id;
+      return p;
+    });
+
+    let unassigned = 0;
+    for (const entry of imageEntries) {
+      const shortName = entry.name.split('/').pop();
+      const idx = specs.length ? pickProductForPhoto(shortName, specs) : 0;
+      const target = idx >= 0 ? made[idx] : made[0];
+      if (idx < 0 && specs.length) unassigned++;
+      const blob = await entry.async('blob');
+      await addPhotoFileToProduct(target, new File([blob], shortName, { type: blob.type || 'image/jpeg' }));
+      photoTotal++;
+    }
+    for (const p of made) if (p.images.length) p.mainIndex = 0;
+    madeTotal += made.length;
+    if (unassigned) notes.push(`${zipFile.name}: 사진 ${unassigned}장은 어느 상품인지 자동으로 못 정해서 첫 상품에 넣었어요`);
+    if (!specs.length) notes.push(`${zipFile.name}: 발주서 엑셀이 없어서 상품 1개에 사진을 모두 담았어요 — 상품정보는 직접 붙여넣어 주세요`);
+  }
+
+  saveProducts();
+  renderList();
+  if (firstNewId) selectProduct(firstNewId);
+  statusEl.innerHTML = `✓ 상품 ${madeTotal}개 · 사진 ${photoTotal}장 가져옴`
+    + (notes.length ? `<br>※ ${notes.map(escapeHtml).join('<br>※ ')}` : '');
+  $('#bushiImportInput').value = '';
+}
+$('#btnBushiImport').addEventListener('click', () => $('#bushiImportInput').click());
+$('#bushiImportInput').addEventListener('change', () => importBushiroadZips(Array.from($('#bushiImportInput').files)));
+const bushiImportZone = $('#bushiImportZone');
+bushiImportZone.addEventListener('dragover', e => { e.preventDefault(); bushiImportZone.classList.add('dragover'); });
+bushiImportZone.addEventListener('dragleave', () => bushiImportZone.classList.remove('dragover'));
+bushiImportZone.addEventListener('drop', e => {
+  e.preventDefault();
+  bushiImportZone.classList.remove('dragover');
+  importBushiroadZips(Array.from(e.dataTransfer.files || []));
+});
 
 (async function init() {
   await loadProperNounDictionary();
