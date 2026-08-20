@@ -1551,19 +1551,22 @@ async function classifyIpsForSort() {
 // 예전에는 "순서 확정하고 다음 단계 →"를 눌러야만 내보내기 화면이 열리는 게이트가 있었다.
 // 화면이 합쳐진 지금은 그 관문 대신 "생성한 뒤에 내용이 바뀌었는지"를 직접 감지한다 —
 // 관문은 사용자가 한 번 통과하면 그 뒤 변경을 못 잡지만, 이 방식은 언제 바뀌든 잡는다.
-// 단계가 4개에서 3개로 줄어든 건 직원들이 몸에 익힌 순서를 바꾸는 변경이라, 처음 한 번만
-// "없어진 게 아니라 합쳐졌다"고 알려주고 닫으면 다시 안 뜨게 한다.
-const WHATSNEW_KEY = 'inbound-image-composer-whatsnew-merge3';
-function setupWhatsNew() {
-  const box = document.getElementById('whatsNew');
-  if (!box) return;
+// 바뀐 점 안내. 따로 공지를 못 받은 사람도 접속만 하면 한 번은 보도록 모달로 띄우고,
+// 닫으면 기록해서 다시 안 뜨게 한다. 다음에 또 큰 변경이 있으면 아래 키의 날짜만 바꾸면
+// 그때 다시 한 번 뜬다.
+const NOTICE_KEY = 'inbound-image-composer-notice-2026-08-20';
+function setupNotice() {
+  const dlg = document.getElementById('noticeDialog');
+  if (!dlg) return;
   let seen = false;
-  try { seen = localStorage.getItem(WHATSNEW_KEY) === '1'; } catch (e) { seen = false; }
-  box.style.display = seen ? 'none' : 'flex';
-  document.getElementById('whatsNewClose').addEventListener('click', () => {
-    box.style.display = 'none';
-    try { localStorage.setItem(WHATSNEW_KEY, '1'); } catch (e) { /* 기억만 못 할 뿐 동작엔 지장 없음 */ }
-  });
+  try { seen = localStorage.getItem(NOTICE_KEY) === '1'; } catch (e) { seen = false; }
+  const close = () => {
+    if (dlg.open) dlg.close();
+    try { localStorage.setItem(NOTICE_KEY, '1'); } catch (e) { /* 기억만 못 할 뿐 동작엔 지장 없음 */ }
+  };
+  document.getElementById('noticeCloseBtn').addEventListener('click', close);
+  dlg.addEventListener('close', close); // ESC로 닫아도 본 것으로 처리
+  if (!seen) dlg.showModal();
 }
 
 function renderExportBar() {
@@ -1939,6 +1942,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('headerSelect').addEventListener('change', () => { updateHeaderPreview(); refreshPagesStale(); });
 
   setupHelpPanels();
-  setupWhatsNew();
+  setupNotice();
   goToStep(1);
 });

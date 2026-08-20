@@ -213,7 +213,6 @@
   .stale-note { background: #fff3d6; border: 1px solid #f0c869; border-radius: 8px; padding: 8px 12px; margin: 8px 0; font-size: 13px; color: #7a5200; }
   #pagesContainer.stale { opacity: .4; filter: grayscale(.5); }
 
-  .whatsnew { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #e8f0ff; border: 1px solid #bcd6ff; border-radius: 8px; padding: 9px 12px; margin-bottom: 12px; font-size: 13px; color: #1c47a3; }
 </style>
 </head>
 <body>
@@ -321,11 +320,6 @@
   <section class="step" id="step-3">
     <div class="card-panel">
       <h2>3단계 · 배치 &amp; 내보내기 <span class="h2-sub">(예전 3·4단계가 한 화면으로 합쳐졌습니다)</span></h2>
-      <div class="whatsnew" id="whatsNew" style="display:none;">
-        <span>예전 <b>4단계(최종 분할 &amp; 내보내기)</b>는 없어진 게 아니라 이 화면 아래쪽으로 합쳐졌습니다 —
-          순서를 맞춘 그 자리에서 바로 "페이지 생성"을 누르면 됩니다.</span>
-        <button class="btn" id="whatsNewClose" style="min-height:30px;padding:4px 10px;">알겠습니다</button>
-      </div>
       <details class="help" open data-help="step3">
         <summary>사용법 &amp; 자동 정렬 기준</summary>
         <div class="help-body">
@@ -422,6 +416,31 @@
   </section>
 
 </main>
+
+<!-- 바뀐 점 안내 — 따로 공지받지 않은 사람도 접속만 하면 한 번은 보게 된다.
+     한 번 닫으면 localStorage에 기록돼 다시 안 뜨고, 다음에 또 큰 변경이 있으면
+     NOTICE_KEY의 날짜만 바꿔서 새 안내를 띄우면 된다. -->
+<dialog id="noticeDialog">
+  <div class="dialog-body">
+    <h3>🆕 화면이 바뀌었습니다</h3>
+    <p style="font-size:13px;color:var(--muted);line-height:1.6;margin:0 0 12px;">
+      기능이 없어지거나 결과물이 달라진 건 없습니다. 위치와 보이는 방식만 정리했습니다.
+    </p>
+    <ul style="font-size:13px;line-height:1.7;padding-left:18px;margin:0 0 14px;">
+      <li><b>4단계가 없어진 게 아니라 3단계로 합쳐졌습니다.</b> 순서를 맞춘 그 화면
+        아래쪽 고정 바에서 바로 "페이지 생성"을 누르면 됩니다.
+        ("순서 확정하고 다음 단계 →" 버튼은 이제 필요 없어서 없앴습니다.)</li>
+      <li><b>미리보기 박스가 실제 페이지와 똑같이 20개씩</b> 나뉩니다. 예전엔 25개씩
+        묶여 있어서 "1p" 박스 안의 카드가 실제로는 2페이지로 나가는 경우가 있었습니다.</li>
+      <li><b>사진 위 체크박스·"1개만"·✎ 버튼은 마우스를 올려야 보입니다.</b>
+        (터치 화면에서는 예전처럼 계속 보입니다.)</li>
+      <li><b>설명은 각 단계 맨 위 "사용법"에 모아뒀습니다.</b> 한 번 접으면 그 상태를 기억합니다.</li>
+    </ul>
+    <div class="row" style="justify-content:flex-end;">
+      <button class="btn primary" id="noticeCloseBtn">확인했습니다</button>
+    </div>
+  </div>
+</dialog>
 
 <!-- 아이템 편집 다이얼로그 -->
 <dialog id="itemDialog">
