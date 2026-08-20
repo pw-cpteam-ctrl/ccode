@@ -178,6 +178,29 @@
   details.help .help-body > p { margin: 0 0 8px; }
   details.help .help-body > p:last-child { margin-bottom: 0; }
   details.help .help-body b, details.help .help-body strong { color: var(--text); }
+
+  /* ---- 3단계 툴바 그룹 ----
+     예전엔 삭제·스토어·정렬·AI·배송비가 한 줄에 평평하게 나열돼 있어서, 목적이 다른
+     버튼들이 전부 같은 무게로 보였다. 목적별로 묶고 라벨을 붙인다. */
+  .toolbar3 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .tgroup { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: #f6f7f9; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+  .tgroup-label { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .3px; }
+  .tsummary { font-size: 12px; color: var(--muted); margin-left: auto; }
+  @media (max-width: 640px) { .tsummary { margin-left: 0; } }
+  /* 선택이 있을 때만 나타나는 맥락 바 */
+  .select-bar { display: flex; align-items: center; gap: 10px; background: #fdecef; border: 1px solid #f3b8c2; border-radius: 8px; padding: 7px 12px; margin-bottom: 10px; font-size: 13px; font-weight: 700; color: var(--danger); }
+
+  /* ---- 카드 위 컨트롤은 평소엔 숨긴다 ----
+     체크박스 + "1개만" + ✎ 가 카드마다 항상 떠 있어서, 23장이면 69개가 사진을 덮고 있었다.
+     마우스를 올리거나(데스크톱) 선택된 카드에서만 보이게 하고, 손가락으로 쓰는 좁은 화면
+     (hover가 없는 환경)에서는 예전처럼 항상 보이게 남겨둔다. */
+  @media (hover: hover) {
+    .pcard .del-check, .pcard .single-move-btn, .pcard .edit-btn { opacity: 0; transition: opacity .12s; }
+    .pcard:hover .del-check, .pcard:hover .single-move-btn, .pcard:hover .edit-btn,
+    .pcard.group-selected .del-check, .pcard.group-selected .single-move-btn, .pcard.group-selected .edit-btn,
+    .pcard.single-move-armed .del-check, .pcard.single-move-armed .single-move-btn, .pcard.single-move-armed .edit-btn,
+    .pcard .del-check:checked { opacity: 1; }
+  }
 </style>
 </head>
 <body>
@@ -268,11 +291,10 @@
         <label style="font-size:13px;">스토어 프로필</label>
         <select id="storeSelectStep2"></select>
       </div>
-      <label class="text-lock-toggle">
-        <input type="checkbox" id="textLockToggle" />
-        🔒 텍스트 잠금 (순서만 변경) — 켜면 IP명·가격·태그 등 글자를 실수로 못 고치고,
-        3단계에서 카드 드래그로 순서만 옮길 수 있어요.
-      </label>
+      <div id="textLockBannerStep2" class="text-lock-banner" style="display:none;">
+        🔒 텍스트 잠금 중 — 지금은 글자를 고칠 수 없습니다.
+        <button class="btn" id="textLockOffBtn" style="min-height:30px;padding:4px 10px;margin-left:6px;">잠금 해제</button>
+      </div>
       <div class="bulk-edit-bar" id="bulkEditBar" style="display:none;"></div>
       <div class="step2-grid" id="dataTableBody"></div>
     </div>
@@ -307,25 +329,35 @@
         </div>
       </details>
       <div id="textLockBanner" class="text-lock-banner" style="display:none;">
-        🔒 텍스트 잠금 중 — 카드를 드래그해 순서만 바꿀 수 있어요. 글자를 고치려면
-        2단계에서 잠금을 먼저 해제하세요.
+        🔒 텍스트 잠금 중 — 카드를 드래그해 순서만 바꿀 수 있어요.
+        글자를 고치려면 아래 "보기 · 🔒 텍스트 잠금"을 끄세요.
       </div>
-      <div class="row between" style="margin-bottom:4px;flex-wrap:wrap;">
-        <div class="row" style="flex-wrap:wrap;">
-          <button class="btn danger" id="selectDeleteBtn">선택 삭제</button>
-          <span id="selectedCount" style="font-size:12px;color:var(--muted);"></span>
-          <label style="font-size:13px;margin-left:10px;">스토어 프로필 (성향 우선순위)</label>
-          <select id="storeSelectStep5"></select>
+      <div class="toolbar3">
+        <div class="tgroup">
+          <span class="tgroup-label">정렬</span>
+          <select id="storeSelectStep5" title="스토어 프로필 — 성향 우선순위"></select>
           <button class="btn primary" id="autoSortBtn">자동 정렬 적용</button>
           <button class="btn" id="aiClassifyBtn"
             title="사진은 다시 안 보고, 이미 입력된 IP명 글자만 AI에 보내 성향·분위기만 판단합니다(이미지 인식 아님 → 훨씬 저렴). ip명/가격/태그는 절대 안 바뀌고, 끝나면 자동 정렬까지 자동으로 적용됩니다.">
             🏷️ AI 분류로 정렬 보조
           </button>
+        </div>
+        <div class="tgroup">
+          <span class="tgroup-label">보기</span>
           <label class="ship-toggle" title="꺼도 배송비 데이터는 그대로 남고, 카드 레이아웃도 안 밀립니다 — 글자/아이콘만 안 보이게 됩니다.">
-            <input type="checkbox" id="shipToggle" checked /> 🚚 배송비 표시
+            <input type="checkbox" id="shipToggle" checked /> 🚚 배송비
+          </label>
+          <label class="ship-toggle" title="켜면 IP명·가격·태그 등 글자를 실수로 못 고치고, 카드 드래그로 순서만 옮길 수 있습니다.">
+            <input type="checkbox" id="textLockToggle" /> 🔒 텍스트 잠금
           </label>
         </div>
-        <div id="splitPreviewText" style="font-size:12px;color:var(--muted);"></div>
+        <div id="splitPreviewText" class="tsummary"></div>
+      </div>
+      <!-- 선택했을 때만 나타나는 바. 삭제는 되돌리기 번거로운 동작이라, 아무것도 안 골랐을 때도
+           빨간 버튼이 툴바 맨 앞에 상시 떠 있던 걸 여기로 내렸다. -->
+      <div class="select-bar" id="selectBar" style="display:none;">
+        <span id="selectedCount"></span>
+        <button class="btn danger" id="selectDeleteBtn" style="min-height:32px;padding:5px 12px;">선택 삭제</button>
       </div>
       <div class="undo-banner" id="undoBanner" style="display:none;">
         <span id="undoBannerText"></span>

@@ -184,7 +184,7 @@ function goToStep(n) {
   document.querySelectorAll('.step').forEach((s) => s.classList.remove('active'));
   document.getElementById(`step-${n}`).classList.add('active');
   renderStepIndicator();
-  if (n === 2) renderDataTable();
+  if (n === 2) { renderDataTable(); updateTextLockBanner(); }
   if (n === 3) { renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true }); updateTextLockBanner(); }
   if (n === 4) renderStep5();
 }
@@ -831,6 +831,19 @@ function populateStoreSelects() {
   });
 }
 
+// 스토어 프로필 셀렉트는 2단계(태그 화이트리스트용)와 3단계(정렬 우선순위용) 두 곳에
+// 있는데, 예전엔 각자 따로 state를 바꿔서 한쪽을 바꾸고 다른 쪽으로 넘어가면 드롭다운에
+// 보이는 값과 실제 적용값이 어긋나 보일 수 있었다. 변경은 항상 이 함수 하나를 통과시키고,
+// 양쪽 드롭다운 표시를 같이 맞춘다.
+function setActiveStore(key) {
+  state.activeStore = key;
+  ['storeSelectStep2', 'storeSelectStep5'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el && el.value !== key) el.value = key;
+  });
+  renderDataTable();
+}
+
 function tagWhitelistForActiveStore() {
   const profile = state.dict.storeProfiles[state.activeStore];
   return (profile && profile.tagWhitelist) || [];
@@ -1292,14 +1305,35 @@ function renderPreviewGrid(containerId, items, opts) {
   if (containerId === 'previewGrid') updateSplitPreviewText();
 }
 
+// 잠금 토글은 효과가 실제로 보이는 3단계(카드 드래그 화면)에 두고, 2단계에는 "지금 잠겨
+// 있다 + 여기서 바로 풀 수 있다"만 배너로 알려준다 — 잠긴 채로 2단계에 와서 글자가 안
+// 고쳐질 때, 왜 안 되는지와 푸는 방법이 같은 화면에 있어야 하기 때문.
 function updateTextLockBanner() {
-  const banner = document.getElementById('textLockBanner');
-  if (banner) banner.style.display = state.textLocked ? 'block' : 'none';
+  const on = state.textLocked;
+  ['textLockBanner', 'textLockBannerStep2'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = on ? 'block' : 'none';
+  });
+  const toggle = document.getElementById('textLockToggle');
+  if (toggle) toggle.checked = on;
 }
 
+function setTextLocked(on) {
+  state.textLocked = on;
+  step2SelectedIds = new Set(); // 잠금 전환 시 일괄편집 선택 상태가 남아있으면 헷갈리니 초기화
+  renderDataTable();
+  updateTextLockBanner();
+  if (state.step === 3) renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
+}
+
+// 삭제 버튼은 선택이 하나라도 있을 때만 화면에 나타난다. 예전엔 아무것도 안 골랐을 때도
+// 빨간 "선택 삭제"가 툴바 맨 앞에 상시 떠 있어서, 그 화면에서 가장 눈에 띄는 게 파괴적
+// 동작이었다.
 function updateSelectedCount() {
-  document.getElementById('selectedCount').textContent = state.pendingDeleteIds.length
-    ? `${state.pendingDeleteIds.length}개 선택됨` : '';
+  const n = state.pendingDeleteIds.length;
+  document.getElementById('selectedCount').textContent = n ? `${n}개 선택됨` : '';
+  const bar = document.getElementById('selectBar');
+  if (bar) bar.style.display = n ? 'flex' : 'none';
 }
 function updateSplitPreviewText() {
   document.getElementById('splitPreviewText').textContent = splitSummaryText(state.items);
@@ -1851,17 +1885,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('selectDeleteBtn').addEventListener('click', deleteSelectedItems);
   document.getElementById('undoDeleteBtn').addEventListener('click', undoDelete);
 
-  document.getElementById('storeSelectStep2').addEventListener('change', (e) => { state.activeStore = e.target.value; renderDataTable(); });
-  document.getElementById('storeSelectStep5').addEventListener('change', (e) => { state.activeStore = e.target.value; });
+  document.getElementById('storeSelectStep2').addEventListener('change', (e) => setActiveStore(e.target.value));
+  document.getElementById('storeSelectStep5').addEventListener('change', (e) => setActiveStore(e.target.value));
   document.getElementById('autoSortBtn').addEventListener('click', autoSortItems);
   document.getElementById('aiClassifyBtn').addEventListener('click', classifyIpsForSort);
-  document.getElementById('textLockToggle').addEventListener('change', (e) => {
-    state.textLocked = e.target.checked;
-    step2SelectedIds = new Set(); // 잠금 전환 시 일괄편집 선택 상태가 남아있으면 헷갈리니 초기화
-    renderDataTable();
-    updateTextLockBanner();
-    if (state.step === 3) renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
-  });
+  document.getElementById('textLockToggle').addEventListener('change', (e) => setTextLocked(e.target.checked));
+  document.getElementById('textLockOffBtn').addEventListener('click', () => setTextLocked(false));
   document.getElementById('shipToggle').addEventListener('change', (e) => {
     state.showShipping = e.target.checked;
     renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
