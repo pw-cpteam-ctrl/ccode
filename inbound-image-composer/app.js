@@ -7,7 +7,11 @@
 // 오히려 번거롭다는 피드백에 따라 즉시 삭제 + 실행취소(undo)로 단순화했다.
 // ============================================================
 
-const STEP_LABELS = ['업로드/검출', '표 정리', '미리보기 & 정렬', '최종 내보내기'];
+// 예전엔 4단계였다("미리보기 & 정렬" 다음에 "최종 내보내기"가 따로 있었음). 정렬하는 화면과
+// 결과가 나오는 화면이 갈라져 있어서, 4단계에는 "여기는 순서를 바꾸는 화면이 아닙니다"라는
+// 방어 문구가 필요했고 그 사이를 "순서 확정하고 다음 단계" 버튼으로 건너다녀야 했다.
+// 두 화면을 합치고 내보내기를 하단 고정 바로 내려서 그 왕복과 방어 문구를 없앴다.
+const STEP_LABELS = ['업로드/검출', '표 정리', '배치 & 내보내기'];
 
 const state = {
   step: 1,
@@ -21,8 +25,8 @@ const state = {
   activeStore: 'goodsmile',
   pendingDeleteIds: [],
   lastDeletedBatch: null, // [{ item, index }] — 실행취소용, 가장 최근 삭제 1건만 기억
-  orderConfirmed: false,
   finalPages: null, // array of { items, canvas }
+  finalPagesSig: null, // 페이지를 생성한 시점의 항목/설정 서명 — 이후 변경 감지용
   textLocked: false, // true면 IP명/가격/태그 등 글자 수정을 막고 카드 순서 변경만 허용
   showShipping: true, // false면 배송비(아이콘+글자)를 안 보여줌 — 항목별이 아니라 전체 스위치
 };
@@ -178,15 +182,13 @@ function setupHelpPanels() {
 
 function goToStep(n) {
   if (n === 2 && Object.keys(state.photos).length === 0) return;
-  if (n === 4 && !state.orderConfirmed) { showStep5Guard(); }
   if (n !== 3) hideUndoBanner(); // 실행취소는 3단계 컨텍스트에서만 의미가 있음
   state.step = n;
   document.querySelectorAll('.step').forEach((s) => s.classList.remove('active'));
   document.getElementById(`step-${n}`).classList.add('active');
   renderStepIndicator();
   if (n === 2) { renderDataTable(); updateTextLockBanner(); }
-  if (n === 3) { renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true }); updateTextLockBanner(); }
-  if (n === 4) renderStep5();
+  if (n === 3) { renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true }); updateTextLockBanner(); renderExportBar(); }
 }
 
 // ============================================================
@@ -255,7 +257,6 @@ function snapshotState() {
     nextPhotoNum: state.nextPhotoNum,
     nextItemId: state.nextItemId,
     activeStore: state.activeStore,
-    orderConfirmed: state.orderConfirmed,
   };
 }
 
@@ -303,7 +304,6 @@ async function applySlot(s) {
   state.nextPhotoNum = s.nextPhotoNum || 1;
   state.nextItemId = s.nextItemId || 1;
   state.activeStore = s.activeStore || state.activeStore;
-  state.orderConfirmed = !!s.orderConfirmed;
   state.sources = []; // 원본 소스는 캐시 대상이 아니라 1단계 업로드 목록은 비워진 채로 시작
   renderSlots();
   goToStep(2); // 사진+표 데이터가 이미 다 있으니 표 정리 화면으로 바로 이동
@@ -1302,7 +1302,7 @@ function renderPreviewGrid(containerId, items, opts) {
   // 받아 카드를 하나도 못 찾아서, 빈 배경을 드래그해도 아무 카드도 group-selected로
   // 표시되지 않는(마퀴 선택이 완전히 먹통인) 상태였다.
   attachMarqueeSelection(container, '.pcard', (idSet) => { groupSelectedIds = idSet; });
-  if (containerId === 'previewGrid') updateSplitPreviewText();
+  if (containerId === 'previewGrid') { updateSplitPreviewText(); refreshPagesStale(); }
 }
 
 // 잠금 토글은 효과가 실제로 보이는 3단계(카드 드래그 화면)에 두고, 2단계에는 "지금 잠겨
@@ -1336,7 +1336,10 @@ function updateSelectedCount() {
   if (bar) bar.style.display = n ? 'flex' : 'none';
 }
 function updateSplitPreviewText() {
-  document.getElementById('splitPreviewText').textContent = splitSummaryText(state.items);
+  const text = splitSummaryText(state.items);
+  document.getElementById('splitPreviewText').textContent = text;
+  const bar = document.getElementById('exportSummary');
+  if (bar) bar.textContent = text;
 }
 
 // ---------- 항목 편집 다이얼로그 ----------
@@ -1401,7 +1404,6 @@ function deleteSelectedItems() {
   state.items = state.items.filter((item) => !idSet.has(item.id));
   state.pendingDeleteIds = [];
   state.lastDeletedBatch = removed;
-  state.orderConfirmed = false;
   renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
   showUndoBanner(removed.length);
 }
@@ -1473,7 +1475,6 @@ function autoSortItems() {
   normal.sort(sorter);
   pushed.sort(sorter);
   state.items = [...normal, ...pushed];
-  state.orderConfirmed = false;
   renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
 }
 
@@ -1545,24 +1546,59 @@ async function classifyIpsForSort() {
 }
 
 // ============================================================
-// STEP 4 — 최종 분할 & 내보내기
+// 내보내기 (3단계 하단 고정 바)
 // ============================================================
-function showStep5Guard() {
-  document.getElementById('step5Guard').textContent = '먼저 3단계에서 "순서 확정하고 다음 단계 →"를 눌러야 합니다.';
-  document.getElementById('step5Guard').style.display = 'block';
-  document.getElementById('step5Body').style.display = 'none';
+// 예전에는 "순서 확정하고 다음 단계 →"를 눌러야만 내보내기 화면이 열리는 게이트가 있었다.
+// 화면이 합쳐진 지금은 그 관문 대신 "생성한 뒤에 내용이 바뀌었는지"를 직접 감지한다 —
+// 관문은 사용자가 한 번 통과하면 그 뒤 변경을 못 잡지만, 이 방식은 언제 바뀌든 잡는다.
+// 단계가 4개에서 3개로 줄어든 건 직원들이 몸에 익힌 순서를 바꾸는 변경이라, 처음 한 번만
+// "없어진 게 아니라 합쳐졌다"고 알려주고 닫으면 다시 안 뜨게 한다.
+const WHATSNEW_KEY = 'inbound-image-composer-whatsnew-merge3';
+function setupWhatsNew() {
+  const box = document.getElementById('whatsNew');
+  if (!box) return;
+  let seen = false;
+  try { seen = localStorage.getItem(WHATSNEW_KEY) === '1'; } catch (e) { seen = false; }
+  box.style.display = seen ? 'none' : 'flex';
+  document.getElementById('whatsNewClose').addEventListener('click', () => {
+    box.style.display = 'none';
+    try { localStorage.setItem(WHATSNEW_KEY, '1'); } catch (e) { /* 기억만 못 할 뿐 동작엔 지장 없음 */ }
+  });
 }
-function renderStep5() {
-  if (!state.orderConfirmed) { showStep5Guard(); return; }
-  document.getElementById('step5Guard').style.display = 'none';
-  document.getElementById('step5Body').style.display = 'block';
+
+function renderExportBar() {
   const headerSelect = document.getElementById('headerSelect');
+  const keep = headerSelect.value;
   headerSelect.innerHTML = state.headers.map((h) => `<option value="${h.id}">${h.label}</option>`).join('');
-  document.getElementById('finalSummary').textContent = splitSummaryText(state.items);
-  document.getElementById('pagesContainer').innerHTML = '';
-  document.getElementById('downloadAllBtn').disabled = true;
-  state.finalPages = null;
+  if (keep && state.headers.some((h) => h.id === keep)) headerSelect.value = keep;
+  document.getElementById('exportSummary').textContent = splitSummaryText(state.items);
   updateHeaderPreview();
+  refreshPagesStale();
+}
+
+// 생성 시점의 "무엇으로 만들었는가"를 문자열로 남겨두고, 지금 상태와 다르면 만들어둔
+// 이미지를 흐리게 + 안내를 띄운다. 순서(id 나열)뿐 아니라 글자·배송비 표시·헤더까지
+// 포함해야 "순서는 그대로인데 IP명만 고친" 경우도 잡힌다.
+function pagesSignature() {
+  const headerSelect = document.getElementById('headerSelect');
+  return JSON.stringify({
+    items: state.items.map((i) => [i.id, i.ip, i.price, i.ship, i.tag]),
+    ship: state.showShipping,
+    header: headerSelect ? headerSelect.value : '',
+  });
+}
+
+function refreshPagesStale() {
+  const area = document.getElementById('pagesArea');
+  const container = document.getElementById('pagesContainer');
+  const note = document.getElementById('pagesStale');
+  if (!area || !container || !note) return;
+  if (!state.finalPages) { area.style.display = 'none'; return; }
+  area.style.display = 'block';
+  const stale = state.finalPagesSig !== pagesSignature();
+  container.classList.toggle('stale', stale);
+  note.style.display = stale ? 'block' : 'none';
+  document.getElementById('finalSummary').textContent = splitSummaryText(state.items);
 }
 
 // 헤더 드롭다운에서 실제로 어떤 이미지가 선택된 건지 눈으로 바로 확인할 수 있게 미리보기를
@@ -1592,6 +1628,8 @@ async function generatePages() {
   )));
 
   state.finalPages = canvases.map((canvas, i) => ({ canvas, index: i }));
+  state.finalPagesSig = pagesSignature();
+  document.getElementById('pagesArea').style.display = 'block';
   const container = document.getElementById('pagesContainer');
   container.innerHTML = '';
   state.finalPages.forEach(({ canvas }, i) => {
@@ -1608,6 +1646,7 @@ async function generatePages() {
     container.appendChild(block);
   });
   document.getElementById('downloadAllBtn').disabled = false;
+  refreshPagesStale();
 }
 
 function downloadCanvasAsJpeg(canvas, filename) {
@@ -1880,7 +1919,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('backTo1Btn').addEventListener('click', () => goToStep(1));
   document.getElementById('toStep3Btn').addEventListener('click', () => goToStep(3));
   document.getElementById('backTo2Btn').addEventListener('click', () => goToStep(2));
-  document.getElementById('backTo4Btn').addEventListener('click', () => goToStep(3));
 
   document.getElementById('selectDeleteBtn').addEventListener('click', deleteSelectedItems);
   document.getElementById('undoDeleteBtn').addEventListener('click', undoDelete);
@@ -1895,12 +1933,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.showShipping = e.target.checked;
     renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
   });
-  document.getElementById('confirmOrderBtn').addEventListener('click', () => { state.orderConfirmed = true; goToStep(4); });
 
   document.getElementById('generatePagesBtn').addEventListener('click', generatePages);
   document.getElementById('downloadAllBtn').addEventListener('click', downloadAllPages);
-  document.getElementById('headerSelect').addEventListener('change', updateHeaderPreview);
+  document.getElementById('headerSelect').addEventListener('change', () => { updateHeaderPreview(); refreshPagesStale(); });
 
   setupHelpPanels();
+  setupWhatsNew();
   goToStep(1);
 });
