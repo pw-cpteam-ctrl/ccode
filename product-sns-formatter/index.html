@@ -866,36 +866,55 @@ const imgCache = new Map(); // key -> HTMLImageElement (메모리 캐시, 상품
    1080x1350(4:5) 해상도로 그리고 화면에는 CSS로 축소해서 보여준다.
    레이어 순서: 사진(cover-fit) → 검정 그라데이션 → 흰 텍스트(중앙정렬, 대표 슬라이드만) → 실제 틀 PNG. */
 const CW = 1080, CH = 1350;
-let frameImgEl = null;
-function loadFrameImage() {
-  if (frameImgEl) return Promise.resolve(frameImgEl);
-  return new Promise((res, rej) => {
+// 브랜드별 틀 PNG. inner는 그 틀의 투명 창(사진이 실제로 보이는 영역)을 실측한 좌표로,
+// 각 PNG의 알파 채널을 픽셀 단위로 스캔해서 얻은 값이다. 틀마다 로고띠 두께와 테두리
+// 폭이 달라서(주황 위 117px / 초록 위 112px) 한 좌표를 공용으로 쓰면 사진이 테두리
+// 밑으로 밀려 들어가거나 반대로 여백이 생긴다 — 그래서 틀마다 따로 들고 있는다.
+const FRAMES = {
+  goodsmile: { src: './assets/frame-orange.png', inner: { x0: 32, y0: 117, x1: 1049, y1: 1321 } },
+  bushiroad: { src: './assets/frame-green.png', inner: { x0: 27, y0: 112, x1: 1052, y1: 1318 } },
+};
+const DEFAULT_FRAME_KEY = 'goodsmile';
+// 전용 틀이 없는 브랜드(메가하우스 등)는 기본 틀을 쓴다 — 새 브랜드가 늘어도 화면이
+// 틀 없이 비어 보이지 않게 하는 안전장치.
+function frameKeyFor(brand) { return FRAMES[brand] ? brand : DEFAULT_FRAME_KEY; }
+const frameImgs = new Map();     // 틀 키 → 다 불러온 <img>
+const framePending = new Map();  // 틀 키 → 불러오는 중인 약속(같은 틀을 두 번 안 받게)
+function loadFrameImage(brand) {
+  const key = frameKeyFor(brand);
+  if (frameImgs.has(key)) return Promise.resolve(frameImgs.get(key));
+  if (framePending.has(key)) return framePending.get(key);
+  const pr = new Promise((res, rej) => {
     const img = new Image();
-    img.onload = () => { frameImgEl = img; res(img); };
+    img.onload = () => { frameImgs.set(key, img); res(img); };
     img.onerror = rej;
-    img.src = './assets/frame-orange.png';
+    img.src = FRAMES[key].src;
   });
+  framePending.set(key, pr);
+  return pr;
 }
-// 틀 PNG의 투명 창(사진이 실제로 보이는 영역)을 실측한 좌표. 알파 채널을 픽셀 단위로
-// 스캔해서 얻은 값 — 위 117px(로고띠)/좌 32px/우 31px/아래 29px가 불투명 테두리다.
-const FRAME_INNER = { x0: 32, y0: 117, x1: 1049, y1: 1321 };
-const FIW = FRAME_INNER.x1 - FRAME_INNER.x0;
-const FIH = FRAME_INNER.y1 - FRAME_INNER.y0;
-// cover-fit 배율(FIW/pw, FIH/ph 중 큰 쪽)을 부동소수점 그대로 쓰면 pw*(FIW/pw) 같은 곱셈이
-// 반올림 오차로 FIW보다 아주 살짝(0.0001px 등) 작게 나올 수 있고, 그 틈으로 캔버스의 투명
+// 이 상품에 쓸 틀 한 벌(그림 + 투명 창 좌표/크기). 그림이 아직 안 왔으면 img만 null이고
+// 좌표는 그대로 유효하다 — 사진 배치는 정상이고 틀만 나중에 얹힌다.
+function frameOf(p) {
+  const key = frameKeyFor(p && p.brand);
+  const inner = FRAMES[key].inner;
+  return { key, img: frameImgs.get(key) || null, inner, w: inner.x1 - inner.x0, h: inner.y1 - inner.y0 };
+}
+// cover-fit 배율(창가로/pw, 창세로/ph 중 큰 쪽)을 부동소수점 그대로 쓰면 pw*(창가로/pw) 같은
+// 곱셈이 반올림 오차로 창가로보다 아주 살짝(0.0001px 등) 작게 나올 수 있고, 그 틈으로 캔버스의 투명
 // 배경이 1px 미만 실선처럼 비쳐 보이는 경우가 있었다(사진마다 배율이 달라 생겼다 안 생겼다
 // 함). 배율에 0.3% 여유를 얹어 항상 살짝 오버커버하게 만들어 이 틈 자체를 없앤다.
 const COVER_FIT_SLOP = 1.003;
 function coverFitBase(pw, ph, fitW, fitH) {
   return Math.max(fitW / pw, fitH / ph) * COVER_FIT_SLOP;
 }
-// 사진을 채울 기준 영역 — 틀이 켜져 있으면 틀의 투명 창(FRAME_INNER)만, 틀을 껐으면
+// 사진을 채울 기준 영역 — 틀이 켜져 있으면 틀의 투명 창(frame.inner)만, 틀을 껐으면
 // 캔버스 전체(0,0~CW,CH)를 기준으로 삼는다. 틀 off일 때도 이 좁은 창 기준으로 계산하면
 // 나머지 테두리(로고띠 자리 등)가 빈 채로 남아 하얗게 보였던 문제 때문에 분리함.
-function fitRectFor(slide) {
+function fitRectFor(slide, frame) {
   return (slide && slide.noFrame)
     ? { x0: 0, y0: 0, w: CW, h: CH }
-    : { x0: FRAME_INNER.x0, y0: FRAME_INNER.y0, w: FIW, h: FIH };
+    : { x0: frame.inner.x0, y0: frame.inner.y0, w: frame.w, h: frame.h };
 }
 function getBadgeText(p) {
   if (p.badgeKind === 'decided') return '상품화 결정';
@@ -995,17 +1014,20 @@ function computeGradientStops(s, w, oRaw, c) {
     compress: c,
   };
 }
-function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText, badgeLetterSpacing, titleFontSize, subFontSize) {
+// frame: frameOf(상품)이 돌려준 틀 한 벌. 브랜드마다 틀 그림과 투명 창 좌표가 다르므로
+// 그리는 쪽에서 정해서 넘긴다(안 넘어오면 기본 틀 기준으로 그린다).
+function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText, badgeLetterSpacing, titleFontSize, subFontSize, frame) {
+  const fr = frame || frameOf(null);
   ctx.clearRect(0, 0, CW, CH);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high'; // 원본이 저해상도라 확대될 때 최대한 부드럽게 리샘플링(품질 상한은 원본 해상도가 결정)
   const img = slide && imgCache.get(slide.key);
   if (img) {
     const pw = img.naturalWidth, ph = img.naturalHeight;
-    // 틀이 켜져 있으면 틀의 투명 창(FIW x FIH)에, 꺼져 있으면 캔버스 전체(CW x CH)에 맞춰
+    // 틀이 켜져 있으면 틀의 투명 창에, 꺼져 있으면 캔버스 전체(CW x CH)에 맞춰
     // cover-fit — 틀 off인데도 좁은 창 기준으로 계산하면 나머지 테두리가 빈 채로 남아
-    // 하얗게 보였던 문제 때문에 fitRectFor(slide)로 기준 영역 자체를 분기한다.
-    const fit = fitRectFor(slide);
+    // 하얗게 보였던 문제 때문에 fitRectFor로 기준 영역 자체를 분기한다.
+    const fit = fitRectFor(slide, fr);
     const base = coverFitBase(pw, ph, fit.w, fit.h);
     const eff = base * (slide.scale || 1);
     const dw = pw * eff, dh = ph * eff;
@@ -1025,15 +1047,15 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText,
       gradCfg?.start ?? 40, gradCfg?.width ?? 60, gradCfg?.opacity ?? 85, gradCfg?.compress ?? 0);
     // 압축: 밴드 자체를 위에서부터 줄여서(bandTop을 아래로 밀어서) 같은 %단계가 더 좁은
     // 픽셀 범위 안에서 일어나게 함 — 아래쪽 끝(100%)은 그대로 틀 하단에 고정.
-    const compressPx = (compress / 100) * FIH * 0.5;
-    const bandTop = FRAME_INNER.y0 + compressPx;
-    const bandBottom = FRAME_INNER.y1;
+    const compressPx = (compress / 100) * fr.h * 0.5;
+    const bandTop = fr.inner.y0 + compressPx;
+    const bandBottom = fr.inner.y1;
     const grad = ctx.createLinearGradient(0, bandTop, 0, bandBottom);
     stops.forEach(st => grad.addColorStop(Math.max(0, Math.min(1, st.pct / 100)), `rgba(0,0,0,${st.alpha.toFixed(3)})`));
     ctx.fillStyle = grad;
     // 칠하는 영역 자체는 캔버스 맨 아래(CH)까지 내려서 틀의 불투명 하단 테두리와 만나는
     // 지점에 1px 틈이 안 생기게 한다 — 그라데이션 좌표(bandTop~bandBottom)는 그대로 두고
-    // FRAME_INNER.y1 밑은 마지막 색상(불투명)으로 그냥 이어서 채워지는 것이라 어차피
+    // 투명 창 하단(y1) 밑은 마지막 색상(불투명)으로 이어서 채워지는 것이라 어차피
     // 틀 PNG가 그 위에 덮여서 그려지므로 티가 안 남.
     ctx.fillRect(0, bandTop, CW, CH - bandTop);
 
@@ -1042,8 +1064,8 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText,
     // 그림자는 조절 옵션 없이 항상 켜져 있는 기본값(퍼지는 그림자로 가독성 확보) — 제목/부제 공통.
     ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 7; ctx.shadowOffsetY = 2;
     const cx = CW / 2;
-    const maxTextWidth = FIW - 80; // 좌우 여백 (틀 테두리에 안 붙게)
-    let ty = FRAME_INNER.y1 - 26; // 투명 창 하단에서 살짝 띄운 기준선(테두리에 안 붙게)
+    const maxTextWidth = fr.w - 80; // 좌우 여백 (틀 테두리에 안 붙게)
+    let ty = fr.inner.y1 - 26; // 투명 창 하단에서 살짝 띄운 기준선(테두리에 안 붙게)
     if (textSub) {
       ctx.font = `700 ${subFontSize ?? 27}px ${CANVAS_FONT}`; // 프리젠테이션은 굵기마다 파일이 따로라 700(Bold)로 통일
       ctx.fillText(textSub, cx, ty);
@@ -1060,8 +1082,8 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText,
     }
     ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
   }
-  if (frameImgEl && !(slide && slide.noFrame)) {
-    ctx.drawImage(frameImgEl, 0, 0, CW, CH);
+  if (fr.img && !(slide && slide.noFrame)) {
+    ctx.drawImage(fr.img, 0, 0, CW, CH);
     if (badgeText) {
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle'; // 폰트 크기가 바뀌어도 항상 상단 띠 중앙에 오도록(밑선 기준이면 커질수록 아래로 쏠림)
@@ -1069,7 +1091,7 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText,
       ctx.font = '700 75px -apple-system,"Malgun Gothic",sans-serif';
       ctx.letterSpacing = `${badgeLetterSpacing || 0}px`;
       ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 4;
-      ctx.fillText(badgeText, 45, FRAME_INNER.y0 / 2);
+      ctx.fillText(badgeText, 45, fr.inner.y0 / 2);
       ctx.shadowBlur = 0;
       ctx.letterSpacing = '0px'; // 다른 텍스트에 영향 안 가게 기본값으로 복원
       ctx.textBaseline = 'alphabetic'; // 다른 텍스트(제목 등)에 영향 안 가게 기본값으로 복원
@@ -1078,10 +1100,13 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText,
 }
 async function exportSlidePng(p, idx) {
   await ensureCanvasFont(); // 내보내는 파일에까지 기본 폰트로 굳어버리지 않게 한 번 더 확인
+  // 하루 전체 내려받기는 화면에 안 띄운 상품까지 한 번에 내보내므로, 그 브랜드 틀을
+  // 아직 안 받아왔을 수 있다 — 여기서 기다려야 틀 없는 PNG가 나가지 않는다.
+  await loadFrameImage(p.brand).catch(() => {});
   const slide = p.images[idx];
   const c = document.createElement('canvas');
   c.width = CW; c.height = CH;
-  drawSlide(c.getContext('2d'), slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize);
+  drawSlide(c.getContext('2d'), slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p));
   return new Promise(res => c.toBlob(res, 'image/png'));
 }
 
@@ -1093,7 +1118,7 @@ function renderImageStage(p) {
   if (!stageEl) return;
   // 틀 PNG와 폰트를 함께 기다린다 — 폰트가 늦게 도착하면 캔버스가 조용히 기본 폰트로
   // 그려버리고, 그 뒤에 폰트가 와도 이미 그려진 그림은 안 바뀐다.
-  Promise.all([loadFrameImage().catch(() => {}), ensureCanvasFont()]).then(() => {
+  Promise.all([loadFrameImage(p.brand).catch(() => {}), ensureCanvasFont()]).then(() => {
     // 기다리는 사이에 화면이 다시 그려졌으면(다른 상품 선택, 원문 언어 전환 등) 위에서
     // 잡아둔 자리는 이미 화면에서 떨어져 나간 껍데기다. 거기에 그리면 내용이 안 보이는 건
     // 물론이고, 이어서 버튼을 찾는 코드가 못 찾아서 오류가 난다. 그래서 다시 찾고,
@@ -1322,10 +1347,12 @@ async function addPhotoFileToProduct(p, file) {
   // 기본 위치를 세로 중앙이 아니라 "위쪽 기준"으로 잡는다 — 캐릭터 정수리가 사진 위쪽에
   // 몰려있는 경우가 대부분이라, 남는 세로 여유를 전부 아래쪽에서 잘라내야 드래그 없이도
   // 머리가 안 잘린다. clampSlideOffset과 같은 공식으로 최대 오프셋(+maxOy)을 미리 계산.
-  // 새 슬라이드는 항상 틀이 켜진 상태로 시작하므로(noFrame 미지정) 틀 기준(FIH)으로 계산.
-  const base = coverFitBase(img.naturalWidth, img.naturalHeight, FIW, FIH);
+  // 새 슬라이드는 항상 틀이 켜진 상태로 시작하므로(noFrame 미지정) 그 상품 브랜드의
+  // 틀 투명 창 기준으로 계산한다.
+  const fr = frameOf(p);
+  const base = coverFitBase(img.naturalWidth, img.naturalHeight, fr.w, fr.h);
   const dh = img.naturalHeight * base;
-  const topAnchorOy = Math.max(0, (dh - FIH) / 2);
+  const topAnchorOy = Math.max(0, (dh - fr.h) / 2);
   p.images.push({ key, scale: 1, ox: 0, oy: topAnchorOy });
 }
 async function handleFiles(p, files) {
@@ -1372,7 +1399,7 @@ function drawAllThumbs(p) {
     if (idx === editingIdx) canvas.classList.add('sel');
     const ctx = canvas.getContext('2d');
     ctx.scale(60 / CW, 75 / CH);
-    drawSlide(ctx, slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize);
+    drawSlide(ctx, slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p));
     canvas.addEventListener('click', () => { editingIdx = idx; drawAllThumbs(p); drawComposer(p); });
     const star = document.createElement('div');
     star.className = 'th-star' + (idx === p.mainIndex ? ' on' : '');
@@ -1417,7 +1444,7 @@ function drawAllThumbs(p) {
       // 기준 영역(틀 켜짐/꺼짐)이 바뀌었으니 기존 ox/oy를 새 기준으로 다시 한 번 안전하게
       // 붙잡아둔다 — 대부분 그대로 유효하지만, 사진 비율에 따라 만일의 경계값 어긋남을 방지.
       const img = imgCache.get(slide.key);
-      if (img) clampSlideOffset(slide, img.naturalWidth, img.naturalHeight);
+      if (img) clampSlideOffset(slide, img.naturalWidth, img.naturalHeight, frameOf(p));
       drawAllThumbs(p); drawComposer(p); saveProductsSoon();
     });
     wrap.appendChild(canvas); wrap.appendChild(star); wrap.appendChild(del); wrap.appendChild(frameToggle);
@@ -1435,16 +1462,16 @@ function drawComposer(p) {
   const canvas = $('#composerCanvas');
   if (!canvas) return;
   const slide = p.images[editingIdx];
-  drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize);
+  drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p));
   const rect = canvas.getBoundingClientRect();
   composerScale = (rect.width || canvas.clientWidth || 420) / CW;
 }
-// 사진이 기준 영역(틀 켜짐: 투명 창 FIW x FIH / 틀 꺼짐: 캔버스 전체 CW x CH)을 항상
+// 사진이 기준 영역(틀 켜짐: 그 브랜드 틀의 투명 창 / 틀 꺼짐: 캔버스 전체 CW x CH)을 항상
 // 꽉 채우도록 ox/oy(드래그 이동량)를 그 여유분 안으로 붙잡아둔다 — 여유가 없는 축(예: 최소
 // 배율 100%일 때 짧은 쪽)은 아예 못 움직이고, 확대할수록 남는 여유만큼 이동 범위도 같이
 // 늘어나되, 사진 끝에 닿으면 거기서 멈춰서 뒤로 흰 여백이 보이는 일이 없게 한다.
-function clampSlideOffset(slide, pw, ph) {
-  const fit = fitRectFor(slide);
+function clampSlideOffset(slide, pw, ph, frame) {
+  const fit = fitRectFor(slide, frame || frameOf(null));
   const base = coverFitBase(pw, ph, fit.w, fit.h);
   const eff = base * (slide.scale || 1);
   const dw = pw * eff, dh = ph * eff;
@@ -1464,7 +1491,7 @@ function wireComposerInteraction(p) {
     // 작아져서 아무리 이동해도 여백이 생기는 걸 막을 방법이 없어짐.
     slide.scale = Math.max(1, Math.min(3, (slide.scale || 1) + delta));
     const img = imgCache.get(slide.key);
-    if (img) clampSlideOffset(slide, img.naturalWidth, img.naturalHeight);
+    if (img) clampSlideOffset(slide, img.naturalWidth, img.naturalHeight, frameOf(p));
     drawComposer(p); drawAllThumbs(p); saveProductsSoon();
   }, { passive: false });
   let drag = null;
@@ -1479,7 +1506,7 @@ function wireComposerInteraction(p) {
     slide.ox = drag.sox + (e.clientX - drag.sx) / scale;
     slide.oy = drag.soy + (e.clientY - drag.sy) / scale;
     const img = imgCache.get(slide.key);
-    if (img) clampSlideOffset(slide, img.naturalWidth, img.naturalHeight);
+    if (img) clampSlideOffset(slide, img.naturalWidth, img.naturalHeight, frameOf(p));
     drawComposer(p);
   });
   window.addEventListener('mouseup', () => {
@@ -1774,7 +1801,21 @@ function wireDetail(p) {
   document.querySelectorAll('#prodBrandRadios input[name="prodBrand"]').forEach(el => {
     el.addEventListener('change', () => {
       document.querySelectorAll('#prodBrandRadios .brand-opt').forEach(o => o.classList.toggle('selected', o.querySelector('input').checked));
-      if (el.checked) { p.brand = el.value; renderList(); saveProductsSoon(); }
+      if (!el.checked) return;
+      p.brand = el.value;
+      renderList(); saveProductsSoon();
+      // 브랜드를 바꾸면 틀 그림과 투명 창 크기가 같이 바뀐다 — 새 틀을 받아온 뒤
+      // 이동량(ox/oy)을 새 창 기준으로 다시 붙잡고 캐러셀을 다시 그려야, 바꾼 즉시
+      // 화면에 반영되고 사진이 테두리 밑으로 어긋나 보이지 않는다.
+      loadFrameImage(p.brand).catch(() => {}).then(() => {
+        if (getActiveProduct()?.id !== p.id) return;
+        const fr = frameOf(p);
+        p.images.forEach(s => {
+          const img = imgCache.get(s.key);
+          if (img) clampSlideOffset(s, img.naturalWidth, img.naturalHeight, fr);
+        });
+        drawAllThumbs(p); drawComposer(p); saveProductsSoon();
+      });
     });
   });
   document.querySelectorAll('#prodBrandRadios .brand-opt').forEach(o => o.classList.toggle('selected', o.querySelector('input').checked));
