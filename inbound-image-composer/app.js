@@ -156,6 +156,26 @@ function renderStepIndicator() {
   }).join('');
 }
 
+// 사용법 패널(details.help)은 기본 펼침이다 — 처음 쓰는 사람이 설명을 못 찾는 일이 없어야
+// 하기 때문. 대신 한 번 접으면 그 선택을 기억해서(localStorage) 익숙해진 사람 화면은
+// 계속 깨끗하게 유지된다. 저장된 값이 없으면(예전 사용자, 새 패널 추가) 항상 펼침이
+// 기본값이라 예전 데이터를 읽어도 깨지지 않는다.
+const HELP_LS_KEY = 'inbound-image-composer-help-v1';
+function setupHelpPanels() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(HELP_LS_KEY) || '{}'); } catch (e) { saved = {}; }
+  document.querySelectorAll('details.help[data-help]').forEach((el) => {
+    const key = el.dataset.help;
+    if (typeof saved[key] === 'boolean') el.open = saved[key];
+    el.addEventListener('toggle', () => {
+      let cur = {};
+      try { cur = JSON.parse(localStorage.getItem(HELP_LS_KEY) || '{}'); } catch (e) { cur = {}; }
+      cur[key] = el.open;
+      try { localStorage.setItem(HELP_LS_KEY, JSON.stringify(cur)); } catch (e) { /* 용량 초과면 그냥 기억만 못 함 */ }
+    });
+  });
+}
+
 function goToStep(n) {
   if (n === 2 && Object.keys(state.photos).length === 0) return;
   if (n === 4 && !state.orderConfirmed) { showStep5Guard(); }
@@ -1852,5 +1872,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('downloadAllBtn').addEventListener('click', downloadAllPages);
   document.getElementById('headerSelect').addEventListener('change', updateHeaderPreview);
 
+  setupHelpPanels();
   goToStep(1);
 });

@@ -56,7 +56,6 @@
 
   .slotbox { background: #ececef; border: 1px solid var(--line2); border-radius: 10px; padding: 11px; margin-bottom: 16px; }
   .slotbox-h { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .3px; margin-bottom: 4px; }
-  .slotbox-note { font-size: 11px; color: var(--muted); line-height: 1.45; margin-bottom: 8px; }
   .slots { display: flex; flex-direction: column; gap: 6px; }
   .slot { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 8px 10px; cursor: pointer; }
   .slot:hover { border-color: var(--accent); background: #f5f9ff; }
@@ -111,8 +110,6 @@
   .marquee-box { position: absolute; border: 1px dashed var(--accent); background: rgba(47,123,255,.1); pointer-events: none; z-index: 5; }
   .marquee-box-fixed { position: fixed; z-index: 9999; }
   .undo-banner { display: flex; align-items: center; gap: 10px; background: #fff3d6; border: 1px solid #f0c869; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; }
-  .ai-buttons-guide { background: #f8f9fb; border: 1px solid #e1e5ea; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; }
-  .ai-buttons-guide-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; color: var(--text); }
   .ai-buttons-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
   .ai-buttons-table th, .ai-buttons-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e6e9ee; vertical-align: top; }
   .ai-buttons-table th { color: var(--muted); font-weight: 600; }
@@ -157,6 +154,30 @@
   .page-thumb { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fff; margin-bottom: 14px; }
   .page-thumb img { width: 260px; display: block; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 8px; max-width: 100%; height: auto; }
   @media (max-width: 480px) { .page-thumb { padding: 8px; } .page-thumb img { width: 100%; } }
+
+  /* ---- 글자 위계 (타입 스케일) ----
+     이전에는 제목 18px 말고는 거의 전부 13px 회색이라, 화면 안에서 "지금 봐야 할 것"과
+     "참고 설명"의 무게가 똑같아 보였다. 아래 4단계만 정해두고 전부 여기에 맞춘다. */
+  .sec-title { font-size: 15px; font-weight: 700; color: var(--text); margin: 0 0 8px; }
+  .caption { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  /* ---- 접히는 사용법 패널 ----
+     설명을 지우는 게 아니라 한 곳에 모아 접을 수 있게 한 것. 기본은 펼침이라 처음 쓰는
+     사람은 그대로 다 읽을 수 있고, 익숙해져서 한 번 접으면 그 상태가 기억된다
+     (localStorage, app.js의 setupHelpPanels 참고). */
+  details.help { border: 1px solid var(--line); border-radius: 8px; background: #f8f9fb; margin: 0 0 14px; }
+  details.help > summary {
+    cursor: pointer; list-style: none; padding: 9px 12px; font-size: 13px; font-weight: 700;
+    color: var(--text); display: flex; align-items: center; gap: 6px;
+  }
+  details.help > summary::-webkit-details-marker { display: none; }
+  details.help > summary::before { content: '▸'; color: var(--muted); font-size: 11px; }
+  details.help[open] > summary::before { content: '▾'; }
+  details.help > summary:hover { color: var(--accent); }
+  details.help .help-body { padding: 0 12px 12px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+  details.help .help-body > p { margin: 0 0 8px; }
+  details.help .help-body > p:last-child { margin-bottom: 0; }
+  details.help .help-body b, details.help .help-body strong { color: var(--text); }
 </style>
 </head>
 <body>
@@ -173,42 +194,50 @@
   <section class="step" id="step-1">
     <div class="card-panel">
       <h2>1단계 · 업로드 &amp; 그리드 검출</h2>
-      <p class="hint">원본 입고안내 스크린샷 1~3장을 업로드하세요 (보통 1000px 폭, 5열 그리드).
-        파일 선택 없이 캡처한 이미지를 그대로 <b>Ctrl+V로 붙여넣기</b>도 가능합니다.
-        그리드는 이미지마다 픽셀 스캔으로 매번 새로 검출하며, 아래 빨간 사각형으로 검출 결과를
-        직접 눈으로 확인한 뒤에만 크롭을 확정할 수 있습니다.
-        AI가 채운 값은 항상 확인 대상으로만 표시되며 사람이 최종 확정해야 합니다.</p>
-      <div class="ai-buttons-guide">
-        <div class="ai-buttons-guide-title">이 도구엔 AI 버튼이 3개 있습니다 — 상황에 맞는 걸 고르세요</div>
-        <table class="ai-buttons-table">
-          <tr><th>버튼</th><th>위치</th><th>언제 쓰나</th><th>비용</th></tr>
-          <tr>
-            <td>🤖 AI로 채우기</td><td>1단계</td>
-            <td>매장에서 새로 캡처한 원본 스크린샷 — 사진까지 같이 보고 IP명·가격을 처음부터 인식</td>
-            <td>가장 비쌈 (사진+글자)</td>
-          </tr>
-          <tr>
-            <td>🏷️ 라벨만 재인식</td><td>1단계</td>
-            <td>원본 스크린샷이든 이 도구로 이미 만든 결과물(재수입)이든 상관없이 — 사진은 안 보고
-              사진 아래 텍스트만 보고 "AI로 채우기"와 같은 규칙으로 IP명을 추출. 글자가 흐려서
-              사진으로 확인해야 하는 애매한 경우만 "AI로 채우기"보다 정확도가 낮음</td>
-            <td>중간 (글자만, 사진 뺌)</td>
-          </tr>
-          <tr>
-            <td>🏷️ AI 분류로 정렬 보조</td><td>3단계</td>
-            <td>IP명은 이미 다 아는 상태(직접 입력했거나 위 두 버튼으로 채웠거나) — 그 텍스트만 보고
-              정렬 기준(성향/분위기)만 판단</td>
-            <td>가장 저렴 (이미지 전혀 없음)</td>
-          </tr>
-        </table>
-      </div>
+      <details class="help" open data-help="step1">
+        <summary>사용법 &amp; AI 버튼 고르는 법</summary>
+        <div class="help-body">
+          <p>원본 입고안내 스크린샷 1~3장을 업로드하세요 (보통 1000px 폭, 5열 그리드).
+            파일 선택 없이 캡처한 이미지를 그대로 <b>Ctrl+V로 붙여넣기</b>도 가능합니다.
+            그리드는 이미지마다 픽셀 스캔으로 매번 새로 검출하며, 아래 빨간 사각형으로 검출 결과를
+            직접 눈으로 확인한 뒤에만 크롭을 확정할 수 있습니다.
+            AI가 채운 값은 항상 확인 대상으로만 표시되며 사람이 최종 확정해야 합니다.</p>
+          <p class="sec-title" style="margin-top:12px;">AI 버튼이 3개 있습니다 — 상황에 맞는 걸 고르세요</p>
+          <table class="ai-buttons-table">
+            <tr><th>버튼</th><th>위치</th><th>언제 쓰나</th><th>비용</th></tr>
+            <tr>
+              <td>🤖 AI로 채우기</td><td>1단계</td>
+              <td>매장에서 새로 캡처한 원본 스크린샷 — 사진까지 같이 보고 IP명·가격을 처음부터 인식</td>
+              <td>가장 비쌈 (사진+글자)</td>
+            </tr>
+            <tr>
+              <td>🏷️ 라벨만 재인식</td><td>1단계</td>
+              <td>원본 스크린샷이든 이 도구로 이미 만든 결과물(재수입)이든 상관없이 — 사진은 안 보고
+                사진 아래 텍스트만 보고 "AI로 채우기"와 같은 규칙으로 IP명을 추출. 글자가 흐려서
+                사진으로 확인해야 하는 애매한 경우만 "AI로 채우기"보다 정확도가 낮음</td>
+              <td>중간 (글자만, 사진 뺌)</td>
+            </tr>
+            <tr>
+              <td>🏷️ AI 분류로 정렬 보조</td><td>3단계</td>
+              <td>IP명은 이미 다 아는 상태(직접 입력했거나 위 두 버튼으로 채웠거나) — 그 텍스트만 보고
+                정렬 기준(성향/분위기)만 판단</td>
+              <td>가장 저렴 (이미지 전혀 없음)</td>
+            </tr>
+          </table>
+        </div>
+      </details>
 
       <div class="slotbox">
         <div class="slotbox-h">↺ 이전 작업 (최근 5개 · 자동 저장)</div>
-        <div class="slotbox-note">탭을 닫거나 다른 탭으로 넘어갈 때 그 시점의 표 데이터(사진 썸네일 포함)가
-          자동으로 슬롯에 남습니다. 누르면 그 상태로 바로 돌아갑니다 — 단, 용량 절약을 위해 사진은
-          압축된 썸네일로 저장되므로 <b>최종 내보내기 화질이 살짝 낮아질 수 있습니다</b>. 정상 작업
-          중이면 이 캐시를 거치지 말고 그대로 이어서 진행하세요.</div>
+        <details class="help" data-help="slots" style="background:#f6f6f8;margin-bottom:8px;">
+          <summary style="padding:6px 10px;font-size:12px;">이게 뭔가요?</summary>
+          <div class="help-body" style="padding:0 10px 10px;font-size:12px;">
+            <p>탭을 닫거나 다른 탭으로 넘어갈 때 그 시점의 표 데이터(사진 썸네일 포함)가
+              자동으로 슬롯에 남습니다. 누르면 그 상태로 바로 돌아갑니다 — 단, 용량 절약을 위해 사진은
+              압축된 썸네일로 저장되므로 <b>최종 내보내기 화질이 살짝 낮아질 수 있습니다</b>. 정상 작업
+              중이면 이 캐시를 거치지 말고 그대로 이어서 진행하세요.</p>
+          </div>
+        </details>
         <div id="slots" class="slots"></div>
       </div>
 
@@ -225,12 +254,16 @@
   <section class="step" id="step-2">
     <div class="card-panel">
       <h2>2단계 · 표 정리</h2>
-      <p class="hint">상품명을 그대로 두지 않고 IP명만 추출해 확정합니다. IP명이 사전에 없으면
-        ⚠ 표시가 뜹니다 — 자동으로 추측 확정하지 말고 직접 확인 후 입력하세요.
-        같은 IP명을 가진 항목끼리는 왼쪽 테두리 색으로 묶어서 표시됩니다.
-        빈 배경을 드래그하면 여러 행을 한 번에 선택해 태그·클러스터를 일괄 변경할 수 있습니다.
-        <button class="link-btn" data-open-dict="ip">IP명 사전 열기</button>
-      </p>
+      <details class="help" open data-help="step2">
+        <summary>사용법</summary>
+        <div class="help-body">
+          <p>상품명을 그대로 두지 않고 IP명만 추출해 확정합니다. IP명이 사전에 없으면
+            ⚠ 표시가 뜹니다 — 자동으로 추측 확정하지 말고 직접 확인 후 입력하세요.
+            같은 IP명을 가진 항목끼리는 왼쪽 테두리 색으로 묶어서 표시됩니다.
+            빈 배경을 드래그하면 여러 행을 한 번에 선택해 태그·클러스터를 일괄 변경할 수 있습니다.
+            <button class="link-btn" data-open-dict="ip">IP명 사전 열기</button></p>
+        </div>
+      </details>
       <div class="row" style="margin-bottom:10px;">
         <label style="font-size:13px;">스토어 프로필</label>
         <select id="storeSelectStep2"></select>
@@ -253,18 +286,26 @@
   <section class="step" id="step-3">
     <div class="card-panel">
       <h2>3단계 · 전체 미리보기 &amp; 순서 정렬</h2>
-      <p class="hint">박스 하나가 실제로 나갈 페이지 1장입니다 — 실제 출력과 똑같이
-        20개(5열 × 4행) 단위로 나뉘어 보이므로, 박스 경계가 곧 페이지 경계입니다.
-        카드를 드래그해서 순서를 바꾸거나, 카드를 클릭해 내용을 수정하세요. 빈 배경을 드래그하면
-        여러 카드를 한 번에 선택해 묶어서 이동할 수 있습니다. 카드 왼쪽 테두리 색은 같은 IP끼리
-        같은 색으로 묶여 보이며, <strong>같은 IP는 기본적으로 함께 드래그됩니다</strong> — 카드
-        하나만 따로 옮기고 싶으면 <strong>Alt(옵션)를 누른 채 드래그</strong>하거나 카드 위
-        <strong>"1개만" 버튼</strong>을 눌러 다음 드래그를 1회만 개별 이동으로 만드세요.
-        <strong>이 단계를 건너뛰고 최종 분할로 가지 않습니다.</strong></p>
-      <p class="hint">자동 정렬 기준: ① IP 등급(S/A급 → B/C급 성향별 → 기타) → ② 스토어 성향 우선순위 →
-        ③ 분위기 클러스터. 등급표/클러스터는
-        <button class="link-btn" data-open-dict="grade">사전 관리에서 편집</button>할 수 있습니다.
-        자동 정렬 후에도 카드를 드래그해서 미세 조정할 수 있습니다.</p>
+      <details class="help" open data-help="step3">
+        <summary>사용법 &amp; 자동 정렬 기준</summary>
+        <div class="help-body">
+          <p><b>박스 하나가 실제로 나갈 페이지 1장입니다</b> — 실제 출력과 똑같이
+            20개(5열 × 4행) 단위로 나뉘어 보이므로, 박스 경계가 곧 페이지 경계입니다.</p>
+          <p>카드를 드래그해서 순서를 바꾸거나, 카드를 클릭해 내용을 수정하세요. 빈 배경을 드래그하면
+            여러 카드를 한 번에 선택해 묶어서 이동할 수 있습니다. 카드 왼쪽 테두리 색은 같은 IP끼리
+            같은 색으로 묶여 보이며, <strong>같은 IP는 기본적으로 함께 드래그됩니다</strong> — 카드
+            하나만 따로 옮기고 싶으면 <strong>Alt(옵션)를 누른 채 드래그</strong>하거나 카드 위
+            <strong>"1개만" 버튼</strong>을 눌러 다음 드래그를 1회만 개별 이동으로 만드세요.</p>
+          <p>자동 정렬 기준: ① IP 등급(S/A급 → B/C급 성향별 → 기타) → ② 스토어 성향 우선순위 →
+            ③ 분위기 클러스터. 등급표/클러스터는
+            <button class="link-btn" data-open-dict="grade">사전 관리에서 편집</button>할 수 있습니다.
+            자동 정렬 후에도 카드를 드래그해서 미세 조정할 수 있습니다.</p>
+          <p><b>🏷️ AI 분류로 정렬 보조는 1단계 "🤖 AI로 채우기"와 다릅니다</b> — 1단계 버튼은 사진을
+            다시 읽어서 IP명·가격까지 새로 뽑아내고(이미지 인식, 비용 더 큼), 이 버튼은 이미 적힌
+            IP명 텍스트만 보고 등급표/클러스터에 없는 IP의 성향·분위기만 판단해서 정렬을
+            도와줍니다(텍스트는 그대로, 비용 훨씬 저렴).</p>
+        </div>
+      </details>
       <div id="textLockBanner" class="text-lock-banner" style="display:none;">
         🔒 텍스트 잠금 중 — 카드를 드래그해 순서만 바꿀 수 있어요. 글자를 고치려면
         2단계에서 잠금을 먼저 해제하세요.
@@ -286,13 +327,6 @@
         </div>
         <div id="splitPreviewText" style="font-size:12px;color:var(--muted);"></div>
       </div>
-      <p class="hint" style="margin:0 0 10px;font-size:12px;">
-        ↑ 이 버튼은 <strong>1단계 "🤖 AI로 채우기"와 다릅니다</strong> — 1단계 버튼은 사진을 다시 읽어서
-        IP명·가격까지 새로 뽑아내고(이미지 인식, 비용 더 큼), 이 버튼은 이미 적힌 IP명 텍스트만 보고
-        등급표/클러스터에 없는 IP의 성향·분위기만 판단해서 정렬을 도와줍니다(텍스트는 그대로,
-        비용 훨씬 저렴). 텍스트를 새로 채우고 싶으면 1단계로, 이미 채운 텍스트는 그대로 두고
-        순서만 더 잘 맞추고 싶으면 이 버튼을 쓰세요.
-      </p>
       <div class="undo-banner" id="undoBanner" style="display:none;">
         <span id="undoBannerText"></span>
         <button class="btn" id="undoDeleteBtn">실행취소</button>
@@ -309,11 +343,15 @@
   <section class="step" id="step-4">
     <div class="card-panel">
       <h2>4단계 · 최종 분할 &amp; 내보내기</h2>
-      <p class="hint">이 단계는 순서를 바꾸는 화면이 아니라 최종 이미지를 만들어 다운로드하는
-        화면입니다 — 그래서 3단계 같은 카드 미리보기/드래그가 여기는 없습니다(없어진 게
-        아니라 원래 이 화면엔 없습니다). 순서를 더 조정하고 싶으면 아래 "← 미리보기 & 정렬로"
-        버튼으로 3단계로 돌아가세요. "페이지 생성"을 누르기 전까지는 실제 페이지 이미지도
-        안 보이는 게 정상입니다.</p>
+      <details class="help" open data-help="step4">
+        <summary>사용법</summary>
+        <div class="help-body">
+          <p>이 단계는 순서를 바꾸는 화면이 아니라 최종 이미지를 만들어 다운로드하는
+            화면입니다 — 그래서 3단계 같은 카드 미리보기/드래그가 여기는 없습니다.
+            순서를 더 조정하고 싶으면 아래 "← 미리보기 &amp; 정렬로" 버튼으로 3단계로 돌아가세요.
+            "페이지 생성"을 누르기 전까지는 실제 페이지 이미지도 안 보이는 게 정상입니다.</p>
+        </div>
+      </details>
       <div id="step5Guard" class="hint"></div>
       <div id="step5Body" style="display:none;">
         <div class="row" style="margin-bottom:14px;flex-wrap:wrap;">
