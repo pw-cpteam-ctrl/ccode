@@ -1545,30 +1545,45 @@ async function classifyIpsForSort() {
   }
 }
 
+// 바뀐 점 안내. 따로 공지를 못 받은 사람도 접속만 하면 보도록 모달로 띄운다.
+//
+// 한 번 닫으면 영영 안 뜨게 했더니, 실수로 바로 닫아버린 사람은 내용을 아예 못 읽는
+// 문제가 있었다. 그래서 "봤는지 여부"가 아니라 "언제까지 숨길지"를 저장한다 —
+// localStorage에 숨김 만료 시각(밀리초)을 넣어두고, 그 시각이 지나면 다시 뜬다.
+//   · "오늘 하루 그만보기"  → 24시간
+//   · "3일간 그만보기"      → 72시간
+//   · ESC/바깥 클릭         → 아무것도 저장 안 함 (다음 접속에 또 뜸)
+//
+// 그리고 안내가 유효한 기간이 지나면 아무도 신경 안 써도 저절로 사라져야 하므로,
+// 노출 마감일을 코드에 못 박아 둔다. 다음에 또 큰 변경이 있으면 아래 키와 마감일을
+// 새로 잡고 본문만 바꾸면 된다.
+const NOTICE_KEY = 'inbound-image-composer-notice-2026-08-20';
+const NOTICE_UNTIL = new Date('2026-08-23T00:00:00+09:00').getTime(); // 이 시각 이후로는 아무에게도 안 뜸
+function setupNotice() {
+  const dlg = document.getElementById('noticeDialog');
+  if (!dlg) return;
+  if (Date.now() > NOTICE_UNTIL) return; // 안내 기간 종료
+  // 예전에 저장하던 '1'은 Number('1')=1(1970년)이라 자동으로 "만료됨"이 되므로,
+  // 옛날 값이 남아 있어도 마이그레이션 없이 새 안내가 정상적으로 뜬다.
+  let hiddenUntil = 0;
+  try { hiddenUntil = Number(localStorage.getItem(NOTICE_KEY)) || 0; } catch (e) { hiddenUntil = 0; }
+  const hideFor = (hours) => {
+    try {
+      localStorage.setItem(NOTICE_KEY, String(Date.now() + hours * 60 * 60 * 1000));
+    } catch (e) { /* 기억만 못 할 뿐 동작엔 지장 없음 */ }
+    if (dlg.open) dlg.close();
+  };
+  document.getElementById('noticeHide1d').addEventListener('click', () => hideFor(24));
+  document.getElementById('noticeHide3d').addEventListener('click', () => hideFor(72));
+  if (Date.now() > hiddenUntil) dlg.showModal();
+}
+
 // ============================================================
 // 내보내기 (3단계 하단 고정 바)
 // ============================================================
 // 예전에는 "순서 확정하고 다음 단계 →"를 눌러야만 내보내기 화면이 열리는 게이트가 있었다.
 // 화면이 합쳐진 지금은 그 관문 대신 "생성한 뒤에 내용이 바뀌었는지"를 직접 감지한다 —
 // 관문은 사용자가 한 번 통과하면 그 뒤 변경을 못 잡지만, 이 방식은 언제 바뀌든 잡는다.
-// 바뀐 점 안내. 따로 공지를 못 받은 사람도 접속만 하면 한 번은 보도록 모달로 띄우고,
-// 닫으면 기록해서 다시 안 뜨게 한다. 다음에 또 큰 변경이 있으면 아래 키의 날짜만 바꾸면
-// 그때 다시 한 번 뜬다.
-const NOTICE_KEY = 'inbound-image-composer-notice-2026-08-20';
-function setupNotice() {
-  const dlg = document.getElementById('noticeDialog');
-  if (!dlg) return;
-  let seen = false;
-  try { seen = localStorage.getItem(NOTICE_KEY) === '1'; } catch (e) { seen = false; }
-  const close = () => {
-    if (dlg.open) dlg.close();
-    try { localStorage.setItem(NOTICE_KEY, '1'); } catch (e) { /* 기억만 못 할 뿐 동작엔 지장 없음 */ }
-  };
-  document.getElementById('noticeCloseBtn').addEventListener('click', close);
-  dlg.addEventListener('close', close); // ESC로 닫아도 본 것으로 처리
-  if (!seen) dlg.showModal();
-}
-
 function renderExportBar() {
   const headerSelect = document.getElementById('headerSelect');
   const keep = headerSelect.value;
