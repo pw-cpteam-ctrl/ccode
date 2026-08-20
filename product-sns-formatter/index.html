@@ -718,17 +718,27 @@ function lookupWorkTitle(work, workJa) {
   }
   return '';
 }
-async function loadWorkTitleDict() {
-  WORK_DICT = new Map();
-  // 서버에 커밋된 공용 사전(팀 전체가 공유) — 아직 파일이 없으면 조용히 넘어간다.
+// 팀 공용 사전 읽기 — /api/work-titles(GitHub 파일을 직접 읽어주는 서버 함수)를 먼저
+// 본다. 이 길로 읽으면 배포를 기다리지 않고 저장 즉시 팀원에게 반영된다. 서버 함수가
+// 없거나 설정이 덜 됐을 때만 배포된 파일을 대신 읽는다(예전 방식 = 안전망).
+async function fetchSharedWorkTitles() {
   try {
-    const res = await fetch('./data/work-titles.json', { cache: 'no-store' });
+    const res = await fetch('/api/work-titles', { cache: 'no-store' });
     if (res.ok) {
       const body = await res.json();
-      for (const e of (body.entries || [])) if (e && e.ko) addToWorkDict({ ...e, source: 'shared' });
+      if (Array.isArray(body.entries) && body.entries.length) return body.entries;
     }
+  } catch { /* 서버 함수를 못 쓰면 아래 배포된 파일로 넘어간다 */ }
+  try {
+    const res = await fetch('./data/work-titles.json', { cache: 'no-store' });
+    if (res.ok) return (await res.json()).entries || [];
   } catch { /* 없거나 못 읽어도 로컬 사전만으로 계속 쓴다 */ }
-  // 방금 이 브라우저에서 저장한 것 — 서버 반영(배포)까지 몇 분 걸리므로 로컬을 나중에 덮어쓴다.
+  return [];
+}
+async function loadWorkTitleDict() {
+  WORK_DICT = new Map();
+  for (const e of await fetchSharedWorkTitles()) if (e && e.ko) addToWorkDict({ ...e, source: 'shared' });
+  // 방금 이 브라우저에서 저장한 것 — 서버 반영이 한 박자 늦을 수 있어 로컬을 나중에 덮어쓴다.
   for (const e of loadLocalWorkDict()) if (e && e.ko) addToWorkDict({ ...e, source: 'local' });
   // 표기 후보: 참고 DB에 실제로 쓰인 한국어 작품명
   try {
