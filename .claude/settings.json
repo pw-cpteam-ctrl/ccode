@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"$(git rev-parse --show-toplevel)\" && git fetch origin main -q 2>/dev/null; if [ -z \"$(git status --porcelain)\" ] && git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then git checkout -B main origin/main -q 2>/dev/null; fi; true",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/align-main.sh\" 2>/dev/null; true",
             "statusMessage": "브랜치를 main으로 정렬 중..."
           },
           {
