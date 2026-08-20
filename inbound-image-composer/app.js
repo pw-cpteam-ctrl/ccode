@@ -1077,10 +1077,20 @@ let groupSelectedIds = new Set();
 // 다음 드래그 한 번에만 적용되고 쓰이자마자(또는 다시 눌러서 취소하면) null로 돌아간다.
 let singleMoveArmedId = null;
 
-// 5열 x 5줄 = 25개 단위로 박스(페이지)를 나눈다. 박스는 항상 2열로 나란히 배치되고,
-// 홀수 개(마지막 박스가 짝이 없을 때)면 빈 박스를 하나 더 붙여 짝을 맞춘다 — 그래야
-// 마지막 박스 하나만 있을 때 카드가 컨테이너 폭 전체로 늘어나 커지는 걸 막을 수 있다.
-const PREVIEW_PAGE_GROUP_SIZE = 25;
+// 미리보기 박스 1개 = 실제 출력 페이지 1장. 그래서 반드시 실제 페이지 용량과 같아야 한다.
+// 실제 출력은 renderPage의 5열 x 4행 = 20개가 한 장이고(generatePages의 chunk(items, 20)),
+// 툴바의 "총 N개 → 20+3 (2페이지)" 안내도 20 기준이다.
+//
+// 원래 이 값은 25였는데, 그건 페이지 용량이 아니라 "박스를 5열x5줄로 그리자"는 순수
+// 시각적 결정이었다. 그 박스에 나중에 "1p", "2p" 라벨이 붙으면서 실제 페이지처럼
+// 보이게 됐고, 결과적으로 21~25번째 카드가 "1p" 박스 안에 있으면서 실제로는 2페이지로
+// 출력되는 불일치가 생겼다(항목 23개면 3장, 47개면 12장이 어긋남). 같은 화면의 툴바는
+// 20 기준으로 맞게 표시하고 있어서 한 화면이 서로 다른 말을 하는 상태였다.
+//
+// 박스는 항상 2열로 나란히 배치되고, 홀수 개(마지막 박스가 짝이 없을 때)면 빈 박스를
+// 하나 더 붙여 짝을 맞춘다 — 그래야 마지막 박스 하나만 있을 때 카드가 컨테이너 폭
+// 전체로 늘어나 커지는 걸 막을 수 있다.
+const PREVIEW_PAGE_GROUP_SIZE = 20;
 
 // 선택된 항목들(movingIds)을 원래 상대 순서를 유지한 채 targetItemId 위치로 통째로 옮긴다.
 // 인덱스가 아니라 id 기준으로 계산해서, 몇 개를 옮기든(그룹이든 단일이든) 항상 정확하다.
@@ -1175,7 +1185,12 @@ function renderPreviewGrid(containerId, items, opts) {
   pages.forEach((pageItems, pageIdx) => {
     const pageBox = document.createElement('div');
     pageBox.className = `preview-page-box${pageItems.length === 0 ? ' empty' : ''}`;
-    pageBox.innerHTML = `<div class="preview-page-label">${pageIdx + 1}p</div>`;
+    // 개수를 같이 적어야 박스 경계가 진짜 페이지 경계라는 게 눈으로 확인된다.
+    // 빈 박스는 짝맞춤용 자리채우기일 뿐 실제 페이지가 아니므로 라벨을 붙이지 않는다
+    // (예전엔 여기에도 "2p"가 붙어서 존재하지 않는 페이지가 있는 것처럼 보였다).
+    pageBox.innerHTML = pageItems.length
+      ? `<div class="preview-page-label">${pageIdx + 1}페이지 · ${pageItems.length}개</div>`
+      : '';
     const grid = document.createElement('div');
     grid.className = 'preview-grid';
     pageBox.appendChild(grid);
