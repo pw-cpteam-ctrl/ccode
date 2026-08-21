@@ -118,6 +118,37 @@ function median(nums) {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+// 열 시작점을 "균등 간격 격자"에 맞춰 보정한다.
+//
+// 왜 필요한가 (실사용 중 발견, 1열만 계속 어긋나던 원인):
+// detectColStarts는 흰색이 minGapPx(기본 8px)만큼 연속돼야 칸이 끝난 것으로 본다.
+// 그런데 실제 스토어 캡처는 상품 그리드 바깥을 감싸는 파란 프레임/테두리가 있고, 그
+// 테두리와 첫 번째 사진 사이의 흰 여백이 8px보다 좁으면 둘이 하나의 run으로 합쳐진다.
+// 그러면 1열의 시작 x가 "사진 왼쪽"이 아니라 "테두리 왼쪽"으로 잡히고(왼쪽으로 몇 px
+// 밀림), 칸 너비(cardW)는 나머지 4열의 중앙값이라 정상값이므로, 결과적으로 1열 박스만
+// 테두리를 물고 사진 오른쪽이 잘려 나간다. 항상 같은 자리에서 같은 방식으로 발생하고,
+// "다시 검출"이 바꾸는 건 흰색 판정 임계값뿐이라 재시도해도 동일하게 재현됐다.
+//
+// 이 도구는 처음부터 "5열 균등 그리드"를 전제로 만들어졌다(sampleColsBase 좌표 자체가
+// 그 전제로 실측된 값). 즉 열 간격은 규칙적인 게 정상이고, 어떤 열이 그 격자에서 홀로
+// 벗어나 있으면 그건 실제 레이아웃이 아니라 검출 오류다. 그래서 열 간격의 중앙값(pitch)과
+// 격자 기준점(base)을 구해 이상적인 위치를 계산하고, 거기서 tolerance 이상 벗어난 열만
+// 이상적인 값으로 되돌린다. 정상 범위 안의 열은 실측값을 그대로 존중한다.
+// (행 방향에는 적용하지 않는다 — 상품명이 한 줄이냐 두 줄이냐에 따라 행 간격이 실제로
+// 불규칙해지는 게 정상이라, 격자로 강제하면 오히려 맞는 값을 망친다.)
+function snapColsToLattice(colStarts, tolerancePx) {
+  if (colStarts.length < 3) return colStarts; // 표본이 적으면 격자 추정 자체가 신뢰도 없음
+  const diffs = [];
+  for (let i = 1; i < colStarts.length; i++) diffs.push(colStarts[i] - colStarts[i - 1]);
+  const pitch = median(diffs);
+  if (!pitch || pitch <= 0) return colStarts;
+  const base = median(colStarts.map((x, i) => x - i * pitch));
+  return colStarts.map((x, i) => {
+    const ideal = Math.round(base + i * pitch);
+    return Math.abs(x - ideal) > tolerancePx ? ideal : x;
+  });
+}
+
 // IMPORTANT (learned the hard way): sample MULTIPLE x columns when detecting row
 // tops — different columns in the same row can report slightly different y starts
 // (±1-2px) due to anti-aliasing. Cross-check at least 3 columns and use the most
@@ -178,7 +209,13 @@ function detectGrid(img, variant = 0) {
       }
     });
   }
+  // 칸 너비는 실측 run 길이의 중앙값을 쓴다 — 그리드 바깥 테두리와 합쳐져 비정상적으로
+  // 넓게 잡힌 run이 하나 있어도, 나머지 정상 열들이 중앙값을 지켜준다.
   const cardW = median(colWidths) || fallbackCardW;
+  // 균등 격자 보정은 cardW를 구한 뒤에 한다 — 보정된 좌표가 아니라 실측 폭에서 중앙값을
+  // 뽑아야 정상 칸의 실제 크기가 나온다.
+  const COL_SNAP_TOLERANCE = Math.max(4, Math.round(6 * scale));
+  colStarts = snapColsToLattice(colStarts, COL_SNAP_TOLERANCE);
 
   // 열 x좌표를 한 줄에서만 뽑아 모든 행에 그대로 재사용했더니, 실제 스토어 페이지처럼
   // 행마다 카드 좌측 여백이 몇 px씩 미묘하게 달라지는 캡처에서는 그 한 줄이 아닌 다른
@@ -187,9 +224,12 @@ function detectGrid(img, variant = 0) {
   // 재현됐다). 그래서 행마다 그 행 근처에서 다시 열을 검출해 각 행 고유의 x좌표를
   // 쓴다. 단, 그 행에서 검출된 열 개수가 기준 개수와 다르면(그 행의 특정 칸이
   // 흰 편이라 덜 잡히는 경우 등) 신뢰할 수 없으므로 공통 좌표로 되돌아간다.
+  // 행별 좌표에도 같은 격자 보정을 적용한다 — 그리드 바깥 테두리는 모든 행에 걸쳐 있어서
+  // 보정 없이는 어느 행에서 재든 1열이 똑같이 왼쪽으로 밀린 값으로 잡힌다.
   const colsByRow = rows.map((rowY) => {
     const attempt = bestColsNear(rowY);
-    return attempt.cols.length === colStarts.length ? attempt.cols : colStarts;
+    if (attempt.cols.length !== colStarts.length) return colStarts;
+    return snapColsToLattice(attempt.cols, COL_SNAP_TOLERANCE);
   });
 
   // 위 colsByRow가 "가로(열) 위치가 행마다 다를 수 있다"를 고쳤다면, 이건 그 반대 방향
