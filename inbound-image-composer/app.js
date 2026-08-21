@@ -406,7 +406,7 @@ function drawDebugOverlay(src) {
   canvas.height = src.img.height;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(src.img, 0, 0);
-  const { cols, rows, cardW, cardH } = src.grid;
+  const { colsByRow, rows, cardW, cardH } = src.grid;
 
   // 초록 점선: AI에게 실제로 전송되는 크롭 범위(사진+아래 텍스트, 행 전체 폭) — 빨간
   // 사진 박스보다 더 아래로 내려간다. "|" 뒤 작품명 텍스트가 이 범위 안에 실제로 들어
@@ -421,9 +421,13 @@ function drawDebugOverlay(src) {
     ctx.setLineDash([]);
   }
 
+  // 열 x좌표는 행마다 따로 검출한 값(colsByRow[i])을 쓴다 — 한 줄에서만 뽑은 좌표를
+  // 모든 행에 재사용하면, 행마다 카드 좌측 여백이 몇 px씩 다른 캡처에서 다른 행의
+  // 박스가 실제 사진과 어긋나 보인다(사진 한쪽이 박스 밖으로 나가고 반대쪽엔 흰 틈이
+  // 낌). "다시 검출"을 눌러도 이 재사용 구조 자체는 그대로라 매번 똑같이 재현됐었다.
   ctx.strokeStyle = 'red';
   ctx.lineWidth = 2;
-  rows.forEach((y) => cols.forEach((x) => ctx.strokeRect(x, y, cardW, cardH)));
+  rows.forEach((y, i) => colsByRow[i].forEach((x) => ctx.strokeRect(x, y, cardW, cardH)));
   // 헤더 영역(첫 행 위쪽) 표시
   if (rows.length) {
     const headerH = src.headerHeightOverride ?? rows[0];
@@ -449,7 +453,7 @@ function confirmSourceCrop(srcId) {
     src.headerId = null;
   }
 
-  const { cols, rows, cardW, cardH } = src.grid;
+  const { colsByRow, rows, cardW, cardH } = src.grid;
 
   if (rows.length) {
     // 자동 검출된 rows[0](첫 상품 행 시작점)를 그대로 헤더 높이로 썼었는데, 이 값이
@@ -469,8 +473,8 @@ function confirmSourceCrop(srcId) {
   // 안쪽으로 당기지 않고 상하좌우 +3px 바깥쪽으로 여유를 둔다 — 배경이 흰색이라 여유분은
   // 최종 렌더에서 티가 안 나고(176×176으로 다시 맞춰 그려짐), 대신 사진 잘림을 방지한다.
   const CROP_MARGIN = 3;
-  rows.forEach((y) => {
-    cols.forEach((x) => {
+  rows.forEach((y, ri) => {
+    colsByRow[ri].forEach((x) => {
       const photoId = `p${state.nextPhotoNum++}`;
       const mx = Math.max(0, x - CROP_MARGIN);
       const my = Math.max(0, y - CROP_MARGIN);
@@ -552,7 +556,7 @@ function computeRowTextBottoms(src) {
 // 뒤섞이는 문제 자체가 생기지 않는다. 순서 혼동을 막기 위해 각 칸 위치에 #1,#2... 번호만
 // 덧그린다(레이아웃 자체는 원본 그대로 유지).
 function cropRowsRegion(src, rowIndices) {
-  const { cols, rows, cardW } = src.grid;
+  const { colsByRow, rows, cardW } = src.grid;
   const rowTextBottoms = computeRowTextBottoms(src);
   const yTop = rows[rowIndices[0]];
   const yBottom = rowTextBottoms[rowIndices[rowIndices.length - 1]];
@@ -575,7 +579,7 @@ function cropRowsRegion(src, rowIndices) {
   rowIndices.forEach((ri) => {
     const rowTop = (rows[ri] - yTop) * scale;
     const rowBottom = (rowTextBottoms[ri] - yTop) * scale;
-    cols.forEach((cx) => {
+    colsByRow[ri].forEach((cx) => {
       const x = cx * scale;
       ctx.strokeRect(x, rowTop, cardW * scale, rowBottom - rowTop);
       ctx.fillText(`#${n}`, x + 4, rowTop + 18 < rowBottom ? rowTop + 18 : rowTop + 14);
@@ -591,7 +595,7 @@ function cropRowsRegion(src, rowIndices) {
 // 새로 알아맞힐 필요가 전혀 없고(이미 아는 상품이라 사진은 그냥 참고용), 이미 깨끗하게
 // 렌더링된 글자만 그대로 읽어오면 되므로 사진 픽셀을 통째로 뺀 만큼 이미지 토큰이 준다.
 function cropLabelStripRegion(src, rowIndices) {
-  const { cols, rows, cardW, cardH } = src.grid;
+  const { colsByRow, rows, cardW, cardH } = src.grid;
   const rowTextBottoms = computeRowTextBottoms(src);
   const yTop = rows[rowIndices[0]] + cardH;
   const yBottom = rowTextBottoms[rowIndices[rowIndices.length - 1]];
@@ -614,7 +618,7 @@ function cropLabelStripRegion(src, rowIndices) {
   rowIndices.forEach((ri) => {
     const rowTop = (rows[ri] + cardH - yTop) * scale;
     const rowBottom = (rowTextBottoms[ri] - yTop) * scale;
-    cols.forEach((cx) => {
+    colsByRow[ri].forEach((cx) => {
       const x = cx * scale;
       ctx.strokeRect(x, rowTop, cardW * scale, rowBottom - rowTop);
       ctx.fillText(`#${n}`, x + 4, rowTop + 18 < rowBottom ? rowTop + 18 : rowTop + 14);

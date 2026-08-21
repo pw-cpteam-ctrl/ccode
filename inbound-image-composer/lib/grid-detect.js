@@ -157,24 +157,42 @@ function detectGrid(img, variant = 0) {
   // 교차 검사해서 가장 많은 열이 잡힌 결과를 채택한다 — 앞쪽 몇 개 행에서 각각 시도해보고
   // (한 상품이 흰 편이어도 다른 행의 같은 열은 사진이 다르니 잡힐 가능성이 높다),
   // 그래도 안 되면 같은 행 안에서 세로 위치를 조금씩 바꿔가며 추가로 시도한다.
+  const offsetsToTry = [40, 80, 120, 20].map((o) => Math.round(o * scale));
+  function bestColsNear(rowY) {
+    let best = { cols: [], widths: [] };
+    for (const offset of offsetsToTry) {
+      const attempt = detectColStarts(ctx, rowY + offset, img.width, scale, params);
+      if (attempt.cols.length > best.cols.length) best = attempt;
+    }
+    return best;
+  }
+
   let colStarts = [];
   let colWidths = [];
   if (rows.length) {
-    const rowsToTry = rows.slice(0, Math.min(rows.length, 5));
-    const offsetsToTry = [40, 80, 120, 20].map((o) => Math.round(o * scale));
-    for (const rowY of rowsToTry) {
-      for (const offset of offsetsToTry) {
-        const attempt = detectColStarts(ctx, rowY + offset, img.width, scale, params);
-        if (attempt.cols.length > colStarts.length) {
-          colStarts = attempt.cols;
-          colWidths = attempt.widths;
-        }
+    rows.slice(0, Math.min(rows.length, 5)).forEach((rowY) => {
+      const attempt = bestColsNear(rowY);
+      if (attempt.cols.length > colStarts.length) {
+        colStarts = attempt.cols;
+        colWidths = attempt.widths;
       }
-    }
+    });
   }
   const cardW = median(colWidths) || fallbackCardW;
 
-  return { cols: colStarts, rows, cardW, cardH };
+  // 열 x좌표를 한 줄에서만 뽑아 모든 행에 그대로 재사용했더니, 실제 스토어 페이지처럼
+  // 행마다 카드 좌측 여백이 몇 px씩 미묘하게 달라지는 캡처에서는 그 한 줄이 아닌 다른
+  // 행들의 크롭이 옆으로 밀려 나왔다(사진 한쪽이 잘리고 반대쪽엔 흰 틈/옆 칸이 살짝
+  // 끼어드는 형태 — "다시 검출"을 눌러도 매번 이 재사용 구조 자체는 그대로라 똑같이
+  // 재현됐다). 그래서 행마다 그 행 근처에서 다시 열을 검출해 각 행 고유의 x좌표를
+  // 쓴다. 단, 그 행에서 검출된 열 개수가 기준 개수와 다르면(그 행의 특정 칸이
+  // 흰 편이라 덜 잡히는 경우 등) 신뢰할 수 없으므로 공통 좌표로 되돌아간다.
+  const colsByRow = rows.map((rowY) => {
+    const attempt = bestColsNear(rowY);
+    return attempt.cols.length === colStarts.length ? attempt.cols : colStarts;
+  });
+
+  return { cols: colStarts, colsByRow, rows, cardW, cardH };
 }
 
 // ============================================================
