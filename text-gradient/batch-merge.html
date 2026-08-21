@@ -68,6 +68,16 @@ button:disabled{opacity:.4;cursor:default;}
 .thumb.dropBefore{box-shadow:-3px 0 0 0 #4a7cff;}
 .thumb.dropAfter{box-shadow:3px 0 0 0 #4a7cff;}
 .thumb.warn canvas{border-color:#e05d5d;}
+/* 표 ↔ 미리보기 서로 짚어주기.
+   마우스를 올리면 짝이 되는 쪽에 표시만 하고 화면은 움직이지 않는다 —
+   오버만으로 스크롤하면 원하지 않는데도 화면이 계속 움직여서 정신없기 때문.
+   이동은 "누를 때"만 하고, 누른 표시는 마우스를 떼도 남는다 */
+.thumb.hl canvas{outline:2px solid #4a7cff;outline-offset:2px;}
+.thumb.pinned canvas{outline:3px solid #252018;outline-offset:3px;}
+#matchListTable tbody tr.hl{background:#eef3ff;}
+#matchListTable tbody tr.hl td:first-child{box-shadow:inset 3px 0 0 #4a7cff;}
+#matchListTable tbody tr.pinned{background:#eef3ff;}
+#matchListTable tbody tr.pinned td:first-child{box-shadow:inset 3px 0 0 #252018;}
 /* 칸 버튼은 마우스를 올릴 때만 보이게 — 칸 하나에 버튼이 여러 개라 300칸이면 화면 전체가 버튼밭이 됐음.
    자리를 차지한 채 투명해지는 방식(opacity)이라 나타날 때 칸이 흔들리지 않는다.
    ★ 대표 표시는 "지금 어느 게 표지인가"를 알려주는 상태 표시라 계속 보인다.
@@ -922,6 +932,7 @@ function renderMatchListTable(){
   const candidates = overlayCandidateNames();
   items.forEach((it, idx) => {
     const tr = document.createElement('tr');
+    tr.dataset.idx = idx;   // 아래쪽 미리보기 칸과 짝을 짓기 위한 번호
     const tdThumb = document.createElement('td');
     const tcv = document.createElement('canvas');
     tcv.className = 'listThumb';
@@ -942,7 +953,11 @@ function renderMatchListTable(){
     }
     tdName.appendChild(document.createTextNode(it.photoName));
     tdName.title = showFolder ? `"${it.folder || '(폴더 없음)'}" 폴더 전체 선택` : '';
-    const onPickFolder = () => { if (showFolder) selectFolderGroup(it.folder); };
+    tdName.title = (tdName.title ? tdName.title + ' · ' : '') + '눌러서 미리보기의 이 사진으로 이동';
+    const onPickFolder = () => {
+      if (showFolder) selectFolderGroup(it.folder);
+      jumpToThumb(idx);      // 표에서 누른 사진이 위 미리보기에서 어디인지 바로 보여준다
+    };
     tdName.addEventListener('click', onPickFolder);
     tdThumb.className = 'photoCell';
     tdThumb.addEventListener('click', onPickFolder);
@@ -1833,6 +1848,11 @@ function renderGrid(){
     const name = document.createElement('div');
     name.className = 'name';
     name.textContent = it.photoName;
+    name.title = it.photoName + ' — 눌러서 아래 리스트의 이 줄로 이동';
+    name.addEventListener('click', (e) => {
+      e.stopPropagation();   // 칸 클릭(크게보기)까지 같이 열리지 않게
+      jumpToRow(idx);
+    });
     const badgeToggle = document.createElement('button');
     badgeToggle.className = 'badgeToggle';
     badgeToggle.type = 'button';
@@ -1953,6 +1973,46 @@ function renderGrid(){
   });
   updateSelUi(); // 미리보기 크기 변경 등으로 다시 그릴 때도 선택 상태가 유지되게
 }
+// ---------- 표 ↔ 미리보기 서로 짚어주기 ----------
+// 마우스를 올리면 표시만(스크롤 없음), 누르면 그때 그쪽으로 이동한다
+function thumbEl(idx){ return document.querySelector(`.thumb[data-idx="${idx}"]`); }
+function rowEl(idx){ return document.querySelector(`#matchListTable tbody tr[data-idx="${idx}"]`); }
+function clearHl(){
+  document.querySelectorAll('.thumb.hl').forEach(el => el.classList.remove('hl'));
+  document.querySelectorAll('#matchListTable tbody tr.hl').forEach(el => el.classList.remove('hl'));
+}
+function jumpToThumb(idx){
+  const el = thumbEl(idx);
+  if (!el) return;
+  document.querySelectorAll('.thumb.pinned').forEach(x => x.classList.remove('pinned'));
+  el.classList.add('pinned');
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+function jumpToRow(idx){
+  const el = rowEl(idx);
+  if (!el) { log('리스트가 닫혀 있어서 그 줄로 갈 수 없어요'); return; }
+  document.querySelectorAll('#matchListTable tbody tr.pinned').forEach(x => x.classList.remove('pinned'));
+  el.classList.add('pinned');
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+document.addEventListener('mouseover', (e) => {
+  const tr = e.target.closest && e.target.closest('#matchListTable tbody tr');
+  const th = e.target.closest && e.target.closest('.thumb');
+  if (!tr && !th) return;
+  clearHl();
+  const idx = Number((tr || th).dataset.idx);
+  if (Number.isNaN(idx)) return;
+  const a = thumbEl(idx), b = rowEl(idx);
+  if (a) a.classList.add('hl');
+  if (b) b.classList.add('hl');
+});
+document.addEventListener('mouseout', (e) => {
+  const from = e.target.closest && (e.target.closest('#matchListTable tbody tr') || e.target.closest('.thumb'));
+  const to = e.relatedTarget && e.relatedTarget.closest
+    && (e.relatedTarget.closest('#matchListTable tbody tr') || e.relatedTarget.closest('.thumb'));
+  if (from && !to) clearHl();
+});
+
 // 사진이 아트보드와 비율이 거의 같으면 끌 여유가 없다 — 커서로 미리 알려준다
 // (여유가 없는지 모르고 계속 끌면 "드래그가 안 된다"로 오해하게 됨)
 function updatePanCursor(it){
