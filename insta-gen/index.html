@@ -1070,7 +1070,11 @@ function restoreSlot(s){
   // (헤드라인 800, 타이틀 700, 푸터 500, 제품명 300)
   try{ await Promise.all(['800 76px Pretendard','700 80px Pretendard','500 34px Pretendard','300 60px Pretendard'].map(f=>document.fonts.load(f))); await document.fonts.ready; }catch{}
   const slots=loadSlots();
+  // 저장된 슬롯이 없는 첫 방문에서도 ③시리즈/라인 드롭다운을 실제 값(state.line)에 맞춰준다.
+  // 안 하면 드롭다운은 목록 첫 항목('룩업')을 보여주는데 카드/타이틀엔 state.line 기본값
+  // ('G.E.M. 시리즈')이 찍혀서, 화면 라벨과 실제 결과가 서로 다른 상태가 된다.
   if(slots.length){ restoreSlot(slots[0]); syncControlsUI(); checkWorkSpacing(); }
+  else { setLineSelect(state.line, state.linePrefix); }
   composeTitle(); updatePreview(); render(); runValidation(); renderSlots(); updateCopyCount();
   if(slots[0]?.imgData) loadImage(slots[0].imgData, true);
 })();
