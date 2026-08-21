@@ -27,10 +27,18 @@ button:disabled{opacity:.4;cursor:default;}
 #marquee{position:absolute;z-index:60;display:none;border:1px solid #4a7cff;background:rgba(74,124,255,.18);pointer-events:none;border-radius:2px;}
 .thumb{cursor:pointer;position:relative;}
 .thumb .thumbCv{position:relative;line-height:0;}
-/* 폴더 구분 — 색으로 어디부터 어디까지 같은 폴더인지 보이게, 누르면 그 폴더 전체가 선택됨 */
-.folderTag{font-size:9.5px;line-height:1.3;color:#fff;padding:2px 4px;border-radius:4px 4px 0 0;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;font-weight:700;}
-.folderTag:hover{filter:brightness(1.15);}
+/* 폴더 머리 — 폴더(상품)마다 한 줄. 여기서 그 폴더 전체에 제목을 한꺼번에 배정한다.
+   예전에는 칸마다 폴더 이름표가 붙어 있어서 같은 이름이 수십 번 반복됐다 */
+.folderHead{flex:0 0 100%;display:flex;align-items:center;gap:8px;padding:2px 0 0;}
+.folderHead .fdot{width:10px;height:10px;border-radius:50%;flex:none;}
+.folderHead .fname{font-size:13px;font-weight:800;}
+.folderHead .fmeta{font-size:11px;color:#7d7568;}
+.folderHead .fspacer{flex:1;}
+.folderHead select{font-size:11.5px;font-weight:700;padding:4px 8px;border-radius:7px;
+  border:1.5px solid #ccc4b4;background:#fff;font-family:inherit;color:#252018;max-width:240px;}
+.folderHead select.none{background:#ffe9e9;border-color:#e05d5d!important;color:#b33;}
+.folderHead select.mixed{font-style:italic;}
+.folderHead button{font-size:11px;padding:4px 9px;}
 /* 대표 사진 표시(★) — 누르면 그 폴더의 대표가 됨. 대표엔 투명 제목이 항상 들어간다 */
 .mainStar{position:absolute;bottom:2px;left:2px;z-index:4;width:18px;height:18px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;
@@ -60,6 +68,19 @@ button:disabled{opacity:.4;cursor:default;}
 .thumb.dropBefore{box-shadow:-3px 0 0 0 #4a7cff;}
 .thumb.dropAfter{box-shadow:3px 0 0 0 #4a7cff;}
 .thumb.warn canvas{border-color:#e05d5d;}
+/* 칸 버튼은 마우스를 올릴 때만 보이게 — 칸 하나에 버튼이 여러 개라 300칸이면 화면 전체가 버튼밭이 됐음.
+   자리를 차지한 채 투명해지는 방식(opacity)이라 나타날 때 칸이 흔들리지 않는다.
+   ★ 대표 표시는 "지금 어느 게 표지인가"를 알려주는 상태 표시라 계속 보인다.
+   마우스가 없는 기기(터치)에서는 hover가 아예 없으므로 항상 보이게 예외를 둔다 */
+.thumb .dragHandle,.thumb .badgeToggle,.thumb .delThumbBtn,.thumb .downloadBtn{
+  opacity:0;pointer-events:none;transition:opacity .12s;}
+.thumb:hover .dragHandle,.thumb:hover .badgeToggle,.thumb:hover .delThumbBtn,.thumb:hover .downloadBtn,
+.thumb:focus-within .dragHandle,.thumb:focus-within .badgeToggle,
+.thumb:focus-within .delThumbBtn,.thumb:focus-within .downloadBtn{opacity:.9;pointer-events:auto;}
+@media (hover:none){
+  .thumb .dragHandle,.thumb .badgeToggle,.thumb .delThumbBtn,.thumb .downloadBtn{
+    opacity:.9;pointer-events:auto;}
+}
 #editorOverlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:100;}
 #editorOverlay.open{display:flex;}
 #editorBox{background:#fff;border-radius:12px;padding:16px;display:flex;gap:16px;}
@@ -73,6 +94,18 @@ button:disabled{opacity:.4;cursor:default;}
 .swatch{width:24px;height:24px;border-radius:50%;border:1px solid #ccc;cursor:pointer;display:inline-block;}
 #exportStatus{font-size:12px;color:#555;margin-top:8px;}
 .hidden{display:none !important;}
+/* 조작 방법 안내 — 접을 수 있게. 설명이 화면 면적을 크게 먹어서 시선을 나눠 먹고 있었음 */
+.helpBox{font-size:12px;color:#7d7568;margin-bottom:10px;background:#faf9f6;
+  border:1px solid #ddd8ce;border-radius:9px;}
+.helpBox>summary{cursor:pointer;list-style:none;padding:8px 12px;font-weight:700;color:#252018;
+  display:flex;align-items:center;gap:7px;}
+.helpBox>summary::-webkit-details-marker{display:none;}
+.helpBox>summary::before{content:'▸';color:#7d7568;font-size:10px;}
+.helpBox[open]>summary::before{content:'▾';}
+.helpBox .helpBody{padding:0 12px 10px;display:flex;flex-direction:column;gap:6px;line-height:1.5;}
+.helpBox .helpBody b{color:#252018;}
+.helpBox .helpRemember{display:flex;align-items:center;gap:6px;font-size:11.5px;
+  padding-top:7px;border-top:1px solid #ddd8ce;cursor:pointer;}
 
 /* 표는 화면 폭을 따라가지 않고 고정폭 — 넓은 모니터에서 끝없이 늘어나 마우스 이동만 길어졌음.
    사진칸 56 + 사진파일명 300 + 투명파일명 300 + 스토어명 200 = 856px */
@@ -107,10 +140,20 @@ button:disabled{opacity:.4;cursor:default;}
    아직 배정 안 된 칸은 빨갛게 표시 */
 /* 투명 드롭다운 줄 — 앞에 페이지 번호(동그라미)를 1:9 비율로 붙인다.
    폴더(상품) 안에서 몇 번째 장인지가 ZIP 저장 번호와 같아서, 미리보기만 봐도 순서를 알 수 있다 */
-.ovRow{display:flex;align-items:center;gap:3px;margin-top:3px;}
+.ovRow{display:flex;align-items:center;gap:3px;margin-top:3px;position:relative;min-height:20px;}
+/* 평소엔 배정된 제목 이름만 글씨로 보여주고, 마우스를 올리면 그 자리에 드롭다운이 뜬다.
+   드롭다운 상자가 칸마다 그려져 있으면 그리드가 난잡해지는데, 이름은 계속 보여야 하기 때문 */
+.ovLabel{flex:9 1 0;min-width:0;font-size:10px;color:#5b5346;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;padding:0 2px;}
+.ovLabel.unset{color:#b33;font-weight:700;}
+.thumb:hover .ovLabel,.thumb:focus-within .ovLabel{visibility:hidden;}
+.ovRow .ovSel{position:absolute;right:0;top:0;width:calc(100% - 19px);opacity:0;pointer-events:none;
+  transition:opacity .12s;}
+.thumb:hover .ovRow .ovSel,.thumb:focus-within .ovRow .ovSel{opacity:1;pointer-events:auto;}
+@media (hover:none){ .ovLabel{display:none;} .ovRow .ovSel{opacity:1;pointer-events:auto;} }
 .pageNum{flex:1 1 0;min-width:16px;aspect-ratio:1;border-radius:50%;display:flex;align-items:center;
   justify-content:center;font-size:9px;font-weight:700;color:#fff;line-height:1;flex-shrink:0;}
-.ovRow .ovSel{flex:9 1 0;min-width:0;margin-top:0;}
+
 .ovSel{width:100%;margin-top:3px;font-size:10px;padding:2px 3px;border:1px solid #ccc4b4;border-radius:4px;
   background:#fff;font-family:inherit;color:#252018;box-sizing:border-box;}
 .ovSel.unset{background:#ffe9e9;border-color:#e05d5d;color:#b33;}
@@ -162,12 +205,20 @@ button:disabled{opacity:.4;cursor:default;}
 <div class="panel" id="gridPanel" style="display:none;">
   <h2>미리보기 (클릭해서 조정)</h2>
   <div id="restoreNote" style="display:none;font-size:12px;color:#3a7d3a;margin-bottom:8px;">저장된 작업을 자동으로 불러왔어요.</div>
-  <div style="font-size:12px;color:#7d7568;margin-bottom:8px;">
-    칸 아래 <b>투명 드롭다운</b> = 그 칸 하나만 배정 (빨간 칸 = 아직 배정 안 됨).<br/>
-    사진을 <b>마우스로 끌면</b> 사진 비율과 상관없이 언제나 위치가 조정됨 — <b>좌우·위는 잠겨서 여백이 안 생기고</b>, 제목 글자가 가려주는 <b>아래쪽으로만</b> 사진을 올릴 수 있음(아래 여백 최대 30%). 위 체크박스를 켜면 <b>휠로 확대/축소</b>, <b>Shift+휠</b>이면 사진 전체가 보이는 크기까지 축소됨.<br/>
-    <b>여러 장을 선택하면 위쪽 파란 바에 "확대/축소" 슬라이더가 떠서 선택한 전부를 한꺼번에 조정할 수 있음</b> (선택한 칸에서 휠·드래그해도 같이 조정됨). 20%까지 줄이면 사방에 여백이 생기고, 그 상태에서도 사진을 끌어 위아래·좌우 위치를 맞출 수 있음.<br/>
-    여러 장 고르는 방법 — ① <b>마우스로 드래그</b>해서 사각형으로 쓸어 담기 (Ctrl 누른 채 드래그하면 기존 선택에 더하기) ② 칸 <b>파일명 왼쪽 체크박스</b> 클릭, <b>Shift+클릭</b>이면 이전에 고른 칸부터 사이 전부. 고른 뒤 위쪽 파란 바의 드롭다운으로 한꺼번에 배정.
-  </div>
+  <!-- 조작 방법 안내 — 처음 한 번만 읽으면 되는 내용이라 접을 수 있게 하고,
+       "다음부터 접어두기"를 켜면 접힌 상태를 기억한다(30일). 그냥 접기만 하면 새로고침 때 다시 펼쳐짐 -->
+  <details id="gridHelp" class="helpBox">
+    <summary>조작 방법 (처음이면 펼쳐서 한 번 읽어두세요)</summary>
+    <div class="helpBody">
+      <div><b>제목 배정</b> — 폴더 머리의 드롭다운은 그 폴더 전체에, 칸에 마우스를 올리면 나오는 드롭다운은 그 칸 하나만 배정 (빨간 글씨 = 아직 배정 안 됨)</div>
+      <div><b>사진 끌기</b> — 사진 비율과 상관없이 언제나 위치가 조정됨. 좌우·위는 잠겨서 여백이 안 생기고, 제목 글자가 가려주는 아래쪽으로만 사진을 올릴 수 있음(아래 여백 최대 30%)</div>
+      <div><b>확대/축소</b> — 위 체크박스를 켜면 휠 한 칸에 7%, <b>Shift+휠</b>이면 사진 전체가 보이는 크기까지 축소됨</div>
+      <div><b>여러 장 한꺼번에</b> — 선택하면 위쪽 파란 바에 확대/축소 슬라이더가 떠서 전부 같이 조정됨(선택한 칸에서 휠·드래그해도 같이 조정). 20%까지 줄이면 사방에 여백이 생기고 그 상태에서도 위치를 맞출 수 있음</div>
+      <div><b>고르는 방법</b> — ① 빈 곳에서 마우스로 드래그해 사각형으로 쓸어 담기(Ctrl 누른 채면 기존 선택에 더하기) ② 칸 파일명 왼쪽 체크박스, <b>Shift+클릭</b>이면 사이 전부 ③ 폴더 머리의 "폴더 전체 선택"</div>
+      <div><b>순서 바꾸기</b> — 칸에 마우스를 올리면 나오는 ≡ 를 끌기 (여러 장 선택 중이면 전부 같이 이동)</div>
+      <label class="helpRemember"><input type="checkbox" id="gridHelpRemember"/> 다음부터 접어두기</label>
+    </div>
+  </details>
   <div id="selBar" style="display:none;">
     <b id="selCount"></b>
     <span id="selAction" style="color:#1a3d8f;font-weight:400;"></span>
@@ -995,6 +1046,12 @@ function updateOverlaySelect(it){
   }
   sel.classList.toggle('unset', !it.overlayName);
   sel.title = it.overlayName ? `투명: ${it.overlayName}` : '투명 이미지 배정 안 됨';
+  // 평소에 보이는 이름표도 같이 맞춘다 (드롭다운은 마우스를 올렸을 때만 보이므로)
+  if (it._ovLabel) {
+    it._ovLabel.textContent = it.overlayName || '제목 없음';
+    it._ovLabel.classList.toggle('unset', !it.overlayName);
+    it._ovLabel.title = it.overlayName || '투명 제목이 배정되지 않았습니다';
+  }
 }
 // 표의 투명파일명 드롭다운도 같은 값으로 맞춰줌 (그리드에서 고른 걸 표가 모르면 두 화면이 어긋남)
 function syncOverlayCell(it){
@@ -1030,6 +1087,7 @@ async function assignOverlayMany(list, name){
     syncOverlayCell(it);
   }
   updateListProgress();
+  refreshFolderHeads();   // 폴더 머리의 배정 현황·드롭다운도 같이 맞춤
   saveMetaSoon();
   saveFilesSoon();
 }
@@ -1147,7 +1205,7 @@ $('#gridPanel').addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
   // 칸 안의 버튼·체크박스, 툴바의 조작 요소는 원래 동작 그대로.
   // 사진(.thumbCv) 위에서 시작한 드래그는 "사진 위치 조정"이므로 여기서 제외 — 여백에서 시작할 때만 선택
-  if (e.target.closest('button, input, select, label, a, .previewToolbar, #selBar, .thumbCv, .folderTag')) return;
+  if (e.target.closest('button, input, select, label, a, .previewToolbar, #selBar, .thumbCv, .folderHead, .helpBox')) return;
   const additive = e.ctrlKey || e.metaKey || e.shiftKey;
   _marquee = {
     x0: e.pageX, y0: e.pageY,
@@ -1679,6 +1737,72 @@ function pageSeqMap(){
   return map;
 }
 
+// 폴더 머리 한 줄 만들기 — 그 폴더 전체에 제목을 배정하는 드롭다운이 여기 있다
+function makeFolderHead(folder){
+  const list = items.filter(x => (x.folder || '') === folder);
+  const done = list.filter(x => x.overlayName).length;
+  const color = folderColorOf(folder);
+  const head = document.createElement('div');
+  head.className = 'folderHead';
+  head.dataset.folder = folder;
+  head.innerHTML = `<span class="fdot"></span><span class="fname"></span>
+    <span class="fmeta"></span><span class="fspacer"></span>`;
+  head.querySelector('.fdot').style.background = color;
+  head.querySelector('.fname').textContent = folder || '(폴더 없음)';
+  head.querySelector('.fmeta').textContent = `${list.length}장 · 제목 ${done}/${list.length}`;
+
+  // 폴더 안에서 쓰는 제목이 하나뿐이면 그 값을, 섞여 있으면 "(섞여 있음)"을 보여준다
+  const kinds = [...new Set(list.map(x => x.overlayName || ''))];
+  const cur = kinds.length === 1 ? kinds[0] : '__mixed__';
+  const sel = document.createElement('select');
+  sel.title = `"${folder || '(폴더 없음)'}" 폴더 ${list.length}장에 한꺼번에 배정`;
+  if (cur === '__mixed__') sel.classList.add('mixed');
+  if (cur === '') sel.classList.add('none');
+  const opts = [];
+  if (cur === '__mixed__') opts.push(`<option value="__mixed__">(섞여 있음)</option>`);
+  opts.push(`<option value="">제목 없음</option>`);
+  for (const n of overlayCandidateNames()) opts.push(`<option value="${n}">${n}</option>`);
+  sel.innerHTML = opts.join('');
+  sel.value = cur;
+  sel.addEventListener('mousedown', e => e.stopPropagation());
+  sel.addEventListener('change', async (e) => {
+    e.stopPropagation();
+    if (sel.value === '__mixed__') return;
+    await assignOverlayMany(items.filter(x => (x.folder || '') === folder), sel.value || null);
+    reportAction(`"${folder || '(폴더 없음)'}" 폴더 ${list.length}장에 배정`);
+  });
+  head.appendChild(sel);
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = '폴더 전체 선택';
+  btn.addEventListener('click', (e) => { e.stopPropagation(); selectFolderGroup(folder); });
+  head.appendChild(btn);
+  return head;
+}
+// 칸에서 한 장만 바꿔도 폴더 머리의 "제목 n/n"과 드롭다운이 따라오게 한다
+// (예전에는 폴더 머리가 그릴 때 값을 한 번 읽고 끝이라, 칸에서 바꾸면 머리와 어긋났음)
+function refreshFolderHeads(){
+  document.querySelectorAll('.folderHead').forEach(head => {
+    const folder = head.dataset.folder || '';
+    const list = items.filter(x => (x.folder || '') === folder);
+    if (!list.length) return;
+    const done = list.filter(x => x.overlayName).length;
+    head.querySelector('.fmeta').textContent = `${list.length}장 · 제목 ${done}/${list.length}`;
+    const sel = head.querySelector('select');
+    const kinds = [...new Set(list.map(x => x.overlayName || ''))];
+    const cur = kinds.length === 1 ? kinds[0] : '__mixed__';
+    // "(섞여 있음)" 항목은 실제로 섞였을 때만 있어야 하므로 있고 없음을 맞춰준다
+    const hasMixed = !!sel.querySelector('option[value="__mixed__"]');
+    if (cur === '__mixed__' && !hasMixed)
+      sel.insertAdjacentHTML('afterbegin', '<option value="__mixed__">(섞여 있음)</option>');
+    if (cur !== '__mixed__' && hasMixed) sel.querySelector('option[value="__mixed__"]').remove();
+    sel.value = cur;
+    sel.classList.toggle('mixed', cur === '__mixed__');
+    sel.classList.toggle('none', cur === '');
+  });
+}
+
 function renderGrid(){
   const grid = $('#grid');
   grid.innerHTML = '';
@@ -1689,7 +1813,12 @@ function renderGrid(){
   const showFolder = hasMultipleFolders();
   const seqMap = pageSeqMap();
   const h = thumbH();
+  let lastFolder = null;
   items.forEach((it, idx) => {
+    if (showFolder && (it.folder || '') !== lastFolder) {
+      lastFolder = it.folder || '';
+      grid.appendChild(makeFolderHead(lastFolder));
+    }
     const wrap = document.createElement('div');
     wrap.className = 'thumb';
     wrap.dataset.idx = idx;
@@ -1791,19 +1920,6 @@ function renderGrid(){
     star.addEventListener('click', (e) => { e.stopPropagation(); setMainPhoto(it); });
     star.addEventListener('mousedown', (e) => e.stopPropagation()); // 사진 끌기로 안 넘어가게
     cvWrap.appendChild(star);
-    // 폴더 이름표 — 색으로 폴더를 구분하고, 누르면 그 폴더 사진 전체가 한꺼번에 선택됨
-    if (showFolder) {
-      const tag = document.createElement('div');
-      tag.className = 'folderTag';
-      tag.style.background = folderColorOf(it.folder);
-      tag.textContent = it.folder || '(폴더 없음)';
-      tag.title = `"${it.folder || '(폴더 없음)'}" 폴더 전체 선택`;
-      tag.addEventListener('click', (e) => {
-        e.stopPropagation(); // 칸 클릭(편집기 열기) 방지
-        selectFolderGroup(it.folder);
-      });
-      wrap.appendChild(tag);
-    }
     wrap.appendChild(cvWrap);
     // 드롭다운 줄 = [페이지 번호 동그라미] : [투명 드롭다운] = 1 : 9
     const ovRow = document.createElement('div');
@@ -1815,7 +1931,12 @@ function renderGrid(){
     pageNum.style.background = folderColorOf(it.folder);
     pageNum.title = `"${it.folder || '(폴더 없음)'}" 폴더의 ${seq}번째 장 (저장될 때 붙는 번호)`;
     ovRow.appendChild(pageNum);
+    // 평소에 보이는 이름표 (마우스를 올리면 이 자리에 드롭다운이 뜬다)
+    const ovLabel = document.createElement('div');
+    ovLabel.className = 'ovLabel';
+    ovRow.appendChild(ovLabel);
     ovRow.appendChild(ovSel);
+    it._ovLabel = ovLabel;
     wrap.appendChild(ovRow);
     // 체크박스는 파일명 왼쪽에 둔다 — 사진 위에 있으면 사진을 가리고 오조작도 잦았음
     const nameRow = document.createElement('div');
@@ -1895,6 +2016,22 @@ function setStoreTextColor(c){
   renderGrid();
 }
 $('#thumbZoomToggle').addEventListener('change', saveBadgeSettings);
+// 안내를 접어둔 상태 기억 — "봤음"이 아니라 "언제까지 숨길지"를 저장해서 30일 뒤엔 다시 보이게 한다
+const HELP_HIDE_KEY = 'batch_merge_help_hide_until';
+(function initHelp(){
+  let until = 0;
+  try { until = +(localStorage.getItem(HELP_HIDE_KEY) || 0); } catch (e) {}
+  const hide = until > Date.now();
+  $('#gridHelp').open = !hide;
+  $('#gridHelpRemember').checked = hide;
+})();
+$('#gridHelpRemember').addEventListener('change', (e) => {
+  try {
+    if (e.target.checked) localStorage.setItem(HELP_HIDE_KEY, String(Date.now() + 30 * 864e5));
+    else localStorage.removeItem(HELP_HIDE_KEY);
+  } catch (err) {}
+  if (e.target.checked) $('#gridHelp').open = false;
+});
 $('#btnStoreBlack').addEventListener('click', () => setStoreTextColor('#111111'));
 $('#btnStoreWhite').addEventListener('click', () => setStoreTextColor('#ffffff'));
 $('#badgeColor').addEventListener('input', e => {
