@@ -37,6 +37,12 @@ body{margin:0;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;backg
 .bottombar .bstat{font-size:12px;color:#252018;font-weight:700;}
 .bottombar .bbar{width:120px;height:6px;border-radius:99px;background:#ddd8ce;overflow:hidden;}
 .bottombar .bbar i{display:block;height:100%;background:#4a7cff;width:0;transition:width .25s;}
+/* 배치 변경 안내 — 만료일이 지나면 저절로 사라진다 */
+#renewNotice{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:9px 16px;font-size:12px;line-height:1.6;color:#252018;
+  background:#eef3ff;border-bottom:1px solid #4a7cff;}
+#renewNotice .nspacer{flex:1;}
+#renewNotice button{font-size:11.5px;padding:5px 11px;}
 h1{font-size:20px;margin:0 0 4px;}
 p.desc{font-size:13px;color:#7d7568;margin:0 0 20px;}
 .panel{background:#faf8f4;border:1px solid #ddd8ce;border-radius:12px;padding:14px;margin-bottom:12px;}
@@ -223,6 +229,20 @@ button:disabled{opacity:.4;cursor:default;}
     <span class="step" id="stepAssign">제목 배정 0/0</span>
   </div>
   <p class="desc">1080×1350으로 자동 합성 · 기본은 꽉 채워 중앙 자르기</p>
+</div>
+
+<!-- 화면이 크게 바뀌었으니 접속만으로 알 수 있게 안내한다.
+     "봤음"이 아니라 "언제까지 숨길지"를 저장하므로 그만보기 기간을 값 하나로 처리하고,
+     만료일(NOTICE_EXPIRE)이 지나면 저절로 안 뜨므로 나중에 지우러 들어올 필요가 없다 -->
+<div id="renewNotice" style="display:none;">
+  <b>화면 배치가 바뀌었어요.</b>
+  왼쪽에서 <b>고르고</b> 오른쪽에서 <b>확인</b>하는 2열로 나뉘었고,
+  <b>칸 버튼(≡ ⇄ ✕ ⬇)은 마우스를 올릴 때만</b> 나옵니다.
+  제목은 <b>폴더 머리의 드롭다운</b>으로 폴더 전체에 한 번에 배정하고,
+  <b>전체 ZIP·되돌리기</b>는 화면 맨 아래 고정 바에 있습니다.
+  <span class="nspacer"></span>
+  <button id="btnNoticeSnooze">3일 그만 보기</button>
+  <button id="btnNoticeHide" class="primary">알겠어요</button>
 </div>
 
 <div class="main">
@@ -1915,7 +1935,9 @@ function renderGrid(){
   const h = thumbH();
   let lastFolder = null;
   items.forEach((it, idx) => {
-    if (showFolder && (it.folder || '') !== lastFolder) {
+    // 폴더가 하나뿐이어도 머리를 만든다 — 이제 머리는 색 구분용이 아니라
+    // "그 폴더 전체에 제목 배정"을 하는 자리이므로 없으면 기능이 사라진다
+    if (idx === 0 || (it.folder || '') !== lastFolder) {
       lastFolder = it.folder || '';
       grid.appendChild(makeFolderHead(lastFolder));
     }
@@ -2161,6 +2183,25 @@ function setStoreTextColor(c){
   renderGrid();
 }
 $('#thumbZoomToggle').addEventListener('change', saveBadgeSettings);
+// ---------- 배치 변경 안내 ----------
+// 저장하는 값은 "봤음"이 아니라 숨김 만료 시각이라, 3일 그만보기 / 계속 숨기기를 값 하나로 처리한다.
+// 닫기 버튼을 눌러야만 저장되므로 그냥 새로고침하면 다시 보인다.
+const NOTICE_KEY = 'batch_merge_renew_notice_until';
+const NOTICE_EXPIRE = Date.parse('2026-09-10T00:00:00');  // 이 날이 지나면 안내 자체를 그만 띄운다
+(function initNotice(){
+  if (Date.now() > NOTICE_EXPIRE) return;
+  let until = 0;
+  try { until = +(localStorage.getItem(NOTICE_KEY) || 0); } catch (e) {}
+  if (until > Date.now()) return;
+  $('#renewNotice').style.display = 'flex';
+})();
+function hideNotice(days){
+  try { localStorage.setItem(NOTICE_KEY, String(Date.now() + days * 864e5)); } catch (e) {}
+  $('#renewNotice').style.display = 'none';
+}
+$('#btnNoticeSnooze').addEventListener('click', () => hideNotice(3));
+$('#btnNoticeHide').addEventListener('click', () => hideNotice(365));
+
 // 안내를 접어둔 상태 기억 — "봤음"이 아니라 "언제까지 숨길지"를 저장해서 30일 뒤엔 다시 보이게 한다
 const HELP_HIDE_KEY = 'batch_merge_help_hide_until';
 (function initHelp(){
