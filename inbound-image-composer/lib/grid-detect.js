@@ -192,7 +192,20 @@ function detectGrid(img, variant = 0) {
     return attempt.cols.length === colStarts.length ? attempt.cols : colStarts;
   });
 
-  return { cols: colStarts, colsByRow, rows, cardW, cardH };
+  // 위 colsByRow가 "가로(열) 위치가 행마다 다를 수 있다"를 고쳤다면, 이건 그 반대 방향
+  // 문제다 — rows도 처음부터 5개 x좌표(sampleCols) 중 "가장 많은 행이 잡힌 딱 하나"만
+  // 골라서 그 세로 위치를 이미지 전체(모든 열)에 재사용하고 있었다. 실제 스토어 페이지는
+  // 상품명이 한 줄이냐 두 줄이냐에 따라 그 열의 다음 행 시작 위치가 몇 px씩 밀릴 수 있어서,
+  // 대표로 뽑힌 그 x좌표가 아닌 다른 열들은 세로로도 어긋난 크롭이 나올 수 있다(사진
+  // 위쪽이 이전 행 텍스트를 물고 들어오거나, 아래쪽이 살짝 잘림). 그래서 실제로 검출된
+  // 열 위치(colStarts) 각각에서 행을 다시 검출해, 그 열 고유의 세로 좌표를 쓴다. 여기서도
+  // 검출된 행 개수가 기준과 다르면(그 열의 특정 칸이 흰 편인 경우 등) 공통 좌표로 되돌아간다.
+  const rowsByCol = colStarts.map((colX) => {
+    const attempt = detectRowTops(ctx, colX, img.height, scale, params);
+    return attempt.tops.length === rows.length ? attempt.tops : rows;
+  });
+
+  return { cols: colStarts, colsByRow, rows, rowsByCol, cardW, cardH };
 }
 
 // ============================================================

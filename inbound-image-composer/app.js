@@ -406,7 +406,7 @@ function drawDebugOverlay(src) {
   canvas.height = src.img.height;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(src.img, 0, 0);
-  const { colsByRow, rows, cardW, cardH } = src.grid;
+  const { colsByRow, rows, rowsByCol, cardW, cardH } = src.grid;
 
   // 초록 점선: AI에게 실제로 전송되는 크롭 범위(사진+아래 텍스트, 행 전체 폭) — 빨간
   // 사진 박스보다 더 아래로 내려간다. "|" 뒤 작품명 텍스트가 이 범위 안에 실제로 들어
@@ -421,13 +421,19 @@ function drawDebugOverlay(src) {
     ctx.setLineDash([]);
   }
 
-  // 열 x좌표는 행마다 따로 검출한 값(colsByRow[i])을 쓴다 — 한 줄에서만 뽑은 좌표를
-  // 모든 행에 재사용하면, 행마다 카드 좌측 여백이 몇 px씩 다른 캡처에서 다른 행의
-  // 박스가 실제 사진과 어긋나 보인다(사진 한쪽이 박스 밖으로 나가고 반대쪽엔 흰 틈이
-  // 낌). "다시 검출"을 눌러도 이 재사용 구조 자체는 그대로라 매번 똑같이 재현됐었다.
+  // 칸 하나하나의 x는 그 행에서 다시 잰 값(colsByRow[행][열]), y는 그 열에서 다시 잰
+  // 값(rowsByCol[열][행])을 쓴다. 가로/세로 둘 다 "대표로 뽑힌 한 줄/한 칸"의 좌표를
+  // 이미지 전체에 재사용했던 게 원인이었다 — 상품명이 한 줄이냐 두 줄이냐에 따라 다음
+  // 행 시작 위치(세로)가 열마다 밀릴 수 있고, 카드 좌측 여백(가로)도 행마다 다를 수
+  // 있는 실제 스토어 페이지에서는 대표 좌표 하나로 전체를 커버할 수 없었다. "다시 검출"을
+  // 눌러도 재시도가 건드리는 건 임계값뿐이라 이 재사용 구조 자체는 그대로라 매번
+  // 똑같이 재현됐었다.
   ctx.strokeStyle = 'red';
   ctx.lineWidth = 2;
-  rows.forEach((y, i) => colsByRow[i].forEach((x) => ctx.strokeRect(x, y, cardW, cardH)));
+  colsByRow.forEach((rowCols, ri) => rowCols.forEach((x, ci) => {
+    const y = rowsByCol[ci][ri];
+    ctx.strokeRect(x, y, cardW, cardH);
+  }));
   // 헤더 영역(첫 행 위쪽) 표시
   if (rows.length) {
     const headerH = src.headerHeightOverride ?? rows[0];
@@ -453,7 +459,7 @@ function confirmSourceCrop(srcId) {
     src.headerId = null;
   }
 
-  const { colsByRow, rows, cardW, cardH } = src.grid;
+  const { colsByRow, rows, rowsByCol, cardW, cardH } = src.grid;
 
   if (rows.length) {
     // 자동 검출된 rows[0](첫 상품 행 시작점)를 그대로 헤더 높이로 썼었는데, 이 값이
@@ -473,8 +479,9 @@ function confirmSourceCrop(srcId) {
   // 안쪽으로 당기지 않고 상하좌우 +3px 바깥쪽으로 여유를 둔다 — 배경이 흰색이라 여유분은
   // 최종 렌더에서 티가 안 나고(176×176으로 다시 맞춰 그려짐), 대신 사진 잘림을 방지한다.
   const CROP_MARGIN = 3;
-  rows.forEach((y, ri) => {
-    colsByRow[ri].forEach((x) => {
+  colsByRow.forEach((rowCols, ri) => {
+    rowCols.forEach((x, ci) => {
+      const y = rowsByCol[ci][ri];
       const photoId = `p${state.nextPhotoNum++}`;
       const mx = Math.max(0, x - CROP_MARGIN);
       const my = Math.max(0, y - CROP_MARGIN);
