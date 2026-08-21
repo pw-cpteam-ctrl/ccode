@@ -428,11 +428,17 @@ function drawDebugOverlay(src) {
   // 있는 실제 스토어 페이지에서는 대표 좌표 하나로 전체를 커버할 수 없었다. "다시 검출"을
   // 눌러도 재시도가 건드리는 건 임계값뿐이라 이 재사용 구조 자체는 그대로라 매번
   // 똑같이 재현됐었다.
+  // 칸마다 번호(행-열)를 같이 적는다 — 버그를 신고할 때 "1열이 이상하다"처럼 말로
+  // 설명하면 정확히 몇 번째 칸인지 서로 다르게 셀 수 있다(위에서부터/왼쪽부터 등).
+  // 번호가 찍혀 있으면 "3번 칸"처럼 정확히 지목할 수 있어서 헷갈릴 여지가 없다.
   ctx.strokeStyle = 'red';
   ctx.lineWidth = 2;
+  ctx.fillStyle = 'red';
+  ctx.font = 'bold 13px sans-serif';
   colsByRow.forEach((rowCols, ri) => rowCols.forEach((x, ci) => {
     const y = rowsByCol[ci][ri];
     ctx.strokeRect(x, y, cardW, cardH);
+    ctx.fillText(`${ri + 1}-${ci + 1}`, x + 3, y + 14);
   }));
   // 헤더 영역(첫 행 위쪽) 표시
   if (rows.length) {

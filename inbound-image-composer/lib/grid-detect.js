@@ -208,10 +208,31 @@ function detectGrid(img, variant = 0) {
   // 같은 열만 어긋났다 — 실사용 중 발견). 맨 처음 행을 찾을 때 열 "가운데" 지점을 썼던
   // 것과 똑같이, 사진 안쪽 중앙(colX + cardW/2)에서 샘플링해서 경계 근처의 우연한
   // 흰 픽셀에 흔들리지 않게 한다.
-  const rowsByCol = colStarts.map((colX) => {
+  let rowsByCol = colStarts.map((colX) => {
     const sampleX = Math.min(img.width - 1, colX + Math.round(cardW / 2));
     const attempt = detectRowTops(ctx, sampleX, img.height, scale, params);
     return attempt.tops.length === rows.length ? attempt.tops : rows;
+  });
+
+  // 그래도 특정 열 하나가 계속 어긋나는 경우가 실사용 중 재신고됐다 — 그 열에 헤더
+  // 배너의 장식 요소(로고/도형 등)가 다른 열보다 더 아래까지 걸쳐 있으면, 그 열만
+  // "행 개수는 맞는데 위치 자체가 다른 열들과 동떨어진" 검출 결과가 나올 수 있다.
+  // 위의 "개수가 맞으면 그대로 믿는다" 조건만으로는 이런 경우를 못 걸러낸다.
+  // 그래서 한 번 더 검증한다: 같은 행 번호끼리 5개 열의 값을 모아 중앙값을 구하고,
+  // 어느 열의 값이 그 중앙값에서 너무 멀리 떨어져 있으면(30px 이상 — 실제 상품명
+  // 줄 수 차이로 생기는 정상적인 어긋남 범위를 넉넉히 벗어난 수치) 검출 오류로 보고
+  // 그 칸만 중앙값으로 대체한다. 즉 "행마다 조금씩 다를 수 있다"는 허용하되,
+  // "다른 열들과 완전히 동떨어진 값"은 다수결로 걸러낸다.
+  rows.forEach((_, ri) => {
+    const valuesAtRi = rowsByCol.map((colRows) => colRows[ri]).filter((v) => v !== undefined);
+    if (valuesAtRi.length < 3) return; // 비교할 표본이 너무 적으면 다수결 자체가 의미 없음
+    const med = median(valuesAtRi);
+    rowsByCol = rowsByCol.map((colRows) => {
+      if (colRows[ri] === undefined || Math.abs(colRows[ri] - med) <= 30) return colRows;
+      const fixed = colRows.slice();
+      fixed[ri] = med;
+      return fixed;
+    });
   });
 
   return { cols: colStarts, colsByRow, rows, rowsByCol, cardW, cardH };
