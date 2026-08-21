@@ -20,7 +20,10 @@
      3열 아래가 533px 비어 있었다. 합계 460+28+380+28+890+56 = 1842px → 1920 화면에 들어감. */
   .colInput { flex: 0 0 460px; width: 460px; display: flex; flex-direction: column; gap: 16px; }
   .colPreview { flex: 0 0 380px; width: 380px; position: sticky; top: 28px; display: flex; flex-direction: column; gap: 16px; }
-  .colOut { flex: 0 0 890px; width: 890px; display: flex; flex-direction: column; gap: 16px; }
+  /* 3열(4·원고 + 5·크롭)만 유동 — 남는 폭을 채우고, 창이 좁아지면 여기가 먼저 줄어든다.
+     1·2열은 고정폭이라 입력칸·미리보기가 찌그러지지 않는다. min-width 아래로는 줄이지 않고
+     가로 스크롤로 넘긴다(크롭 썸네일 160px이 최소 한 줄은 들어가야 하므로). */
+  .colOut { flex: 1 1 0; min-width: 340px; display: flex; flex-direction: column; gap: 16px; }
 
   /* 단계 번호를 카드 제목에 붙여 작업 순서가 눈에 보이게 */
   .step { display:flex; align-items:center; gap:8px; margin-bottom:11px; }
@@ -133,11 +136,9 @@
   #toast.warn { background:#8a2f3d; }
 
   /* ===== "인스타 규격 크롭" — 위 카드 생성기와 완전히 독립된 별도 도구.
-     데스크톱에선 .left/.panel 옆에 세 번째 칸으로 나란히 붙인다(줄바꿈 안 함) — 창이
-     좁아 세 칸이 다 안 들어가면 body가 가로 스크롤되면서 오른쪽에 그대로 남아있게 되고,
-     이 섹션이 화면 밖으로 밀려서 안 보이는 문제가 없어짐. 폭은 아이템 4~5개가 한 줄에
-     들어가는 890px로 고정. ===== */
-  .igcrop-wrap { flex: 0 0 890px; width: 890px; }
+     3열(.colOut) 안에서 4·원고와 함께 세로로 놓이고, 폭은 그 열을 그대로 따라간다.
+     열이 유동이라 넓은 화면에선 썸네일이 한 줄에 더 많이, 좁아지면 알아서 줄바꿈된다. ===== */
+  .igcrop-wrap { min-width: 0; } /* 3열 안에서 열 폭을 그대로 따라간다(예전 890px 고정폭 제거) */
   .igcrop-upload { max-width: 460px; }
   .igcrop-grid { display:flex; flex-wrap:wrap; gap:16px; margin-top:16px; }
   .igcrop-item { width:160px; }
