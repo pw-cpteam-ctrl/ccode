@@ -200,8 +200,17 @@ function detectGrid(img, variant = 0) {
   // 위쪽이 이전 행 텍스트를 물고 들어오거나, 아래쪽이 살짝 잘림). 그래서 실제로 검출된
   // 열 위치(colStarts) 각각에서 행을 다시 검출해, 그 열 고유의 세로 좌표를 쓴다. 여기서도
   // 검출된 행 개수가 기준과 다르면(그 열의 특정 칸이 흰 편인 경우 등) 공통 좌표로 되돌아간다.
+  //
+  // 처음엔 열의 좌측 시작점(colX)에서 그대로 샘플링했는데, 그 좌표는 사진과 흰 배경의
+  // 경계선 바로 그 지점이라 사진 테두리가 둥글거나 그림자/비네트가 있으면 특정 행에서만
+  // 그 지점이 흰색으로 잘못 읽혀 행이 통째로 누락되는 열이 항상 같은 열로 고정되는
+  // 결과가 나왔다("다시 검출"을 눌러도 임계값만 바뀔 뿐 이 x좌표 자체는 안 바뀌어 매번
+  // 같은 열만 어긋났다 — 실사용 중 발견). 맨 처음 행을 찾을 때 열 "가운데" 지점을 썼던
+  // 것과 똑같이, 사진 안쪽 중앙(colX + cardW/2)에서 샘플링해서 경계 근처의 우연한
+  // 흰 픽셀에 흔들리지 않게 한다.
   const rowsByCol = colStarts.map((colX) => {
-    const attempt = detectRowTops(ctx, colX, img.height, scale, params);
+    const sampleX = Math.min(img.width - 1, colX + Math.round(cardW / 2));
+    const attempt = detectRowTops(ctx, sampleX, img.height, scale, params);
     return attempt.tops.length === rows.length ? attempt.tops : rows;
   });
 
