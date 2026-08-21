@@ -8,10 +8,38 @@
 <style>
 *{box-sizing:border-box;}
 /* 배경(흰색) ↔ 카드(베이지) — 아트보드가 흰 바탕이라 카드까지 희면 사진 경계가 안 보였다 */
-body{margin:0;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#fff;color:#252018;padding:24px;}
+/* 화면 높이에 맞춘 2열 레이아웃 — 예전에는 위에서 아래로 6.1화면 길이라
+   "표에서 제목 고르고 → 위로 올라가 확인"을 계속 오르내려야 했음.
+   이제 페이지 자체는 스크롤되지 않고, 왼쪽(작업)·오른쪽(미리보기)이 각각 따로 스크롤된다 */
+html,body{height:100%;}
+body{margin:0;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#fff;color:#252018;
+  padding:0;display:flex;flex-direction:column;overflow:hidden;}
+.appbar{flex:none;display:flex;align-items:center;gap:14px;padding:9px 16px;
+  background:#f0ede7;border-bottom:1px solid #ddd8ce;}
+.appbar h1{font-size:15px;margin:0;white-space:nowrap;}
+.appbar .steps{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#7d7568;flex-wrap:wrap;}
+.appbar .step{padding:3px 9px;border-radius:999px;border:1px solid #ddd8ce;background:#fff;white-space:nowrap;}
+.appbar .step.on{background:#4a7cff;border-color:#4a7cff;color:#fff;font-weight:700;}
+.appbar .desc{font-size:11.5px;color:#7d7568;margin:0;flex:1;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;}
+.main{flex:1;display:grid;grid-template-columns:minmax(430px,33%) 1fr;min-height:0;}
+@media (max-width:1500px){ .main{grid-template-columns:minmax(400px,36%) 1fr;} }
+@media (max-width:1380px){ .main{grid-template-columns:minmax(370px,38%) 1fr;} }
+.colWork{border-right:1px solid #ddd8ce;background:#f0ede7;display:flex;min-height:0;}
+.colWorkScroll{flex:1;overflow-y:auto;padding:14px;min-height:0;}
+.colPreview{display:flex;flex-direction:column;min-height:0;background:#fff;}
+#previewEmpty{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;
+  font-size:13px;color:#7d7568;padding:24px;line-height:1.7;}
+/* 결과물·상태는 화면 맨 아래 고정 — 예전에는 표에서 6,042px 아래에 있어서 끝까지 내려가야 했음 */
+.bottombar{flex:none;display:flex;align-items:center;gap:10px;padding:9px 16px;
+  background:#f0ede7;border-top:1px solid #ddd8ce;}
+.bottombar .bspacer{flex:1;}
+.bottombar .bstat{font-size:12px;color:#252018;font-weight:700;}
+.bottombar .bbar{width:120px;height:6px;border-radius:99px;background:#ddd8ce;overflow:hidden;}
+.bottombar .bbar i{display:block;height:100%;background:#4a7cff;width:0;transition:width .25s;}
 h1{font-size:20px;margin:0 0 4px;}
 p.desc{font-size:13px;color:#7d7568;margin:0 0 20px;}
-.panel{background:#f0ede7;border:1px solid #ddd8ce;border-radius:12px;padding:16px;margin-bottom:16px;}
+.panel{background:#faf8f4;border:1px solid #ddd8ce;border-radius:12px;padding:14px;margin-bottom:12px;}
 .panel h2{font-size:14px;margin:0 0 10px;}
 .drop{border:2px dashed #ccc4b4;border-radius:10px;padding:18px;text-align:center;font-size:13px;color:#7d7568;cursor:pointer;transition:.15s;}
 .drop.over{border-color:#4a7cff;background:#eef3ff;color:#3a5dcc;}
@@ -22,6 +50,14 @@ button{font-size:13px;padding:8px 16px;border-radius:8px;border:1px solid #ccc4b
 button.primary{background:#252018;color:#fff;border-color:#252018;}
 button:disabled{opacity:.4;cursor:default;}
 .previewToolbar{font-size:12px;color:#555;margin-bottom:10px;display:flex;align-items:center;}
+#gridPanel{flex:1;display:flex;flex-direction:column;min-height:0;background:#fff;border:none;
+  border-radius:0;padding:0;margin:0;}
+#gridPanel>h2{display:none;}                        /* 열 제목은 위 상단 바가 대신한다 */
+#gridPanel .previewToolbar,#gridPanel #selBar,#gridPanel .helpBox{flex:none;margin:0;}
+#gridPanel .previewToolbar{padding:8px 14px;border-bottom:1px solid #ddd8ce;flex-wrap:wrap;row-gap:6px;}
+#gridPanel #selBar{border-radius:0;border-left:none;border-right:none;border-top:none;}
+#gridPanel .helpBox{margin:10px 14px 0;}
+#gridScroll{flex:1;overflow-y:auto;padding:14px;min-height:0;}
 #grid{display:flex;flex-wrap:wrap;gap:20px;user-select:none;}
 /* 빈 곳에서 마우스를 끌어 여러 칸을 한꺼번에 고르는 사각형 */
 #marquee{position:absolute;z-index:60;display:none;border:1px solid #4a7cff;background:rgba(74,124,255,.18);pointer-events:none;border-radius:2px;}
@@ -29,7 +65,8 @@ button:disabled{opacity:.4;cursor:default;}
 .thumb .thumbCv{position:relative;line-height:0;}
 /* 폴더 머리 — 폴더(상품)마다 한 줄. 여기서 그 폴더 전체에 제목을 한꺼번에 배정한다.
    예전에는 칸마다 폴더 이름표가 붙어 있어서 같은 이름이 수십 번 반복됐다 */
-.folderHead{flex:0 0 100%;display:flex;align-items:center;gap:8px;padding:2px 0 0;}
+.folderHead{flex:0 0 100%;display:flex;align-items:center;gap:8px;padding:6px 0 7px;
+  position:sticky;top:-14px;z-index:6;background:#fff;box-shadow:0 6px 7px -6px rgba(37,32,24,.10);}
 .folderHead .fdot{width:10px;height:10px;border-radius:50%;flex:none;}
 .folderHead .fname{font-size:13px;font-weight:800;}
 .folderHead .fmeta{font-size:11px;color:#7d7568;}
@@ -117,20 +154,21 @@ button:disabled{opacity:.4;cursor:default;}
 .helpBox .helpRemember{display:flex;align-items:center;gap:6px;font-size:11.5px;
   padding-top:7px;border-top:1px solid #ddd8ce;cursor:pointer;}
 
-/* 표는 화면 폭을 따라가지 않고 고정폭 — 넓은 모니터에서 끝없이 늘어나 마우스 이동만 길어졌음.
-   사진칸 56 + 사진파일명 300 + 투명파일명 300 + 스토어명 200 = 856px */
-#matchListTable{border-collapse:collapse;width:856px;max-height:360px;font-size:12px;}
+/* 표는 왼쪽 열 안에 들어가므로 열 폭에 맞춰 유동으로 둔다.
+   예전에 856px로 고정한 이유(넓은 모니터에서 끝없이 늘어나 마우스 이동이 길어짐)는
+   열 자체가 화면의 1/3로 좁아지면서 자동으로 해결된다 */
+#matchListTable{border-collapse:collapse;width:100%;font-size:12px;}
 #matchListTable th,#matchListTable td{border:1px solid #ddd8ce;padding:4px 6px;text-align:left;}
 #matchListTable thead th{background:#faf9f6;position:sticky;top:0;}
 /* 세로 스크롤만 쓴다 — 세로 스크롤바가 차지하는 폭 때문에 가로 스크롤바까지 생기던 것을 막음 */
-#matchListTable tbody{display:block;max-height:340px;overflow-y:auto;overflow-x:hidden;}
-#matchListTable thead,#matchListTable tbody tr{display:table;width:856px;table-layout:fixed;}
-#matchListTable td:nth-child(1),#matchListTable th:nth-child(1){width:56px;}
-#matchListTable td:nth-child(2),#matchListTable th:nth-child(2){width:300px;word-break:break-all;}
-#matchListTable td:nth-child(3),#matchListTable th:nth-child(3){width:300px;}
-#matchListTable td:nth-child(4),#matchListTable th:nth-child(4){width:200px;}
+#matchListTable tbody{display:block;max-height:44vh;overflow-y:auto;overflow-x:hidden;}
+#matchListTable thead,#matchListTable tbody tr{display:table;width:100%;table-layout:fixed;}
+#matchListTable td:nth-child(1),#matchListTable th:nth-child(1){width:46px;}
+#matchListTable td:nth-child(2),#matchListTable th:nth-child(2){width:30%;word-break:break-all;}
+#matchListTable td:nth-child(3),#matchListTable th:nth-child(3){width:38%;}
+#matchListTable td:nth-child(4),#matchListTable th:nth-child(4){width:32%;}
 /* 파일명이 해시처럼 생겨서 글자만으론 어떤 사진인지 알 수 없으므로, 표 왼쪽에 눈으로 식별할 작은 사진을 넣음 */
-.listThumb{width:40px;height:50px;border-radius:3px;border:1px solid #ddd8ce;display:block;background:#eee;}
+.listThumb{width:34px;height:43px;border-radius:3px;border:1px solid #ddd8ce;display:block;background:#eee;}
 .fillable-cell{position:relative;}
 /* 입력칸이 칸 폭을 넘지 않게 — input/select는 기본 최소폭(size 속성)이 있어서 칸보다 커진다 */
 .fillable-cell{max-width:100%;overflow:hidden;}
@@ -177,8 +215,18 @@ button:disabled{opacity:.4;cursor:default;}
 </style>
 </head>
 <body>
-<h1>사진 일괄 합성 (프로토타입)</h1>
-<p class="desc">사진 폴더 + 투명 이미지를 올리면 1080×1350으로 자동 합성. 기본은 꽉 채워 중앙 자르기, 필요한 것만 확대/축소·드래그로 조정.</p>
+<div class="appbar">
+  <h1>사진 일괄 합성</h1>
+  <div class="steps">
+    <span class="step" id="stepOv">투명 제목 0개</span>
+    <span class="step" id="stepPh">사진 0장</span>
+    <span class="step" id="stepAssign">제목 배정 0/0</span>
+  </div>
+  <p class="desc">1080×1350으로 자동 합성 · 기본은 꽉 채워 중앙 자르기</p>
+</div>
+
+<div class="main">
+<div class="colWork"><div class="colWorkScroll">
 
 <div class="panel">
   <h2>1. 투명 이미지 올리기</h2>
@@ -198,9 +246,9 @@ button:disabled{opacity:.4;cursor:default;}
   <button id="btnPickFolderAppend">폴더 추가 (기존 리스트 유지, 뒤에 이어붙이기)</button>
   <input type="file" id="inPhotoFolder" webkitdirectory multiple style="display:none;"/>
   <div id="listWrap" style="display:none;margin-top:14px;">
-    <div style="font-size:12px;color:#7d7568;margin-bottom:6px;">
-      <b>사진(또는 파일명) 칸을 클릭하면 그 사진이 속한 폴더 전체가 한꺼번에 선택됨</b> → 위쪽 파란 바의 드롭다운에서 투명 이미지를 고르면 그 폴더에 일괄 배정됨.<br/>
-      투명파일명/스토어명 칸은 셀 오른쪽 아래 손잡이를 드래그해서 내리면 그 값이 쭉 채워짐. 투명파일명은 고르는 즉시 위 미리보기에 합성돼서 보임.
+    <div style="font-size:11.5px;color:#7d7568;margin-bottom:6px;line-height:1.6;">
+      사진 칸을 누르면 그 <b>폴더 전체 선택 + 오른쪽 미리보기의 그 칸으로 이동</b>.
+      투명파일명·스토어명은 셀 오른쪽 아래 손잡이를 끌어내려 <b>쭉 채우기</b> 가능.
     </div>
     <table id="matchListTable"><thead><tr><th>사진</th><th>사진파일명</th><th>투명파일명</th><th>스토어명</th></tr></thead><tbody></tbody></table>
     <div style="margin-top:10px;">
@@ -212,7 +260,13 @@ button:disabled{opacity:.4;cursor:default;}
   <div id="log"></div>
 </div>
 
-<div class="panel" id="gridPanel" style="display:none;">
+</div></div><!-- /colWorkScroll /colWork -->
+
+<div class="colPreview">
+  <div id="previewEmpty">
+    아직 불러온 사진이 없어요.<br/>왼쪽 <b>2. 폴더로 빠르게 시작</b>에서 사진 폴더를 고르면<br/>여기에 미리보기가 채워집니다.
+  </div>
+<div id="gridPanel" style="display:none;">
   <h2>미리보기 (클릭해서 조정)</h2>
   <div id="restoreNote" style="display:none;font-size:12px;color:#3a7d3a;margin-bottom:8px;">저장된 작업을 자동으로 불러왔어요.</div>
   <!-- 조작 방법 안내 — 처음 한 번만 읽으면 되는 내용이라 접을 수 있게 하고,
@@ -266,15 +320,22 @@ button:disabled{opacity:.4;cursor:default;}
       <button id="btnSelAll" style="font-size:11px;padding:4px 8px;">전체 선택</button>
       <button id="btnSelUnassigned" style="font-size:11px;padding:4px 8px;">투명 미배정만 선택</button>
       <button id="btnStripFrames" style="font-size:11px;padding:4px 8px;">★ 대표만 남기고 나머지 투명 제목 빼기</button>
-      <button id="btnUndoAction" style="font-size:11px;padding:4px 8px;display:none;">↩ 되돌리기</button>
     </span>
   </div>
-  <div id="grid"></div>
-  <div style="margin-top:14px;">
-    <button class="primary" id="btnExportAll">전체 ZIP 다운로드</button>
-    <button id="btnStartOver">새로 시작 (캐시 지우기)</button>
-    <span id="exportStatus"></span>
-  </div>
+  <div id="gridScroll"><div id="grid"></div></div>
+</div><!-- /gridPanel -->
+</div><!-- /colPreview -->
+</div><!-- /main -->
+
+<!-- 결과물과 상태는 항상 손 닿는 화면 맨 아래에 둔다 -->
+<div class="bottombar">
+  <span class="bstat" id="bottomStat">사진 0장</span>
+  <span class="bbar"><i id="bottomBar"></i></span>
+  <span id="exportStatus"></span>
+  <span class="bspacer"></span>
+  <button id="btnUndoAction" style="display:none;">↩ 되돌리기</button>
+  <button id="btnStartOver">새로 시작 (캐시 지우기)</button>
+  <button class="primary" id="btnExportAll">전체 ZIP 다운로드</button>
 </div>
 
 <div id="editorOverlay">
@@ -461,9 +522,10 @@ async function restoreFromCache(){
     overlayPoolVersion++;
     overlaySafeCache.clear();
     $('#overlayCount').textContent = overlayFiles.length + '개 선택됨';
+    updateHeaderStats();
   }
 
-  $('#gridPanel').style.display = '';
+  showPreviewColumn(true);
   $('#restoreNote').style.display = '';
   const filled = fillStoreDefaultOnce();
   if (filled) { saveMetaSoon(); log(`스토어명이 비어 있던 ${filled}장에 기본값을 채웠어요 (필요 없으면 칸을 비우고 적용)`); }
@@ -488,7 +550,7 @@ $('#btnStartOver').addEventListener('click', async () => {
   invalidateStripUndo();
   folderColorMap = new Map();
   $('#overlayCount').textContent = '0개 선택됨';
-  $('#gridPanel').style.display = 'none';
+  showPreviewColumn(false);
   $('#restoreNote').style.display = 'none';
   $('#listWrap').style.display = 'none';
   logEl.textContent = '';
@@ -514,6 +576,7 @@ setupDrop('#dropOverlays', '#inOverlays', files => {
   overlayPoolVersion++; // 후보가 바뀌었으니 칸마다 달린 드롭다운도 다음에 펼칠 때 새로 채워지게
   overlaySafeCache.clear(); // 제목이 덮어주는 높이 측정값도 다시 재도록 버림
   $('#overlayCount').textContent = files.length + '개 선택됨';
+  updateHeaderStats();
   saveOverlayPoolToCache();
   if ($('#listWrap').style.display !== 'none') renderMatchListTable(); // 리스트가 이미 떠 있으면 후보 목록 갱신
 });
@@ -854,7 +917,7 @@ $('#inPhotoFolder').addEventListener('change', async (e) => {
     ? `사진 ${newItems.length}장 추가 완료 (전체 ${items.length}장, 투명 이미지는 아직 없음, 리스트에서 배정)`
     : `사진 ${items.length}장으로 교체 완료 (투명 이미지는 아직 없음, 리스트에서 배정)`);
 
-  $('#gridPanel').style.display = '';
+  showPreviewColumn(true);
   $('#restoreNote').style.display = 'none';
   renderGrid();
   renderMatchListTable();
@@ -871,6 +934,28 @@ function overlayCandidateNames(){
 function updateListProgress(){
   const done = items.filter(it => it.overlayName).length;
   $('#listProgress').textContent = `${done}/${items.length} 배정됨`;
+  updateHeaderStats();
+}
+// 상단 단계칩과 하단 상태 바를 한 곳에서 갱신한다 (지금 어디까지 왔는지 항상 보이게)
+function showPreviewColumn(on){
+  $('#gridPanel').style.display = on ? 'flex' : 'none';
+  $('#previewEmpty').style.display = on ? 'none' : 'flex';
+  updateHeaderStats();
+}
+function updateHeaderStats(){
+  const done = items.filter(it => it.overlayName).length;
+  const folders = new Set(items.map(it => it.folder || '')).size;
+  $('#stepOv').textContent = `투명 제목 ${overlayFiles.length}개`;
+  $('#stepPh').textContent = items.length
+    ? `사진 ${items.length}장 · 폴더 ${folders}개` : '사진 0장';
+  $('#stepAssign').textContent = `제목 배정 ${done}/${items.length}`;
+  $('#stepOv').classList.toggle('on', !items.length && overlayFiles.length > 0);
+  $('#stepPh').classList.toggle('on', items.length > 0 && done === 0);
+  $('#stepAssign').classList.toggle('on', done > 0 && done < items.length);
+  $('#bottomStat').textContent = items.length
+    ? `제목 배정 ${done}/${items.length}` + (done < items.length ? ` · 남은 ${items.length - done}장은 제목 없이 저장` : ' · 전부 배정됨')
+    : '사진 0장';
+  $('#bottomBar').style.width = items.length ? (done / items.length * 100) + '%' : '0%';
 }
 
 function makeFillableCell(idx, field, kind, candidates){
