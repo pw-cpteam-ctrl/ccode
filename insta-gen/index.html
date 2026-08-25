@@ -58,8 +58,37 @@
   .infobar-col + .infobar-col { border-left:1px solid var(--line); padding-left:16px; }
 
   /* 1(사진)+2(원문입력) 카드 — 가로 2열 */
-  .combo12 { display:flex; flex-direction:row; gap:4%; align-items:flex-start; }
-  .combo-photo { flex:0 0 18%; display:flex; flex-direction:column; height:294px; } /* '무료로 채우기/AI로 채우기' 버튼 줄 끝나는 지점까지 정확히 맞춤 */
+  /* ===== 사진 칸 =====
+     평소(1장)엔 칸이 하나뿐이라 예전과 똑같다. "＋ 두 번째 사진"을 눌렀을 때만 두 번째 칸이
+     생기고, 그때부터 분홍 테두리(=붙여넣기·확대가 적용될 칸)가 의미를 갖는다.
+     빈 두 번째 칸을 늘 띄워두면 10번 중 9번은 안 쓰는 자리가 시선을 먹으므로 그렇게 하지 않는다. */
+  .pslot-row { display:flex; gap:8px; }
+  .pslot { position:relative; flex:1 1 0; min-width:0; border:1.5px dashed var(--line2); border-radius:10px;
+           display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+           padding:12px 6px; text-align:center; font-size:11px; line-height:1.45; color:var(--muted);
+           font-weight:500; cursor:pointer; background:#fff center/cover no-repeat; min-height:96px; }
+  .pslot:hover { border-color:var(--accent); color:var(--accent); }
+  .pslot.filled { border-style:solid; }
+  .pslot.filled .pslot-face { background:rgba(0,0,0,.55); color:#fff; border-radius:6px; padding:2px 6px; font-size:10px; font-weight:700; }
+  .pslot .icon { font-size:18px; }
+  /* 선택 표시는 두 칸일 때만 의미가 있으므로 그때만 나타난다 */
+  .pslot-row.dual .pslot.sel { outline:3px solid var(--accent); outline-offset:1px; border-color:var(--accent); }
+  .pslot-del, .pslot-pick { position:absolute; width:20px; height:20px; border-radius:50%; border:none;
+                            display:flex; align-items:center; justify-content:center; font-size:10px;
+                            font-weight:700; cursor:pointer; opacity:0; transition:opacity .13s; }
+  .pslot-del { top:4px; right:4px; background:var(--danger); color:#fff; }
+  .pslot-pick { top:4px; left:4px; background:rgba(0,0,0,.6); color:#fff; }
+  .pslot:hover .pslot-del, .pslot:hover .pslot-pick { opacity:1; }
+  @media (hover:none) { .pslot-del, .pslot-pick { opacity:1; } }
+  .pslot-add { display:block; width:100%; margin-top:7px; border:none; background:none; padding:2px 0;
+               font-size:11.5px; color:var(--muted); font-weight:500; cursor:pointer; text-align:left;
+               font-family:'Pretendard',sans-serif; }
+  .pslot-add:hover { color:var(--accent); text-decoration:underline; }
+  .pslot-hint { font-size:11px; color:var(--muted); margin-top:6px; line-height:1.45; }
+
+  .combo12 { display:flex; flex-direction:row; gap:14px; align-items:flex-start; }
+  /* 두 번째 사진 칸이 생겨도 썸네일이 알아볼 만한 크기로 남게 고정폭으로 잡는다 */
+  .combo-photo { flex:0 0 156px; display:flex; flex-direction:column; }
   .combo-photo h2 { flex:0 0 auto; }
   .upload.compact { display:flex; flex:1 1 auto; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:14px 6px; text-align:center; font-size:11.5px; }
   .upload.compact .icon { font-size:20px; }
@@ -283,7 +312,10 @@
       <div class="step"><span class="n">1</span><span class="t">사진 · 원문 입력 (원문 필수)</span></div>
       <div class="combo12">
         <div class="combo-photo">
-          <label class="upload compact"><span class="icon">📷</span><span>사진 선택<br>· 붙여넣기(Ctrl+V)</span><input type="file" id="file" accept="image/*"></label>
+          <div class="pslot-row" id="photoSlots"></div>
+          <button type="button" class="pslot-add" id="addSecond">＋ 두 번째 사진 (좌우로 나누기)</button>
+          <div class="pslot-hint" id="photoHint"></div>
+          <input type="file" id="file" accept="image/*" multiple hidden>
         </div>
         <div class="combo-text">
           <div class="field"><textarea id="t_source" rows="7" placeholder="일본어 또는 한국어 원문 그대로 붙여넣기. 예)&#10;◤彩色原型初公開！◢&#10;見上げる見守るフィギュア るかっぷ&#10;進撃の巨人&#10;アルミン・アルレルト&#10;エレン・イェーガー むむっとver.&#10;⏰予約開始は3月5日(木)&#10;&#10;한국어로 써도 동일하게 인식됨. 예)&#10;채색원형 최초공개&#10;진격의 거인 룩업&#10;아르민 알레르트"></textarea></div>
@@ -507,9 +539,16 @@ const MAXW = 920;
 const TITLE_MIN_ONE_LINE = 60; // 한 줄로 욱여넣었을 때 이 크기 밑으로 줄어들면 답답해 보여서 두 줄로 분리
 const CHAR_SHRINK_RATIO = 0.6; // "캐릭터 목록 줄이기" 체크 시 제품명 크기 대비 축소 비율(3번째 크기 단계)
 
+const SPLIT_GAP = 14; // 좌우 2분할 시 가운데 흰 선 두께(고정 — 매번 만질 값이 아니라 컨트롤을 두지 않음)
+
 const state = {
   img: null, imgData: '',
   fg: { zoom: 1, panX: 0, panY: 0 },
+  // ── 좌우 2분할용(두 번째 사진). 없으면(null) 예전과 똑같은 한 장짜리로 그린다 ──
+  img2: null, imgData2: '',
+  fg2: { zoom: 1, panX: 0, panY: 0 },
+  slot2Open: false,  // "＋ 두 번째 사진"을 눌러 빈 칸만 열어둔 상태(아직 사진은 없음)
+  sel: 1,            // 붙여넣기·확대가 적용될 칸(1|2). 사진이 한 장이면 항상 1
   bg: { opacity: 0.50, blur: 45 },
   size: { title: 80, product: 60 },
   bullet: true, charShrink: false,   // charShrink는 저장 안 함 — 새 값 불러오면 항상 꺼짐(off)으로 리셋
@@ -525,6 +564,14 @@ function updatePreview(){ document.getElementById('titlePreview').textContent = 
 function roundRect(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
 function coverRect(iw,ih,fw,fh,zoom,panX,panY){ const base=Math.max(fw/iw,fh/ih),scale=base*zoom,dw=iw*scale,dh=ih*scale,mx=Math.max(0,(dw-fw)/2),my=Math.max(0,(dh-fh)/2); return {dw,dh,px:Math.max(-mx,Math.min(mx,panX)),py:Math.max(-my,Math.min(my,panY))}; }
 function setFont(w,s){ ctx.font=`${w} ${s}px Pretendard, sans-serif`; }
+// 사진 한 장을 지정한 사각형에 cover-fit으로 그린다(한 장짜리와 2분할이 같은 공식을 쓰게)
+function drawCover(img,x,y,w,h,fg){
+  const f=coverRect(img.width,img.height,w,h,fg.zoom,fg.panX,fg.panY);
+  ctx.drawImage(img, x+(w-f.dw)/2+f.px, y+(h-f.dh)/2+f.py, f.dw, f.dh);
+}
+function splitHalfW(){ return (FRAME.w - SPLIT_GAP)/2; }
+// 붙여넣기·확대가 적용될 칸의 크롭 상태
+function activeFg(){ return state.sel===2 ? state.fg2 : state.fg; }
 function fitText(text,weight,size,maxW){ let s=size; setFont(weight,s); while(ctx.measureText(text).width>maxW && s>14){ s-=1; setFont(weight,s); } return s; }
 // 체크박스로 축소하지 않을 때, ·로 이어붙인 캐릭터 목록이 폭을 넘으면 잘라내지 않고
 // ·단위로 여러 줄에 나눠 담는다(글자 크기는 그대로 유지).
@@ -554,8 +601,18 @@ function render(){
     ctx.save(); ctx.shadowColor='rgba(0,0,0,.45)'; ctx.shadowBlur=40; ctx.shadowOffsetY=18; ctx.fillStyle='#fff';
     roundRect(ctx,FRAME.x-6,FRAME.y-6,FRAME.w+12,FRAME.h+12,FRAME.r+4); ctx.fill(); ctx.restore();
     ctx.save(); roundRect(ctx,FRAME.x,FRAME.y,FRAME.w,FRAME.h,FRAME.r); ctx.clip();
-    const f=coverRect(state.img.width,state.img.height,FRAME.w,FRAME.h,state.fg.zoom,state.fg.panX,state.fg.panY);
-    ctx.drawImage(state.img,FRAME.x+(FRAME.w-f.dw)/2+f.px,FRAME.y+(FRAME.h-f.dh)/2+f.py,f.dw,f.dh); ctx.restore();
+    if(state.img2){
+      // 좌우 2분할 — 바깥 라운드는 그대로 두고 안쪽만 반으로 나눈 뒤 가운데에 흰 선을 깐다
+      const hw=splitHalfW();
+      ctx.save(); ctx.beginPath(); ctx.rect(FRAME.x,FRAME.y,hw,FRAME.h); ctx.clip();
+      drawCover(state.img, FRAME.x, FRAME.y, hw, FRAME.h, state.fg); ctx.restore();
+      ctx.save(); ctx.beginPath(); ctx.rect(FRAME.x+hw+SPLIT_GAP,FRAME.y,hw,FRAME.h); ctx.clip();
+      drawCover(state.img2, FRAME.x+hw+SPLIT_GAP, FRAME.y, hw, FRAME.h, state.fg2); ctx.restore();
+      ctx.fillStyle='#fff'; ctx.fillRect(FRAME.x+hw, FRAME.y, SPLIT_GAP, FRAME.h);
+    } else {
+      drawCover(state.img, FRAME.x, FRAME.y, FRAME.w, FRAME.h, state.fg);
+    }
+    ctx.restore();
   }
 
   ctx.textAlign='center'; ctx.fillStyle='#fff'; ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=12; ctx.shadowOffsetY=2;
@@ -865,7 +922,7 @@ function saveSlots(a){
   try{ localStorage.setItem(SLOT_KEY, JSON.stringify(a)); return {ok:true}; }catch(e){}
   // 용량 초과 → 오래된 슬롯부터 사진(복원용 원본+섬네일)을 비우며 재시도, 그래도 안 되면 사진 전부 제거
   const b=a.map(s=>({...s}));
-  for(let i=b.length-1;i>=0;i--){ b[i].imgData=''; b[i].thumb=''; try{ localStorage.setItem(SLOT_KEY, JSON.stringify(b)); return {ok:true, strippedImages:true}; }catch(e){} }
+  for(let i=b.length-1;i>=0;i--){ b[i].imgData=''; b[i].imgData2=''; b[i].thumb=''; try{ localStorage.setItem(SLOT_KEY, JSON.stringify(b)); return {ok:true, strippedImages:true}; }catch(e){} }
   return {ok:false};
 }
 let _toastTimer=null;
@@ -874,7 +931,7 @@ function showToast(msg, warn){
   el.textContent=msg; el.classList.toggle('warn', !!warn); el.classList.add('show');
   clearTimeout(_toastTimer); _toastTimer=setTimeout(()=>el.classList.remove('show'), 4200);
 }
-function snapshotWith(src){ return { ts:Date.now(), source:src, headline:state.text.headline, work:state.work, line:state.line, linePrefix:state.linePrefix, product:state.text.product, jp:state.jp, saleDate:state.saleDate, saleDow:state.saleDow, bullet:state.bullet, imgData:state.imgData, thumb: state.img ? compressImage(state.img, 200, 0.7) : '', fg:{...state.fg}, bg:{...state.bg}, size:{...state.size} }; }
+function snapshotWith(src){ return { ts:Date.now(), source:src, headline:state.text.headline, work:state.work, line:state.line, linePrefix:state.linePrefix, product:state.text.product, jp:state.jp, saleDate:state.saleDate, saleDow:state.saleDow, bullet:state.bullet, imgData:state.imgData, imgData2:state.imgData2, thumb: state.img ? compressImage(state.img, 200, 0.7) : '', fg:{...state.fg}, fg2:{...state.fg2}, bg:{...state.bg}, size:{...state.size} }; }
 function slotLabel(s){ const w=(s.work||'').trim(); if(w && w!=='[작품명]') return w + (s.line?(' · '+s.line):''); const f=(s.source||'').split('\n').map(x=>x.trim()).filter(Boolean)[0]; return f || '(빈 입력)'; }
 // 탭을 여러 번 전환하면 그 사이 아무 작업도 안 했어도 beforeunload/visibilitychange가
 // 매번 새 스냅샷을 만들어서, 내용은 완전히 같은데 저장 시각(ts)만 다른 슬롯이 계속
@@ -905,6 +962,11 @@ function applySlot(s){
   state.bullet=!!s.bullet; document.getElementById('c_bullet').checked=state.bullet;
   state.charShrink=false; document.getElementById('c_charshrink').checked=false;   // 새 값 불러오면 항상 해제
   if(s.fg) state.fg={...state.fg,...s.fg}; if(s.bg) state.bg={...state.bg,...s.bg}; if(s.size) state.size={...state.size,...s.size};
+  // 두 번째 사진은 나중에 추가된 필드라 예전 저장본엔 없다 — 없으면 한 장짜리로 되돌린다
+  state.fg2 = s.fg2 ? {zoom:1,panX:0,panY:0,...s.fg2} : {zoom:1,panX:0,panY:0};
+  state.imgData2 = s.imgData2 || ''; state.img2 = null;
+  state.slot2Open = !!state.imgData2; state.sel = 1;
+  if(state.imgData2) loadImageInto(2, state.imgData2, true);
   appliedSource = s.source||'';
   composeTitle(); updatePreview(); syncControlsUI(); checkWorkSpacing();
   if(s.imgData){ loadImage(s.imgData, true); } else { render(); runValidation(); }   // 사진 복원(크롭 유지)
@@ -1019,29 +1081,136 @@ function compressImage(img, max=1000, q=0.8){
     const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(img,0,0,w,h); return c.toDataURL('image/jpeg',q); }
   catch{ return ''; }
 }
-function loadImage(src, keepView){ return new Promise(res=>{ const im=new Image(); im.onload=()=>{ state.img=im; if(!keepView) state.fg={zoom:1,panX:0,panY:0}; state.imgData=compressImage(im); render(); runValidation(); document.dispatchEvent(new CustomEvent('igcrop:mainImage', {detail:{img:im}})); res(im); }; im.src=src; }); }
+// which: 1=첫 번째 칸, 2=두 번째 칸(좌우 2분할). 기존 호출부는 loadImage()로 그대로 1번에 들어간다.
+function loadImageInto(which, src, keepView){
+  return new Promise(res=>{
+    const im=new Image();
+    im.onload=()=>{
+      if(which===2){
+        state.img2=im; if(!keepView) state.fg2={zoom:1,panX:0,panY:0};
+        state.imgData2=compressImage(im); state.slot2Open=true; state.sel=2;
+      } else {
+        state.img=im; if(!keepView) state.fg={zoom:1,panX:0,panY:0};
+        state.imgData=compressImage(im);
+        // 하단 크롭 도구의 1페이지는 카드 생성기의 "첫 번째" 사진을 따라간다
+        document.dispatchEvent(new CustomEvent('igcrop:mainImage', {detail:{img:im}}));
+      }
+      renderPhotoSlots(); syncControlsUI(); render(); runValidation(); res(im);
+    };
+    im.src=src;
+  });
+}
+function loadImage(src, keepView){ return loadImageInto(1, src, keepView); }
 window.__loadImage = loadImage;
+
+/* ── 사진 칸 UI ──
+   칸이 하나뿐일 땐 선택이라는 개념 자체를 화면에 두지 않는다(예전과 동일하게 동작).
+   두 번째 칸이 생겼을 때만 분홍 테두리로 "지금 붙여넣기가 들어갈 곳"을 표시한다. */
+function clearSecond(){
+  state.img2=null; state.imgData2=''; state.fg2={zoom:1,panX:0,panY:0};
+  state.slot2Open=false; state.sel=1;
+  renderPhotoSlots(); syncControlsUI(); render(); runValidation();
+}
+function setSel(n){
+  const dual = !!(state.img2 || state.slot2Open);
+  state.sel = (dual && n===2) ? 2 : 1;
+  renderPhotoSlots(); syncControlsUI();
+}
+let _pickTarget = 1;   // 파일 선택창이 어느 칸을 위해 열렸는지
+function openPicker(which){ _pickTarget=which; document.getElementById('file').click(); }
+
+function renderPhotoSlots(){
+  const row=document.getElementById('photoSlots'); if(!row) return;
+  const dual = !!(state.img2 || state.slot2Open);
+  row.classList.toggle('dual', dual);
+  row.innerHTML='';
+
+  const mk = (n) => {
+    const has = n===1 ? !!state.imgData : !!state.imgData2;
+    const d=document.createElement('div');
+    d.className='pslot'+(has?' filled':'')+(dual && state.sel===n?' sel':'');
+    if(has) d.style.backgroundImage=`url(${n===1?state.imgData:state.imgData2})`;
+    d.innerHTML = has
+      ? `<span class="pslot-face">${dual ? (n===1?'왼쪽':'오른쪽') : '사진'}</span>`
+      : `<span class="icon">📷</span><span>${dual&&n===2?'붙여넣기(Ctrl+V)<br>또는 클릭':'사진 선택<br>· 붙여넣기(Ctrl+V)'}</span>`;
+    if(has){
+      const pick=document.createElement('button'); pick.type='button'; pick.className='pslot-pick';
+      pick.textContent='📁'; pick.title='다른 사진으로 바꾸기';
+      pick.addEventListener('click',e=>{ e.stopPropagation(); setSel(n); openPicker(n); });
+      d.appendChild(pick);
+    }
+    if(n===2){
+      const del=document.createElement('button'); del.type='button'; del.className='pslot-del';
+      del.textContent='✕'; del.title='두 번째 사진 빼기 (한 장짜리로 돌아감)';
+      del.addEventListener('click',e=>{ e.stopPropagation(); clearSecond(); });
+      d.appendChild(del);
+    }
+    d.addEventListener('click',()=>{ setSel(n); if(!has) openPicker(n); });
+    return d;
+  };
+
+  row.appendChild(mk(1));
+  if(dual) row.appendChild(mk(2));
+
+  // "＋ 두 번째 사진"은 첫 사진을 넣은 뒤, 아직 두 번째가 없을 때만 보인다
+  const add=document.getElementById('addSecond');
+  add.style.display = (state.img && !dual) ? '' : 'none';
+  const hint=document.getElementById('photoHint');
+  hint.textContent = dual
+    ? (state.sel===2 ? '오른쪽 칸에 붙여넣기·확대가 적용됩니다' : '왼쪽 칸에 붙여넣기·확대가 적용됩니다')
+    : '';
+}
 // 슬라이더/스텝퍼 UI를 state 값에 맞춰 갱신
 function syncControlsUI(){
   const z=document.getElementById('s_zoom'),op=document.getElementById('s_op'),bl=document.getElementById('s_blur');
-  z.value=Math.round(state.fg.zoom*100); document.getElementById('v_zoom').textContent=state.fg.zoom.toFixed(1)+'×';
+  const _fg=activeFg();
+  z.value=Math.round(_fg.zoom*100); document.getElementById('v_zoom').textContent=_fg.zoom.toFixed(1)+'×';
   op.value=Math.round(state.bg.opacity*100); document.getElementById('v_op').textContent=Math.round(state.bg.opacity*100)+'%';
   bl.value=state.bg.blur; document.getElementById('v_blur').textContent=state.bg.blur;
   document.getElementById('v_titleSize').textContent=state.size.title;
   document.getElementById('v_productSize').textContent=state.size.product;
 }
-document.getElementById('file').addEventListener('change', async e=>{ const f=e.target.files[0]; if(f) await loadImage(URL.createObjectURL(f)); });
+// 사진 여러 장이 한 번에 들어오면 앞의 2장을 좌우로 나눠 담는다(추가 조작 없이 2분할).
+// 1장이면 지금 선택된 칸에 들어간다 — 두 번째 칸을 연 적이 없으면 항상 1번이라 예전과 동일.
+async function acceptImages(files, preferred){
+  const imgs=[...files].filter(x=>x.type && x.type.startsWith('image/'));
+  if(!imgs.length) return;
+  if(imgs.length>=2){
+    await loadImageInto(1, URL.createObjectURL(imgs[0]));
+    await loadImageInto(2, URL.createObjectURL(imgs[1]));
+    return;
+  }
+  await loadImageInto(preferred || state.sel, URL.createObjectURL(imgs[0]));
+}
+document.getElementById('file').addEventListener('change', async e=>{
+  await acceptImages(e.target.files, _pickTarget); e.target.value='';
+});
 ['dragover','drop'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault()));
-document.addEventListener('drop', async e=>{ const f=[...(e.dataTransfer?.files||[])].find(x=>x.type.startsWith('image/')); if(f) await loadImage(URL.createObjectURL(f)); });
-document.addEventListener('paste', async e=>{ const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/')); if(it){ const f=it.getAsFile(); if(f) await loadImage(URL.createObjectURL(f)); } });
+document.addEventListener('drop', async e=>{ await acceptImages(e.dataTransfer?.files||[]); });
+document.addEventListener('paste', async e=>{
+  const it=[...(e.clipboardData?.items||[])].filter(i=>i.type.startsWith('image/'));
+  if(!it.length) return;
+  await acceptImages(it.map(i=>i.getAsFile()).filter(Boolean));
+});
+document.getElementById('addSecond').addEventListener('click', ()=>{
+  state.slot2Open=true; state.sel=2; renderPhotoSlots(); syncControlsUI();
+});
 
 /* ── 사진 위치 드래그 / 휠 확대 ── */
 let _drag=false, _lx=0, _ly=0;
-cv.addEventListener('pointerdown', e=>{ if(!state.img) return; _drag=true; _lx=e.clientX; _ly=e.clientY; cv.classList.add('drag'); try{ cv.setPointerCapture(e.pointerId); }catch{} });
-cv.addEventListener('pointermove', e=>{ if(!_drag||!state.img) return; const sc=cv.width/cv.getBoundingClientRect().width; state.fg.panX+=(e.clientX-_lx)*sc; state.fg.panY+=(e.clientY-_ly)*sc; _lx=e.clientX; _ly=e.clientY; render(); });
+// 2분할일 때 커서가 어느 쪽 반 위에 있는지 — 잡은 쪽이 곧 선택되므로 "지금 뭘 만지는지"가
+// 분홍 테두리 한 군데에만 표시된다(별도 개념을 만들지 않음)
+function halfAtClientX(clientX){
+  if(!state.img2) return 1;
+  const r=cv.getBoundingClientRect();
+  const x=(clientX-r.left)*(cv.width/r.width);
+  return x < FRAME.x + FRAME.w/2 ? 1 : 2;
+}
+cv.addEventListener('pointerdown', e=>{ if(!state.img) return; setSel(halfAtClientX(e.clientX)); _drag=true; _lx=e.clientX; _ly=e.clientY; cv.classList.add('drag'); try{ cv.setPointerCapture(e.pointerId); }catch{} });
+cv.addEventListener('pointermove', e=>{ if(!_drag||!state.img) return; const sc=cv.width/cv.getBoundingClientRect().width; const fg=activeFg(); fg.panX+=(e.clientX-_lx)*sc; fg.panY+=(e.clientY-_ly)*sc; _lx=e.clientX; _ly=e.clientY; render(); });
 function _endDrag(){ _drag=false; cv.classList.remove('drag'); }
 cv.addEventListener('pointerup', _endDrag); cv.addEventListener('pointercancel', _endDrag); cv.addEventListener('pointerleave', ()=>{ if(_drag) _endDrag(); });
-cv.addEventListener('wheel', e=>{ if(!state.img) return; e.preventDefault(); const nz=Math.max(1,Math.min(3, state.fg.zoom*(e.deltaY<0?1.06:0.94))); state.fg.zoom=nz; const zr=document.getElementById('s_zoom'); zr.value=Math.round(nz*100); document.getElementById('v_zoom').textContent=nz.toFixed(1)+'×'; render(); }, {passive:false});
+cv.addEventListener('wheel', e=>{ if(!state.img) return; e.preventDefault(); setSel(halfAtClientX(e.clientX)); const fg=activeFg(); const nz=Math.max(1,Math.min(3, fg.zoom*(e.deltaY<0?1.06:0.94))); fg.zoom=nz; const zr=document.getElementById('s_zoom'); zr.value=Math.round(nz*100); document.getElementById('v_zoom').textContent=nz.toFixed(1)+'×'; render(); }, {passive:false});
 
 /* ── 입력 연결 ── */
 document.getElementById('t_headline').addEventListener('change', e=>{ state.text.headline=e.target.value; render(); });
@@ -1126,7 +1295,7 @@ document.getElementById('c_bullet').addEventListener('change', e=>{ state.bullet
 document.getElementById('c_charshrink').addEventListener('change', e=>{ state.charShrink=e.target.checked; render(); });
 
 const z=document.getElementById('s_zoom'),op=document.getElementById('s_op'),bl=document.getElementById('s_blur');
-z.addEventListener('input',()=>{ state.fg.zoom=z.value/100; v_zoom.textContent=(z.value/100).toFixed(1)+'×'; render(); });
+z.addEventListener('input',()=>{ activeFg().zoom=z.value/100; v_zoom.textContent=(z.value/100).toFixed(1)+'×'; render(); });
 op.addEventListener('input',()=>{ state.bg.opacity=op.value/100; v_op.textContent=op.value+'%'; render(); });
 bl.addEventListener('input',()=>{ state.bg.blur=+bl.value; v_blur.textContent=bl.value; render(); });
 document.querySelectorAll('.stepper button').forEach(b=>b.addEventListener('click',()=>{ const k=b.dataset.k,d=+b.dataset.d; state.size[k]=Math.max(28,Math.min(160,state.size[k]+d)); document.getElementById('v_'+k+'Size').textContent=state.size[k]; render(); }));
@@ -1229,6 +1398,11 @@ function restoreSlot(s){
   state.bullet=s.bullet!==false; document.getElementById('c_bullet').checked=state.bullet;
   state.charShrink=false; document.getElementById('c_charshrink').checked=false;
   if(s.fg) state.fg={...state.fg,...s.fg}; if(s.bg) state.bg={...state.bg,...s.bg}; if(s.size) state.size={...state.size,...s.size};
+  // 두 번째 사진은 나중에 추가된 필드라 예전 저장본엔 없다 — 없으면 한 장짜리로 되돌린다
+  state.fg2 = s.fg2 ? {zoom:1,panX:0,panY:0,...s.fg2} : {zoom:1,panX:0,panY:0};
+  state.imgData2 = s.imgData2 || ''; state.img2 = null;
+  state.slot2Open = !!state.imgData2; state.sel = 1;
+  if(state.imgData2) loadImageInto(2, state.imgData2, true);
   appliedSource=s.source||'';
 }
 
@@ -1244,7 +1418,7 @@ function restoreSlot(s){
   // ('G.E.M. 시리즈')이 찍혀서, 화면 라벨과 실제 결과가 서로 다른 상태가 된다.
   if(slots.length){ restoreSlot(slots[0]); syncControlsUI(); checkWorkSpacing(); }
   else { setLineSelect(state.line, state.linePrefix); }
-  composeTitle(); updatePreview(); render(); runValidation(); renderSlots(); updateCopyCount();
+  composeTitle(); updatePreview(); renderPhotoSlots(); render(); runValidation(); renderSlots(); updateCopyCount();
   if(slots[0]?.imgData) loadImage(slots[0].imgData, true);
 })();
 </script>
