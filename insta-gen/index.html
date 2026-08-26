@@ -188,6 +188,20 @@
   .igcrop-modal-inner canvas { max-width:min(72vw, 480px); max-height:70vh; width:auto; height:auto; border-radius:10px; cursor:grab; touch-action:none; background:#ffffff; border:1px solid var(--line); }
   .igcrop-modal-inner canvas:active { cursor:grabbing; }
   .igcrop-modal-hint { font-size:12px; color:#9a9a9a; }
+  /* 가름선 기울기 — 2분할일 때만 나타난다(⑤ 전용) */
+  .igcrop-tilt { display:flex; align-items:center; gap:10px; width:100%; color:#d8d8d8; font-size:12px; }
+  .igcrop-tilt input[type=range] { flex:1; min-width:0; accent-color:var(--accent); }
+  .igcrop-tilt .tval { flex:0 0 42px; text-align:right; font-variant-numeric:tabular-nums; }
+  .igcrop-tilt button { border:1px solid #4a4a4a; background:#242424; color:#d8d8d8; border-radius:7px;
+                        padding:5px 9px; font-size:11.5px; cursor:pointer; font-family:'Pretendard',sans-serif; }
+  .igcrop-tilt button:hover { border-color:var(--accent); color:var(--accent); }
+  /* ＋(두 번째 사진) — 삭제와 같은 규칙: 아트보드를 골랐을 때만 나타남 */
+  .igcrop-add2 { position:absolute; top:5px; left:5px; width:22px; height:22px; border-radius:50%;
+                 background:rgba(0,0,0,.62); color:#fff; font-size:12px; font-weight:700;
+                 display:flex; align-items:center; justify-content:center; cursor:pointer;
+                 opacity:0; pointer-events:none; transition:opacity .13s; }
+  .igcrop-item.selected .igcrop-add2 { opacity:1; pointer-events:auto; }
+  .igcrop-add2:hover { background:var(--accent); }
   .igcrop-modal-btns { display:flex; gap:8px; width:100%; }
   .igcrop-modal-btns button { flex:1; }
 
@@ -479,6 +493,7 @@
         <span class="icon">🖼️</span><span>사진 여러 장 선택 (4:5로 자동 크롭)<br><small>미리보기에서 바로 드래그·휠로 크롭 위치 조정 가능</small></span>
         <input type="file" id="igcropFile" accept="image/*" multiple>
       </label>
+      <input type="file" id="igcropSecondFile" accept="image/*" hidden>
       <details class="explain q" style="margin-top:10px">
         <summary><span class="caret">▶</span>1페이지는 어떻게 채워지나요?</summary>
         <div class="body igcrop-hint" style="margin-top:0">1페이지는 위 카드 생성기에 넣은 사진이 자동으로 채워집니다(직접 지우면 그 뒤로는 자동으로 다시 채우지 않음) · 새로 올린 사진은 2페이지부터 순서대로 추가됩니다 · 가로로 넓은 사진은 기본적으로 위아래 흰 여백을 두고 전체가 보이게 표시됩니다</div>
@@ -519,7 +534,13 @@
   <div class="igcrop-modal" id="igcropModal">
     <div class="igcrop-modal-inner">
       <canvas id="igcropModalCanvas" width="480" height="600"></canvas>
-      <div class="igcrop-modal-hint">드래그로 위치 이동 · 휠로 확대/축소 · 가로로 넓은 사진은 기본적으로 전체가 보이게(흰 여백) 시작함</div>
+      <div class="igcrop-modal-hint">드래그로 위치 이동 · 휠로 확대/축소 · 2분할이면 각 칸을 따로 조정</div>
+      <div class="igcrop-tilt" id="igcropTiltRow" style="display:none">
+        <label for="igcropTilt">가름선 기울기</label>
+        <input type="range" id="igcropTilt" min="-320" max="320" value="0" step="4">
+        <span class="tval" id="igcropTiltVal">0</span>
+        <button type="button" id="igcropTiltReset">0으로</button>
+      </div>
       <div class="igcrop-modal-btns">
         <button class="btn2" id="igcropModalDownload">다운로드</button>
         <button class="btn2" id="igcropModalClose">닫기</button>
@@ -1438,6 +1459,7 @@ function restoreSlot(s){
   const modalCtx = modalCanvas.getContext('2d');
   const modalDownloadBtn = document.getElementById('igcropModalDownload');
   const modalCloseBtn = document.getElementById('igcropModalClose');
+  const second2Input = document.getElementById('igcropSecondFile');
 
   const EXPORT_W = IG_SIZES.portrait.w, EXPORT_H = IG_SIZES.portrait.h; // 4:5 고정(1080×1350)
   const THUMB_W = 216, THUMB_H = 270;   // 미리보기용 축소 캔버스(1/5 스케일)
@@ -1452,45 +1474,108 @@ function restoreSlot(s){
   function clamp01(v){ return Math.max(0, Math.min(1, v)); }
 
   // 미리보기(썸네일/모달)와 실제 다운로드 둘 다 이 함수 하나로 그려서 결과가 어긋나지 않게 함
+  const SPLIT_GAP_EXPORT = 16;   // 1080폭 기준 가운데 흰 선 두께
+  const TILT_MAX_EXPORT  = 320;  // 기울기 슬라이더 한쪽 끝(1080폭 기준 px)
+
+  // 2분할일 때 각 사진이 채워야 할 "사다리꼴을 감싸는 가장 큰 사각형".
+  // 사다리꼴 자체가 아니라 이 사각형에 cover-fit 해야 기울여도 빈 구석이 안 생긴다.
+  function splitBoxes(W, H, tiltPx){
+    const s = W / EXPORT_W;                 // 표시 크기에 맞춘 배율
+    const gap = SPLIT_GAP_EXPORT * s, t = (tiltPx||0) * s;
+    const midTop = W/2 + t, midBot = W/2 - t;
+    const leftRight  = Math.max(midTop, midBot) - gap/2;   // 왼쪽 칸이 닿는 가장 오른쪽
+    const rightLeft  = Math.min(midTop, midBot) + gap/2;   // 오른쪽 칸이 닿는 가장 왼쪽
+    return {
+      gap, midTop, midBot,
+      L: { x:0,         y:0, w: leftRight,     h:H },
+      R: { x:rightLeft, y:0, w: W - rightLeft, h:H },
+    };
+  }
+  function drawPhotoIn(img, ctx2d, box, fx, fy, zoom){
+    const pw = img.naturalWidth||img.width, ph = img.naturalHeight||img.height;
+    const { dw, dh, dx, dy } = coverCropRect(pw, ph, box.w, box.h, fx, fy, zoom);
+    ctx2d.drawImage(img, box.x + dx, box.y + dy, dw, dh);
+  }
   function drawItem(item, ctx2d, W, H){
     ctx2d.clearRect(0,0,W,H);
-    ctx2d.fillStyle = '#ffffff'; ctx2d.fillRect(0,0,W,H); // 여백은 흰 배경(피규어 머리/양옆 잘림 방지용 축소 시 보임)
-    const pw = item.img.naturalWidth||item.img.width, ph = item.img.naturalHeight||item.img.height;
-    const { dw, dh, dx, dy } = coverCropRect(pw, ph, W, H, item.focusX, item.focusY, item.zoom);
+    ctx2d.fillStyle = '#ffffff'; ctx2d.fillRect(0,0,W,H); // 여백·가운데 선은 이 흰 배경이 그대로 보이는 것
     ctx2d.imageSmoothingEnabled = true; ctx2d.imageSmoothingQuality = 'high';
-    ctx2d.drawImage(item.img, dx, dy, dw, dh);
+    if(item.img2){
+      // 기울기를 주면 세로 직선이 비스듬해져서 맞물린 사다리꼴 두 개가 된다
+      const b = splitBoxes(W, H, item.tilt);
+      ctx2d.save(); ctx2d.beginPath();
+      ctx2d.moveTo(0,0); ctx2d.lineTo(b.midTop-b.gap/2,0); ctx2d.lineTo(b.midBot-b.gap/2,H); ctx2d.lineTo(0,H);
+      ctx2d.closePath(); ctx2d.clip();
+      drawPhotoIn(item.img, ctx2d, b.L, item.focusX, item.focusY, item.zoom);
+      ctx2d.restore();
+      ctx2d.save(); ctx2d.beginPath();
+      ctx2d.moveTo(b.midTop+b.gap/2,0); ctx2d.lineTo(W,0); ctx2d.lineTo(W,H); ctx2d.lineTo(b.midBot+b.gap/2,H);
+      ctx2d.closePath(); ctx2d.clip();
+      drawPhotoIn(item.img2, ctx2d, b.R, item.focusX2, item.focusY2, item.zoom2);
+      ctx2d.restore();
+    } else {
+      drawPhotoIn(item.img, ctx2d, {x:0,y:0,w:W,h:H}, item.focusX, item.focusY, item.zoom);
+    }
   }
-  // 사진마다 "전체가 다 보이는" 최소 줌(컨테인 스케일) — Shift+휠일 때만 이 아래까지 허용
-  function containMinZoom(pw, ph){
-    return Math.min(EXPORT_W/pw, EXPORT_H/ph) / (Math.max(EXPORT_W/pw, EXPORT_H/ph) * SLOP);
+  // 사진마다 "전체가 다 보이는" 최소 줌(컨테인 스케일) — Shift+휠일 때만 이 아래까지 허용.
+  // 2분할이면 칸 하나의 크기가 기준이 되므로 bw/bh를 넘겨서 계산한다.
+  function containMinZoom(pw, ph, bw, bh){
+    const W = bw||EXPORT_W, H = bh||EXPORT_H;
+    return Math.min(W/pw, H/ph) / (Math.max(W/pw, H/ph) * SLOP);
   }
-  // 사진이 4:5 카드보다 가로로 더 넓은 비율인가 — 이런 사진은 꽉 채우면(cover) 양옆이 잘리므로
-  // 기본값 자체를 "전체 보기"로 시작한다
-  function isWideImg(pw, ph){ return (pw/ph) > (EXPORT_W/EXPORT_H); }
-  function defaultZoom(pw, ph){ return isWideImg(pw, ph) ? containMinZoom(pw, ph) : 1; }
+  // 칸보다 가로로 더 넓은 사진은 꽉 채우면 양옆이 잘리므로 기본값을 "전체 보기"로 시작한다
+  function isWideImg(pw, ph, bw, bh){ return (pw/ph) > ((bw||EXPORT_W)/(bh||EXPORT_H)); }
+  function defaultZoom(pw, ph, bw, bh){ return isWideImg(pw,ph,bw,bh) ? containMinZoom(pw,ph,bw,bh) : 1; }
+  // 지금 이 항목에서 한 칸이 차지하는 크기(내보내기 기준) — 줌 기본값·하한 계산에 씀
+  function boxOf(item, side){
+    if(!item.img2) return { w:EXPORT_W, h:EXPORT_H };
+    const b = splitBoxes(EXPORT_W, EXPORT_H, item.tilt);
+    return side===2 ? { w:b.R.w, h:b.R.h } : { w:b.L.w, h:b.L.h };
+  }
   function renderThumb(item){ drawItem(item, item.ctx, THUMB_W, THUMB_H); }
   function renderModal(){ if(openItem) drawItem(openItem, modalCtx, MODAL_W, MODAL_H); }
 
   // 썸네일/모달 캔버스 공용 — 드래그로 위치 이동, 휠로 확대/축소(평소엔 최소 1배 또는
   // 가로로 넓은 사진의 기본 전체보기 배율까지, Shift를 누르면 어떤 사진이든 전체보기까지 축소 허용)
+  // 커서가 어느 칸 위에 있는지 — 기울기가 있으면 그 y에서의 경계선을 기준으로 판단한다
+  function sideAt(item, canvas, W, H, clientX, clientY){
+    if(!item.img2) return 1;
+    const r = canvas.getBoundingClientRect();
+    const x = (clientX-r.left)*(canvas.width/r.width);
+    const y = (clientY-r.top)*(canvas.height/r.height);
+    const b = splitBoxes(W, H, item.tilt);
+    const midAtY = b.midTop + (b.midBot-b.midTop)*(y/H);
+    return x < midAtY ? 1 : 2;
+  }
+  // 칸별 크롭 상태를 이름으로 골라 쓴다(1번=focusX/…, 2번=focusX2/…)
+  function keysOf(side){
+    return side===2 ? {fx:'focusX2', fy:'focusY2', z:'zoom2'} : {fx:'focusX', fy:'focusY', z:'zoom'};
+  }
   function attachInteraction(canvas, getItem, W, H, onChange, onClick){
-    let dragging=false, moved=false, lastX=0, lastY=0;
+    let dragging=false, moved=false, lastX=0, lastY=0, side=1;
     canvas.addEventListener('pointerdown', e=>{
       const item=getItem(); if(!item) return;
+      side = sideAt(item, canvas, W, H, e.clientX, e.clientY);
+      item.side = side;                     // 모달의 기울기·안내가 이 값을 따라감
       dragging=true; moved=false; lastX=e.clientX; lastY=e.clientY;
       try{ canvas.setPointerCapture(e.pointerId); }catch{}
     });
     canvas.addEventListener('pointermove', e=>{
       const item=getItem(); if(!dragging || !item) return;
-      const pw = item.img.naturalWidth||item.img.width, ph = item.img.naturalHeight||item.img.height;
+      const k = keysOf(side);
+      const img = side===2 ? item.img2 : item.img;
+      if(!img) return;
+      const pw = img.naturalWidth||img.width, ph = img.naturalHeight||img.height;
+      const box = item.img2 ? (side===2 ? splitBoxes(W,H,item.tilt).R : splitBoxes(W,H,item.tilt).L)
+                            : {w:W, h:H};
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width/rect.width, scaleY = canvas.height/rect.height;
-      const { dw, dh } = coverCropRect(pw, ph, W, H, item.focusX, item.focusY, item.zoom);
-      const overflowX = dw - W, overflowY = dh - H;
+      const { dw, dh } = coverCropRect(pw, ph, box.w, box.h, item[k.fx], item[k.fy], item[k.z]);
+      const overflowX = dw - box.w, overflowY = dh - box.h;
       const dxPix = (e.clientX-lastX)*scaleX, dyPix = (e.clientY-lastY)*scaleY;
       if(Math.abs(dxPix)>1 || Math.abs(dyPix)>1) moved=true;
-      if(overflowX>0.5) item.focusX = clamp01(item.focusX - dxPix/overflowX);
-      if(overflowY>0.5) item.focusY = clamp01(item.focusY - dyPix/overflowY);
+      if(overflowX>0.5) item[k.fx] = clamp01(item[k.fx] - dxPix/overflowX);
+      if(overflowY>0.5) item[k.fy] = clamp01(item[k.fy] - dyPix/overflowY);
       lastX=e.clientX; lastY=e.clientY;
       onChange(item);
     });
@@ -1508,9 +1593,15 @@ function restoreSlot(s){
     canvas.addEventListener('wheel', e=>{
       const item=getItem(); if(!item) return;
       e.preventDefault();
-      const pw = item.img.naturalWidth||item.img.width, ph = item.img.naturalHeight||item.img.height;
-      const minZoom = e.shiftKey ? containMinZoom(pw, ph) : defaultZoom(pw, ph);
-      item.zoom = Math.max(minZoom, Math.min(4, item.zoom*(e.deltaY<0?1.08:0.92)));
+      const sd = sideAt(item, canvas, W, H, e.clientX, e.clientY);
+      item.side = sd;
+      const k = keysOf(sd);
+      const img = sd===2 ? item.img2 : item.img;
+      if(!img) return;
+      const pw = img.naturalWidth||img.width, ph = img.naturalHeight||img.height;
+      const bx = boxOf(item, sd);
+      const minZoom = e.shiftKey ? containMinZoom(pw, ph, bx.w, bx.h) : defaultZoom(pw, ph, bx.w, bx.h);
+      item[k.z] = Math.max(minZoom, Math.min(4, item[k.z]*(e.deltaY<0?1.08:0.92)));
       onChange(item);
     }, {passive:false});
   }
@@ -1533,7 +1624,8 @@ function restoreSlot(s){
       try{ img = await igLoadImage(file); }
       catch(e){ console.error(e); if(typeof showToast==='function') showToast('⚠ 불러오지 못한 사진: '+file.name, true); continue; }
       const pw = img.naturalWidth||img.width, ph = img.naturalHeight||img.height;
-      const item = { id: nextId++, name: file.name, img, focusX:0.5, focusY:0.5, zoom: defaultZoom(pw, ph) };
+      const item = { id: nextId++, name: file.name, img, focusX:0.5, focusY:0.5, zoom: defaultZoom(pw, ph),
+                     img2:null, focusX2:0.5, focusY2:0.5, zoom2:1, tilt:0, side:1 };
       items.push(item);
       addItemEl(item);
     }
@@ -1547,6 +1639,7 @@ function restoreSlot(s){
       '<div class="igcrop-canvaswrap">'
         + '<canvas width="'+THUMB_W+'" height="'+THUMB_H+'"></canvas>'
         + '<span class="igcrop-del" title="삭제">✕</span>'
+        + '<span class="igcrop-add2" title="두 번째 사진 넣어 좌우로 나누기">＋</span>'
       + '</div>'
       + '<div class="igcrop-name"></div>'
       + '<div class="igcrop-btns"><button class="btn2 igcrop-dl">다운로드</button></div>';
@@ -1558,6 +1651,10 @@ function restoreSlot(s){
       e.stopPropagation();
       if(item.fromMain){ mainDismissed = true; mainItem = null; }
       removeItem(item);
+    });
+    el.querySelector('.igcrop-add2').addEventListener('click', e=>{
+      e.stopPropagation();
+      if(item.img2){ clearSecondOf(item); } else { pickSecondFor(item); }
     });
     el.querySelector('.igcrop-dl').addEventListener('click', e=>{ e.stopPropagation(); downloadItem(item); });
     attachInteraction(item.canvas, ()=>item, THUMB_W, THUMB_H,
@@ -1574,6 +1671,54 @@ function restoreSlot(s){
     updateEmptyMsg();
   }
 
+  // ── 아트보드 하나를 좌우 2분할로 만들기(⑤ 전용) ──
+  // 기본은 사진 1장 = 아트보드 1개. 특정 아트보드를 고른 뒤 ＋를 눌러야 그 칸만 2분할이 된다.
+  let _pendingItem = null;
+  function pickSecondFor(item){ _pendingItem = item; second2Input.click(); }
+  function clearSecondOf(item){
+    item.img2 = null; item.tilt = 0; item.side = 1;
+    item.focusX2 = 0.5; item.focusY2 = 0.5; item.zoom2 = 1;
+    syncItemUI(item); renderThumb(item);
+    if(openItem && openItem.id===item.id) renderModal();
+  }
+  second2Input.addEventListener('change', async e=>{
+    const file = e.target.files[0]; e.target.value='';
+    const item = _pendingItem; _pendingItem = null;
+    if(!file || !item || !file.type.startsWith('image/')) return;
+    let img;
+    try{ img = await igLoadImage(file); }
+    catch(err){ console.error(err); return; }
+    const pw = img.naturalWidth||img.width, ph = img.naturalHeight||img.height;
+    item.img2 = img; item.tilt = item.tilt||0; item.side = 2;
+    const bx = boxOf(item, 2);
+    item.focusX2 = 0.5; item.focusY2 = 0.5; item.zoom2 = defaultZoom(pw, ph, bx.w, bx.h);
+    // 1번 칸도 이제 절반 폭이 됐으므로 기본 줌을 다시 잡아준다
+    const b1 = boxOf(item, 1);
+    const p1w = item.img.naturalWidth||item.img.width, p1h = item.img.naturalHeight||item.img.height;
+    item.zoom = defaultZoom(p1w, p1h, b1.w, b1.h);
+    syncItemUI(item); renderThumb(item);
+    if(openItem && openItem.id===item.id) renderModal();
+  });
+  // 항목의 버튼 라벨·기울기 UI를 지금 상태에 맞춘다
+  function syncItemUI(item){
+    if(item.el){
+      const b = item.el.querySelector('.igcrop-add2');
+      if(b){ b.textContent = item.img2 ? '⇤' : '＋';
+             b.title = item.img2 ? '두 번째 사진 빼기 (한 장으로 되돌리기)' : '두 번째 사진 넣어 좌우로 나누기'; }
+    }
+    if(openItem && openItem.id===item.id) syncTiltUI();
+  }
+  function syncTiltUI(){
+    const row = document.getElementById('igcropTiltRow');
+    if(!row) return;
+    const on = !!(openItem && openItem.img2);
+    row.style.display = on ? '' : 'none';
+    if(on){
+      document.getElementById('igcropTilt').value = openItem.tilt||0;
+      document.getElementById('igcropTiltVal').textContent = Math.round(openItem.tilt||0);
+    }
+  }
+
   // 삭제(위험한 동작)는 사진을 골랐을 때만 보이게 한다 — 예전엔 사진 1장당 삭제+다운로드가
   // 늘 떠 있어서 5장이면 버튼 10개가 상시 노출됐다. 같은 사진을 다시 누르면 크게 보기.
   function selectItem(item){
@@ -1587,7 +1732,8 @@ function restoreSlot(s){
   function syncMainImage(img){
     if(mainDismissed || !img) return;
     const pw = img.naturalWidth||img.width, ph = img.naturalHeight||img.height;
-    const item = { id: nextId++, name: '카드 생성기 사진', img, focusX:0.5, focusY:0.5, zoom: defaultZoom(pw, ph), fromMain:true };
+    const item = { id: nextId++, name: '카드 생성기 사진', img, focusX:0.5, focusY:0.5, zoom: defaultZoom(pw, ph),
+                   img2:null, focusX2:0.5, focusY2:0.5, zoom2:1, tilt:0, side:1, fromMain:true };
     if(mainItem) removeItem(mainItem);
     items.unshift(item);
     addItemEl(item, true);
@@ -1623,7 +1769,7 @@ function restoreSlot(s){
   });
 
   // ── 모달(클릭해서 크게 보기) — 드래그로 위치 이동, 휠로 확대/축소 ──
-  function openModal(item){ openItem = item; modal.classList.add('show'); renderModal(); }
+  function openModal(item){ openItem = item; modal.classList.add('show'); syncTiltUI(); renderModal(); }
   function closeModal(){
     modal.classList.remove('show');
     if(openItem) renderThumb(openItem); // 조정한 내용을 썸네일에도 반영
@@ -1636,6 +1782,18 @@ function restoreSlot(s){
   // 썸네일과 동일한 드래그/휠 로직 공유(attachInteraction) — 모달에서 조정한 내용은
   // 바로 옆 썸네일에도 실시간 반영됨
   attachInteraction(modalCanvas, ()=>openItem, MODAL_W, MODAL_H, item=>{ renderModal(); renderThumb(item); });
+
+  // 기울기 — 가운데 세로선을 비스듬하게 해서 맞물린 사다리꼴 두 개로 만든다(아트보드마다 따로)
+  document.getElementById('igcropTilt').addEventListener('input', e=>{
+    if(!openItem || !openItem.img2) return;
+    openItem.tilt = +e.target.value;
+    document.getElementById('igcropTiltVal').textContent = Math.round(openItem.tilt);
+    renderModal(); renderThumb(openItem);
+  });
+  document.getElementById('igcropTiltReset').addEventListener('click', ()=>{
+    if(!openItem || !openItem.img2) return;
+    openItem.tilt = 0; syncTiltUI(); renderModal(); renderThumb(openItem);
+  });
 
   updateEmptyMsg();
 })();
