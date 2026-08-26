@@ -202,6 +202,12 @@
                  opacity:0; pointer-events:none; transition:opacity .13s; }
   .igcrop-item.selected .igcrop-add2 { opacity:1; pointer-events:auto; }
   .igcrop-add2:hover { background:var(--accent); }
+  /* 초기화 — 되돌리기 어려운 동작이라 눈에 띄되 다른 버튼과 헷갈리지 않게 담백하게 두고,
+     올린 사진이 있을 때만 나타난다 */
+  .igcrop-reset { margin-left:10px; border:1px solid var(--line2); background:#fff; color:var(--muted);
+                  border-radius:7px; padding:4px 10px; font-size:11.5px; font-weight:600; cursor:pointer;
+                  font-family:'Pretendard',sans-serif; }
+  .igcrop-reset:hover { border-color:var(--danger); color:var(--danger); }
   .igcrop-modal-btns { display:flex; gap:8px; width:100%; }
   .igcrop-modal-btns button { flex:1; }
 
@@ -487,7 +493,10 @@
     </div>
 
     <div class="card igcrop-wrap" id="igcropSection">
-      <div class="step"><span class="n">5</span><span class="t">인스타 규격 크롭</span><span class="aside">위 카드 작업과 별개로 씁니다</span></div>
+      <div class="step"><span class="n">5</span><span class="t">인스타 규격 크롭</span>
+        <span class="aside">위 카드 작업과 별개로 씁니다</span>
+        <button type="button" class="igcrop-reset" id="igcropReset" style="display:none">초기화</button>
+      </div>
       <div class="subtitle">비율이 제각각인 공개 이미지를 인스타 4:5 규격으로 미리 잘라봅니다</div>
       <label class="upload igcrop-upload">
         <span class="icon">🖼️</span><span>사진 여러 장 선택 (4:5로 자동 크롭)<br><small>미리보기에서 바로 드래그·휠로 크롭 위치 조정 가능</small></span>
@@ -560,7 +569,7 @@ const MAXW = 920;
 const TITLE_MIN_ONE_LINE = 60; // 한 줄로 욱여넣었을 때 이 크기 밑으로 줄어들면 답답해 보여서 두 줄로 분리
 const CHAR_SHRINK_RATIO = 0.6; // "캐릭터 목록 줄이기" 체크 시 제품명 크기 대비 축소 비율(3번째 크기 단계)
 
-const SPLIT_GAP = 14; // 좌우 2분할 시 가운데 흰 선 두께(고정 — 매번 만질 값이 아니라 컨트롤을 두지 않음)
+const SPLIT_GAP = 7; // 좌우 2분할 시 가운데 흰 선 두께(고정 — 매번 만질 값이 아니라 컨트롤을 두지 않음)
 
 const state = {
   img: null, imgData: '',
@@ -1474,7 +1483,7 @@ function restoreSlot(s){
   function clamp01(v){ return Math.max(0, Math.min(1, v)); }
 
   // 미리보기(썸네일/모달)와 실제 다운로드 둘 다 이 함수 하나로 그려서 결과가 어긋나지 않게 함
-  const SPLIT_GAP_EXPORT = 16;   // 1080폭 기준 가운데 흰 선 두께
+  const SPLIT_GAP_EXPORT = 8;    // 1080폭 기준 가운데 흰 선 두께
   const TILT_MAX_EXPORT  = 320;  // 기울기 슬라이더 한쪽 끝(1080폭 기준 px)
 
   // 2분할일 때 각 사진이 채워야 할 "사다리꼴을 감싸는 가장 큰 사각형".
@@ -1610,7 +1619,21 @@ function restoreSlot(s){
     return (name||'photo').replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]/g,'').trim() || 'photo';
   }
 
+  // 초기화 — 올린 사진·크롭·기울기를 전부 버리고 처음 상태로. 되돌릴 수 없으니 한 번 묻는다.
+  function resetAll(){
+    if(!items.length) return;
+    if(!confirm('⑤ 인스타 규격 크롭을 초기화합니다.\n올린 사진과 조정한 크롭·기울기가 모두 지워집니다.\n(위 카드 생성기는 영향 없음)')) return;
+    openItem = null; modal.classList.remove('show');
+    items.forEach(it=>{ if(it.el) it.el.remove(); });
+    items = []; mainItem = null; mainDismissed = false;   // 1페이지 자동 채우기도 다시 살림
+    updateEmptyMsg();
+    if(typeof state !== 'undefined' && state.img) syncMainImage(state.img);
+  }
+  document.getElementById('igcropReset').addEventListener('click', resetAll);
+
   function updateEmptyMsg(){
+    const rb = document.getElementById('igcropReset');
+    if(rb) rb.style.display = items.length ? '' : 'none';
     let msg = grid.querySelector('.igcrop-empty');
     if(items.length===0){
       if(!msg){ msg=document.createElement('div'); msg.className='igcrop-empty'; msg.textContent='사진을 올리면 여기 4:5 미리보기가 나란히 표시됩니다.'; grid.appendChild(msg); }
