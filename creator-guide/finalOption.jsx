@@ -1095,6 +1095,42 @@ function Final_Reward({ reply }) {
         )}
       </div>
 
+      {/* ─── 수령 방식(트랙) ───────────────────────────────────
+          보상 '규모'는 위 표(유입 750 기준)에서 갈리고, '언제 받을지'는 여기서
+          크리에이터가 고른다. 두 축이 따로 움직여서 화면도 분리해 뒀다. */}
+      <div className="trk">
+        <div className="trk-head">
+          <span className="trk-head-emoji">🕒</span>
+          <div>
+            <div className="trk-head-title">언제 받으실지 골라주세요</div>
+            <div className="trk-head-sub">{GUIDE.reward.trackIntro}</div>
+          </div>
+        </div>
+
+        {GUIDE.reward.tracks.map((t) => (
+          <div className={`trk-card trk-${t.id}`} key={t.id}>
+            <div className="trk-card-top">
+              <span className="trk-emoji">{t.emoji}</span>
+              <span className="trk-name">{t.name}</span>
+              <span className="trk-tag">{t.tag}</span>
+            </div>
+            <div className="trk-rows">
+              {t.rows.map((r, i) => (
+                <div className="trk-row" key={i}>
+                  <span className="trk-when">{r.when || ''}</span>
+                  <span className="trk-what">{r.what}</span>
+                </div>
+              ))}
+            </div>
+            <div className="trk-fit">이런 분께 맞아요 — {t.fit}</div>
+          </div>
+        ))}
+
+        <ul className="trk-cautions">
+          {GUIDE.reward.trackCautions.map((c, i) => <li key={i}>{c}</li>)}
+        </ul>
+      </div>
+
       <div className="alert warn" style={{ marginTop: 10 }}>
         <Icon.alert /><span style={{ fontWeight: 700 }}>{GUIDE.reward.tiersDisclaimer}</span>
       </div>
