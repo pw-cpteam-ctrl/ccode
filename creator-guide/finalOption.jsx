@@ -30,11 +30,27 @@ const EVENT_FORM_URL = '';
 const EVENT_GUIDE = {
   title: '팬 이벤트 진행 안내',
   lead: '받으신 보상을 팬 이벤트 경품으로 활용하실 때 확인해 주세요.',
-  sections: [
+
+  // 이 정책은 원래 "대부분 자율"이 핵심인데, 항목을 전부 같은 무게로 늘어놓으면
+  // "지켜야 할 규칙이 잔뜩"으로 읽혀서 오히려 이벤트를 접게 만든다.
+  // 그래서 꼭 맞춰야 하는 것(3개)만 먼저 보여주고, 자유로운 부분을 그다음에,
+  // 나머지 상세는 접어 둔다.
+  musts: [
+    { t: '이벤트 기간 7일 이상', d: '참여자가 충분히 모이려면 최소 일주일은 필요해요' },
+    { t: '당첨자 정보 발표 후 3일 이내 전달', d: '경품 발송을 위해 필요해요' },
+    { t: '진행 전 기획 방향 공유', d: '담당자에게 간단히만 알려주시면 돼요' },
+  ],
+
+  frees: [
+    '경품을 몇 명에게, 얼마씩 나눌지',
+    '경품 형태 — 금액 쿠폰 / 상품 쿠폰',
+    '마감일, 발표 방식, 참여 조건 등 세부 사항',
+  ],
+
+  details: [
     {
-      n: '01',
       emoji: '🎁',
-      title: '보상을 이벤트 경품으로 쓸 수 있어요',
+      title: '경품은 이렇게 나눌 수 있어요',
       body: '받으신 보상 전부를 경품으로 드려도 되고, 일부만 나눠 드려도 됩니다.',
       bullets: [
         '전액 양도 — 5만 원 상당 전부를 당첨자 1명에게',
@@ -44,15 +60,8 @@ const EVENT_GUIDE = {
       note: '유입 수에 따른 보상은 이벤트를 진행하셔도 그대로 적용됩니다.',
     },
     {
-      n: '02',
-      emoji: '📅',
-      title: '이벤트 기간은 7일 이상으로 잡아주세요',
-      body: '참여자가 충분히 모이려면 최소 일주일은 필요합니다. 그 외 마감일, 발표 방식, 참여 조건 등 세부 사항은 자율적으로 정하셔도 됩니다.',
-    },
-    {
-      n: '03',
       emoji: '🏷',
-      title: '경품은 두 가지 형태로 구성할 수 있어요',
+      title: '경품 형태는 두 가지예요',
       body: '보상이 금액 쿠폰과 상품 쿠폰 두 종류라, 경품도 같은 형태로 나갑니다.',
       bullets: [
         '금액 쿠폰형 — 당첨자에게 스토어 금액 쿠폰 지급',
@@ -61,16 +70,14 @@ const EVENT_GUIDE = {
       note: '자세한 보상 종류는 06 보상 탭을 참고해 주세요.',
     },
     {
-      n: '04',
       emoji: '⏱',
       title: '경품 쿠폰은 언제 지급되나요',
-      body: '메가하우스 오픈일로부터 7일 이내에 지급되며, 콘텐츠 업로드가 확인된 이후에 발급됩니다. 크리에이터님이 보상을 받으시는 시점과 같으니, 이벤트 발표 일정을 잡으실 때 참고해 주세요.',
+      body: '메가하우스 오픈일로부터 7일 이내에, 콘텐츠 업로드가 확인된 이후 발급됩니다. 크리에이터님이 보상을 받으시는 시점과 같아요.',
       note: '두 조건을 모두 충족해야 발급됩니다 — 오픈일 기준 7일 이내 + 콘텐츠 업로드 확인',
     },
     {
-      n: '05',
       emoji: '📋',
-      title: '당첨자 정보는 발표 후 3일 이내에 보내주세요',
+      title: '당첨자 정보는 이렇게 보내주세요',
       body: '경품 발송을 위해 당첨자분의 네이버 아이디와 성함이 필요합니다.',
       bullets: [
         '주소는 필요하지 않습니다',
@@ -79,16 +86,14 @@ const EVENT_GUIDE = {
       form: true,
     },
     {
-      n: '06',
       emoji: '🔄',
       title: '당첨자가 연락을 받지 않으면',
       body: '차순위 당첨자에게 연락해 주시면 됩니다. 개별 당첨자분의 응답 여부는 크리에이터님 재량으로 진행해 주세요.',
     },
     {
-      n: '07',
       emoji: '💬',
-      title: '진행 전에 알려주실 것',
-      body: '이벤트를 기획하시면 아래 내용을 담당자에게 간단히 공유해 주세요.',
+      title: '진행 전 공유해 주실 내용',
+      body: '이벤트를 기획하시면 아래 내용을 담당자에게 간단히 알려주세요.',
       bullets: [
         '게시물에 올라갈 텍스트 초안 또는 기획 방향',
         '진행 기간',
@@ -320,30 +325,63 @@ function EventGuide({ onBack }) {
       </div>
 
       <div className="ev-body">
-        {EVENT_GUIDE.sections.map((s) => (
-          <div className="ev-item" key={s.n}>
-            <div className="ev-item-head">
-              <span className="ev-item-num">{s.n}</span>
-              <span className="ev-item-emoji">{s.emoji}</span>
-              <h2 className="ev-item-title">{s.title}</h2>
-            </div>
-            <p className="ev-item-body">{s.body}</p>
-            {s.bullets && (
-              <ul className="ev-list">
-                {s.bullets.map((b, i) => <li key={i}>{b}</li>)}
-              </ul>
-            )}
-            {s.form && (
-              EVENT_FORM_URL
-                ? <a className="ev-form-btn" href={EVENT_FORM_URL} target="_blank" rel="noopener noreferrer">
-                    당첨자 정보 보내기 →
-                  </a>
-                // 폼 주소가 아직 없을 때. 잘못된 링크를 내보내지 않고 안내로 대체한다
-                : <div className="ev-form-todo">당첨자 정보 제출 링크는 담당자가 별도로 전달드립니다.</div>
-            )}
-            {s.note && <div className="ev-note">{s.note}</div>}
+        {/* 먼저 "지켜야 할 게 3개뿐"이라는 것을 보여준다 — 분량 부담을 줄이는 핵심 */}
+        <div className="ev-must">
+          <div className="ev-must-lead">
+            대부분 자유롭게 정하시면 돼요.<br />
+            꼭 맞춰주실 건 <b>아래 3가지</b>뿐이에요.
           </div>
-        ))}
+          {EVENT_GUIDE.musts.map((m, i) => (
+            <div className="ev-must-item" key={i}>
+              <span className="ev-must-check">✓</span>
+              <span className="ev-must-text">
+                <b>{m.t}</b>
+                <span>{m.d}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="ev-free">
+          <div className="ev-free-title">자유롭게 정하셔도 되는 것</div>
+          <ul className="ev-free-list">
+            {EVENT_GUIDE.frees.map((f, i) => <li key={i}>{f}</li>)}
+          </ul>
+        </div>
+
+        {/* 나머지는 접어 둔다. 필요한 사람만 펼쳐 보면 되는 내용 */}
+        <details className="ev-more">
+          <summary className="ev-more-head">
+            <span>자세한 안내 보기</span>
+            <span className="ev-more-sub">경품 구성 · 지급 시점 · 당첨자 정보 · 공유할 내용</span>
+            <span className="ev-more-arrow">⌄</span>
+          </summary>
+          <div className="ev-more-body">
+            {EVENT_GUIDE.details.map((s2, i) => (
+              <div className="ev-item" key={i}>
+                <div className="ev-item-head">
+                  <span className="ev-item-emoji">{s2.emoji}</span>
+                  <h2 className="ev-item-title">{s2.title}</h2>
+                </div>
+                <p className="ev-item-body">{s2.body}</p>
+                {s2.bullets && (
+                  <ul className="ev-list">
+                    {s2.bullets.map((b, j) => <li key={j}>{b}</li>)}
+                  </ul>
+                )}
+                {s2.form && (
+                  EVENT_FORM_URL
+                    ? <a className="ev-form-btn" href={EVENT_FORM_URL} target="_blank" rel="noopener noreferrer">
+                        당첨자 정보 보내기 →
+                      </a>
+                    // 폼 주소가 아직 없을 때. 잘못된 링크를 내보내지 않고 안내로 대체한다
+                    : <div className="ev-form-todo">당첨자 정보 제출 링크는 담당자가 별도로 전달드립니다.</div>
+                )}
+                {s2.note && <div className="ev-note">{s2.note}</div>}
+              </div>
+            ))}
+          </div>
+        </details>
 
         <div className="ev-foot">
           궁금한 점이 있으시면 담당자에게 편히 문의해 주세요.

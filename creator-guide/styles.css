@@ -1022,3 +1022,53 @@ body {
   border: 1px solid var(--ink-300); border-radius: 12px;
   font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
 }
+
+/* 팬 이벤트 — 꼭 맞춰야 하는 것 / 자유로운 것 / 접힌 상세 */
+.ev-must {
+  background: #fff; border: 1.5px solid var(--blue-500);
+  border-radius: 14px; padding: 16px 18px;
+}
+.ev-must-lead {
+  font-size: 13.5px; line-height: 1.65; color: var(--ink-800);
+  margin-bottom: 14px;
+}
+.ev-must-lead b { color: var(--blue-700); font-weight: 800; }
+.ev-must-item { display: flex; gap: 9px; align-items: flex-start; padding: 8px 0; }
+.ev-must-item + .ev-must-item { border-top: 1px solid var(--blue-100); }
+.ev-must-check {
+  flex: 0 0 auto; color: var(--blue-500);
+  font-size: 13px; font-weight: 800; line-height: 1.5;
+}
+.ev-must-text b { display: block; font-size: 13.5px; font-weight: 700; color: var(--ink-900); }
+.ev-must-text span { display: block; margin-top: 2px; font-size: 11.8px; color: var(--ink-600); line-height: 1.5; }
+
+.ev-free { padding: 4px 4px 0; }
+.ev-free-title { font-size: 12.5px; font-weight: 700; color: var(--ink-800); margin-bottom: 7px; }
+.ev-free-list { margin: 0; padding-left: 17px; }
+.ev-free-list li { font-size: 12.5px; line-height: 1.7; color: var(--ink-600); }
+
+.ev-more {
+  background: #fff; border: 1px solid var(--ink-200);
+  border-radius: 14px; overflow: hidden;
+}
+.ev-more-head {
+  list-style: none; cursor: pointer; padding: 14px 18px;
+  display: grid; grid-template-columns: 1fr auto; align-items: center;
+  font-size: 13.5px; font-weight: 700; color: var(--ink-900);
+}
+.ev-more-head::-webkit-details-marker { display: none; }
+.ev-more-sub {
+  grid-column: 1; font-size: 11.3px; font-weight: 400;
+  color: var(--ink-600); margin-top: 2px; line-height: 1.45;
+}
+.ev-more-arrow {
+  grid-column: 2; grid-row: 1 / span 2;
+  color: var(--ink-400); font-size: 15px; transition: transform .2s;
+}
+.ev-more[open] .ev-more-arrow { transform: rotate(180deg); }
+.ev-more-body { padding: 0 18px 14px; border-top: 1px solid var(--ink-200); }
+.ev-more-body .ev-item {
+  border: 0; border-radius: 0; padding: 15px 0;
+  border-bottom: 1px solid var(--ink-200);
+}
+.ev-more-body .ev-item:last-child { border-bottom: 0; padding-bottom: 4px; }
