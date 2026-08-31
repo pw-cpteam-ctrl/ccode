@@ -487,6 +487,29 @@ function FinalOption() {
   const goReward = () => { setPhase('main'); setTab('reward'); scrollTop(); };
 
   // ─── 팬 이벤트 안내 (탭 목록에 없는 별도 페이지) ───────────────
+  // 주소 끝에 #event 를 붙이면 바로 열린다. 담당자가 "이벤트 하실 거면 여기 보세요"
+  // 하고 링크 하나만 보낼 수 있게 하기 위한 것.
+  React.useEffect(() => {
+    const apply = () => setPhase((prev) => {
+      if (window.location.hash === '#event') return 'event';
+      // 브라우저 뒤로가기로 #event 를 빠져나온 경우 원래 화면으로 되돌린다
+      return prev === 'event' ? 'main' : prev;
+    });
+    apply();
+    window.addEventListener('hashchange', apply);
+    return () => window.removeEventListener('hashchange', apply);
+  }, []);
+
+  // 화면과 주소를 맞춰 둔다 — 이벤트 페이지에 있을 때만 #event 가 붙어 있게
+  React.useEffect(() => {
+    const hasHash = window.location.hash === '#event';
+    if (phase === 'event' && !hasHash) {
+      history.replaceState(null, '', '#event');
+    } else if (phase !== 'event' && hasHash) {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  }, [phase]);
+
   if (phase === 'event') {
     return <EventGuide onBack={goReward} />;
   }
@@ -664,10 +687,13 @@ function FinalOption() {
       {tab === 'reward'  && (
         <Final_Reward
           reply={{ draftDate, setDraftDate, rewardId, setRewardId, canCopy, copied, onCopy: copyReply }}
-          onEvent={() => { setPhase('event'); scrollTop(); }}
         />
       )}
-      {tab === 'faq'     && <Final_Faq openFaq={openFaq} setOpenFaq={setOpenFaq} onGoTab={(id) => { setTab(id); scrollTop(); }} />}
+      {tab === 'faq'     && <Final_Faq openFaq={openFaq} setOpenFaq={setOpenFaq} onGoTab={(id) => {
+        // 챗봇 답변의 출처를 누르면 그 자리로 보내준다. 'event'는 탭이 아니라 별도 페이지
+        if (id === 'event') { setPhase('event'); } else { setTab(id); }
+        scrollTop();
+      }} />}
 
       <div className="final-chapter-nav">
         {tabIdx > 0 ? (
@@ -1032,7 +1058,7 @@ function Final_Rules() {
 }
 
 // ─── 챕터 5: 보상 ──────────────────────────────
-function Final_Reward({ reply, onEvent }) {
+function Final_Reward({ reply }) {
   return (
     <div className="section">
       <div className="card" style={{ background: 'var(--blue-500)', color: '#fff', borderColor: 'var(--blue-500)' }}>
@@ -1084,18 +1110,6 @@ function Final_Reward({ reply, onEvent }) {
       {/* 보상 내용을 방금 읽은 자리에서 바로 고르게 한다 — 판단이 가장 쉬운 순간 */}
       {reply && <div style={{ marginTop: 14 }}><ReplyForm {...reply} /></div>}
 
-      {/* 팬 이벤트 안내 진입점. 탭 목록에는 넣지 않고 여기에만 조용히 둔다 —
-          이벤트를 실제로 계획하는 사람만 찾아 들어오게 하려는 것 */}
-      {onEvent && (
-        <button type="button" className="ev-entry" onClick={onEvent}>
-          <span className="ev-entry-emoji">🎁</span>
-          <span className="ev-entry-text">
-            <b>보상을 팬 이벤트 경품으로 쓰고 싶으신가요?</b>
-            <span>진행 방법과 정산 기준을 안내해 드려요</span>
-          </span>
-          <span className="ev-entry-arrow">›</span>
-        </button>
-      )}
     </div>
   );
 }

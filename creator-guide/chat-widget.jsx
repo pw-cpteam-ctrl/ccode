@@ -256,6 +256,9 @@ function ChatBox({ brand, onGoTab }) {
 
   // "02 업로드 순서 탭" → 'upload'
   const sourceToTabId = (source) => {
+    // 팬 이벤트 안내는 탭이 아니라 별도 페이지라 번호가 없다.
+    // 탭 목록에 노출하지 않는 페이지여서, 챗봇 답변의 출처가 유일한 진입 경로다.
+    if (source.includes('팬 이벤트')) return 'event';
     const n = source.match(/^(\d{1,2})/);
     if (!n) return null;
     return CHAT_TAB_IDS[parseInt(n[1], 10) - 1] || null;
@@ -299,7 +302,7 @@ function ChatBox({ brand, onGoTab }) {
                 <button
                   className="chat-source"
                   onClick={() => { if (tabId && onGoTab) onGoTab(tabId); }}
-                  title={tabId ? '이 탭으로 이동' : ''}
+                  title={tabId ? '해당 안내로 이동' : ''}
                 >
                   출처: {source}
                 </button>
