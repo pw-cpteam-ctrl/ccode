@@ -136,14 +136,24 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 /* 상세 안쪽(캐러셀 미리보기 315px + 조절칸)이 더는 못 줄어드는 폭이 있어서, 그보다
    좁아지면 억지로 눌러 담지 말고 위아래로 쌓는다 — 예전 기준(820px)이면 850~900px
    구간에서 상세가 밀려나 가로 스크롤이 생겼다. */
-@media(max-width:960px){.md-wrap{grid-template-columns:1fr;}}
-.leftcol{display:flex;flex-direction:column;gap:10px;position:sticky;top:16px;}
+@media(max-width:960px){
+  .md-wrap{grid-template-columns:1fr;}
+  .leftcol{position:static;max-height:none;}
+  .md-list{max-height:60vh;}
+}
+/* 왼쪽 열은 화면에 붙어서 따라다니므로, 높이 기준을 "내용"이 아니라 "화면"으로 잡는다.
+   고정 상한(예전: 화면높이-300px)을 쓰면 화면이 남아도 목록이 780px에서 잘려서,
+   2000px가 넘는 오른쪽 상세 옆에 짧은 목록만 덩그러니 남았다.
+   max-height로 잡고 목록에 flex:1을 주면, 상품이 적을 땐 내용만큼만 차지하고
+   많아지면 화면 아래(하단 고정 바 위)까지 채운 뒤 목록 안에서만 스크롤된다. */
+.leftcol{display:flex;flex-direction:column;gap:10px;position:sticky;top:16px;
+  max-height:calc(100vh - 84px);}
 .action-row{display:grid;grid-template-columns:1fr 100px;gap:8px;}
 .action-col-stack{display:flex;flex-direction:column;gap:8px;}
 .action-col-stack button{width:100%;}
 button.danger{background:var(--ui-warn);color:#fff;}
 .md-list{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:8px;min-height:60px;
-  max-height:calc(100vh - 300px);overflow-y:auto;}
+  flex:1 1 auto;overflow-y:auto;}
 .md-row{display:flex;align-items:center;gap:9px;padding:10px 6px;border-radius:8px;cursor:pointer;font-size:13px;}
 .md-row:hover{background:rgba(20,82,192,.06);}
 .md-row.sel{background:var(--ui-accent);color:#fff;}
