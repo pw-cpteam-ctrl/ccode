@@ -943,3 +943,82 @@ body {
   padding-top: 4px;
 }
 .done-copyright strong { color: var(--ink-800); font-weight: 600; }
+
+/* ─── 팬 이벤트 안내 ─────────────────────────────────────────────
+   탭 목록에 없는 별도 페이지. 진입점(.ev-entry)은 06 보상 탭 맨 아래에만
+   조용히 두어, 이벤트를 실제로 계획하는 사람만 찾아 들어오게 한다. */
+.ev-entry {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; margin-top: 14px; padding: 14px 16px;
+  background: #fff; border: 1px solid var(--ink-200);
+  border-radius: 12px; cursor: pointer;
+  font-family: inherit; text-align: left;
+  transition: border-color .15s, background .15s;
+}
+.ev-entry:hover { border-color: var(--ink-300); background: var(--ink-50); }
+.ev-entry-emoji { font-size: 20px; flex: 0 0 auto; }
+.ev-entry-text { flex: 1; min-width: 0; }
+.ev-entry-text b { display: block; font-size: 13.5px; color: var(--ink-900); font-weight: 700; }
+.ev-entry-text span { display: block; margin-top: 2px; font-size: 11.5px; color: var(--ink-600); }
+.ev-entry-arrow { flex: 0 0 auto; font-size: 18px; color: var(--ink-400); }
+
+.ev { background: var(--ink-50); min-height: 100vh; }
+.ev-top { padding: 14px 20px 0; }
+.ev-back {
+  padding: 0; border: 0; background: none; cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink-600);
+}
+.ev-hero { padding: 18px 20px 26px; }
+.ev-hero-tag {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.14em; color: var(--blue-500); margin-bottom: 8px;
+}
+.ev-hero-title {
+  margin: 0 0 8px; font-size: 24px; font-weight: 900;
+  letter-spacing: -0.03em; line-height: 1.25; color: var(--ink-900);
+}
+.ev-hero-lead { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--ink-600); }
+
+.ev-body { padding: 0 20px; display: flex; flex-direction: column; gap: 10px; }
+.ev-item {
+  background: #fff; border: 1px solid var(--ink-200);
+  border-radius: 14px; padding: 16px 18px;
+}
+.ev-item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ev-item-num {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 800;
+  color: var(--blue-500); flex: 0 0 auto;
+}
+.ev-item-emoji { font-size: 15px; flex: 0 0 auto; }
+.ev-item-title {
+  margin: 0; font-size: 14.5px; font-weight: 700;
+  letter-spacing: -0.01em; line-height: 1.35; color: var(--ink-900);
+}
+.ev-item-body { margin: 0; font-size: 13px; line-height: 1.65; color: var(--ink-700); }
+.ev-list { margin: 9px 0 0; padding-left: 17px; }
+.ev-list li { font-size: 12.5px; line-height: 1.6; color: var(--ink-700); margin-bottom: 3px; }
+.ev-note {
+  margin-top: 10px; padding: 9px 12px;
+  background: var(--blue-50); border-radius: 9px;
+  font-size: 11.8px; line-height: 1.55; color: var(--blue-700);
+}
+.ev-form-btn {
+  display: block; margin-top: 11px; padding: 11px;
+  background: var(--blue-500); color: #fff; border-radius: 10px;
+  font-size: 13px; font-weight: 700; text-align: center; text-decoration: none;
+}
+.ev-form-todo {
+  margin-top: 11px; padding: 10px 12px;
+  background: var(--ink-100); border-radius: 9px;
+  font-size: 12px; line-height: 1.5; color: var(--ink-600);
+}
+.ev-foot {
+  margin-top: 6px; padding: 14px 4px 0;
+  font-size: 12.5px; line-height: 1.6; color: var(--ink-600);
+}
+.ev-back-btn {
+  width: 100%; height: 46px; margin-top: 4px;
+  background: #fff; color: var(--ink-800);
+  border: 1px solid var(--ink-300); border-radius: 12px;
+  font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+}

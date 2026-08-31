@@ -18,6 +18,87 @@ const REWARD_CHOICES = [
   { id: 'goods',  emoji: '🎁', label: '상품 쿠폰', desc: '해당 월 룩업\n상품으로 받기', copy: '상품 쿠폰 (해당 월 룩업)' },
 ];
 
+// ─── 팬 이벤트 안내 ──────────────────────────────────────────────
+// 탭 목록(01~07)에는 넣지 않고, 06 보상 탭 맨 아래 작은 링크로만 들어간다.
+// 이벤트를 실제로 계획하는 크리에이터만 보면 되는 내용이고, 모두에게 크게 노출하면
+// 굳이 안 해도 될 이벤트를 하게 만들 수 있어서 접근성을 일부러 낮춰 뒀다.
+//
+// 담당자 회신용 폼 주소가 정해지면 EVENT_FORM_URL만 채우면 된다.
+// 비어 있으면 "담당자에게 문의" 안내로 대체되어, 잘못된 링크가 나가지 않는다.
+const EVENT_FORM_URL = '';
+
+const EVENT_GUIDE = {
+  title: '팬 이벤트 진행 안내',
+  lead: '받으신 보상을 팬 이벤트 경품으로 활용하실 때 확인해 주세요.',
+  sections: [
+    {
+      n: '01',
+      emoji: '🎁',
+      title: '보상을 이벤트 경품으로 쓸 수 있어요',
+      body: '받으신 보상 전부를 경품으로 드려도 되고, 일부만 나눠 드려도 됩니다.',
+      bullets: [
+        '전액 양도 — 5만 원 상당 전부를 당첨자 1명에게',
+        '나눠서 양도 — 예: 1만 원씩 5명에게',
+        '일부만 양도 — 예: 2만 원씩 2명에게 드리고 나머지는 본인 수령',
+      ],
+      note: '유입 수에 따른 보상은 이벤트를 진행하셔도 그대로 적용됩니다.',
+    },
+    {
+      n: '02',
+      emoji: '📅',
+      title: '이벤트 기간은 7일 이상으로 잡아주세요',
+      body: '참여자가 충분히 모이려면 최소 일주일은 필요합니다. 그 외 마감일, 발표 방식, 참여 조건 등 세부 사항은 자율적으로 정하셔도 됩니다.',
+    },
+    {
+      n: '03',
+      emoji: '🏷',
+      title: '경품은 두 가지 형태로 구성할 수 있어요',
+      body: '보상이 금액 쿠폰과 상품 쿠폰 두 종류라, 경품도 같은 형태로 나갑니다.',
+      bullets: [
+        '금액 쿠폰형 — 당첨자에게 스토어 금액 쿠폰 지급',
+        '상품 쿠폰형 — 당첨자에게 해당 월 룩업 상품 쿠폰 지급',
+      ],
+      note: '자세한 보상 종류는 06 보상 탭을 참고해 주세요.',
+    },
+    {
+      n: '04',
+      emoji: '⏱',
+      title: '경품 쿠폰은 언제 지급되나요',
+      body: '메가하우스 오픈일로부터 7일 이내에 지급되며, 콘텐츠 업로드가 확인된 이후에 발급됩니다. 크리에이터님이 보상을 받으시는 시점과 같으니, 이벤트 발표 일정을 잡으실 때 참고해 주세요.',
+      note: '두 조건을 모두 충족해야 발급됩니다 — 오픈일 기준 7일 이내 + 콘텐츠 업로드 확인',
+    },
+    {
+      n: '05',
+      emoji: '📋',
+      title: '당첨자 정보는 발표 후 3일 이내에 보내주세요',
+      body: '경품 발송을 위해 당첨자분의 네이버 아이디와 성함이 필요합니다.',
+      bullets: [
+        '주소는 필요하지 않습니다',
+        '당첨자분께 정보 수집 동의를 먼저 받아주세요',
+      ],
+      form: true,
+    },
+    {
+      n: '06',
+      emoji: '🔄',
+      title: '당첨자가 연락을 받지 않으면',
+      body: '차순위 당첨자에게 연락해 주시면 됩니다. 개별 당첨자분의 응답 여부는 크리에이터님 재량으로 진행해 주세요.',
+    },
+    {
+      n: '07',
+      emoji: '💬',
+      title: '진행 전에 알려주실 것',
+      body: '이벤트를 기획하시면 아래 내용을 담당자에게 간단히 공유해 주세요.',
+      bullets: [
+        '게시물에 올라갈 텍스트 초안 또는 기획 방향',
+        '진행 기간',
+        '참여 방법',
+        '당첨자 발표 일정',
+      ],
+    },
+  ],
+};
+
 // 담당자에게 붙여넣을 회신 문구를 만든다. 항목 이름은 화면에 보이는 것과 똑같이 맞춘다
 // — 크리에이터가 "내가 고른 게 그대로 갔구나"를 바로 알 수 있어야 하기 때문.
 function buildReplyText(dateLabel, reward) {
@@ -222,6 +303,63 @@ function ReplyForm({ draftDate, setDraftDate, rewardId, setRewardId, canCopy, co
   );
 }
 
+// 탭 바 없이 전체 화면으로 열리는 별도 페이지. 돌아가기로만 빠져나온다.
+function EventGuide({ onBack }) {
+  return (
+    <div className="ev">
+      <div className="ev-top">
+        <button type="button" className="ev-back" onClick={onBack}>
+          ‹ 보상 탭으로 돌아가기
+        </button>
+      </div>
+
+      <div className="ev-hero">
+        <div className="ev-hero-tag">FAN EVENT</div>
+        <h1 className="ev-hero-title">{EVENT_GUIDE.title}</h1>
+        <p className="ev-hero-lead">{EVENT_GUIDE.lead}</p>
+      </div>
+
+      <div className="ev-body">
+        {EVENT_GUIDE.sections.map((s) => (
+          <div className="ev-item" key={s.n}>
+            <div className="ev-item-head">
+              <span className="ev-item-num">{s.n}</span>
+              <span className="ev-item-emoji">{s.emoji}</span>
+              <h2 className="ev-item-title">{s.title}</h2>
+            </div>
+            <p className="ev-item-body">{s.body}</p>
+            {s.bullets && (
+              <ul className="ev-list">
+                {s.bullets.map((b, i) => <li key={i}>{b}</li>)}
+              </ul>
+            )}
+            {s.form && (
+              EVENT_FORM_URL
+                ? <a className="ev-form-btn" href={EVENT_FORM_URL} target="_blank" rel="noopener noreferrer">
+                    당첨자 정보 보내기 →
+                  </a>
+                // 폼 주소가 아직 없을 때. 잘못된 링크를 내보내지 않고 안내로 대체한다
+                : <div className="ev-form-todo">당첨자 정보 제출 링크는 담당자가 별도로 전달드립니다.</div>
+            )}
+            {s.note && <div className="ev-note">{s.note}</div>}
+          </div>
+        ))}
+
+        <div className="ev-foot">
+          궁금한 점이 있으시면 담당자에게 편히 문의해 주세요.
+        </div>
+        <button type="button" className="ev-back-btn" onClick={onBack}>
+          보상 탭으로 돌아가기
+        </button>
+      </div>
+
+      <div className="done-copyright" style={{ padding: '16px 20px 24px' }}>
+        <strong>ⓒ PRESENCE WORLD</strong> · 본 협업 가이드 페이지의 <strong>유출 · 재배포를 금합니다.</strong>
+      </div>
+    </div>
+  );
+}
+
 function FinalOption() {
   const [phase, setPhase] = React.useState('cover');
   const [tab, setTab] = React.useState('flow');
@@ -309,6 +447,11 @@ function FinalOption() {
 
   // 마지막 페이지에서 "고르러 가기"를 누르면 06 보상 탭으로 보낸다
   const goReward = () => { setPhase('main'); setTab('reward'); scrollTop(); };
+
+  // ─── 팬 이벤트 안내 (탭 목록에 없는 별도 페이지) ───────────────
+  if (phase === 'event') {
+    return <EventGuide onBack={goReward} />;
+  }
 
   // ─── 환영 커버 ─────────────────────────────
   if (phase === 'cover') {
@@ -483,6 +626,7 @@ function FinalOption() {
       {tab === 'reward'  && (
         <Final_Reward
           reply={{ draftDate, setDraftDate, rewardId, setRewardId, canCopy, copied, onCopy: copyReply }}
+          onEvent={() => { setPhase('event'); scrollTop(); }}
         />
       )}
       {tab === 'faq'     && <Final_Faq openFaq={openFaq} setOpenFaq={setOpenFaq} onGoTab={(id) => { setTab(id); scrollTop(); }} />}
@@ -850,7 +994,7 @@ function Final_Rules() {
 }
 
 // ─── 챕터 5: 보상 ──────────────────────────────
-function Final_Reward({ reply }) {
+function Final_Reward({ reply, onEvent }) {
   return (
     <div className="section">
       <div className="card" style={{ background: 'var(--blue-500)', color: '#fff', borderColor: 'var(--blue-500)' }}>
@@ -901,6 +1045,19 @@ function Final_Reward({ reply }) {
 
       {/* 보상 내용을 방금 읽은 자리에서 바로 고르게 한다 — 판단이 가장 쉬운 순간 */}
       {reply && <div style={{ marginTop: 14 }}><ReplyForm {...reply} /></div>}
+
+      {/* 팬 이벤트 안내 진입점. 탭 목록에는 넣지 않고 여기에만 조용히 둔다 —
+          이벤트를 실제로 계획하는 사람만 찾아 들어오게 하려는 것 */}
+      {onEvent && (
+        <button type="button" className="ev-entry" onClick={onEvent}>
+          <span className="ev-entry-emoji">🎁</span>
+          <span className="ev-entry-text">
+            <b>보상을 팬 이벤트 경품으로 쓰고 싶으신가요?</b>
+            <span>진행 방법과 정산 기준을 안내해 드려요</span>
+          </span>
+          <span className="ev-entry-arrow">›</span>
+        </button>
+      )}
     </div>
   );
 }
