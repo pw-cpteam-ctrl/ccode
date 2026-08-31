@@ -261,6 +261,17 @@ button.danger{background:var(--ui-warn);color:#fff;}
 .dockbar button{background:#f0ede7;color:#252018;border:1px solid transparent;}
 .dockbar button#dockZip{background:#4d8ef0;color:#fff;}
 .brand-scope{font-size:10.5px;font-weight:700;color:var(--ui-sub);white-space:nowrap;}
+/* 바뀐 점 안내 모달 */
+#noticeDialog{border:1px solid var(--ui-border);border-radius:14px;padding:0;max-width:560px;
+  background:var(--ui-panel);color:var(--ui-text);box-shadow:0 12px 40px rgba(0,0,0,.22);}
+#noticeDialog::backdrop{background:rgba(0,0,0,.35);}
+.nt-body{padding:22px 24px;}
+.nt-body h3{margin:0 0 8px;font-size:16px;font-weight:800;}
+.nt-lead{margin:0 0 12px;font-size:12.5px;color:var(--ui-sub);line-height:1.7;}
+.nt-list{margin:0 0 16px;padding-left:18px;font-size:12.5px;line-height:1.75;}
+.nt-list li{margin-bottom:6px;}
+.nt-actions{display:flex;gap:8px;justify-content:flex-end;}
+.nt-foot{margin:9px 0 0;text-align:right;font-size:11px;color:var(--ui-sub);}
 .harvest{background:var(--ui-panel);border:1px solid var(--ui-accent);border-radius:12px;padding:15px 18px;margin-top:18px;}
 .harvest h3{margin:0 0 4px;font-size:13.5px;font-weight:800;display:flex;align-items:center;gap:8px;}
 .harvest p{margin:0 0 11px;font-size:12px;color:var(--ui-sub);}
@@ -277,10 +288,10 @@ button.danger{background:var(--ui-warn);color:#fff;}
       <span class="gb-hint">접어두면 다음에 열 때도 접힌 채로 시작해요</span></summary>
     <div class="gb-body">
     <ol>
-      <li><b>①</b> 왼쪽 <b>"+ 상품 추가"</b>로 오늘 작업할 상품을 목록에 담으세요. 상품마다 상단에서 브랜드를 고를 수 있어요.</li>
+      <li><b>①</b> 왼쪽 <b>"+ 상품 추가"</b>로 오늘 작업할 상품을 목록에 담으세요. 상품마다 제목 옆에서 브랜드를 고를 수 있어요.</li>
       <li><b>②</b> 오른쪽 상세에서 상품정보/캐릭터 메모를 입력하고 <b>"원고 생성"</b>을 누르면 몇 초 안에 SNS 원고(X용, 실제 링크 포함)가 나와요.</li>
       <li><b>③</b> "인스타용 복사"는 그 원고에서 <b>링크 줄만</b> 안내문구로 자동 치환해서 복사해줘요. 미리보기 없이 바로 클립보드에 담겨요.</li>
-      <li><b>④</b> 아래로 내려가면 캐러셀 이미지 칸이 있어요. 사진을 올리면 자동으로 4:5 비율로 채워 잘리고, 실제 주황 틀을 얹은 완성본을 만들 수 있어요.</li>
+      <li><b>④</b> 아래로 내려가면 캐러셀 이미지 칸이 있어요. 사진을 올리면 자동으로 4:5 비율로 채워 잘리고, 브랜드에 맞는 틀을 얹은 완성본을 만들 수 있어요. 완성본 내려받기·복사는 화면 맨 아래 고정 바에서 바로 누를 수 있어요.</li>
     </ol>
     <div class="tip"><b>💡 알아두면 좋은 것 1</b> — 이 도구는 "기억력"이 없어요. 원고 생성 버튼을 누를 때마다 완전히 새로 시작해요. "이전에 말한 거 기억해서" 같은 건 안 통해요.</div>
     <div class="tip"><b>💡 알아두면 좋은 것 2</b> — 작업 내용(상품 목록, 입력, 원고, 이미지)은 <b>이 브라우저에 자동 저장</b>돼요. 페이지를 다시 열어도 그대로 남아있어요. (다른 기기/브라우저로는 안 옮겨져요)</div>
@@ -328,6 +339,33 @@ button.danger{background:var(--ui-warn);color:#fff;}
     <button class="sm secondary" id="dockCopyIns">📋 인스타용 복사</button>
     <button class="sm" id="dockZip">📦 완성 이미지 전체 ZIP</button>
   </div>
+
+  <dialog id="noticeDialog">
+    <div class="nt-body">
+      <h3>🆕 화면 배치가 바뀌었습니다</h3>
+      <p class="nt-lead">기능이 없어지거나 결과물이 달라진 건 없습니다. 있던 자리만 바뀌었습니다.
+        담아둔 상품·원고·사진도 그대로 남아 있습니다.</p>
+      <ul class="nt-list">
+        <li><b>내려받기·복사 버튼이 화면 맨 아래 고정 바에 생겼습니다.</b>
+          아래로 내려가지 않아도 바로 누를 수 있습니다. 기존 "오늘 작업 전체 내려받기" 자리도 그대로 있습니다.</li>
+        <li><b>상품 목록이 목록 안에서만 스크롤됩니다.</b>
+          아래쪽 상품을 골라도 오른쪽 상세가 화면 밖으로 밀려나지 않습니다.</li>
+        <li><b>원고 칸 오른쪽에 캐러셀 글자 미리보기가 생겼습니다.</b>
+          아래로 내려가지 않아도 글자가 어떻게 나오는지 보입니다.</li>
+        <li><b>맨 위 안내는 접을 수 있고, 접으면 그 상태를 기억합니다.</b></li>
+        <li><b>상단의 브랜드 고르기 버튼은 없앴습니다.</b>
+          가져오기 버튼 두 개(굿스마일 폴더 / 부시로드 ZIP)가 항상 보이고,
+          상품별 브랜드는 상품 제목 옆에서 고릅니다.</li>
+        <li><b>캐러셀 미리보기가 조금 작아지고, 그 슬라이드 버튼 세 개가 그림 바로 아래로 옮겨졌습니다.</b></li>
+        <li><b>사진 삭제(✕)에 확인창이 생겼습니다.</b> 실수로 눌러도 바로 지워지지 않습니다.</li>
+      </ul>
+      <div class="nt-actions">
+        <button class="secondary sm" id="noticeHide1d">오늘 하루 그만보기</button>
+        <button class="sm" id="noticeHide3d">3일간 그만보기</button>
+      </div>
+      <p class="nt-foot">그냥 닫으면(ESC) 다음에 접속할 때 또 보입니다.</p>
+    </div>
+  </dialog>
 
   <div class="harvest">
     <h3>✓ 오늘 작업 전체 내려받기</h3>
@@ -2349,6 +2387,28 @@ $('#dockCopyIns').addEventListener('click', () => harvestCopy('ins'));
 
 // 안내 패널은 접은 상태를 기억한다 — 처음 오는 사람은 다 보이고, 아는 사람은 접힌 채로
 // 시작한다. 저장된 값이 없으면(예전 사용자 포함) 펼침이 기본이라 정보가 갑자기 사라지지 않는다.
+// 바뀐 점 안내. 공지를 따로 못 받은 팀원도 접속만 하면 보도록 모달로 띄운다.
+// "봤는지 여부"가 아니라 "언제까지 숨길지"를 저장한다 — 실수로 바로 닫아버리면 내용을
+// 영영 못 읽는 일이 없게 하려는 것이다. 그냥 닫으면(ESC) 아무것도 저장하지 않아 다음에 또 뜬다.
+// 안내 기간이 지나면 아무도 손대지 않아도 저절로 사라지도록 마감일을 코드에 박아둔다.
+const NOTICE_KEY = 'product-sns-formatter:notice:2026-08-31';
+const NOTICE_UNTIL = new Date('2026-09-07T00:00:00+09:00').getTime();
+function setupNotice() {
+  const dlg = $('#noticeDialog');
+  if (!dlg) return;
+  if (Date.now() > NOTICE_UNTIL) return;
+  let hiddenUntil = 0;
+  try { hiddenUntil = Number(localStorage.getItem(NOTICE_KEY)) || 0; } catch { hiddenUntil = 0; }
+  const hideFor = hours => {
+    try { localStorage.setItem(NOTICE_KEY, String(Date.now() + hours * 60 * 60 * 1000)); }
+    catch { /* 기억만 못 할 뿐 동작엔 지장 없음 */ }
+    if (dlg.open) dlg.close();
+  };
+  $('#noticeHide1d').addEventListener('click', () => hideFor(24));
+  $('#noticeHide3d').addEventListener('click', () => hideFor(72));
+  if (Date.now() > hiddenUntil) dlg.showModal();
+}
+
 const GUIDE_OPEN_KEY = 'product-sns-formatter:guideOpen:v1';
 (function wireGuideBox() {
   const g = $('#guideBox');
@@ -2714,6 +2774,7 @@ bushiImportZone.addEventListener('drop', e => {
 });
 
 (async function init() {
+  setupNotice();
   await loadProperNounDictionary();
   await loadProductLineMatcher();
   await loadWorkTitleDict(); // 상품을 그리기 전에 사전을 올려둬야 "확인 필요"가 잘못 뜨지 않는다
