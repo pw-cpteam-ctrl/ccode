@@ -68,11 +68,12 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 .diff-head .diff-label{font-size:12.5px;color:var(--ui-sub);font-weight:700;}
 .diff-toggle-btn{padding:5px 10px;font-size:12px;font-weight:700;}
 .diff-cols{display:flex;gap:10px;}
-.diff-col{flex:1;min-width:0;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:10px 12px;}
+.diff-col{flex:1;min-width:0;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:10px 12px;
+  display:flex;flex-direction:column;}
 .diff-col-title{font-size:11.5px;font-weight:700;color:var(--ui-sub);margin-bottom:6px;}
 .diff-content{font-size:13px;white-space:pre-wrap;word-break:break-word;min-height:40px;font-family:var(--ui-mono);line-height:1.55;}
 .diff-content.readonly{color:var(--ui-sub);}
-.final-edit{width:100%;min-height:150px;border:none;background:transparent;padding:0;font-size:13px;font-family:var(--ui-mono);line-height:1.55;color:var(--ui-text);resize:vertical;}
+.final-edit{width:100%;min-height:150px;flex:1 1 auto;border:none;background:transparent;padding:0;font-size:13px;font-family:var(--ui-mono);line-height:1.55;color:var(--ui-text);resize:vertical;}
 .final-edit:focus{outline:none;}
 .diff-empty{color:var(--ui-sub);}
 .review-row{display:flex;gap:10px;margin-top:10px;align-items:stretch;}
@@ -253,8 +254,11 @@ button.danger{background:var(--ui-warn);color:#fff;}
 /* 한 줄에 하나씩 쌓여 있던 칸을 같은 줄에 앉히는 규칙들 — 입력칸이 폭을 다 쓰고
    그 아래 작은 버튼이 또 한 줄을 먹던 자리를 없앤다. */
 .pairrow{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-.askrow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;}
-.askrow .field{margin-bottom:0;}
+/* 라벨·입력칸·버튼이 세 줄로 나뉘어 있던 자리를 한 줄로 합친다 */
+.askrow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;}
+.askrow textarea{margin:0;}
+.ask-lab{font-size:11.5px;color:var(--ui-sub);white-space:nowrap;}
+.ask-lab span{font-weight:400;}
 .txtrow{display:grid;grid-template-columns:1fr 150px;gap:10px;align-items:end;}
 .txtrow .flabel{margin-top:0;}
 /* ② 원고 옆 캐러셀 글자 미리보기 — 글자를 고치면서 결과를 같은 자리에서 보게 한다.
@@ -1860,23 +1864,26 @@ function renderDetail() {
     <div class="stage">
       <div class="stage-h"><span class="snum">①</span> 상품정보 <span style="font-weight:600;color:var(--ui-sub);font-size:11px;">(지금은 직접 입력 · 추후 B2B 자동수집 예정)</span></div>
       <div class="pairrow">
-        <div class="field">
-          <label>캐릭터 메모 (관계설명·대사 등 가변정보)</label>
-          <textarea id="memoInput" rows="3" placeholder="예) 키타가와 마린의 코스프레를 돕는 같은 반 남고생">${escapeHtml(p.memoText)}</textarea>
+        <div>
+          <div class="field">
+            <label>캐릭터 메모 (관계설명·대사 등 가변정보)</label>
+            <textarea id="memoInput" rows="3" placeholder="예) 키타가와 마린의 코스프레를 돕는 같은 반 남고생">${escapeHtml(p.memoText)}</textarea>
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label>참고 DB에서 가져오기</label>
+            <input type="text" id="dbSearchInput" class="refdb-search" style="margin:0;width:100%;" placeholder="작품/캐릭터 검색..."/>
+            <div class="dbchips" id="dbChips"></div>
+          </div>
         </div>
-        <div class="field">
-          <label>참고 DB에서 가져오기</label>
-          <input type="text" id="dbSearchInput" class="refdb-search" style="margin:0;width:100%;" placeholder="작품/캐릭터 검색..."/>
-          <div class="dbchips" id="dbChips"></div>
-        </div>
+        <div>${workBlockHtml(p)}</div>
       </div>
-      ${workBlockHtml(p)}
     </div>
 
     <div class="stage">
       <div class="stage-h"><span class="snum">②</span> 원고 <span class="badge-x">X 기준</span> ${st.hasDraft ? '<span class="chip done">완료</span>' : '<span class="chip pending">미완</span>'}</div>
       <div class="askrow">
-        <div class="field"><label>추가지시 (선택, 이번 1건에만 적용)</label><textarea id="extraInput" rows="1" placeholder="예) 이번 건은 이모지 빼고 담백하게">${escapeHtml(p.extraInstruction)}</textarea></div>
+        <label class="ask-lab" for="extraInput">추가지시 <span>(선택 · 이번 1건에만)</span></label>
+        <textarea id="extraInput" rows="1" placeholder="예) 이번 건은 이모지 빼고 담백하게">${escapeHtml(p.extraInstruction)}</textarea>
         <button id="btnGenerate"${batchPendingIds.has(p.id) ? ' disabled' : ''}>${batchPendingIds.has(p.id) ? '일괄 처리 대기 중...' : (st.hasDraft ? '↻ 재생성' : '✍ 원고 생성')}</button>
       </div>
       <div class="status" id="genStatus"></div>
