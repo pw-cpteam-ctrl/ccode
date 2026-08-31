@@ -1115,3 +1115,57 @@ body {
   background: #fff; border: 1px solid var(--danger-accent); border-radius: 9px;
   font-size: 11.5px; line-height: 1.5; color: var(--danger-fg);
 }
+
+/* ─── 06 보상: 2열 비교 표 ───────────────────────────────────────
+   '얼마를 받나'(유입 기준)와 '언제 받나'(수령 방식)를 같은 형태의 표로 두어,
+   두 축을 나란히 비교할 수 있게 한다. 예전엔 큰 카드로 펼쳐져 있어 세로로
+   너무 길었다. */
+.rwd { }
+.rwd-title {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 15px; font-weight: 800; color: var(--ink-900);
+  letter-spacing: -0.01em; margin-bottom: 8px;
+}
+.rwd-title-num {
+  width: 19px; height: 19px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: var(--blue-500); color: #fff;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+}
+.rwd-sub { font-size: 12.3px; line-height: 1.55; color: var(--ink-600); margin-bottom: 8px; }
+.rwd-table {
+  background: #fff; border: 1px solid var(--ink-200);
+  border-radius: 12px; overflow: hidden;
+}
+.rwd-row {
+  display: grid; grid-template-columns: 62px 1fr 1fr;
+  border-bottom: 1px solid var(--ink-200);
+}
+.rwd-row:last-child { border-bottom: 0; }
+.rwd-head { background: var(--ink-50); }
+.rwd-th {
+  padding: 8px 6px; text-align: center;
+  font-size: 11.5px; font-weight: 800; color: var(--ink-800);
+  border-left: 1px solid var(--ink-200);
+}
+.rwd-th:first-child { border-left: 0; }
+.rwd-th-split { color: var(--blue-700); }
+.rwd-th-after { color: var(--warn-fg); }
+.rwd-key {
+  display: flex; align-items: center;
+  padding: 9px 7px; font-size: 11px; font-weight: 700;
+  color: var(--ink-600); background: var(--ink-50);
+  line-height: 1.35;
+}
+.rwd-val {
+  padding: 9px 7px; text-align: center;
+  font-size: 11.8px; font-weight: 700; color: var(--ink-900);
+  line-height: 1.45; border-left: 1px solid var(--ink-200);
+}
+.rwd-none { color: var(--ink-400); font-weight: 500; }
+.rwd-fitrow .rwd-val { font-weight: 500; font-size: 11px; color: var(--ink-600); }
+.rwd-notes { margin: 8px 0 0; padding-left: 16px; }
+.rwd-notes li {
+  font-size: 11px; line-height: 1.6; color: var(--ink-600); margin-bottom: 3px;
+}
+.rwd-cautions li { color: var(--danger-fg); font-size: 11.3px; }

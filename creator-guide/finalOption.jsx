@@ -1112,98 +1112,83 @@ function Final_Rules() {
 
 // ─── 챕터 5: 보상 ──────────────────────────────
 function Final_Reward({ reply }) {
+  const R = GUIDE.reward;
   return (
     <div className="section">
-      <div className="card" style={{ background: 'var(--blue-500)', color: '#fff', borderColor: 'var(--blue-500)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {GUIDE.reward.tiers.map((t, i) => (
-            <div key={i} style={{ padding: '14px 0 6px 0' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 800, background: 'rgba(255,255,255,0.25)', padding: '2px 8px', borderRadius: 6, letterSpacing: '0.04em' }}>STEP {t.step}</span>
-                <span style={{ fontSize: 20 }}>{t.emoji}</span>
-                <span style={{ fontSize: 13, fontWeight: 700 }}>{t.range} (택1)</span>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 8, alignItems: 'stretch' }}>
-                {t.options.map((op, j) => (<React.Fragment key={j}>{j === 1 && <div style={{ textAlign: 'center', fontWeight: 800, fontSize: 13, opacity: 0.85, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>OR</div>}
-                  <div key={j} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, opacity: 0.8, marginBottom: 4, letterSpacing: '0.06em' }}>{op.label}</div>
-                    <div style={{ fontSize: 13.5, fontWeight: 800, lineHeight: 1.3, marginBottom: 4 }}>{op.name}</div>
-                    <div style={{ fontSize: 11, opacity: 0.85, lineHeight: 1.5, whiteSpace: 'pre-line' }}>{op.desc}</div>
-                    {op.note && <div style={{ fontSize: 10, opacity: 0.75, marginTop: 6, borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: 5 }}>{op.note}</div>}
-                  </div>
-                </React.Fragment>))}
-              </div>
+      {/* ─── 얼마를 받나 (유입 수 기준) ───────────────────────
+          예전엔 큰 카드 4개로 펼쳐져 있었는데, 표로 바꾸면 같은 정보를 훨씬
+          짧게 담을 수 있고 아래 '언제 받나' 표와 형태가 같아져 비교가 쉬워진다. */}
+      <div className="rwd">
+        <div className="rwd-title"><span className="rwd-title-num">1</span> 얼마를 받나</div>
+        <div className="rwd-table">
+          <div className="rwd-row rwd-head">
+            <span className="rwd-th">유입 수</span>
+            <span className="rwd-th">💳 금액 쿠폰</span>
+            <span className="rwd-th">🎁 상품 쿠폰</span>
+          </div>
+          {R.tiers.map((t, i) => (
+            <div className="rwd-row" key={i}>
+              <span className="rwd-key">{t.range.replace('유입 수 ', '')}</span>
+              {t.options.map((op, j) => (
+                <span className="rwd-val" key={j}>{op.name}</span>
+              ))}
             </div>
           ))}
         </div>
-        <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.2)', fontSize: 12.5, opacity: 0.95, lineHeight: 1.6 }}>
-          <div><span style={{ opacity: 0.75 }}>집계 기간 · </span>{GUIDE.reward.period}</div>
-          <div style={{ marginTop: 4 }}><span style={{ opacity: 0.75 }}>지급 시기 · </span>{GUIDE.reward.payout}</div>
-        </div>
-        {GUIDE.reward.tiersNote && (
-          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.9, lineHeight: 1.6 }}>{GUIDE.reward.tiersNote}</div>
-        )}
-        {GUIDE.reward.tiersBNote && (
-          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9, lineHeight: 1.6 }}>{GUIDE.reward.tiersBNote}</div>
-        )}
-      </div>
-
-      {/* ─── 수령 방식(트랙) ───────────────────────────────────
-          보상 '규모'는 위 표(유입 750 기준)에서 갈리고, '언제 받을지'는 여기서
-          크리에이터가 고른다. 두 축이 따로 움직여서 화면도 분리해 뒀다. */}
-      <div className="trk">
-        <div className="trk-head">
-          <span className="trk-head-emoji">🕒</span>
-          <div>
-            <div className="trk-head-title">언제 받으실지 골라주세요</div>
-            <div className="trk-head-sub">{GUIDE.reward.trackIntro}</div>
-          </div>
-        </div>
-
-        {GUIDE.reward.tracks.map((t) => (
-          <div className={`trk-card trk-${t.id}`} key={t.id}>
-            <div className="trk-card-top">
-              <span className="trk-emoji">{t.emoji}</span>
-              <span className="trk-name">{t.name}</span>
-              <span className="trk-tag">{t.tag}</span>
-            </div>
-            <div className="trk-rows">
-              {t.rows.map((r, i) => (
-                <div className="trk-row" key={i}>
-                  <span className="trk-when">{r.when || ''}</span>
-                  <span className="trk-what">{r.what}</span>
-                </div>
-              ))}
-            </div>
-            <div className="trk-fit">이런 분께 맞아요 — {t.fit}</div>
-          </div>
-        ))}
-
-        <ul className="trk-cautions">
-          {GUIDE.reward.trackCautions.map((c, i) => <li key={i}>{c}</li>)}
+        <ul className="rwd-notes">
+          <li>금액 쿠폰은 해당 금액 이상 단품 결제 시 사용 가능하며, 룩업 외 다른 라인업 상품에도 쓰실 수 있습니다</li>
+          <li>상품 쿠폰은 해당 월 라인업 기준입니다 (타월 등 일부 상품 제외 · 5만 원 미만 상품은 배송비 발생 가능)</li>
+          <li>{R.tiersNote.replace('※ ', '')}</li>
+          <li>유입 수는 프리오더 기간(약 1달) 동안 카운트되며, 정산 완료 시 담당자가 한 번 더 연락드립니다</li>
         </ul>
       </div>
 
-      <div className="alert warn" style={{ marginTop: 10 }}>
-        <Icon.alert /><span style={{ fontWeight: 700 }}>{GUIDE.reward.tiersDisclaimer}</span>
+      {/* ─── 언제 받나 (수령 방식) ─────────────────────────── */}
+      <div className="rwd" style={{ marginTop: 16 }}>
+        <div className="rwd-title"><span className="rwd-title-num">2</span> 언제 받나</div>
+        <div className="rwd-sub">{R.trackIntro}</div>
+        <div className="rwd-table">
+          <div className="rwd-row rwd-head">
+            <span className="rwd-th">구분</span>
+            <span className="rwd-th rwd-th-split">🟦 선지급</span>
+            <span className="rwd-th rwd-th-after">🟨 후지급</span>
+          </div>
+          <div className="rwd-row">
+            <span className="rwd-key">1차</span>
+            <span className="rwd-val">업로드 확인 후<br />7일 이내 · 5만 원</span>
+            <span className="rwd-val rwd-none">없음</span>
+          </div>
+          <div className="rwd-row">
+            <span className="rwd-key">2차</span>
+            <span className="rwd-val">750 달성 시<br />5만 원 추가</span>
+            <span className="rwd-val">마감 이후(약 40일)<br />한 번에 지급</span>
+          </div>
+          <div className="rwd-row">
+            <span className="rwd-key">받는 금액</span>
+            <span className="rwd-val">최대 10만 원 상당</span>
+            <span className="rwd-val">750↑ 10만 원<br />750↓ 5만 원</span>
+          </div>
+          <div className="rwd-row rwd-fitrow">
+            <span className="rwd-key">이런 분께</span>
+            <span className="rwd-val">팬 이벤트 예정<br />먼저 받고 싶은 경우</span>
+            <span className="rwd-val">10만 원대 단품을<br />구매하실 계획인 경우</span>
+          </div>
+        </div>
+        <ul className="rwd-notes rwd-cautions">
+          {R.trackCautions.map((c, i) => <li key={i}>{c}</li>)}
+        </ul>
       </div>
 
-      <div className="alert info" style={{ marginTop: 10 }}>
-        <Icon.info /><span>{GUIDE.reward.note}</span>
-      </div>
-
-      <div className="alert info" style={{ marginTop: 10 }}>
+      <div className="alert info" style={{ marginTop: 12 }}>
         <Icon.info /><span>쿠폰 보상 조정 관련하여 문의가 있으실 경우 <strong>07 FAQ</strong> 단락을 참조해주세요.</span>
       </div>
 
       {/* 보상 내용을 방금 읽은 자리에서 바로 고르게 한다 — 판단이 가장 쉬운 순간 */}
       {reply && <div style={{ marginTop: 14 }}><ReplyForm {...reply} /></div>}
-
     </div>
   );
 }
 
-// ─── 챕터 5: FAQ ──────────────────────────────
 function Final_Faq({ openFaq, setOpenFaq, onGoTab }) {
   return (
     <div className="section">
