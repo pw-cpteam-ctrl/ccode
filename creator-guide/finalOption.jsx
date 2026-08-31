@@ -1143,36 +1143,33 @@ function Final_Reward({ reply }) {
         </ul>
       </div>
 
-      {/* ─── 언제 받나 (수령 방식) ─────────────────────────── */}
+      {/* ─── 언제 받나 (수령 방식) ───────────────────────────
+          표로 만들었더니 두 방식을 한 줄씩 번갈아 읽어야 해서 오히려 이해가
+          어려웠다. 카드로 되돌리되 좌우로 나란히 놓아, 한쪽씩 통째로 읽으면서
+          비교할 수 있게 한다.
+          '이런 분께 맞아요'는 뺐다 — "10만 원대 단품 구매 계획"이라고 적으면
+          후지급을 고르면 무조건 10만 원을 받는 것처럼 읽히기 때문. */}
       <div className="rwd" style={{ marginTop: 16 }}>
         <div className="rwd-title"><span className="rwd-title-num">2</span> 언제 받나</div>
         <div className="rwd-sub">{R.trackIntro}</div>
-        <div className="rwd-table">
-          <div className="rwd-row rwd-head">
-            <span className="rwd-th">구분</span>
-            <span className="rwd-th rwd-th-split">🟦 선지급</span>
-            <span className="rwd-th rwd-th-after">🟨 후지급</span>
-          </div>
-          <div className="rwd-row">
-            <span className="rwd-key">1차</span>
-            <span className="rwd-val">업로드 확인 후<br />7일 이내 · 5만 원</span>
-            <span className="rwd-val rwd-none">없음</span>
-          </div>
-          <div className="rwd-row">
-            <span className="rwd-key">2차</span>
-            <span className="rwd-val">750 달성 시<br />5만 원 추가</span>
-            <span className="rwd-val">마감 이후(약 40일)<br />한 번에 지급</span>
-          </div>
-          <div className="rwd-row">
-            <span className="rwd-key">받는 금액</span>
-            <span className="rwd-val">최대 10만 원 상당</span>
-            <span className="rwd-val">750↑ 10만 원<br />750↓ 5만 원</span>
-          </div>
-          <div className="rwd-row rwd-fitrow">
-            <span className="rwd-key">이런 분께</span>
-            <span className="rwd-val">팬 이벤트 예정<br />먼저 받고 싶은 경우</span>
-            <span className="rwd-val">10만 원대 단품을<br />구매하실 계획인 경우</span>
-          </div>
+        <div className="trk-grid">
+          {R.tracks.map((t) => (
+            <div className={`trk-card trk-${t.id}`} key={t.id}>
+              <div className="trk-card-top">
+                <span className="trk-emoji">{t.emoji}</span>
+                <span className="trk-name">{t.name}</span>
+              </div>
+              <div className="trk-tag">{t.tag}</div>
+              <div className="trk-rows">
+                {t.rows.map((r, i) => (
+                  <div className="trk-row" key={i}>
+                    {r.when && <span className="trk-when">{r.when}</span>}
+                    <span className="trk-what">{r.what}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
         <ul className="rwd-notes rwd-cautions">
           {R.trackCautions.map((c, i) => <li key={i}>{c}</li>)}
