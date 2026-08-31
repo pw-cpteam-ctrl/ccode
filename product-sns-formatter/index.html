@@ -123,12 +123,20 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .rd-pick{margin-top:6px;padding:4px 9px;font-size:11px;}
 
 /* ── 오늘 상품 목록 (좌) · 상세 (우) ── */
-.dayhead{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+.dayhead{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;
+  padding:12px 14px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:stretch;}
+.dh-col{display:flex;flex-direction:column;justify-content:center;gap:5px;min-width:0;
+  background:var(--ui-card);border:1px solid var(--ui-border);border-radius:9px;padding:10px 12px;}
+.dh-col .status{margin-top:0;}
+@media (max-width:900px){.dayhead{grid-template-columns:1fr;}}
 .dayhead .daylabel{font-weight:800;font-size:14px;}
 .dayhead .brand-toggle{margin-left:auto;}
 .dayhead .dayprog{font-size:12.5px;color:var(--ui-sub);width:100%;}
-.md-wrap{display:grid;grid-template-columns:300px 1fr;gap:14px;align-items:start;}
-@media(max-width:820px){.md-wrap{grid-template-columns:1fr;}}
+.md-wrap{display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px;align-items:start;}
+/* 상세 안쪽(캐러셀 미리보기 315px + 조절칸)이 더는 못 줄어드는 폭이 있어서, 그보다
+   좁아지면 억지로 눌러 담지 말고 위아래로 쌓는다 — 예전 기준(820px)이면 850~900px
+   구간에서 상세가 밀려나 가로 스크롤이 생겼다. */
+@media(max-width:960px){.md-wrap{grid-template-columns:1fr;}}
 .leftcol{display:flex;flex-direction:column;gap:10px;position:sticky;top:16px;}
 .action-row{display:grid;grid-template-columns:1fr 100px;gap:8px;}
 .action-col-stack{display:flex;flex-direction:column;gap:8px;}
@@ -217,7 +225,6 @@ button.danger{background:var(--ui-warn);color:#fff;}
 .thumbwrap .th-del:hover{color:var(--ui-warn);}
 .thumbwrap.dragover canvas{outline:2px dashed var(--ui-accent);outline-offset:2px;}
 #b2bImportZone,#bushiImportZone{border-radius:8px;transition:background .15s;}
-#bushiImportZone{margin-top:8px;}
 #bushiImportZone.dragover{outline:2px dashed var(--ui-accent);outline-offset:3px;background:rgba(240,125,30,.06);}
 #b2bImportZone.dragover{outline:2px dashed var(--ui-accent);outline-offset:3px;background:rgba(240,125,30,.06);}
 .thumbwrap.drag-source{opacity:.4;}
@@ -300,22 +307,24 @@ button.danger{background:var(--ui-warn);color:#fff;}
   </details>
 
   <div class="dayhead">
-    <div class="daylabel" id="dayLabel"></div>
-    <div class="dayprog" id="dayProgress"></div>
+    <div class="dh-col">
+      <div class="daylabel" id="dayLabel"></div>
+      <div class="dayprog" id="dayProgress"></div>
+    </div>
+    <div class="dh-col" id="b2bImportZone">
+      <button id="btnB2BImport" class="secondary" style="width:100%;">🔄 굿스마일 폴더 가져오기</button>
+      <input type="file" id="b2bImportInput" webkitdirectory directory multiple style="display:none;"/>
+      <div class="status" id="b2bImportStatus">스크래퍼가 만든 <b>날짜 폴더</b>(예: <code>2026-07-30</code>)를 통째로 고르거나 여기로 끌어다 놓으세요 — 폴더 이름은 <b>상품 발표일</b>이에요</div>
+    </div>
+    <div class="dh-col" id="bushiImportZone">
+      <button id="btnBushiImport" class="secondary" style="width:100%;">📦 부시로드 메일 ZIP 가져오기</button>
+      <input type="file" id="bushiImportInput" accept=".zip" multiple style="display:none;"/>
+      <div class="status" id="bushiImportStatus">메일 <b>ZIP을 압축 풀지 말고</b> 그대로 올리거나 끌어다 놓으세요 — 발주서 엑셀이 있으면 스펙까지 자동으로 채워져요</div>
+    </div>
   </div>
 
   <div class="md-wrap">
     <div class="leftcol">
-      <div id="b2bImportZone">
-        <button id="btnB2BImport" class="secondary" style="width:100%;">🔄 굿스마일 폴더 가져오기 (선택 또는 드래그)</button>
-        <input type="file" id="b2bImportInput" webkitdirectory directory multiple style="display:none;"/>
-        <div class="status" id="b2bImportStatus">스크래퍼 프로그램을 실행하면 자동으로 만들어지는 <b>날짜 이름의 폴더</b>(예: <code>2026-07-30</code>)를 통째로 선택하거나, 그 폴더를 여기로 끌어다 놓으면 사진까지 전부 자동으로 채워져요. 폴더 이름은 <b>상품이 발표된 날짜</b>예요 — 저녁에 돌리면 다음날 날짜 폴더가 만들어질 수 있어요.</div>
-      </div>
-      <div id="bushiImportZone">
-        <button id="btnBushiImport" class="secondary" style="width:100%;">📦 부시로드 메일 ZIP 가져오기 (선택 또는 드래그)</button>
-        <input type="file" id="bushiImportInput" accept=".zip" multiple style="display:none;"/>
-        <div class="status" id="bushiImportStatus">메일로 받은 <b>ZIP 파일을 압축 풀지 말고 그대로</b> 올리면 사진이 들어와요. 발주서 엑셀이 같이 들어있으면 상품과 스펙(사이즈·재질·마감일 등)까지 자동으로 채워져요. 여러 개를 한 번에 올려도 돼요.</div>
-      </div>
       <div class="action-row">
         <div class="action-col-stack">
           <button id="btnBatchGenerate" class="secondary">✍ 일괄 원고 생성</button>
