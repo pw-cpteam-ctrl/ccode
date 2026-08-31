@@ -21,7 +21,7 @@
   --ui-mono:'SF Mono',ui-monospace,'D2Coding',Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box;}html,body{margin:0;padding:0;}
-body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Malgun Gothic',sans-serif;display:flex;justify-content:center;padding:40px 20px 100px;}
+body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Malgun Gothic',sans-serif;display:flex;justify-content:center;padding:40px 20px 118px;}
 .wrap{width:100%;max-width:1130px;}
 h1{font-size:22px;font-weight:800;margin:0 0 6px;}
 .sub{font-size:13px;color:var(--ui-sub);margin:0 0 24px;}
@@ -43,8 +43,14 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 .memo-item{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:8px 12px;font-size:12.5px;}
 .memo-item .at{color:var(--ui-sub);font-size:11px;margin-right:6px;}
 .memo-item .sync{font-size:11px;margin-top:2px;color:var(--ui-sub);}
-.guide-box{background:#fff8e6;border:2px solid #f0c96b;border-radius:12px;padding:20px 22px;margin-bottom:24px;}
-.guide-box h2{font-size:16px;font-weight:800;margin:0 0 12px;color:#8a5a00;}
+.guide-box{background:#fff8e6;border:2px solid #f0c96b;border-radius:12px;margin-bottom:20px;}
+.guide-box>summary{cursor:pointer;padding:12px 20px;font-size:15px;font-weight:800;color:#8a5a00;
+  list-style:none;display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+.guide-box>summary::-webkit-details-marker{display:none;}
+.gb-arw{font-size:10px;transition:transform .15s;}
+.guide-box[open]>summary .gb-arw{transform:rotate(90deg);}
+.gb-hint{margin-left:auto;font-weight:500;font-size:11.5px;color:#a9803a;}
+.gb-body{padding:0 20px 16px;}
 .guide-box ol{margin:0 0 14px;padding-left:20px;font-size:13.5px;line-height:1.9;}
 .guide-box ol li b{color:var(--ui-accent);}
 .guide-box .tip{background:#fff;border:1px solid #f0c96b;border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.7;color:#5a4a2a;margin-bottom:8px;}
@@ -128,7 +134,8 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .action-col-stack{display:flex;flex-direction:column;gap:8px;}
 .action-col-stack button{width:100%;}
 button.danger{background:var(--ui-warn);color:#fff;}
-.md-list{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:8px;min-height:60px;}
+.md-list{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:8px;min-height:60px;
+  max-height:calc(100vh - 300px);overflow-y:auto;}
 .md-row{display:flex;align-items:center;gap:9px;padding:10px 6px;border-radius:8px;cursor:pointer;font-size:13px;}
 .md-row:hover{background:rgba(20,82,192,.06);}
 .md-row.sel{background:var(--ui-accent);color:#fff;}
@@ -216,9 +223,9 @@ button.danger{background:var(--ui-warn);color:#fff;}
 .thumbwrap.drag-source{opacity:.4;}
 .thumbwrap .th-frame{position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;background:#fff;border-radius:8px;padding:0 5px;height:14px;line-height:14px;cursor:pointer;border:1px solid var(--ui-border);color:var(--ui-accent);white-space:nowrap;}
 .thumbwrap .th-frame.off{color:var(--ui-sub);text-decoration:line-through;}
-.composer{display:grid;grid-template-columns:420px 1fr;gap:16px;margin-top:12px;align-items:start;}
+.composer{display:grid;grid-template-columns:315px 1fr;gap:16px;margin-top:12px;align-items:start;}
 @media(max-width:560px){.composer{grid-template-columns:1fr;}}
-#composerCanvas{width:420px;height:525px;border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.12);cursor:grab;background:var(--ui-card);}
+#composerCanvas{width:315px;height:394px;border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.12);cursor:grab;background:var(--ui-card);}
 #composerCanvas:active{cursor:grabbing;}
 .composer-ctl .hint{font-size:11px;color:var(--ui-sub);margin:2px 0 6px;line-height:1.5;}
 .ctl-block{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;padding:9px 11px;margin-bottom:8px;}
@@ -226,6 +233,34 @@ button.danger{background:var(--ui-warn);color:#fff;}
 .ctl-block input[type=range]{width:100%;}
 .grad4-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;}
 .ctl-block textarea{width:100%;background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;font-size:12.5px;color:var(--ui-text);font-family:inherit;resize:none;}
+/* 한 줄에 하나씩 쌓여 있던 칸을 같은 줄에 앉히는 규칙들 — 입력칸이 폭을 다 쓰고
+   그 아래 작은 버튼이 또 한 줄을 먹던 자리를 없앤다. */
+.pairrow{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.askrow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;}
+.askrow .field{margin-bottom:0;}
+.txtrow{display:grid;grid-template-columns:1fr 150px;gap:10px;align-items:end;}
+.txtrow .flabel{margin-top:0;}
+/* ② 원고 옆 캐러셀 글자 미리보기 — 글자를 고치면서 결과를 같은 자리에서 보게 한다.
+   대표 슬라이드 한 장만 작게 그린다(상품마다 전체를 다시 그리면 무거움). */
+.draft-mini{flex:none;width:172px;}
+#draftPreviewCanvas{width:172px;height:215px;border-radius:2px;background:var(--ui-card);
+  box-shadow:0 1px 3px rgba(0,0,0,.12);display:block;}
+.draft-mini .cl{font-size:11px;color:var(--ui-sub);margin-bottom:4px;}
+.draft-mini .note{font-size:10.5px;color:var(--ui-sub);margin-top:5px;line-height:1.5;}
+@media (max-width:900px){.draft-mini{display:none;}}
+/* 슬라이드 하나에 대한 동작은 그 슬라이드 그림 바로 아래에 둔다 */
+.slide-actions{display:flex;gap:6px;margin-top:8px;}
+.slide-actions button{flex:1;padding:7px 4px;font-size:11px;white-space:nowrap;}
+/* 하단 고정 바 */
+.dockbar{position:fixed;left:0;right:0;bottom:0;z-index:40;background:#2b2620;
+  padding:9px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  box-shadow:0 -6px 20px rgba(0,0,0,.18);}
+.dock-stat{font-size:12px;color:#d6cfc2;margin-right:auto;}
+.dock-stat b{color:#fff;}
+.dock-stat .warn{color:#ffb968;font-weight:800;}
+.dockbar button{background:#f0ede7;color:#252018;border:1px solid transparent;}
+.dockbar button#dockZip{background:#4d8ef0;color:#fff;}
+.brand-scope{font-size:10.5px;font-weight:700;color:var(--ui-sub);white-space:nowrap;}
 .harvest{background:var(--ui-panel);border:1px solid var(--ui-accent);border-radius:12px;padding:15px 18px;margin-top:18px;}
 .harvest h3{margin:0 0 4px;font-size:13.5px;font-weight:800;display:flex;align-items:center;gap:8px;}
 .harvest p{margin:0 0 11px;font-size:12px;color:var(--ui-sub);}
@@ -237,8 +272,10 @@ button.danger{background:var(--ui-warn);color:#fff;}
   <h1>상품 SNS 포맷터</h1>
   <p class="sub">오늘 작업할 상품을 목록에 담고, 상품마다 ① 정보 입력 → ② 원고 생성 → ③ 캐러셀 이미지 합성까지 한 화면에서 끝내는 도구예요.</p>
 
-  <div class="guide-box">
-    <h2>📌 처음 쓰시는 분은 여기부터 읽어주세요</h2>
+  <details class="guide-box" id="guideBox">
+    <summary><span class="gb-arw">▶</span> 📌 처음 쓰시는 분은 여기부터 읽어주세요
+      <span class="gb-hint">접어두면 다음에 열 때도 접힌 채로 시작해요</span></summary>
+    <div class="gb-body">
     <ol>
       <li><b>①</b> 왼쪽 <b>"+ 상품 추가"</b>로 오늘 작업할 상품을 목록에 담으세요. 상품마다 상단에서 브랜드를 고를 수 있어요.</li>
       <li><b>②</b> 오른쪽 상세에서 상품정보/캐릭터 메모를 입력하고 <b>"원고 생성"</b>을 누르면 몇 초 안에 SNS 원고(X용, 실제 링크 포함)가 나와요.</li>
@@ -248,27 +285,23 @@ button.danger{background:var(--ui-warn);color:#fff;}
     <div class="tip"><b>💡 알아두면 좋은 것 1</b> — 이 도구는 "기억력"이 없어요. 원고 생성 버튼을 누를 때마다 완전히 새로 시작해요. "이전에 말한 거 기억해서" 같은 건 안 통해요.</div>
     <div class="tip"><b>💡 알아두면 좋은 것 2</b> — 작업 내용(상품 목록, 입력, 원고, 이미지)은 <b>이 브라우저에 자동 저장</b>돼요. 페이지를 다시 열어도 그대로 남아있어요. (다른 기기/브라우저로는 안 옮겨져요)</div>
     <div class="tip"><b>💡 알아두면 좋은 것 3</b> — 결과물 포맷이 마음에 안 들면 <b>"개선사항 메모장"</b>에 적어주세요! AI한테 전달되는 게 아니라, 사람이 나중에 확인하고 규칙을 고칠지 판단하는 용도예요.</div>
-  </div>
+    </div>
+  </details>
 
   <div class="dayhead">
     <div class="daylabel" id="dayLabel"></div>
-    <div class="brand-toggle" id="dayBrandRadios">
-      <label class="brand-opt"><input type="radio" name="dayBrand" value="goodsmile" checked>굿스마일</label>
-      <label class="brand-opt"><input type="radio" name="dayBrand" value="megahouse">메가하우스</label>
-      <label class="brand-opt"><input type="radio" name="dayBrand" value="bushiroad">부시로드</label>
-    </div>
     <div class="dayprog" id="dayProgress"></div>
   </div>
 
   <div class="md-wrap">
     <div class="leftcol">
       <div id="b2bImportZone">
-        <button id="btnB2BImport" class="secondary" style="width:100%;">🔄 B2B에서 오늘 상품 가져오기 (폴더 선택 또는 드래그)</button>
+        <button id="btnB2BImport" class="secondary" style="width:100%;">🔄 굿스마일 폴더 가져오기 (선택 또는 드래그)</button>
         <input type="file" id="b2bImportInput" webkitdirectory directory multiple style="display:none;"/>
         <div class="status" id="b2bImportStatus">스크래퍼 프로그램을 실행하면 자동으로 만들어지는 <b>날짜 이름의 폴더</b>(예: <code>2026-07-30</code>)를 통째로 선택하거나, 그 폴더를 여기로 끌어다 놓으면 사진까지 전부 자동으로 채워져요. 폴더 이름은 <b>상품이 발표된 날짜</b>예요 — 저녁에 돌리면 다음날 날짜 폴더가 만들어질 수 있어요.</div>
       </div>
       <div id="bushiImportZone">
-        <button id="btnBushiImport" class="secondary" style="width:100%;">📦 부시로드 메일 ZIP 가져오기 (파일 선택 또는 드래그)</button>
+        <button id="btnBushiImport" class="secondary" style="width:100%;">📦 부시로드 메일 ZIP 가져오기 (선택 또는 드래그)</button>
         <input type="file" id="bushiImportInput" accept=".zip" multiple style="display:none;"/>
         <div class="status" id="bushiImportStatus">메일로 받은 <b>ZIP 파일을 압축 풀지 말고 그대로</b> 올리면 사진이 들어와요. 발주서 엑셀이 같이 들어있으면 상품과 스펙(사이즈·재질·마감일 등)까지 자동으로 채워져요. 여러 개를 한 번에 올려도 돼요.</div>
       </div>
@@ -285,6 +318,15 @@ button.danger{background:var(--ui-warn);color:#fff;}
     <div class="md-detail" id="mdDetail">
       <div class="md-empty">왼쪽에서 "+ 상품 추가"를 눌러 시작하세요.</div>
     </div>
+  </div>
+
+  <!-- 하단 고정 바 — 결과물과 진행 상태를 어디까지 스크롤했든 손 닿는 자리에 둔다.
+       아래 "오늘 작업 전체 내려받기" 블록은 그대로 두고, 같은 동작을 여기서도 부른다. -->
+  <div class="dockbar" id="dockBar">
+    <div class="dock-stat" id="dockStat"></div>
+    <button class="sm secondary" id="dockCopyX">📋 X 원고 전체 복사</button>
+    <button class="sm secondary" id="dockCopyIns">📋 인스타용 복사</button>
+    <button class="sm" id="dockZip">📦 완성 이미지 전체 ZIP</button>
   </div>
 
   <div class="harvest">
@@ -674,8 +716,11 @@ function newProductId() {
 function newImageKey(productId) {
   return 'img-' + productId + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
+// 상단의 "가져올 브랜드" 토글은 없앴다. 부시로드 ZIP은 가져오기 함수가 브랜드를 직접
+// 정하고, 굿스마일 폴더 가져오기도 굿스마일 전용이라, 이 값이 실제로 정하던 건
+// "＋상품 추가로 만든 빈 상품의 브랜드" 하나뿐이었다 — 그건 상세에서 바꾸면 된다.
 function getSelectedDayBrand() {
-  return document.querySelector('input[name="dayBrand"]:checked')?.value || DEFAULT_BRAND;
+  return DEFAULT_BRAND;
 }
 /* ══════════════════ 작품명 정식표기 사전 ══════════════════
    작품의 한국 정식 제목은 번역으로 맞힐 수 있는 게 아니다 — 국내 판권사가 따로 정한
@@ -1155,6 +1200,11 @@ function imageStageHtml(p) {
     <div class="composer" id="composerWrap">
       <div>
         <canvas id="composerCanvas" width="${CW}" height="${CH}"></canvas>
+        <div class="slide-actions">
+          <button class="sm secondary" id="btnResetSlide">↺ 위치 초기화</button>
+          <button class="sm" id="btnExportSlide">PNG 저장</button>
+          <button class="sm secondary" id="btnExportProductZip">전체 ZIP</button>
+        </div>
         <div class="status" id="composerHint" style="margin-top:6px;">${p.images.length ? '휠: 확대/축소 · 드래그: 사진 위치 이동' : '아직 사진 없음 — 틀·문구 먼저 미리보기 중. 사진 올리면 자동으로 채워져요.'}</div>
       </div>
       <div class="composer-ctl">
@@ -1192,20 +1242,20 @@ function imageStageHtml(p) {
         </div>
         <div class="ctl-block">
           <div class="cl">흰 텍스트 (중앙정렬 · 대표 슬라이드에만 표시)</div>
-          <label class="flabel" style="font-size:11px;color:var(--ui-sub);">제목 (큰 글자)</label>
-          <textarea id="textTitleInput" rows="2">${escapeHtml(p.textTitle || '')}</textarea>
-          <label class="flabel" style="font-size:11px;color:var(--ui-sub);">제목 글자크기 <span style="font-weight:400;">(공통)</span></label>
-          <input type="range" id="titleFontSizeRange" min="24" max="60" value="${GLOBAL_GRAD.titleFontSize}"/>
-          <label class="flabel" style="font-size:11px;color:var(--ui-sub);margin-top:6px;">부제 (작은 글자)</label>
-          <textarea id="textSubInput" rows="1">${escapeHtml(p.textSub || '')}</textarea>
-          <label class="flabel" style="font-size:11px;color:var(--ui-sub);">부제 글자크기 <span style="font-weight:400;">(공통)</span></label>
-          <input type="range" id="subFontSizeRange" min="16" max="40" value="${GLOBAL_GRAD.subFontSize}"/>
+          <div class="txtrow">
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">제목 (큰 글자)</label>
+              <textarea id="textTitleInput" rows="2">${escapeHtml(p.textTitle || '')}</textarea></div>
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">글자크기 <span style="font-weight:400;">(공통)</span></label>
+              <input type="range" id="titleFontSizeRange" min="24" max="60" value="${GLOBAL_GRAD.titleFontSize}"/></div>
+          </div>
+          <div class="txtrow" style="margin-top:6px;">
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">부제 (작은 글자)</label>
+              <textarea id="textSubInput" rows="1">${escapeHtml(p.textSub || '')}</textarea></div>
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">글자크기 <span style="font-weight:400;">(공통)</span></label>
+              <input type="range" id="subFontSizeRange" min="16" max="40" value="${GLOBAL_GRAD.subFontSize}"/></div>
+          </div>
         </div>
-        <div class="mini-actions">
-          <button class="sm secondary" id="btnResetSlide">위치/배율 초기화</button>
-          <button class="sm" id="btnExportSlide">이 슬라이드 PNG 저장</button>
-          <button class="sm secondary" id="btnExportProductZip">이 상품 전체 ZIP</button>
-        </div>
+
         <div class="status" id="imgExportStatus"></div>
       </div>
     </div>
@@ -1477,7 +1527,19 @@ function drawComposer(p) {
   const slide = p.images[editingIdx];
   drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p));
   const rect = canvas.getBoundingClientRect();
-  composerScale = (rect.width || canvas.clientWidth || 420) / CW;
+  composerScale = (rect.width || canvas.clientWidth || 315) / CW;
+  drawDraftPreview(p);
+}
+// ② 원고 옆 미니 미리보기 — 캐러셀 글자는 ③단계에서 정하는데 결과를 보려면 아래로
+// 내려가야 했다. 여기서 대표 슬라이드 한 장만 작게 그려서 글자를 고치는 자리에서 바로
+// 보이게 한다. 대표 한 장으로 제한하는 건 상품을 넘길 때마다 여러 장을 다시 그리면
+// 사진이 큰 상품에서 눈에 띄게 느려지기 때문이다.
+function drawDraftPreview(p) {
+  const c = $('#draftPreviewCanvas');
+  if (!c || !p) return;
+  const idx = (p.mainIndex != null && p.images[p.mainIndex]) ? p.mainIndex : 0;
+  drawSlide(c.getContext('2d'), p.images[idx], true, p.textTitle, p.textSub, gradCfgFor(p),
+    getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p));
 }
 // 사진이 기준 영역(틀 켜짐: 그 브랜드 틀의 투명 창 / 틀 꺼짐: 캔버스 전체 CW x CH)을 항상
 // 꽉 채우도록 ox/oy(드래그 이동량)를 그 여유분 안으로 붙잡아둔다 — 여유가 없는 축(예: 최소
@@ -1585,9 +1647,15 @@ function updateDayProgress() {
   const base = total ? `원고 ${PRODUCTS.filter(p=>productStatus(p).hasDraft).length}/${total} · 이미지 ${PRODUCTS.filter(p=>productStatus(p).hasImage).length}/${total}` : '';
   // 작품명 확인이 남아있으면 상단에서도 바로 보이게 붙인다 — 상세 화면에 들어가야만
   // 알 수 있으면 확인을 빠뜨린 채로 원고가 나갈 수 있어서.
-  $('#dayProgress').innerHTML = total
+  const html = total
     ? escapeHtml(base) + (needWork ? ` · <span class="dp-need">⚠ 작품명 확인 ${needWork}건</span>` : '')
     : '';
+  $('#dayProgress').innerHTML = html;
+  // 하단 고정 바에도 같은 내용을 띄운다 — 아래로 내려가 있어도 남은 일이 보이게.
+  const dock = $('#dockStat');
+  if (dock) dock.innerHTML = total
+    ? escapeHtml(base) + (needWork ? ` · <span class="warn">⚠ 작품명 확인 ${needWork}건</span>` : '')
+    : '아직 담은 상품이 없어요';
 }
 function addProduct() {
   const p = makeBlankProduct();
@@ -1726,6 +1794,7 @@ function renderDetail() {
   box.innerHTML = `
     <div class="d-head">
       <input class="d-title-input" id="titleInput" placeholder="상품 제목 (예: 고죠 와카나 넨도로이드)" value="${escapeHtml(p.title || '')}"/>
+      <span class="brand-scope">브랜드</span>
       <div class="brand-toggle" id="prodBrandRadios">
         ${['goodsmile','megahouse','bushiroad'].map(b => `<label class="brand-opt sm"><input type="radio" name="prodBrand" value="${b}"${p.brand===b?' checked':''}>${BRAND_LABELS[b]}</label>`).join('')}
       </div>
@@ -1733,21 +1802,26 @@ function renderDetail() {
 
     <div class="stage">
       <div class="stage-h"><span class="snum">①</span> 상품정보 <span style="font-weight:600;color:var(--ui-sub);font-size:11px;">(지금은 직접 입력 · 추후 B2B 자동수집 예정)</span></div>
-      <div class="field">
-        <label>캐릭터 메모 (관계설명·대사 등 가변정보)</label>
-        <textarea id="memoInput" rows="3" placeholder="예) 키타가와 마린의 코스프레를 돕는 같은 반 남고생">${escapeHtml(p.memoText)}</textarea>
-        <div class="dbsearch-row">
-          <input type="text" id="dbSearchInput" class="refdb-search" style="margin:0;flex:1;min-width:160px;" placeholder="참고 DB에서 작품/캐릭터 검색..."/>
+      <div class="pairrow">
+        <div class="field">
+          <label>캐릭터 메모 (관계설명·대사 등 가변정보)</label>
+          <textarea id="memoInput" rows="3" placeholder="예) 키타가와 마린의 코스프레를 돕는 같은 반 남고생">${escapeHtml(p.memoText)}</textarea>
         </div>
-        <div class="dbchips" id="dbChips"></div>
+        <div class="field">
+          <label>참고 DB에서 가져오기</label>
+          <input type="text" id="dbSearchInput" class="refdb-search" style="margin:0;width:100%;" placeholder="작품/캐릭터 검색..."/>
+          <div class="dbchips" id="dbChips"></div>
+        </div>
       </div>
       ${workBlockHtml(p)}
     </div>
 
     <div class="stage">
       <div class="stage-h"><span class="snum">②</span> 원고 <span class="badge-x">X 기준</span> ${st.hasDraft ? '<span class="chip done">완료</span>' : '<span class="chip pending">미완</span>'}</div>
-      <div class="field"><label>추가지시 (선택, 이번 1건에만 적용)</label><textarea id="extraInput" rows="1" placeholder="예) 이번 건은 이모지 빼고 담백하게">${escapeHtml(p.extraInstruction)}</textarea></div>
-      <button id="btnGenerate"${batchPendingIds.has(p.id) ? ' disabled' : ''}>${batchPendingIds.has(p.id) ? '일괄 처리 대기 중...' : (st.hasDraft ? '↻ 재생성' : '✍ 원고 생성')}</button>
+      <div class="askrow">
+        <div class="field"><label>추가지시 (선택, 이번 1건에만 적용)</label><textarea id="extraInput" rows="1" placeholder="예) 이번 건은 이모지 빼고 담백하게">${escapeHtml(p.extraInstruction)}</textarea></div>
+        <button id="btnGenerate"${batchPendingIds.has(p.id) ? ' disabled' : ''}>${batchPendingIds.has(p.id) ? '일괄 처리 대기 중...' : (st.hasDraft ? '↻ 재생성' : '✍ 원고 생성')}</button>
+      </div>
       <div class="status" id="genStatus"></div>
       <div class="warn-box" id="genWarn"></div>
 
@@ -1759,6 +1833,11 @@ function renderDetail() {
         <div class="diff-col">
           <div class="diff-col-title">1차 텍스트 (AI 결과, 읽기전용)</div>
           <div class="diff-content readonly">${p.result ? escapeHtml(p.result).replace(/\n/g, '<br>') : '<span class="diff-empty">위 재료를 채우고 "원고 생성"을 눌러주세요.</span>'}</div>
+        </div>
+        <div class="draft-mini">
+          <div class="cl">캐러셀 글자 미리보기</div>
+          <canvas id="draftPreviewCanvas" width="${CW}" height="${CH}"></canvas>
+          <div class="note">여기 글자는 아래 ③단계에서 나와요 — 고치면 바로 바뀌어요</div>
         </div>
       </div>
 
@@ -2262,25 +2341,30 @@ $('#btnResetProducts').addEventListener('click', resetAllProducts);
 $('#btnHarvestZip').addEventListener('click', harvestZip);
 $('#btnHarvestCopyX').addEventListener('click', () => harvestCopy('x'));
 $('#btnHarvestCopyIns').addEventListener('click', () => harvestCopy('ins'));
+// 하단 고정 바는 아래 "오늘 작업 전체 내려받기"와 같은 동작을 부른다 — 이미지를 만들다가
+// 결과를 받으려고 화면 세 개 분량을 내려갔다 올라오던 왕복을 없애는 게 목적이다.
+$('#dockZip').addEventListener('click', harvestZip);
+$('#dockCopyX').addEventListener('click', () => harvestCopy('x'));
+$('#dockCopyIns').addEventListener('click', () => harvestCopy('ins'));
+
+// 안내 패널은 접은 상태를 기억한다 — 처음 오는 사람은 다 보이고, 아는 사람은 접힌 채로
+// 시작한다. 저장된 값이 없으면(예전 사용자 포함) 펼침이 기본이라 정보가 갑자기 사라지지 않는다.
+const GUIDE_OPEN_KEY = 'product-sns-formatter:guideOpen:v1';
+(function wireGuideBox() {
+  const g = $('#guideBox');
+  if (!g) return;
+  let saved = null;
+  try { saved = localStorage.getItem(GUIDE_OPEN_KEY); } catch { saved = null; }
+  g.open = saved === null ? true : saved === '1';
+  g.addEventListener('toggle', () => {
+    try { localStorage.setItem(GUIDE_OPEN_KEY, g.open ? '1' : '0'); } catch { /* 저장 실패해도 화면은 바뀜 */ }
+  });
+})();
 
 /* ══════════════════ 초기화 ══════════════════ */
 $('#dayLabel').textContent = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' }) + ' 작업';
 // 가져오기 입구는 브랜드마다 다르다(굿스마일=스크래퍼 폴더, 부시로드=메일 ZIP). 둘 다 항상
 // 띄우면 화면이 번잡해지고 잘못된 입구에 넣기도 쉬워서, 위에서 고른 브랜드의 것만 보여준다.
-function syncImportZones() {
-  const brand = getSelectedDayBrand();
-  const gs = $('#b2bImportZone'), bu = $('#bushiImportZone');
-  if (gs) gs.style.display = brand === 'goodsmile' ? '' : 'none';
-  if (bu) bu.style.display = brand === 'bushiroad' ? '' : 'none';
-}
-document.querySelectorAll('#dayBrandRadios input[name="dayBrand"]').forEach(el => {
-  el.addEventListener('change', () => {
-    document.querySelectorAll('#dayBrandRadios .brand-opt').forEach(o => o.classList.toggle('selected', o.querySelector('input').checked));
-    syncImportZones();
-  });
-});
-document.querySelectorAll('#dayBrandRadios .brand-opt').forEach(o => o.classList.toggle('selected', o.querySelector('input').checked));
-syncImportZones();
 
 $('#btnAddProduct').addEventListener('click', addProduct);
 $('#btnB2BImport').addEventListener('click', () => $('#b2bImportInput').click());
@@ -2355,7 +2439,8 @@ async function importB2BFiles(files) {
   if (!entries.length) { statusEl.textContent = 'output.json에 상품이 없어요.'; return; }
 
   const photoFilesByName = new Map(files.filter(f => f !== jsonFile).map(f => [f.name, f]));
-  const dayBrand = getSelectedDayBrand();
+  // 이 입구로 들어오는 건 굿스마일 B2B 스크래퍼 결과뿐이다
+  const dayBrand = 'goodsmile';
   let imported = 0, missingPhotos = 0;
   let firstNewId = null;
 
