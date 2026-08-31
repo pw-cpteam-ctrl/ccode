@@ -261,14 +261,6 @@ button.danger{background:var(--ui-warn);color:#fff;}
 .ask-lab span{font-weight:400;}
 .txtrow{display:grid;grid-template-columns:1fr 150px;gap:10px;align-items:end;}
 .txtrow .flabel{margin-top:0;}
-/* ② 원고 옆 캐러셀 글자 미리보기 — 글자를 고치면서 결과를 같은 자리에서 보게 한다.
-   대표 슬라이드 한 장만 작게 그린다(상품마다 전체를 다시 그리면 무거움). */
-.draft-mini{flex:none;width:172px;}
-#draftPreviewCanvas{width:172px;height:215px;border-radius:2px;background:var(--ui-card);
-  box-shadow:0 1px 3px rgba(0,0,0,.12);display:block;}
-.draft-mini .cl{font-size:11px;color:var(--ui-sub);margin-bottom:4px;}
-.draft-mini .note{font-size:10.5px;color:var(--ui-sub);margin-top:5px;line-height:1.5;}
-@media (max-width:900px){.draft-mini{display:none;}}
 /* 슬라이드 하나에 대한 동작은 그 슬라이드 그림 바로 아래에 둔다 */
 .slide-actions{display:flex;gap:6px;margin-top:8px;}
 .slide-actions button{flex:1;padding:7px 4px;font-size:11px;white-space:nowrap;}
@@ -1589,18 +1581,6 @@ function drawComposer(p) {
   drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p));
   const rect = canvas.getBoundingClientRect();
   composerScale = (rect.width || canvas.clientWidth || 315) / CW;
-  drawDraftPreview(p);
-}
-// ② 원고 옆 미니 미리보기 — 캐러셀 글자는 ③단계에서 정하는데 결과를 보려면 아래로
-// 내려가야 했다. 여기서 대표 슬라이드 한 장만 작게 그려서 글자를 고치는 자리에서 바로
-// 보이게 한다. 대표 한 장으로 제한하는 건 상품을 넘길 때마다 여러 장을 다시 그리면
-// 사진이 큰 상품에서 눈에 띄게 느려지기 때문이다.
-function drawDraftPreview(p) {
-  const c = $('#draftPreviewCanvas');
-  if (!c || !p) return;
-  const idx = (p.mainIndex != null && p.images[p.mainIndex]) ? p.mainIndex : 0;
-  drawSlide(c.getContext('2d'), p.images[idx], true, p.textTitle, p.textSub, gradCfgFor(p),
-    getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p));
 }
 // 사진이 기준 영역(틀 켜짐: 그 브랜드 틀의 투명 창 / 틀 꺼짐: 캔버스 전체 CW x CH)을 항상
 // 꽉 채우도록 ox/oy(드래그 이동량)를 그 여유분 안으로 붙잡아둔다 — 여유가 없는 축(예: 최소
@@ -1897,11 +1877,6 @@ function renderDetail() {
         <div class="diff-col">
           <div class="diff-col-title">1차 텍스트 (AI 결과, 읽기전용)</div>
           <div class="diff-content readonly">${p.result ? escapeHtml(p.result).replace(/\n/g, '<br>') : '<span class="diff-empty">위 재료를 채우고 "원고 생성"을 눌러주세요.</span>'}</div>
-        </div>
-        <div class="draft-mini">
-          <div class="cl">캐러셀 글자 미리보기</div>
-          <canvas id="draftPreviewCanvas" width="${CW}" height="${CH}"></canvas>
-          <div class="note">여기 글자는 아래 ③단계에서 나와요 — 고치면 바로 바뀌어요</div>
         </div>
       </div>
 
