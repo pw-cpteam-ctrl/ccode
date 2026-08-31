@@ -1435,6 +1435,9 @@ function drawAllThumbs(p) {
     del.textContent = '✕';
     del.addEventListener('click', async e => {
       e.stopPropagation();
+      // 상품 삭제·상품 초기화·원고 재생성은 전부 확인을 받는데 사진만 즉시 지워지고 있었다.
+      // 지운 사진은 되돌릴 방법이 없으므로 같은 기준으로 맞춘다.
+      if (!confirm('이 사진을 지울까요? (되돌릴 수 없어요)')) return;
       await idbDel(slide.key).catch(() => {});
       imgCache.delete(slide.key);
       p.images.splice(idx, 1);
