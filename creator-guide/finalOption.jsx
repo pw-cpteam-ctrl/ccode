@@ -266,10 +266,10 @@ function ReplyForm({ draftDate, setDraftDate, trackId, setTrackId, rewardId, set
     <div className="done-card">
       <div className="done-card-head">
         <span className="done-card-icon">📨</span>
-        <span className="done-card-title">담당자에게 알려주실 내용</span>
+        <span className="done-card-title">협업 시작 전, 담당자에게 알려주세요</span>
       </div>
       <p className="done-card-text" style={{ marginBottom: 14 }}>
-        리워드 지급 준비를 위해 필요해요.
+        약 30초면 끝나요.
       </p>
 
       <div className="reply-field">
@@ -724,7 +724,7 @@ function FinalOption() {
 
       {tab === 'flow'    && <Final_Flow />}
       {tab === 'upload'  && <Final_Upload />}
-      {tab === 'body'    && <Final_Body />}
+      {tab === 'body'    && <Final_Body setTab={setTab} scrollTop={scrollTop} />}
       {tab === 'example' && <Final_Example />}
       {tab === 'rules'   && <Final_Rules />}
       {tab === 'reward'  && (
@@ -768,6 +768,23 @@ function Final_Flow() {
     <div className="section">
       {/* 워크플로우 다이어그램 */}
       <WorkflowDiagram />
+
+      {/* 전체 분량이 주는 부담을 먼저 덜고, 마지막에 무엇을 답해야 하는지 미리 알려 준다.
+          다 읽고 나서야 숙제가 처음 등장하던 것이 회신율이 낮은 원인이었다. */}
+      <div className="opener">
+        <div className="opener-h">⏱ {GUIDE.opener.t}</div>
+        <p className="opener-lead">{GUIDE.opener.lead}</p>
+        <ul className="opener-keys">
+          {GUIDE.opener.keys.map((k, i) => <li key={i}>{k}</li>)}
+        </ul>
+        <div className="opener-ask">
+          <div className="opener-ask-h">📨 {GUIDE.opener.askT}</div>
+          <ol className="opener-asks">
+            {GUIDE.opener.asks.map((a, i) => <li key={i}>{a}</li>)}
+          </ol>
+          <div className="opener-ask-note">{GUIDE.opener.askNote}</div>
+        </div>
+      </div>
 
       {/* STEP 1 */}
       <div className="step-card">
@@ -940,36 +957,12 @@ function Final_Upload() {
 }
 
 // ─── 챕터 3: 본문 작성 ──────────────────────────────
-function Final_Body() {
+function Final_Body({ setTab, scrollTop }) {
   return (
     <div className="section">
-      {/* 도입부 */}
-      <div className="body-intro">
-        <div className="body-intro-lead">
-          <div className="body-intro-mark">💬</div>
-          <p>{GUIDE.body.intro1}</p>
-        </div>
-        <div className="body-intro-points">
-          <div className="body-intro-point">
-            <span className="bi-num" aria-hidden>
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-            </span>
-            <p>{GUIDE.body.intro2}</p>
-          </div>
-          <div className="body-intro-point">
-            <span className="bi-num" aria-hidden>
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-            </span>
-            <p>{GUIDE.body.intro3}</p>
-          </div>
-        </div>
-        <div className="body-intro-highlight">
-          <p><strong>{GUIDE.body.intro4}</strong></p>
-          <p>{GUIDE.body.intro5}</p>
-        </div>
-      </div>
-
-      <h2 style={{ marginTop: 28 }}>📌 본문 구성을 위한 안내사항</h2>
+      {/* 꼭 넣어야 할 세 가지를 맨 위에 둔다. 예전에는 "자유롭게 쓰세요"라는 같은 뜻의
+          문단 다섯 개를 지나야 여기까지 내려왔다. */}
+      <h2 style={{ marginTop: 0 }}>📌 본문에 꼭 들어갈 세 가지</h2>
       <p style={{ fontSize: 13, color: 'var(--ink-800)', marginTop: 0, marginBottom: 14, lineHeight: 1.7 }}>
         {GUIDE.body.mustIntro}
       </p>
@@ -979,9 +972,35 @@ function Final_Body() {
           <div className="step-body">
             <h3>{m.t}</h3>
             <p style={{ whiteSpace: 'pre-line' }}>{m.d}</p>
+            {/* 광고 표기 방법은 여기서 끝낸다 — 04는 예시만 두기로 했다 */}
+            {i === 2 && (
+              <div className="ad-ways">
+                {GUIDE.body.adOptions.map((o, j) => (
+                  <div key={j} className="ad-way">
+                    <span className="ad-way-chip">{o.name}</span>
+                    <span className="ad-way-desc">{o.desc}</span>
+                  </div>
+                ))}
+                <div className="ad-way-note">{GUIDE.body.check4.replace('※ 참고: ', '')}</div>
+                <button type="button" className="ad-way-link" onClick={() => { setTab('example'); scrollTop(); }}>
+                  실제 예시 보기 · 04 홍보 예시 탭 →
+                </button>
+              </div>
+            )}
           </div>
         </div>
       ))}
+
+      {/* 서문은 필수 항목 뒤로. 다섯 문단이던 것을 둘로 줄였다 */}
+      <div className="body-intro" style={{ marginTop: 20 }}>
+        <div className="body-intro-lead">
+          <div className="body-intro-mark">💬</div>
+          <p>{GUIDE.body.intro1}</p>
+        </div>
+        <div className="body-intro-highlight" style={{ marginTop: 10 }}>
+          <p>{GUIDE.body.intro2}</p>
+        </div>
+      </div>
 
       <h2 style={{ marginTop: 28, fontSize: 16 }}>보충 안내</h2>
       <div className="alert info"><Icon.info /><span>{GUIDE.body.check1}</span></div>
@@ -992,33 +1011,80 @@ function Final_Body() {
 }
 
 // ─── 챕터 4: 홍보 예시 ──────────────────────────────
+// 예시 이미지를 세로로 쌓으면 이 탭만 3,495px이 된다. 이미지는 한 장도 빼지 않고
+// 좌우로 넘겨 보는 형태로 바꿨다. 몇 장인지·넘길 수 있다는 것을 반드시 표시한다 —
+// 표시가 없으면 다음 장이 있는 줄 모르고 지나쳐 오히려 안 보게 된다.
+function RefCarousel({ caption, images }) {
+  const [idx, setIdx] = React.useState(0);
+  const ref = React.useRef(null);
+
+  const onScroll = () => {
+    const el = ref.current;
+    if (!el) return;
+    const i = Math.round(el.scrollLeft / el.clientWidth);
+    if (i !== idx) setIdx(i);
+  };
+  const go = (i) => {
+    const el = ref.current;
+    if (!el) return;
+    el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
+  };
+
+  return (
+    <div className="carou">
+      <div className="carou-top">
+        <span className="carou-cap">{caption}</span>
+        <span className="carou-count">{idx + 1} / {images.length}</span>
+      </div>
+      <div className="carou-track" ref={ref} onScroll={onScroll}>
+        {images.map((im, i) => (
+          <div className="carou-slide" key={i}><img src={im.src} alt={im.alt} /></div>
+        ))}
+      </div>
+      <div className="carou-foot">
+        <button type="button" className="carou-nav" disabled={idx === 0}
+          onClick={() => go(idx - 1)} aria-label="이전 예시">‹</button>
+        <div className="carou-dots">
+          {images.map((_, i) => (
+            <button type="button" key={i} className={`carou-dot${i === idx ? ' is-on' : ''}`}
+              onClick={() => go(i)} aria-label={`${i + 1}번째 예시`} />
+          ))}
+        </div>
+        <button type="button" className="carou-nav" disabled={idx === images.length - 1}
+          onClick={() => go(idx + 1)} aria-label="다음 예시">›</button>
+        <span className="carou-hint">좌우로 넘겨보세요</span>
+      </div>
+    </div>
+  );
+}
+
 function Final_Example() {
+  const R = window.__resources || {};
   return (
     <div className="section">
-      <h2 style={{ marginTop: 0 }}>광고 표기법 및 홍보 예시</h2>
-      <p style={{ fontSize: 13, color: 'var(--ink-800)', marginTop: 0, marginBottom: 14, lineHeight: 1.7 }}>
-        {GUIDE.body.adIntro}
-      </p>
-      {GUIDE.body.adOptions.map((o, i) => (
-        <div key={i} className="ad-option-card">
-          <span className="ad-option-chip">{o.name}</span>
-          <div className="ad-option-desc">{o.desc}</div>
-        </div>
-      ))}
-      <div className="alert info" style={{ marginTop: 10 }}><Icon.info /><span>{GUIDE.body.check4}</span></div>
-
-      <div className="ref-image-block">
-        <div className="ref-image-caption">📎 참고 · 공정거래위원회 보도자료 예시</div>
-        <img src={window.__resources && window.__resources.exWork1 || 'assets/example-work-1.jpg'} alt="경제적 이해관계 표시 예시 1" />
-        <img src={window.__resources && window.__resources.exWork2 || 'assets/example-work-2.jpg'} alt="경제적 이해관계 표시 예시 2" style={{ borderTop: '1px solid var(--ink-200)' }} />
+      <h2 style={{ marginTop: 0 }}>홍보 게시글 예시</h2>
+      {/* 규칙은 03에서 끝내고 여기서는 예시만 보여준다. 다만 무엇을 지켜야 하는지는
+          이미지를 넘겨보지 않아도 눈에 들어오도록 텍스트로 위에 고정해 둔다 */}
+      <div className="ad-recap">
+        <div className="ad-recap-t">광고 표기, 이 중 하나면 됩니다</div>
+        {GUIDE.body.adOptions.map((o, i) => (
+          <div className="ad-recap-row" key={i}>
+            <span className="ad-recap-chip">{o.name}</span>
+            <span>{o.desc}</span>
+          </div>
+        ))}
       </div>
 
-      <div className="ref-image-block">
-        <div className="ref-image-caption">📎 콘텐츠 참고 예시</div>
-        <img src={window.__resources && window.__resources.adDisc1 || 'assets/ad-disclosure-1.png'} alt="콘텐츠 참고 예시 1" />
-        <img src={window.__resources && window.__resources.adDisc2 || 'assets/ad-disclosure-2.png'} alt="콘텐츠 참고 예시 2" style={{ borderTop: '1px solid var(--ink-200)' }} />
-        <img src={window.__resources && window.__resources.adDisc3 || 'assets/ad-disclosure-3.png'} alt="콘텐츠 참고 예시 3" style={{ borderTop: '1px solid var(--ink-200)' }} />
-      </div>
+      <RefCarousel caption="📎 참고 · 공정거래위원회 보도자료 예시" images={[
+        { src: R.exWork1 || 'assets/example-work-1.jpg', alt: '경제적 이해관계 표시 예시 1' },
+        { src: R.exWork2 || 'assets/example-work-2.jpg', alt: '경제적 이해관계 표시 예시 2' },
+      ]} />
+
+      <RefCarousel caption="📎 콘텐츠 참고 예시" images={[
+        { src: R.adDisc1 || 'assets/ad-disclosure-1.png', alt: '콘텐츠 참고 예시 1' },
+        { src: R.adDisc2 || 'assets/ad-disclosure-2.png', alt: '콘텐츠 참고 예시 2' },
+        { src: R.adDisc3 || 'assets/ad-disclosure-3.png', alt: '콘텐츠 참고 예시 3' },
+      ]} />
 
       <h2 style={{ marginTop: 28 }}>📌 홍보 게시글 예시</h2>
       <div className="card" style={{ background: '#000', color: '#fff', padding: 16, borderRadius: 16, border: 'none' }}>
@@ -1119,6 +1185,7 @@ function Final_Reward({ reply }) {
           예전엔 큰 카드 4개로 펼쳐져 있었는데, 표로 바꾸면 같은 정보를 훨씬
           짧게 담을 수 있고 아래 '언제 받나' 표와 형태가 같아져 비교가 쉬워진다. */}
       <div className="rwd">
+        <p className="rwd-axis">{GUIDE.reward.axisNote}</p>
         <div className="rwd-title"><span className="rwd-title-num">1</span> 얼마를 받나</div>
         <div className="rwd-table">
           <div className="rwd-row rwd-head">

@@ -1159,3 +1159,97 @@ body {
   font-size: 11px; line-height: 1.6; color: var(--ink-600); margin-bottom: 3px;
 }
 .rwd-cautions li { color: var(--danger-fg); font-size: 11.3px; }
+
+/* ─── 01 시작 카드 ───────────────────────────────────────────────
+   전체 분량이 주는 부담을 먼저 덜고, 마지막에 답할 3가지를 미리 알린다. */
+.opener{
+  background: #fff; border: 1px solid var(--blue-200);
+  border-radius: 14px; padding: 16px 18px; margin-bottom: 14px;
+}
+.opener-h{ font-size: 15px; font-weight: 800; color: var(--blue-700); letter-spacing: -0.01em; }
+.opener-lead{ margin: 5px 0 10px; font-size: 13px; line-height: 1.6; color: var(--ink-800); }
+.opener-keys{ margin: 0; padding-left: 17px; }
+.opener-keys li{ font-size: 12.5px; line-height: 1.65; color: var(--ink-700); margin-bottom: 4px; }
+.opener-ask{
+  margin-top: 13px; padding: 12px 13px;
+  background: var(--blue-50); border-radius: 11px;
+}
+.opener-ask-h{ font-size: 13px; font-weight: 800; color: var(--blue-700); }
+.opener-asks{ margin: 7px 0 0; padding-left: 19px; }
+.opener-asks li{ font-size: 12.5px; line-height: 1.65; color: var(--ink-800); font-weight: 600; }
+.opener-ask-note{ margin-top: 7px; font-size: 11.5px; color: var(--ink-600); }
+
+/* ─── 03 광고 표기 방법 (04에서 옮겨 옴) ─────────────────────── */
+.ad-ways{ margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--ink-200); }
+.ad-way{ display: flex; gap: 8px; align-items: baseline; margin-bottom: 6px; }
+.ad-way-chip{
+  flex: 0 0 auto; font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
+  color: var(--blue-700); background: var(--blue-50); border-radius: 5px; padding: 2px 7px;
+}
+.ad-way-desc{ font-size: 12.3px; line-height: 1.55; color: var(--ink-700); }
+.ad-way-note{ margin-top: 6px; font-size: 11.3px; line-height: 1.55; color: var(--ink-600); }
+.ad-way-link{
+  margin-top: 9px; padding: 0; border: 0; background: none; cursor: pointer;
+  font-family: inherit; font-size: 12px; font-weight: 700; color: var(--blue-600);
+  text-decoration: underline; text-underline-offset: 2px;
+}
+
+/* ─── 04 예시 캐러셀 ─────────────────────────────────────────────
+   이미지를 세로로 쌓지 않고 좌우로 넘긴다. 몇 장인지와 넘길 수 있다는 것을
+   반드시 표시해야 다음 장이 있는 줄 모르고 지나치지 않는다. */
+.ad-recap{
+  background: #fff; border: 1px solid var(--ink-200);
+  border-radius: 12px; padding: 13px 15px; margin-bottom: 12px;
+}
+.ad-recap-t{ font-size: 13px; font-weight: 800; color: var(--ink-900); margin-bottom: 8px; }
+.ad-recap-row{ display: flex; gap: 8px; align-items: baseline; margin-bottom: 5px; font-size: 12.3px; color: var(--ink-700); line-height: 1.55; }
+.ad-recap-row:last-child{ margin-bottom: 0; }
+.ad-recap-chip{
+  flex: 0 0 auto; font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
+  color: var(--blue-700); background: var(--blue-50); border-radius: 5px; padding: 2px 7px;
+}
+
+.carou{
+  background: #fff; border: 1px solid var(--ink-200);
+  border-radius: 12px; overflow: hidden; margin-bottom: 12px;
+}
+.carou-top{
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 13px; border-bottom: 1px solid var(--ink-200);
+}
+.carou-cap{ font-size: 12px; font-weight: 700; color: var(--ink-800); }
+.carou-count{
+  margin-left: auto; font-family: var(--font-mono); font-size: 11px;
+  font-weight: 700; color: var(--blue-600); font-variant-numeric: tabular-nums;
+}
+.carou-track{
+  display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.carou-track::-webkit-scrollbar{ display: none; }
+.carou-slide{ flex: 0 0 100%; scroll-snap-align: start; }
+.carou-slide img{ display: block; width: 100%; height: auto; }
+.carou-foot{
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-top: 1px solid var(--ink-200);
+}
+.carou-nav{
+  width: 28px; height: 28px; flex: 0 0 auto; cursor: pointer;
+  border: 1px solid var(--ink-300); border-radius: 8px;
+  background: #fff; color: var(--ink-800); font-size: 15px; line-height: 1;
+}
+.carou-nav:disabled{ opacity: .3; cursor: default; }
+.carou-dots{ display: flex; gap: 5px; }
+.carou-dot{
+  width: 7px; height: 7px; padding: 0; cursor: pointer;
+  border: 0; border-radius: 50%; background: var(--ink-300);
+}
+.carou-dot.is-on{ background: var(--blue-500); width: 16px; border-radius: 999px; }
+.carou-hint{ margin-left: auto; font-size: 10.8px; color: var(--ink-600); }
+
+/* 06 두 축 안내 */
+.rwd-axis{
+  margin: 0 0 10px; padding: 9px 12px;
+  background: var(--blue-50); border-radius: 9px;
+  font-size: 12.5px; line-height: 1.6; color: var(--blue-700); font-weight: 600;
+}
