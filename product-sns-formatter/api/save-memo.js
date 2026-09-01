@@ -50,6 +50,7 @@ export default async function handler(req, res) {
     // 이슈 만들기가 실패해도 실패로 처리하지 않는다 — 메모 저장은 이미 끝났고,
     // 알림이 안 온 것 때문에 사용자에게 "저장 실패"라고 알리면 사실과 다르다.
     let notified = false;
+    let issueUrl = '';
     try {
       const assignee = process.env.GITHUB_ISSUE_ASSIGNEE || owner;
       const first = memo.trim().replace(/\s+/g, ' ').slice(0, 40);
@@ -68,12 +69,37 @@ export default async function handler(req, res) {
         }),
       });
       notified = issueRes.ok;
-      if (!issueRes.ok) console.warn('이슈 생성 실패(메모 저장은 완료됨):', issueRes.status, await issueRes.text());
+      if (issueRes.ok) {
+        const issue = await issueRes.json().catch(() => ({}));
+        issueUrl = issue.html_url || '';
+      } else {
+        console.warn('이슈 생성 실패(메모 저장은 완료됨):', issueRes.status, await issueRes.text());
+      }
     } catch (e) {
       console.warn('이슈 생성 실패(메모 저장은 완료됨):', e);
     }
 
-    res.status(200).json({ ok: true, notified });
+    // 슬랙으로도 알린다. GitHub는 본인이 만든 이슈에 대해서는 알림을 보내지 않아서
+    // (알림 설정으로도 안 풀린다), 이슈만으로는 새 메모가 들어온 걸 알 수가 없다.
+    // SLACK_WEBHOOK_URL이 없으면 이 단계는 통째로 건너뛴다.
+    let slacked = false;
+    const hook = process.env.SLACK_WEBHOOK_URL;
+    if (hook) {
+      try {
+        const body = `*[개선사항] ${TOOL_LABEL}*\n${memo.trim()}` + (issueUrl ? `\n${issueUrl}` : '');
+        const slackRes = await fetch(hook, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: body }),
+        });
+        slacked = slackRes.ok;
+        if (!slackRes.ok) console.warn('슬랙 알림 실패(메모 저장은 완료됨):', slackRes.status);
+      } catch (e) {
+        console.warn('슬랙 알림 실패(메모 저장은 완료됨):', e);
+      }
+    }
+
+    res.status(200).json({ ok: true, notified, slacked, slackConfigured: !!hook });
   } catch (err) {
     res.status(502).json({ error: `메모 커밋 중 오류: ${err.message}` });
   }
