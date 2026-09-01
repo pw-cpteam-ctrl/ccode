@@ -2238,7 +2238,11 @@ async function saveMemo() {
     entry.synced = true;
     persistMemos(memos);
     renderMemos(memos);
-    $('#memoStatus').textContent = '메모를 깃허브에도 저장했어요.';
+    // 알림(이슈 생성)까지 됐는지 그대로 알려준다 — 저장은 됐는데 알림만 실패한 경우를
+    // "다 됐다"로 뭉뚱그리면, 담당자가 못 보고 지나갔을 때 원인을 못 찾는다.
+    $('#memoStatus').textContent = data.notified
+      ? '메모를 저장하고 담당자에게 알렸어요.'
+      : '메모를 저장했어요. (담당자 알림은 실패했어요 — 메모 자체는 남아 있어요)';
   } catch (err) {
     $('#memoStatus').textContent = `깃허브 저장은 실패했지만 브라우저에는 남아있어요 (${err.message}).`;
   }
