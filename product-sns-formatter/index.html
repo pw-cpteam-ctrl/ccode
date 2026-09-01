@@ -2242,7 +2242,7 @@ async function saveMemo() {
     // "다 됐다"로 뭉뚱그리면, 담당자가 못 보고 지나갔을 때 원인을 못 찾는다.
     // 어디까지 갔는지 그대로 알려준다 — 저장은 됐는데 알림만 실패한 경우를 "다 됐다"로
     // 뭉뚱그리면, 담당자가 못 보고 지나갔을 때 원인을 못 찾는다.
-    const 알림 = [data.notified && '기록', data.slacked && '슬랙'].filter(Boolean);
+    const 알림 = [data.notified && '기록', data.slacked && '슬랙', data.mailed && '메일'].filter(Boolean);
     $('#memoStatus').textContent = 알림.length
       ? `메모를 저장하고 ${알림.join('·')}으로 알렸어요.`
       : '메모를 저장했어요. (알림은 실패했어요 — 메모 자체는 남아 있어요)';

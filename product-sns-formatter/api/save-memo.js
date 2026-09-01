@@ -99,7 +99,35 @@ export default async function handler(req, res) {
       }
     }
 
-    res.status(200).json({ ok: true, notified, slacked, slackConfigured: !!hook });
+    // 메일로도 보낸다. 슬랙을 안 보는 시간대(외근·휴가)를 위한 두 번째 경로다.
+    // RESEND_API_KEY와 MEMO_MAIL_TO가 없으면 통째로 건너뛴다 — 슬랙만 쓰는 상태에서도
+    // 지금과 똑같이 동작한다.
+    let mailed = false;
+    const mailKey = process.env.RESEND_API_KEY;
+    const mailTo = process.env.MEMO_MAIL_TO;
+    if (mailKey && mailTo) {
+      try {
+        const mailRes = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${mailKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            // 도메인 인증을 안 했으면 이 발신 주소만 쓸 수 있고, 받는 사람도 가입한
+            // 본인 주소로 제한된다. 팀원에게도 보내려면 도메인 인증이 필요하다.
+            from: process.env.MEMO_MAIL_FROM || 'onboarding@resend.dev',
+            to: [mailTo],
+            subject: `[개선사항] ${TOOL_LABEL} — ${memo.trim().replace(/\s+/g, ' ').slice(0, 40)}`,
+            text: `도구: ${TOOL_LABEL}\n적은 시각: ${new Date().toISOString()}\n\n${memo.trim()}` +
+                  (issueUrl ? `\n\n처리 기록: ${issueUrl}` : ''),
+          }),
+        });
+        mailed = mailRes.ok;
+        if (!mailRes.ok) console.warn('메일 알림 실패(메모 저장은 완료됨):', mailRes.status, await mailRes.text());
+      } catch (e) {
+        console.warn('메일 알림 실패(메모 저장은 완료됨):', e);
+      }
+    }
+
+    res.status(200).json({ ok: true, notified, slacked, mailed });
   } catch (err) {
     res.status(502).json({ error: `메모 커밋 중 오류: ${err.message}` });
   }
