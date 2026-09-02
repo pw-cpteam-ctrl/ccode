@@ -23,12 +23,21 @@
   @media (max-width: 768px) { header.app-bar { padding: 12px 16px; flex-direction: column; gap: 10px; } header.app-bar h1 { font-size: 15px; } }
   @media (max-width: 480px) { header.app-bar { flex-direction: column; gap: 8px; } header.app-bar h1 { font-size: 14px; } }
   .steps { display: flex; gap: 6px; flex-wrap: wrap; }
-  .steps .dot {
+  /* 원래 .steps 안에서만 적용되던 알약 스타일을 공용으로 뺐다 — 1·2·3 단계 표시
+     바깥에 있는 "개선사항" 버튼도 같은 모양·패딩을 쓰게 하기 위함(.dot.active/.done
+     같은 상태 클래스는 그대로 단계 표시에만 붙는다). */
+  .dot {
     display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px;
     font-size: 12px; color: var(--muted); background: #eef0f3; border: 1px solid transparent;
   }
-  .steps .dot.active { background: #e8f0ff; color: var(--accent); border-color: #bcd6ff; font-weight: 700; }
-  .steps .dot.done { color: var(--ok); }
+  .dot.active { background: #e8f0ff; color: var(--accent); border-color: #bcd6ff; font-weight: 700; }
+  .dot.done { color: var(--ok); }
+  /* 단계 표시(1·2·3)와 같은 줄에, 같은 알약 모양·패딩으로 붙여서 동떨어져 보이지
+     않게 한다 — 원래는 오른쪽 끝 "사전 관리"와 나란히 있어서 단계 표시와 멀어
+     보였다. */
+  .steps-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .steps-row .memo-pill { font: inherit; cursor: pointer; }
+  .steps-row .memo-pill:hover { background: #e4e7ec; }
   button.link-btn { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 13px; text-decoration: underline; padding: 0; }
   main { max-width: 1180px; margin: 0 auto; padding: 24px; }
   @media (max-width: 768px) { main { padding: 16px; } }
@@ -224,8 +233,10 @@
 
 <header class="app-bar">
   <h1>입고안내 이미지 자동 제작 툴</h1>
-  <div class="steps" id="stepIndicator"></div>
-  <button class="link-btn" id="openMemoBtn">✎ 개선사항</button>
+  <div class="steps-row">
+    <div class="steps" id="stepIndicator"></div>
+    <button class="dot memo-pill" id="openMemoBtn">✎ 개선사항</button>
+  </div>
   <button class="link-btn" id="openDictBtn">⚙ 사전 관리</button>
 </header>
 
