@@ -48,6 +48,10 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:'Pretendard',-appl
 /* dropzone */
 .dropzone{border:1.5px dashed var(--ui-border);border-radius:8px;padding:14px 12px;text-align:center;
   color:var(--ui-sub);font-size:14px;cursor:pointer;background:var(--ui-card);transition:border-color .15s,background .15s;}
+.memo-item{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;
+  padding:8px 10px;font-size:12.5px;color:var(--ui-text);}
+.memo-item .at{color:var(--ui-sub);font-size:11px;margin-right:6px;}
+.memo-item .sync{font-size:11px;margin-top:2px;color:var(--ui-sub);}
 .dropzone:hover,.dropzone.drag{border-color:var(--ui-accent);background:rgba(20,82,192,.04);}
 .dropzone b{color:var(--ui-text);}
 input[type=file][hidden]{display:none;}
@@ -292,6 +296,18 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
       
 
     </div>
+  </div>
+
+  <!-- ══ 섹션 0.5: 개선사항 메모장 ══ -->
+  <button class="psec-toggle collapsed" onclick="toggleSection('sec-memo',this)" style="background:#555;margin-bottom:0">✎ 개선사항 메모장 <span class="arrow">▾</span></button>
+  <div class="psec-body collapsed" id="sec-memo" style="padding-top:10px;margin-bottom:8px">
+    <p style="font-size:12px;color:var(--ui-sub);margin:0 0 8px;">여기 적는 내용은 <b>LLM에 절대 전송되지 않습니다.</b> 사람이 나중에 훑어보고 고칠지 판단하는 용도예요.</p>
+    <div class="field">
+      <textarea id="inMemo" rows="2" placeholder="예) 배지 위치가 가끔 어색하게 잡힘"></textarea>
+    </div>
+    <button class="ptab" id="btnSaveMemo" style="width:100%">메모 저장</button>
+    <div id="memoStatus" style="font-size:11px;color:var(--ui-sub);margin-top:6px;"></div>
+    <div id="memoList" style="margin-top:10px;display:flex;flex-direction:column;gap:6px;"></div>
   </div>
 
   <!-- ══ 섹션 1: 레이아웃 수정 ══ -->
@@ -1868,6 +1884,73 @@ $('#importFile').addEventListener('change', e => {
   reader.readAsText(file);
   e.target.value = '';
 });
+
+/* ── 개선사항 메모장: 브라우저에 먼저 저장 → 공용 서버 함수가 깃허브 기록 + 슬랙 알림.
+   이 메모는 LLM에 전송되지 않는다 — 사람이 나중에 훑어보고 규칙을 고칠지 판단하는 용도.
+   서버 함수는 이 레포의 여러 도구가 공유하는 하나뿐인 주소(product-sns-formatter에
+   배포된 것)를 그대로 부른다 — megahouse-matome은 정적 페이지라 자체 서버가 없음. */
+(function() {
+  const TOOL = 'megahouse-matome';
+  const MEMO_API = 'https://ccode-vbvi.vercel.app/api/save-memo';
+  const MEMO_KEY = `${TOOL}:memos`;
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+  function loadMemos() {
+    try { return JSON.parse(localStorage.getItem(MEMO_KEY) || '[]'); } catch { return []; }
+  }
+  function persistMemos(memos) {
+    try { localStorage.setItem(MEMO_KEY, JSON.stringify(memos)); }
+    catch (e) { console.warn('메모 로컬 저장 실패:', e); }
+  }
+  function renderMemos(memos) {
+    const el = $('#memoList'); if (!el) return;
+    el.innerHTML = memos.slice().reverse().map(m => `
+      <div class="memo-item">
+        <span class="at">${escapeHtml(new Date(m.at).toLocaleString())}</span>${escapeHtml(m.text)}
+        <div class="sync">${m.synced ? '서버에 저장됨' : '이 브라우저에만 저장됨'}</div>
+      </div>`).join('');
+  }
+
+  // 순서가 중요하다: 브라우저에 먼저 넣고 화면에 띄운 뒤 서버로 보낸다.
+  // 서버가 죽어 있어도 사용자가 쓴 내용이 사라지지 않게 하려는 것이다.
+  async function saveMemo() {
+    const text = $('#inMemo').value.trim();
+    if (!text) { alert('메모 내용을 입력해주세요.'); return; }
+    const memos = loadMemos();
+    const entry = { at: new Date().toISOString(), text, synced: false };
+    memos.push(entry);
+    persistMemos(memos);
+    renderMemos(memos);
+    $('#inMemo').value = '';
+    $('#memoStatus').textContent = '이 브라우저에 저장했어요. 서버에도 저장을 시도합니다...';
+    try {
+      const res = await fetch(MEMO_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memo: text, tool: TOOL }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
+      entry.synced = true;
+      persistMemos(memos);
+      renderMemos(memos);
+      // 어디까지 갔는지 그대로 적는다 — 저장은 됐는데 알림만 실패한 걸 "다 됐다"로
+      // 뭉뚱그리면, 담당자가 못 보고 지나갔을 때 원인을 못 찾는다.
+      const routes = [data.notified && '기록', data.slacked && '슬랙', data.mailed && '메일'].filter(Boolean);
+      $('#memoStatus').textContent = routes.length
+        ? `메모를 저장하고 ${routes.join('·')}으로 알렸어요.`
+        : '메모를 저장했어요. (알림은 실패했어요 — 메모 자체는 남아 있어요)';
+    } catch (err) {
+      $('#memoStatus').textContent = `서버 저장은 실패했지만 이 브라우저에는 남아있어요 (${err.message}).`;
+    }
+  }
+
+  $('#btnSaveMemo').addEventListener('click', saveMemo);
+  renderMemos(loadMemos());
+})();
+
 $('#btnReset').addEventListener('click', () => {
   if (!confirm('모두 초기화할까요?')) return;
   pages.splice(0, pages.length, []);
