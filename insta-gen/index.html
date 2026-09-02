@@ -113,6 +113,9 @@
   .card.box-t { background:#f7f0e2; border-color:#e3d3a8; font-size:12px; line-height:1.6; color:var(--text); }
   .card.box-t b { font-weight:700; }
   .card.box-t .tip { color:var(--muted); margin-top:6px; }
+  /* 개선사항 메모장 — 다른 박스와 겹치지 않는 청록 계열(분홍=선택, 빨강=위험과 구분) */
+  .card.box-g { background:#edf8f6; border-color:#b5e3dc; }
+  .card.box-g details.explain > summary { color:#2fbca7; }
 
   .upload { display: block; border: 1.5px dashed var(--line2); border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; transition: .15s; font-weight: 500; color: var(--muted); line-height: 1.5; }
   .upload:hover { border-color: var(--accent); color: var(--accent); }
@@ -287,6 +290,7 @@
     .box-y { order: 7; }        /* 3·텍스트 편집 */
     .cardCrop { order: 8; }     /* 사진 크롭/배경 슬라이더 */
     .cardSlots { order: 9; }    /* 이전 입력 슬롯 */
+    .box-g { order: 10; }       /* 개선사항 메모장 — 원고와 같은 순위, DOM상 앞이라 원고 바로 위 */
     .box-b { order: 10; }       /* 원고(캡션) */
     .igcrop-wrap { order: 11; } /* 인스타 규격 크롭(독립 섹션) — 항상 맨 아래 */
     /* 좁은 폰에서 하단 고정 바가 가로로 넘치지 않게 — 버튼 글씨·여백 축소 */
@@ -485,6 +489,19 @@
 
   <!-- ══ 3열 · 출력 (원고 + 크롭) — 예전에 533px 비어 있던 자리 ══ -->
   <div class="colOut">
+    <div class="card box-g">
+      <details class="explain" id="exMemo">
+        <summary><span class="caret">▶</span>✎ 개선사항 메모장</summary>
+        <div class="body">
+          <div class="explain-mini" style="margin-bottom:8px">여기 적는 내용은 <b>AI에 절대 전송되지 않습니다.</b> 사람이 나중에 훑어보고 고칠지 판단하는 용도예요.</div>
+          <div class="field"><textarea id="inMemo" rows="2" placeholder="예) 세부 항목 드롭다운에 새 시리즈 추가해줬으면"></textarea></div>
+          <button type="button" class="btn2" id="btnSaveMemo">메모 저장</button>
+          <div class="note" id="memoStatus" style="margin-top:8px;margin-bottom:0"></div>
+          <div class="memo-list" id="memoList"></div>
+        </div>
+      </details>
+    </div>
+
     <div class="card box-b">
       <div class="step"><span class="n">4</span><span class="t">원고 (캡션) — 복붙용</span></div>
       <div class="subtitle">3번 텍스트를 다 채운 뒤 눌러서 만드세요</div>
@@ -515,19 +532,6 @@
       </details>
       <div class="igcrop-grid" id="igcropGrid"></div>
       <div class="igcrop-hint">사진을 클릭하면 선택되고, 그때만 삭제 버튼이 나타납니다 · 다운로드는 마우스를 올리면 나옵니다</div>
-    </div>
-
-    <div class="card">
-      <details class="explain" id="exMemo">
-        <summary><span class="caret">▶</span>✎ 개선사항 메모장</summary>
-        <div class="body">
-          <div class="explain-mini" style="margin-bottom:8px">여기 적는 내용은 <b>AI에 절대 전송되지 않습니다.</b> 사람이 나중에 훑어보고 고칠지 판단하는 용도예요.</div>
-          <div class="field"><textarea id="inMemo" rows="2" placeholder="예) 세부 항목 드롭다운에 새 시리즈 추가해줬으면"></textarea></div>
-          <button type="button" class="btn2" id="btnSaveMemo">메모 저장</button>
-          <div class="note" id="memoStatus" style="margin-top:8px;margin-bottom:0"></div>
-          <div class="memo-list" id="memoList"></div>
-        </div>
-      </details>
     </div>
   </div>
 
