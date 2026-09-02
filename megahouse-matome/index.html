@@ -1316,23 +1316,28 @@ function makeItemRow(it, i, pg) {
 
   // ctrl: swap page + delete (▲▼ removed; drag handles reorder)
   const ctrl = document.createElement('div'); ctrl.className = 'ctrl';
-  // 페이지 이동: 1페이지면 다음(2)으로, 그 외엔 이전 페이지로.
-  // (기존 pages[2-pg] 하드코딩은 페이지가 1개뿐이거나 3페이지 이상일 때
-  //  pages[-1]/pages[1]=undefined 를 참조해 TypeError로 죽는 버그가 있었음)
-  const destPgNum = pg === 1 ? 2 : pg - 1;
-  const swapBtn = document.createElement('button');
-  swapBtn.className = 'pg-swap';
-  swapBtn.textContent = pg === 1 ? '→2' : `←${destPgNum}`;
-  swapBtn.title = `${destPgNum}페이지로 이동`;
-  swapBtn.addEventListener('click', () => {
-    while (pages.length < destPgNum) { pages.push([]); firstRowFlex.push(null); } // 1페이지뿐일 때 2페이지 자동 생성
-    const src = pages[pg-1]; const dst = pages[destPgNum-1];
-    if (dst.length >= 12) { toast('대상 페이지가 꽉 찼습니다'); return; }
-    const [moved] = src.splice(i, 1);
-    dst.push(moved);
-    refresh();
-  });
-  ctrl.appendChild(swapBtn);
+  // 페이지 이동: 이전/다음 버튼을 각각 따로 둠. 예전엔 버튼이 하나뿐이라
+  // 1페이지에선 "다음으로"만, 2페이지 이상에선 "이전으로"만 가능해서
+  // 페이지가 3개 이상일 때 뒤쪽 페이지로는 아예 못 보내는 문제가 있었음
+  function makeSwapBtn(destPgNum, label) {
+    const btn = document.createElement('button');
+    btn.className = 'pg-swap';
+    btn.textContent = label;
+    btn.title = `${destPgNum}페이지로 이동`;
+    btn.addEventListener('click', () => {
+      while (pages.length < destPgNum) { pages.push([]); firstRowFlex.push(null); } // 다음 페이지가 아직 없으면 자동 생성
+      const src = pages[pg-1]; const dst = pages[destPgNum-1];
+      if (dst.length >= 12) { toast('대상 페이지가 꽉 찼습니다'); return; }
+      const idx = src.indexOf(it); // 클릭 시점에 실제 위치를 다시 찾아서 안전하게 이동
+      if (idx === -1) return;
+      const [moved] = src.splice(idx, 1);
+      dst.push(moved);
+      refresh();
+    });
+    return btn;
+  }
+  if (pg > 1) ctrl.appendChild(makeSwapBtn(pg - 1, `←${pg - 1}`));
+  ctrl.appendChild(makeSwapBtn(pg + 1, `→${pg + 1}`));
   const del = mkbtn('✕', () => { pages[pg-1].splice(i,1); refresh(); }); del.classList.add('del');
   ctrl.appendChild(del);
   wrap.appendChild(ctrl);
