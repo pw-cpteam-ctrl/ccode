@@ -213,6 +213,11 @@
   .stale-note { background: #fff3d6; border: 1px solid #f0c869; border-radius: 8px; padding: 8px 12px; margin: 8px 0; font-size: 13px; color: #7a5200; }
   #pagesContainer.stale { opacity: .4; filter: grayscale(.5); }
 
+  .memo-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+  .memo-item { background: #f7f8fa; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12.5px; }
+  .memo-item .at { color: var(--muted); font-size: 11px; margin-right: 6px; }
+  .memo-item .sync { font-size: 11px; margin-top: 2px; color: var(--muted); }
+
 </style>
 </head>
 <body>
@@ -220,6 +225,7 @@
 <header class="app-bar">
   <h1>입고안내 이미지 자동 제작 툴</h1>
   <div class="steps" id="stepIndicator"></div>
+  <button class="link-btn" id="openMemoBtn">✎ 개선사항</button>
   <button class="link-btn" id="openDictBtn">⚙ 사전 관리</button>
 </header>
 
@@ -441,6 +447,26 @@
       <button class="btn primary" id="noticeHide3d">3일간 그만보기</button>
     </div>
     <p class="caption" style="text-align:right;margin:8px 0 0;">그냥 닫으면(ESC) 다음에 접속할 때 또 보입니다.</p>
+  </div>
+</dialog>
+
+<!-- 개선사항 메모장 — 여기 적는 내용은 LLM에 절대 전송되지 않는다. 사람이 나중에
+     훑어보고 규칙을 고칠지 판단하는 용도. 브라우저에 먼저 저장한 뒤 서버(공용
+     save-memo 엔드포인트)로 보내 GitHub 기록 + 슬랙/메일 알림까지 시도한다. -->
+<dialog id="memoDialog">
+  <div class="dialog-body">
+    <h3>✎ 개선사항 메모장</h3>
+    <p class="caption" style="margin:0 0 12px;">여기 적는 내용은 <b>LLM에 절대 전송되지 않습니다.</b>
+      사람이 나중에 훑어보고 고칠지 판단하는 용도예요.</p>
+    <div class="field">
+      <textarea id="inMemo" rows="2" placeholder="예) 가격 표기가 자꾸 원 단위를 빼먹음"></textarea>
+    </div>
+    <div class="row" style="justify-content:flex-end;margin-bottom:10px;">
+      <button class="btn ghost" id="closeMemoDialog">닫기</button>
+      <button class="btn primary" id="btnSaveMemo">메모 저장</button>
+    </div>
+    <div class="status" id="memoStatus" style="font-size:12px;color:var(--muted);margin-bottom:10px;"></div>
+    <div class="memo-list" id="memoList"></div>
   </div>
 </dialog>
 

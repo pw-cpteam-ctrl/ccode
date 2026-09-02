@@ -1704,6 +1704,80 @@ async function downloadAllPages() {
 }
 
 // ============================================================
+// 개선사항 메모장 — "이거 불편하다"를 도구 안에서 바로 적어두는 기능.
+// 여기 적는 내용은 AI에 절대 전송되지 않는다. 사람이 나중에 훑어보고 규칙을
+// 고칠지 판단하는 용도라 저장이 실패해도 작업은 막지 않고, 실패 사실은 그대로 알린다.
+//
+// 순서가 중요하다: 브라우저(localStorage)에 먼저 넣고 화면에 띄운 다음 서버로
+// 보낸다 — 서버가 죽어 있어도 사용자가 쓴 내용이 사라지지 않게 하기 위함.
+//
+// MEMO_API는 이 프로젝트(inbound-image-composer) 자신의 서버 함수를 가리키지만,
+// CORS가 열려 있어서 다른 도구도 이 주소를 그대로 불러 쓸 수 있다 — 도구마다 서버
+// 함수를 새로 만들 필요 없이 TOOL/MEMO_API/MEMO_KEY 세 줄만 바꿔서 프론트 코드를
+// 복사하면 된다.
+// ============================================================
+const MEMO_TOOL = '입고안내 이미지 자동 제작 툴';
+const MEMO_API = '/api/save-memo';
+const MEMO_KEY = `${MEMO_TOOL}:memos`;
+
+function escapeHtmlForMemo(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function loadMemos() {
+  try { return JSON.parse(localStorage.getItem(MEMO_KEY) || '[]'); } catch (e) { return []; }
+}
+function persistMemos(memos) {
+  try { localStorage.setItem(MEMO_KEY, JSON.stringify(memos)); } catch (e) { console.warn('메모 로컬 저장 실패:', e); }
+}
+function renderMemos(memos) {
+  document.getElementById('memoList').innerHTML = memos.slice().reverse().map((m) => `
+    <div class="memo-item">
+      <span class="at">${escapeHtmlForMemo(new Date(m.at).toLocaleString())}</span>${escapeHtmlForMemo(m.text)}
+      <div class="sync">${m.synced ? '서버에 저장됨' : '이 브라우저에만 저장됨'}</div>
+    </div>`).join('');
+}
+
+async function saveMemo() {
+  const input = document.getElementById('inMemo');
+  const text = input.value.trim();
+  if (!text) { alert('메모 내용을 입력해주세요.'); return; }
+  const memos = loadMemos();
+  const entry = { at: new Date().toISOString(), text, synced: false };
+  memos.push(entry);
+  persistMemos(memos);
+  renderMemos(memos);
+  input.value = '';
+  const status = document.getElementById('memoStatus');
+  status.textContent = '이 브라우저에 저장했어요. 서버에도 저장을 시도합니다...';
+  try {
+    const res = await fetch(MEMO_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memo: text, tool: MEMO_TOOL }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
+    entry.synced = true;
+    persistMemos(memos);
+    renderMemos(memos);
+    // 어디까지 갔는지 그대로 적는다 — 저장은 됐는데 알림만 실패한 걸 "다 됐다"로
+    // 뭉뚱그리면, 담당자가 못 보고 지나갔을 때 원인을 못 찾는다.
+    const routes = [data.notified && '기록', data.slacked && '슬랙', data.mailed && '메일'].filter(Boolean);
+    status.textContent = routes.length
+      ? `메모를 저장하고 ${routes.join('·')}으로 알렸어요.`
+      : '메모를 저장했어요. (알림은 실패했어요 — 메모 자체는 남아 있어요)';
+  } catch (err) {
+    status.textContent = `서버 저장은 실패했지만 이 브라우저에는 남아있어요 (${err.message}).`;
+  }
+}
+
+function openMemoDialog() {
+  renderMemos(loadMemos());
+  document.getElementById('memoStatus').textContent = '';
+  document.getElementById('memoDialog').showModal();
+}
+
+// ============================================================
 // 사전 관리 다이얼로그
 // ============================================================
 function openDictDialog(focusTab) {
@@ -1786,6 +1860,9 @@ function renderStoreRows() {
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('openDictBtn').addEventListener('click', () => openDictDialog());
+  document.getElementById('openMemoBtn').addEventListener('click', () => openMemoDialog());
+  document.getElementById('closeMemoDialog').addEventListener('click', () => document.getElementById('memoDialog').close());
+  document.getElementById('btnSaveMemo').addEventListener('click', () => saveMemo());
   document.querySelectorAll('[data-open-dict]').forEach((btn) => {
     btn.addEventListener('click', () => openDictDialog(btn.dataset.openDict === 'ip' ? 'ip' : 'grade'));
   });
