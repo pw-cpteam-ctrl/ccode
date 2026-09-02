@@ -1365,10 +1365,6 @@ body {
 .rule-lead p { margin: 0; font-size: 13px; color: var(--ink-900); line-height: 1.75; }
 .rule-lead-note { margin-top: 10px; }
 .rule-acc { margin-bottom: 9px; border: 1px solid var(--ink-200); border-radius: 13px; background: #fff; overflow: hidden; }
-/* 파랑/보라/빨강 레일 — 05 아코디언 세 묶음을 한눈에 구분하기 위한 것 */
-.rule-acc-1 { border-left: 4px solid var(--blue-500); }
-.rule-acc-2 { border-left: 4px solid oklch(0.6 0.15 300); }
-.rule-acc-3 { border-left: 4px solid var(--danger-accent); }
 .rule-acc-head { width: 100%; padding: 12px; border: 0; background: #fff; display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; font-family: inherit; text-align: left; cursor: pointer; scroll-margin-top: 16px; }
 .rule-acc-head.is-open { background: var(--blue-50); border-bottom: 1px solid var(--blue-100); }
 .rule-acc-arrow { padding-top: 1px; font-size: 12px; font-weight: 900; color: var(--blue-700); }
@@ -1384,7 +1380,74 @@ body {
 .rule-item-title { margin-bottom: 5px; font-size: 13px; font-weight: 800; color: var(--ink-900); }
 .rule-item-copy { padding-top: 5px; border-top: 1px solid var(--ink-200); font-size: 12px; line-height: 1.65; color: var(--ink-700); }
 .rule-acc-body .allow-deny { margin-top: 11px; }
-.rule-all-toggle { width: 100%; margin-top: 4px; padding: 9px 12px; border: 1px solid var(--ink-200); border-radius: 11px; background: #fff; color: var(--ink-600); font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+
+/* ─── 05 제작 규칙: 파랑/보라/빨강 레일 3그룹(rule-stack) — v10 그대로 이식 ─── */
+.rule-stack {
+  border: 1px solid var(--ink-200); border-radius: 13px;
+  background: #fff; overflow: hidden;
+}
+.rule-stack .rule-acc {
+  --rule-accent: var(--blue-600);
+  --rule-tint: #f4f8ff;
+  margin: 0; border: 0; border-radius: 0; background: #fff; overflow: visible;
+}
+.rule-stack .rule-acc + .rule-acc { border-top: 1px solid var(--ink-200); }
+.rule-stack .rule-acc-2 { --rule-accent: #7c3aed; --rule-tint: #faf7ff; }
+.rule-stack .rule-acc-3 { --rule-accent: #dc2626; --rule-tint: #fff7f7; }
+.rule-stack .rule-acc-head {
+  position: relative; padding: 13px 14px 13px 17px;
+  border: 0; border-radius: 0; background: #fff;
+  transition: background .18s ease;
+}
+.rule-stack .rule-acc-head::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 4px; background: var(--rule-accent); opacity: .72;
+}
+.rule-stack .rule-acc-head.is-open {
+  background: var(--rule-tint); border-bottom: 1px solid color-mix(in srgb, var(--rule-accent) 16%, white);
+}
+.rule-stack .rule-acc-head.is-open::before { opacity: 1; }
+.rule-stack .rule-acc-arrow { color: var(--rule-accent); }
+.rule-stack .rule-acc-title { font-size: 13.5px; }
+
+.rule-stack .rule-acc-body {
+  padding: 4px 15px 13px 20px; background: #fff;
+  border-left: 4px solid color-mix(in srgb, var(--rule-accent) 22%, white);
+}
+.rule-stack .rule-item {
+  margin: 0; padding: 11px 0 12px;
+  border: 0; border-bottom: 1px solid var(--ink-200);
+  border-radius: 0; background: transparent;
+}
+.rule-stack .rule-item:last-of-type { border-bottom: 0; }
+.rule-stack .rule-item-title {
+  display: flex; align-items: center; gap: 7px;
+  margin: 0 0 4px; font-size: 13px;
+}
+.rule-stack .rule-item-title::before {
+  content: ''; width: 6px; height: 6px; flex: 0 0 auto;
+  border-radius: 50%; background: var(--rule-accent);
+}
+.rule-stack .rule-item-copy {
+  padding: 0 0 0 13px; border: 0;
+  font-size: 12px; line-height: 1.65;
+}
+.rule-stack .rule-acc-body > p { padding: 10px 0 8px; }
+.rule-stack .rule-acc-body .allow-deny { margin: 10px 0 1px; }
+.rule-stack .ad-box { border-width: 0; border-radius: 9px; box-shadow: none; }
+.rule-stack .alert-danger-outline { border-radius: 8px; }
+
+.rule-all-toggle {
+  width: auto; display: block; margin: 8px auto 0; padding: 6px 10px;
+  border: 0; border-radius: 7px; background: transparent;
+  color: var(--ink-500); text-decoration: underline; text-underline-offset: 3px;
+  font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer;
+}
+
+@media (max-width: 430px) {
+  .rule-stack .rule-acc-head { padding-right: 11px; }
+  .rule-stack .rule-acc-body { padding-right: 12px; padding-left: 17px; }
+}
 
 /* ─── 06 보상: 수령 방식 카드 선택 ───────────────────────── */
 .trk-choice-prompt {
