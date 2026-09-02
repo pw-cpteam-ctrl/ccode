@@ -1339,14 +1339,18 @@ function Final_Reward({ reply }) {
       <div className="rwd" id="reward-track-choice" style={{ marginTop: 16 }}>
         <div className="rwd-title"><span className="rwd-title-num">2</span> 언제 받나</div>
         <div className="rwd-sub">{R.trackIntro}</div>
-        <div className={`trk-choice-prompt${selectedTrack ? ' is-picked' : ''}`} aria-live="polite">
-          <span className="trk-choice-prompt-icon">{selectedTrack ? '✓' : '!'}</span>
-          <span>
-            {selectedTrack
-              ? <strong>{selectedTrack.name}을 선택했어요</strong>
-              : <><strong>수령 방식을 선택해 주세요</strong><small>두 카드를 비교한 뒤 하나를 눌러주세요.</small></>}
-          </span>
-        </div>
+        {/* 고르기 전에는 카드 위에서 선택을 재촉하고, 고른 뒤에는 카드 아래에서
+            결과와 주의사항을 한 상자로 묶어 보여준다. 확인할 내용이 선택 결과
+            바로 옆에 붙어 있어야 읽히고, 상자가 위아래로 흩어지지 않는다. */}
+        {!selectedTrack && (
+          <div className="trk-choice-prompt" aria-live="polite">
+            <span className="trk-choice-prompt-icon">!</span>
+            <span>
+              <strong>수령 방식을 선택해 주세요</strong>
+              <small>두 카드를 비교한 뒤 하나를 눌러주세요.</small>
+            </span>
+          </div>
+        )}
         <div className="trk-grid" role="radiogroup" aria-label="보상 수령 방식">
           {R.tracks.map((t) => {
             const selected = reply?.trackId === t.id;
@@ -1371,19 +1375,32 @@ function Final_Reward({ reply }) {
             );
           })}
         </div>
-        {selectedTrack?.notes && (
-          <div className="trk-detail">
-            <div className="trk-detail-title">{selectedTrack.name} 선택 시 꼭 확인해 주세요</div>
-            <ul>{selectedTrack.notes.map((note, i) => <li key={i}>{note}</li>)}</ul>
+        {selectedTrack && (
+          <div className="trk-picked" aria-live="polite">
+            <div className="trk-picked-head">
+              <span className="trk-picked-icon">✓</span>
+              <strong>{selectedTrack.name}을 선택했어요</strong>
+            </div>
+            {selectedTrack.notes && (
+              <>
+                <div className="trk-picked-title">{selectedTrack.name} 선택 시 꼭 확인해 주세요</div>
+                <ul className="trk-picked-list">
+                  {selectedTrack.notes.map((note, i) => <li key={i}>{note}</li>)}
+                </ul>
+              </>
+            )}
           </div>
         )}
-        <ul className="rwd-notes rwd-cautions">
-          {R.trackCautions.map((c, i) => <li key={i}>{c}</li>)}
-        </ul>
-      </div>
-
-      <div className="alert info" style={{ marginTop: 12 }}>
-        <Icon.info /><span>쿠폰 보상 조정 관련하여 문의가 있으실 경우 <strong>07 FAQ</strong> 단락을 참조해주세요.</span>
+        {/* 주의사항과 FAQ 안내는 상자를 두르지 않고 한 덩어리로 붙인다.
+            둘을 따로 상자에 넣으면 이 단락에서만 상자가 네 번 반복돼 어수선하다. */}
+        <div className="rwd-tail">
+          <ul className="rwd-notes rwd-cautions">
+            {R.trackCautions.map((c, i) => <li key={i}>{c}</li>)}
+          </ul>
+          <p className="rwd-tail-faq">
+            <Icon.info /><span>쿠폰 보상 조정 관련하여 문의가 있으실 경우 <strong>07 FAQ</strong> 단락을 참조해주세요.</span>
+          </p>
+        </div>
       </div>
 
       {/* 보상 내용을 방금 읽은 자리에서 바로 고르게 한다 — 판단이 가장 쉬운 순간 */}

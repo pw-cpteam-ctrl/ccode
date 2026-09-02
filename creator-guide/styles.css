@@ -1500,16 +1500,36 @@ body {
 .trk-choice-prompt.is-picked .trk-choice-prompt-icon { background: #16a34a; }
 .store-emphasis { font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
 
-.trk-detail {
-  margin-top: 9px; padding: 10px 12px;
-  border: 1px solid var(--ink-200); border-radius: 10px; background: #fff;
+/* 고른 결과와 '꼭 확인해 주세요'를 한 상자로 합친 것. 카드 아래에 놓아
+   무엇을 골랐고 그래서 무엇을 확인해야 하는지가 한눈에 이어지게 한다. */
+.trk-picked {
+  margin-top: 10px; padding: 11px 13px;
+  border: 1px solid #86efac; border-radius: 10px; background: #f0fdf4;
 }
-.trk-detail-title { font-size: 11.8px; font-weight: 800; color: var(--ink-900); }
-.trk-detail ul { margin: 6px 0 0; padding-left: 16px; }
-/* --ink-650은 정의된 적 없는 변수다. v10이 그대로 이렇게 써서 색이 지정되지 않고
-   상위 색을 물려받는 상태이므로, 생김새를 맞추려면 여기도 똑같이 두어야 한다. */
-.trk-detail li { font-size: 10.8px; line-height: 1.55; color: var(--ink-650); }
-.trk-detail li + li { margin-top: 3px; }
+.trk-picked-head { display: flex; align-items: center; gap: 9px; color: #166534; }
+.trk-picked-head strong { font-size: 13px; }
+.trk-picked-icon {
+  width: 20px; height: 20px; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: #16a34a; color: #fff;
+  font-size: 12px; font-weight: 900;
+}
+.trk-picked-title {
+  margin-top: 9px; padding-top: 9px; border-top: 1px solid #bbf7d0;
+  font-size: 11.8px; font-weight: 800; color: #14532d;
+}
+.trk-picked-list { margin: 6px 0 0; padding-left: 16px; }
+.trk-picked-list li { font-size: 10.8px; line-height: 1.55; color: #166534; }
+.trk-picked-list li + li { margin-top: 3px; }
+
+/* 주의사항 + FAQ 안내 — 상자 없이 옅은 구분선 하나로만 묶는다 */
+.rwd-tail { margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--ink-200); }
+.rwd-tail .rwd-notes { margin-top: 0; }
+.rwd-tail-faq {
+  display: flex; align-items: flex-start; gap: 7px;
+  margin: 9px 0 0; font-size: 11px; line-height: 1.6; color: var(--ink-600);
+}
+.rwd-tail-faq .ic { width: 14px; height: 14px; flex: 0 0 auto; margin-top: 2px; color: var(--blue-600); }
 .trk-card {
   min-width: 0; font-family: inherit; text-align: left; cursor: pointer; appearance: none;
   transition: border-color .16s, background .16s, box-shadow .16s, transform .16s;
