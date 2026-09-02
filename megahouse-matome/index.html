@@ -1724,6 +1724,10 @@ async function _savePng(el, name) {
   const a = document.createElement('a'); a.download = name + '.png'; a.href = dataUrl; a.click();
   await new Promise(r => setTimeout(r, 400));
 }
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+}
 async function downloadPNG() {
   if (typeof htmlToImage === 'undefined') { toast('라이브러리 로드 실패 (인터넷 필요)'); return; }
   const m = $('#inMonth').value.trim().replace(/\s+/g,'') || 'preview';
@@ -1731,14 +1735,14 @@ async function downloadPNG() {
   if (!pg || !pg.length) { toast('현재 페이지에 사진이 없습니다'); return; }
   toast('이미지 생성 중…');
   try {
-    await _savePng(document.getElementById('poster'+curPage), `megahouse_${m}_p${curPage}`);
+    await _savePng(document.getElementById('poster'+curPage), `megahouse_matome_${todayStr()}_${m}_p${curPage}`);
     toast('다운로드 완료!');
   } catch(err) { toast('생성 실패: '+err.message); }
 }
 async function downloadAllPNG() {
   if (typeof htmlToImage === 'undefined') { toast('라이브러리 로드 실패 (인터넷 필요)'); return; }
   const m = $('#inMonth').value.trim().replace(/\s+/g,'') || 'preview';
-  const toDownload = pages.map((pg,i) => pg.length ? {el:document.getElementById('poster'+(i+1)), name:`megahouse_${m}_p${i+1}`} : null).filter(Boolean);
+  const toDownload = pages.map((pg,i) => pg.length ? {el:document.getElementById('poster'+(i+1)), name:`megahouse_matome_${todayStr()}_${m}_p${i+1}`} : null).filter(Boolean);
   if (!toDownload.length) { toast('사진을 먼저 올려주세요'); return; }
   toast('이미지 생성 중…');
   for (const {el, name} of toDownload) {
@@ -1827,13 +1831,13 @@ $('#btnAddPage').addEventListener('click', addPage);
 $('#btnApplyBulk').addEventListener('click', applyBulk);
 $('#btnDownload').addEventListener('click', downloadPNG);
 $('#btnDownloadAll').addEventListener('click', downloadAllPNG);
-$('#btnExport').addEventListener('click', () => {
+$('#btnExport').addEventListener('click', async () => {
+  await saveState(); // "+" 버튼으로 수동으로 슬롯을 만들 필요 없이, 내보내기를 누르면 현재 슬롯에도 최신 상태가 자동 저장되게 함
   const raw = JSON.stringify(buildState());
   const blob = new Blob([raw], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  const d = new Date();
-  a.download = `megahouse_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.json`;
+  a.download = `megahouse_matome_${todayStr()}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
 });
