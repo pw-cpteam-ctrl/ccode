@@ -868,6 +868,10 @@ body {
   margin-top: 7px; font-size: 12px; color: var(--ink-800);
 }
 .reply-picked strong { color: var(--blue-700); font-weight: 800; }
+/* 달력이 고정폭(300px)이라 넓은 화면에서는 가운데 놓인다. 아래 안내도 같은
+   폭 안에 넣어야 달력만 가운데 있고 글은 왼쪽 끝에 떨어져 보이지 않는다. */
+.cal-block { width: 300px; max-width: 100%; margin: 0 auto; }
+
 .reply-hint {
   margin-top: 6px; font-size: 11.5px; line-height: 1.55;
   color: var(--ink-600);
@@ -1100,9 +1104,12 @@ body {
   font-size: 12.3px; font-weight: 700; line-height: 1.45; color: var(--ink-900);
 }
 /* 선택 후 변경 불가 안내 — 회신 폼 */
+/* 흰 바탕에 사방 테두리를 두르면 '무언가 입력하는 칸'처럼 보인다.
+   읽고 지나가는 안내이므로 바탕을 옅게 깔고 왼쪽 선만 남긴다. */
 .reply-warn {
-  margin-top: 2px; padding: 9px 11px;
-  background: #fff; border: 1px solid var(--danger-accent); border-radius: 9px;
+  margin-top: 2px; padding: 8px 11px;
+  background: var(--ink-50); border: 0; border-left: 3px solid var(--danger-accent);
+  border-radius: 0 8px 8px 0;
   font-size: 11.5px; line-height: 1.5; color: var(--danger-fg);
 }
 

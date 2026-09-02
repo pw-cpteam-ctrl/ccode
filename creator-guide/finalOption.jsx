@@ -7,7 +7,7 @@ const CHAPTER_META = {
   body:   { tag: '게시글 본문 작성 가이드', emoji: '🖊', title: '본문은 이렇게 작성해주세요', lead: '평소 스타일 그대로! 단, 아래 필수 내용만 꼭 포함해주시면 됩니다.' },
   example:{ tag: '홍보 게시글 예시', emoji: '📎', title: '홍보 게시글 예시', lead: '광고 표기 보충 안내와 실제 게시글 예시를 확인해주세요.' },
   rules:  { tag: '제작 가이드 및 유의 사항', emoji: '🚫', title: '이것만 지켜주세요', lead: '기본적으로 자유 창작! 단, IP 보호를 위한 몇 가지는 함께 지켜주세요.' },
-  reward: { tag: '보상 안내', emoji: '🎁', title: '유입 수에 따라 차등 지급돼요', lead: '구매 링크를 통한 고객 유입 수에 따라 보상이 차등 지급됩니다.' },
+  reward: { tag: '보상 안내', emoji: '🎁', title: '유입 수에 따라 차등 지급돼요', lead: '유입 수는 구매 링크를 통해 들어온 고객 수로 계산돼요.' },
   faq:    { tag: '보충: 협업 관련 FAQ', emoji: '❓', title: '자주 묻는 문의', lead: '미리 받은 주요 문의를 정리했어요. 탭해서 답변을 펼쳐보세요.' },
 };
 
@@ -275,7 +275,7 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, ca
         <span className="done-card-title">협업 시작 전, 담당자에게 알려주세요</span>
       </div>
       <p className="done-card-text" style={{ marginBottom: 14 }}>
-        수령 방식 선택까지 마치셨다면, 아래 두 가지만 확인해 주세요.
+        아래 두 가지만 확인해 주세요.
       </p>
 
       {!trackId && (
@@ -286,11 +286,15 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, ca
 
       <div className="reply-field">
         <div className="reply-label"><span className="reply-num">①</span> 초안 공유 예정일</div>
-        <CalendarPicker value={draftDate} onChange={setDraftDate} />
-        {draftDate && (
-          <div className="reply-picked">선택한 날짜 · <strong>{formatDate(draftDate)}</strong></div>
-        )}
-        <div className="reply-hint">대략적인 날짜여도 괜찮아요.<br />나중에 바뀌어도 됩니다 🙂</div>
+        {/* 달력은 고정폭이라 넓은 화면에서 가운데 놓인다. 안내까지 같이 묶어야
+            달력만 가운데, 글은 왼쪽 끝에 떨어져 보이지 않는다. */}
+        <div className="cal-block">
+          <CalendarPicker value={draftDate} onChange={setDraftDate} />
+          {draftDate && (
+            <div className="reply-picked">선택한 날짜 · <strong>{formatDate(draftDate)}</strong></div>
+          )}
+          <div className="reply-hint">대략적인 날짜여도 괜찮아요.<br />나중에 바뀌어도 됩니다 🙂</div>
+        </div>
       </div>
 
       <div className="reply-field">
@@ -320,7 +324,7 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, ca
         {copied ? '✓  복사됐어요!' : '📋  복사하기'}
       </button>
       <div className="reply-guide">
-        {canCopy ? '담당자에게 붙여넣기만 하면 끝!' : '보상 수령 방식과 아래 두 가지를 모두 선택해 주세요'}
+        {canCopy ? '담당자에게 붙여넣기만 하면 끝!' : '위 항목을 모두 고르시면 복사할 수 있어요'}
       </div>
     </div>
   );
@@ -1338,7 +1342,6 @@ function Final_Reward({ reply }) {
           후지급을 고르면 무조건 10만 원을 받는 것처럼 읽히기 때문. */}
       <div className="rwd" id="reward-track-choice" style={{ marginTop: 16 }}>
         <div className="rwd-title"><span className="rwd-title-num">2</span> 언제 받나</div>
-        <div className="rwd-sub">{R.trackIntro}</div>
         {/* 고르기 전에는 카드 위에서 선택을 재촉하고, 고른 뒤에는 카드 아래에서
             결과와 주의사항을 한 상자로 묶어 보여준다. 확인할 내용이 선택 결과
             바로 옆에 붙어 있어야 읽히고, 상자가 위아래로 흩어지지 않는다. */}
@@ -1347,7 +1350,7 @@ function Final_Reward({ reply }) {
             <span className="trk-choice-prompt-icon">!</span>
             <span>
               <strong>수령 방식을 선택해 주세요</strong>
-              <small>두 카드를 비교한 뒤 하나를 눌러주세요.</small>
+              <small>{R.trackIntro}</small>
             </span>
           </div>
         )}
