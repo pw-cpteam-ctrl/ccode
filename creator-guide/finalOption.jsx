@@ -1033,7 +1033,13 @@ function Final_Body({ setTab, scrollTop }) {
       </div>
 
       <h2 style={{ marginTop: 28, fontSize: 16 }}>보충 안내</h2>
-      <div className="alert info"><Icon.info /><span>{GUIDE.body.check1}</span></div>
+      {/* 상호를 혼동해 잘못 적는 사고가 실제로 있었던 자리라, 스토어 이름만 밑줄로 도드라지게 한다. */}
+      <div className="alert info"><Icon.info /><span>{(() => {
+        const NAME = "'메가하우스 공식 스토어'";
+        const [head, ...rest] = GUIDE.body.check1.split(NAME);
+        if (!rest.length) return GUIDE.body.check1;
+        return <>{head}<strong className="store-emphasis">{NAME}</strong>{rest.join(NAME)}</>;
+      })()}</span></div>
       <div className="alert info"><Icon.info /><span>{GUIDE.body.check2}</span></div>
       <div className="alert warn"><Icon.alert /><span>{GUIDE.body.check3}</span></div>
     </div>
