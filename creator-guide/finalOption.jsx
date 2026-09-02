@@ -261,7 +261,13 @@ function saveReply(date, track, reward) {
 // 원래는 마지막 페이지에 있었는데, 다 읽고 "끝났다" 상태에서는 그냥 넘겨버려서
 // 회신율이 낮았다. 가이드 원문이 이미 이 자리에서 "수령 방식을 사전 공유해달라"고
 // 부탁하고 있으므로, 부탁하는 문장 바로 옆에 답하는 칸을 둔다.
-function ReplyForm({ draftDate, setDraftDate, trackId, setTrackId, rewardId, setRewardId, canCopy, copied, onCopy, onGoReward }) {
+function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, canCopy, copied, onCopy, onGoReward }) {
+  // 수령 방식은 이제 이 폼이 아니라 바로 위 '언제 받나' 카드에서 직접 고른다.
+  // 아직 안 골랐으면 그 자리로 스크롤해 이동시켜 준다.
+  const goToTrackChoice = () => {
+    document.getElementById('reward-track-choice')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
   return (
     <div className="done-card">
       <div className="done-card-head">
@@ -269,8 +275,14 @@ function ReplyForm({ draftDate, setDraftDate, trackId, setTrackId, rewardId, set
         <span className="done-card-title">협업 시작 전, 담당자에게 알려주세요</span>
       </div>
       <p className="done-card-text" style={{ marginBottom: 14 }}>
-        약 30초면 끝나요.
+        수령 방식 선택까지 마치셨다면, 아래 두 가지만 확인해 주세요.
       </p>
+
+      {!trackId && (
+        <button type="button" className="reply-track-missing" onClick={goToTrackChoice}>
+          <Icon.info /> <span>위에서 보상 수령 방식을 선택해 주세요.</span><span aria-hidden="true">↑</span>
+        </button>
+      )}
 
       <div className="reply-field">
         <div className="reply-label"><span className="reply-num">①</span> 초안 공유 예정일</div>
@@ -282,27 +294,7 @@ function ReplyForm({ draftDate, setDraftDate, trackId, setTrackId, rewardId, set
       </div>
 
       <div className="reply-field">
-        <div className="reply-label"><span className="reply-num">②</span> 보상 수령 방식</div>
-        <div className="reply-choices">
-          {TRACK_CHOICES.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className={`reply-choice${trackId === c.id ? ' is-on' : ''}`}
-              aria-pressed={trackId === c.id}
-              onClick={() => setTrackId(c.id)}
-            >
-              <span className="reply-choice-emoji">{c.emoji}</span>
-              <span className="reply-choice-label">{c.label}</span>
-              <span className="reply-choice-desc">{c.desc}</span>
-            </button>
-          ))}
-        </div>
-        <div className="reply-hint">위 &lsquo;언제 받으실지 골라주세요&rsquo; 안내를 참고해 주세요</div>
-      </div>
-
-      <div className="reply-field">
-        <div className="reply-label"><span className="reply-num">③</span> 보상 형태</div>
+        <div className="reply-label"><span className="reply-num">②</span> 보상 형태</div>
         <div className="reply-choices">
           {REWARD_CHOICES.map((c) => (
             <button
@@ -318,22 +310,17 @@ function ReplyForm({ draftDate, setDraftDate, trackId, setTrackId, rewardId, set
             </button>
           ))}
         </div>
-        <div className="reply-hint">
-          금액·구성은 유입 수에 따라 정해져요
-          {onGoReward && (
-            <> <button type="button" className="reply-link" onClick={onGoReward}>06 보상 탭</button></>
-          )}
-        </div>
+        <div className="reply-hint">금액·구성은 유입 수에 따라 정해져요</div>
       </div>
 
-      <div className="reply-warn">한 번 선택하시면 변경·교환이 어려우니 신중히 골라주세요</div>
+      <div className="reply-warn">보상 수령 방식과 보상 형태는 선택 후 변경·교환이 어렵습니다.</div>
 
       <button type="button" className={`reply-copy${copied ? ' is-done' : ''}`}
         disabled={!canCopy} onClick={onCopy}>
         {copied ? '✓  복사됐어요!' : '📋  복사하기'}
       </button>
       <div className="reply-guide">
-        {canCopy ? '담당자에게 붙여넣기만 하면 끝!' : '위 세 가지를 모두 골라주세요'}
+        {canCopy ? '담당자에게 붙여넣기만 하면 끝!' : '보상 수령 방식과 아래 두 가지를 모두 선택해 주세요'}
       </div>
     </div>
   );
@@ -426,6 +413,48 @@ function EventGuide({ onBack }) {
         <strong>ⓒ PRESENCE WORLD</strong> · 본 협업 가이드 페이지의 <strong>유출 · 재배포를 금합니다.</strong>
       </div>
     </div>
+  );
+}
+
+// ─── 플로팅/FAQ 공용 AI 채팅 도크 ──────────────────────────────
+// ChatBox는 여기서 한 번만 마운트된다. 01~06 탭에서는 접힌 플로팅 스티커로,
+// 07 FAQ 탭에서는 문서 흐름 안의 인라인 카드로 모습만 바뀔 뿐, 컴포넌트 자체는
+// 그대로 유지되므로 대화 내용이 두 화면 사이에서 계속 이어진다.
+function FloatingChatDock({ brand, onGoTab, inline = false }) {
+  const [open, setOpen] = React.useState(false);
+  const close = () => setOpen(false);
+  const visible = inline || open;
+
+  // FAQ를 떠날 때는 읽던 페이지를 가리지 않도록 다시 스티커 상태로 접는다.
+  React.useEffect(() => {
+    if (!inline) setOpen(false);
+  }, [inline]);
+
+  return (
+    <>
+      {open && !inline && <button type="button" className="ai-dock-backdrop" aria-label="AI 질문창 접기" onClick={close} />}
+      <div className={`ai-dock${inline ? ' ai-dock-inline' : ''}`}>
+        <button type="button" className="ai-dock-sticker" hidden={visible} onClick={() => setOpen(true)} aria-label="헷갈리거나 궁금한 내용을 챗봇에게 물어보기">
+          <span className="ai-dock-sticker-icon">💬</span>
+          <span className="ai-dock-sticker-copy">
+            <strong>헷갈리거나 궁금한 내용이 있어요!</strong>
+            <small>챗봇에게 바로 물어보기 &gt;</small>
+          </span>
+        </button>
+        <section className="ai-dock-panel" hidden={!visible} role={inline ? 'region' : 'dialog'} aria-modal={inline ? undefined : 'true'} aria-label="가이드 AI 질문창">
+          <div className="ai-dock-head">
+            <div>
+              <strong>{inline ? 'FAQ에서 원하는 답을 찾지 못하셨나요?' : '가이드 AI'}</strong>
+              <span>{inline ? '가이드 AI에게 상황을 직접 설명해 주세요. 기존 대화도 이곳에서 이어집니다.' : '읽다가 헷갈리는 내용을 바로 물어보세요'}</span>
+            </div>
+            {!inline && <button type="button" className="ai-dock-close" onClick={close} aria-label="AI 질문창 접기">›</button>}
+          </div>
+          <div className="ai-dock-body">
+            <ChatBox brand={brand} onGoTab={(id) => { if (!inline) close(); if (onGoTab) onGoTab(id); }} />
+          </div>
+        </section>
+      </div>
+    </>
   );
 }
 
@@ -601,7 +630,7 @@ function FinalOption() {
           </div>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '8px 24px 20px' }}>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em', opacity: 0.75, marginBottom: 10 }}>
-              GUIDE COMPLETE · 05 / 05
+              GUIDE COMPLETE · 07 / 07
             </div>
             <div style={{ fontSize: 52, marginBottom: 10, lineHeight: 1 }}>🎉</div>
             <h1 style={{ fontSize: 26, fontWeight: 900, letterSpacing: '-0.03em', margin: '0 0 8px', lineHeight: 1.15 }}>
@@ -610,7 +639,7 @@ function FinalOption() {
             <div style={{ fontSize: 13, lineHeight: 1.6, opacity: 0.9 }}>
               {canCopy
                 ? <>담당자에게 아래 내용만 보내주시면<br />바로 협업 시작할 수 있어요!</>
-                : <>두 가지만 알려주시면<br />바로 협업 시작할 수 있어요!</>}
+                : <>아직 선택하지 않은 항목만 완료하면<br />바로 협업 시작할 수 있어요!</>}
             </div>
           </div>
         </div>
@@ -738,6 +767,13 @@ function FinalOption() {
         scrollTop();
       }} />}
 
+      {/* 01~06에서는 플로팅 스티커, 07 FAQ에서는 인라인 카드로 모습만 바뀌는
+          단일 챗봇. 탭 조건 밖에서 한 번만 마운트해야 대화 상태가 유지된다. */}
+      <FloatingChatDock brand="megahouse" inline={tab === 'faq'} onGoTab={(id) => {
+        if (id === 'event') { setPhase('event'); } else { setTab(id); }
+        scrollTop();
+      }} />
+
       <div className="final-chapter-nav">
         {tabIdx > 0 ? (
           <button className="chap-prev" onClick={prevTab}>
@@ -851,44 +887,31 @@ function Final_Flow() {
 // ─── 워크플로우 미니 다이어그램 ─────────────────────
 function WorkflowDiagram() {
   const steps = [
-    { n: '①', title: '초안 준비 단계', cap: '그림·영상·글 자유 형식' },
-    { n: '②', title: '피드백 받기', cap: '담당자 검토·수정 조율' },
-    { n: '③', title: '최종본 확정', cap: '완성본·업로드 본문 회신' },
-    { n: '④', title: '스토어 오픈 후\n판매글 공유', cap: '공식 게시글 먼저 공유', key: true, warn: true },
-    { n: '⑤', title: '내 계정에\n업로드', cap: '컨펌 본문·작업물 업로드', key: true },
+    { n: '①', title: '초안 준비\n단계', cap: '그림·영상·글\n자유 형식' },
+    { n: '②', title: '피드백\n받기', cap: '담당자 검토·수정\n조율' },
+    { n: '③', title: '최종본\n확정', cap: '완성본·업로드 본문\n회신' },
+    { n: '④', title: '스토어 오픈 후\n판매글 공유', cap: '공식 게시글\n먼저 공유', key: true, warn: true },
+    { n: '⑤', title: '내 계정에\n업로드', cap: '컨펌 본문·작업물\n업로드', key: true },
   ];
   return (
-    <div style={{ marginBottom: 24 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--blue-600)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
-        협업 전체 흐름
+    <div className="workflow">
+      <div className="workflow-head">
+        <span>협업 전체 흐름</span>
+        <span className="workflow-swipe">옆으로 밀어보기 →</span>
       </div>
-      <div style={{ display: 'flex', gap: 0, alignItems: 'stretch', overflowX: 'auto' }} className="hide-scrollbar">
+      <div className="workflow-track hide-scrollbar">
         {steps.map((s, i) => (
           <React.Fragment key={i}>
-            <div style={{
-              flex: '1 0 0', minWidth: 0,
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-            }}>
-              {/* 박스 */}
-              <div style={{
-                width: '100%',
-                padding: '14px 10px',
-                borderRadius: 12,
-                background: s.key ? 'var(--blue-500)' : '#fff',
-                border: s.key ? 'none' : '1.5px solid var(--ink-200)',
-                display: 'flex', flexDirection: 'column', alignItems: 'center',
-                gap: 4,
-                boxShadow: s.key ? '0 4px 14px rgba(37,99,235,0.18)' : 'none',
-              }}>
-                <div style={{ fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)', color: s.key ? 'rgba(255,255,255,0.7)' : 'var(--ink-400)' }}>{s.n}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: s.key ? '#fff' : 'var(--ink-900)', textAlign: 'center', whiteSpace: 'pre-line', lineHeight: 1.3 }}>{s.title}</div>
-                {s.warn && <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.9)', background: 'rgba(255,255,255,0.18)', padding: '2px 6px', borderRadius: 100, marginTop: 2 }}>⚠ 순서 주의</div>}
+            <div className="workflow-step">
+              <div className={`workflow-card${s.key ? ' is-key' : ''}`}>
+                <div className="workflow-num">{s.n}</div>
+                <div className="workflow-title">{s.title}</div>
+                {s.warn && <div className="workflow-warn">⚠ 순서 주의</div>}
               </div>
-              {/* 캡션 */}
-              <div style={{ fontSize: 10.5, color: 'var(--ink-500)', textAlign: 'center', lineHeight: 1.4, paddingBottom: 4 }}>{s.cap}</div>
+              <div className="workflow-cap">{s.cap}</div>
             </div>
             {i < steps.length - 1 && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', paddingTop: 24, flexShrink: 0, width: 16 }}>
+              <div className="workflow-arrow" aria-hidden="true">
                 <svg viewBox="0 0 16 16" width="16" height="16" fill="none">
                   <path d="M2 8h10M9 5l3 3-3 3" stroke="var(--ink-300)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -997,9 +1020,16 @@ function Final_Body({ setTab, scrollTop }) {
           <div className="body-intro-mark">💬</div>
           <p>{GUIDE.body.intro1}</p>
         </div>
-        <div className="body-intro-highlight" style={{ marginTop: 10 }}>
-          <p>{GUIDE.body.intro2}</p>
-        </div>
+        <details className="body-style-toggle">
+          <summary>
+            <span>{GUIDE.body.intro2}</span>
+            <span className="body-style-toggle-icon" aria-hidden="true">⌄</span>
+          </summary>
+          <div className="body-style-toggle-content">
+            <p><strong>{GUIDE.body.styleNote1}</strong></p>
+            <p>{GUIDE.body.styleNote2}</p>
+          </div>
+        </details>
       </div>
 
       <h2 style={{ marginTop: 28, fontSize: 16 }}>보충 안내</h2>
@@ -1014,46 +1044,44 @@ function Final_Body({ setTab, scrollTop }) {
 // 예시 이미지를 세로로 쌓으면 이 탭만 3,495px이 된다. 이미지는 한 장도 빼지 않고
 // 좌우로 넘겨 보는 형태로 바꿨다. 몇 장인지·넘길 수 있다는 것을 반드시 표시한다 —
 // 표시가 없으면 다음 장이 있는 줄 모르고 지나쳐 오히려 안 보게 된다.
-function RefCarousel({ caption, images }) {
-  const [idx, setIdx] = React.useState(0);
-  const ref = React.useRef(null);
+function RefStrip({ caption, images }) {
+  return (
+    <div className="ref-strip">
+      <h2 className="ref-strip-title">{caption}</h2>
+      <div className="ref-strip-images">
+        {images.map((im, i) => <img key={i} src={im.src} alt={im.alt} />)}
+      </div>
+    </div>
+  );
+}
 
-  const onScroll = () => {
-    const el = ref.current;
-    if (!el) return;
-    const i = Math.round(el.scrollLeft / el.clientWidth);
-    if (i !== idx) setIdx(i);
-  };
-  const go = (i) => {
-    const el = ref.current;
-    if (!el) return;
-    el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
-  };
+// 콘텐츠 참고 예시 3장을 썸네일 그리드로 보여주고, 눌러서 크게 볼 수 있게 한다.
+function ExampleGrid({ caption, hint, labels, images }) {
+  const [selected, setSelected] = React.useState(null);
+  React.useEffect(() => {
+    if (!selected) return;
+    const onKeyDown = (e) => { if (e.key === 'Escape') setSelected(null); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selected]);
 
   return (
-    <div className="carou">
-      <div className="carou-top">
-        <span className="carou-cap">{caption}</span>
-        <span className="carou-count">{idx + 1} / {images.length}</span>
-      </div>
-      <div className="carou-track" ref={ref} onScroll={onScroll}>
+    <div className="example-grid-card">
+      <h2 className="example-grid-title"><span>{caption}</span>{hint && <span className="example-grid-title-hint">{hint}</span>}</h2>
+      <div className="example-grid">
         {images.map((im, i) => (
-          <div className="carou-slide" key={i}><img src={im.src} alt={im.alt} /></div>
+          <button type="button" className="example-thumb" key={i} onClick={() => setSelected(im)} aria-label={`${labels[i]} 예시 크게 보기`}>
+            <span className="example-thumb-label">{labels[i]}</span>
+            <img src={im.src} alt={im.alt} />
+          </button>
         ))}
       </div>
-      <div className="carou-foot">
-        <button type="button" className="carou-nav" disabled={idx === 0}
-          onClick={() => go(idx - 1)} aria-label="이전 예시">‹</button>
-        <div className="carou-dots">
-          {images.map((_, i) => (
-            <button type="button" key={i} className={`carou-dot${i === idx ? ' is-on' : ''}`}
-              onClick={() => go(i)} aria-label={`${i + 1}번째 예시`} />
-          ))}
+      {selected && (
+        <div className="image-lightbox" role="dialog" aria-modal="true" aria-label="확대 이미지" onClick={() => setSelected(null)}>
+          <button type="button" className="image-lightbox-close" onClick={() => setSelected(null)} aria-label="닫기">×</button>
+          <img src={selected.src} alt={selected.alt} onClick={(e) => e.stopPropagation()} />
         </div>
-        <button type="button" className="carou-nav" disabled={idx === images.length - 1}
-          onClick={() => go(idx + 1)} aria-label="다음 예시">›</button>
-        <span className="carou-hint">좌우로 넘겨보세요</span>
-      </div>
+      )}
     </div>
   );
 }
@@ -1075,18 +1103,18 @@ function Final_Example() {
         ))}
       </div>
 
-      <RefCarousel caption="📎 참고 · 공정거래위원회 보도자료 예시" images={[
+      <RefStrip caption="📎 참고 · 공정거래위원회 보도자료 예시" images={[
         { src: R.exWork1 || 'assets/example-work-1.jpg', alt: '경제적 이해관계 표시 예시 1' },
         { src: R.exWork2 || 'assets/example-work-2.jpg', alt: '경제적 이해관계 표시 예시 2' },
       ]} />
 
-      <RefCarousel caption="📎 콘텐츠 참고 예시" images={[
+      <ExampleGrid caption="📎 콘텐츠 참고 예시" hint="(눌러서 크게 보기)" labels={['그림 분야', '정보 분야', '카드뉴스 분야']} images={[
         { src: R.adDisc1 || 'assets/ad-disclosure-1.png', alt: '콘텐츠 참고 예시 1' },
         { src: R.adDisc2 || 'assets/ad-disclosure-2.png', alt: '콘텐츠 참고 예시 2' },
         { src: R.adDisc3 || 'assets/ad-disclosure-3.png', alt: '콘텐츠 참고 예시 3' },
       ]} />
 
-      <h2 style={{ marginTop: 28 }}>📌 홍보 게시글 예시</h2>
+      <h2 style={{ marginTop: 28 }}>✍️ 실제 게시물 구성 예시</h2>
       <div className="card" style={{ background: '#000', color: '#fff', padding: 16, borderRadius: 16, border: 'none' }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, var(--blue-400), oklch(0.7 0.2 320))' }} />
@@ -1113,65 +1141,161 @@ function Final_Example() {
 }
 
 // ─── 챕터 3: 제작 규칙 ──────────────────────────────
+// 세 묶음(파랑/보라/빨강 레일)의 아코디언 스택. 한 번에 하나만 펼쳐지고,
+// 스크롤 방향에 따라 ①→②→③ / ③→②→① 순으로 자동 전환된다(마그네틱 스크롤).
+function RuleAccordion({ id, title, summary, open, onToggle, headerRef, children }) {
+  return (
+    <div className={`rule-acc rule-acc-${id}`}>
+      <button type="button" ref={headerRef} data-rule-group={id} className={`rule-acc-head${open ? ' is-open' : ''}`} onClick={onToggle} aria-expanded={open}>
+        <span className="rule-acc-arrow" aria-hidden>{open ? '▼' : '▶'}</span>
+        <span>
+          <span className="rule-acc-title">{id === 1 ? '①' : id === 2 ? '②' : '③'} {title}</span>
+          <span className="rule-acc-summary">{summary}</span>
+        </span>
+      </button>
+      {open && <div className="rule-acc-body">{children}</div>}
+    </div>
+  );
+}
+
 function Final_Rules() {
+  const [openGroups, setOpenGroups] = React.useState(() => new Set([1]));
+  const groupHeaders = React.useRef({});
+  const activeGroup = React.useRef(1);
+  const magnetLock = React.useRef(false);
+  const lastScrollY = React.useRef(0);
+  const byTitle = Object.fromEntries(GUIDE.rules.forbidden.map((item) => [item.t, item]));
+  const allOpen = [1, 2, 3].every((id) => openGroups.has(id));
+
+  // 스크롤 방향을 감지해 다음/이전 묶음을 자동으로 펼치고 그 자리로 부드럽게 이동한다.
+  React.useEffect(() => {
+    lastScrollY.current = window.scrollY;
+    let rafId = 0;
+    let unlockTimer = 0;
+
+    const activateAndSnap = (id) => {
+      const target = groupHeaders.current[id];
+      if (!target) return;
+      activeGroup.current = id;
+      magnetLock.current = true;
+
+      // 현재 묶음만 남기고 위·아래 묶음은 접는다.
+      setOpenGroups(new Set([id]));
+
+      // 접힘으로 위쪽 높이가 바뀐 다음 좌표를 다시 계산해야 화면이 튀지 않는다.
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          const anchorY = window.innerHeight * 0.28;
+          const targetY = window.scrollY + target.getBoundingClientRect().top - anchorY;
+          window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+        });
+      });
+
+      unlockTimer = window.setTimeout(() => {
+        magnetLock.current = false;
+        lastScrollY.current = window.scrollY;
+      }, 800);
+    };
+
+    const onScroll = () => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        const currentY = window.scrollY;
+        const goingDown = currentY > lastScrollY.current + 2;
+        const goingUp = currentY < lastScrollY.current - 2;
+        lastScrollY.current = currentY;
+        if ((!goingDown && !goingUp) || magnetLock.current) return;
+
+        const active = activeGroup.current;
+        const candidate = goingDown ? active + 1 : active - 1;
+        if (candidate < 1 || candidate > 3) return;
+        const target = groupHeaders.current[candidate];
+        if (!target) return;
+
+        const top = target.getBoundingClientRect().top;
+        const zoneTop = window.innerHeight * (goingDown ? 0.38 : 0.10);
+        const zoneBottom = window.innerHeight * (goingDown ? 0.76 : 0.82);
+        if (top < zoneTop || top > zoneBottom) return;
+        activateAndSnap(candidate);
+      });
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (rafId) window.cancelAnimationFrame(rafId);
+      if (unlockTimer) window.clearTimeout(unlockTimer);
+    };
+  }, []);
+
+  const toggleGroup = (id) => {
+    activeGroup.current = id;
+    setOpenGroups((prev) => prev.has(id) ? new Set() : new Set([id]));
+  };
+
+  const renderRule = (title) => {
+    const item = byTitle[title];
+    return (
+      <div className="rule-item" key={title}>
+        <div className="rule-item-title">{item.t}</div>
+        <div className="rule-item-copy">
+          {item.t === '제품 실물 사진 최소 1장'
+            ? <>그림·트레이싱 콘텐츠도 가능하지만, 게시물 전체에서 제품 <strong>실물 사진이 최소 1장</strong>은 포함되어야 합니다.</>
+            : item.d}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="section">
-      <div className="card" style={{ background: '#fff' }}>
-        <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-900)', lineHeight: 1.75 }}>
-          {GUIDE.rules.intro}
-        </p>
-      </div>
-      <div className="alert info"><Icon.info /><span>{GUIDE.rules.note}</span></div>
-
-      <h2 style={{ marginTop: 22, fontSize: 18 }}>1. 제한 사항</h2>
-      {GUIDE.rules.forbidden.map((f, i) => (
-        <div key={i} className="card" style={{ borderLeft: '3px solid var(--danger-accent)' }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 6, letterSpacing: '-0.01em' }}>{f.t}</div>
-          <div style={{ fontSize: i === 0 ? 13.5 : 12.5, fontWeight: i === 0 ? 700 : 400, color: 'var(--ink-800)', lineHeight: 1.7 }}>{f.d}</div>
-        </div>
-      ))}
-
-      {/* 유출·재배포 금지 — 저작권 준수 및 도용 금지 바로 밑, 2. 표현 가이드 위 */}
-      <div className="alert danger alert-danger-outline" style={{ fontWeight: 500 }}>
-        <Icon.alert />
-        <span>
-          <strong>본 협업 가이드 페이지의 유출 · 재배포를 금합니다.</strong><br/>
-          페이지 내용은 협업 진행을 위한 용도로만 열람·사용해주세요.
-        </span>
+      <div className="rule-lead">
+        <p>{GUIDE.rules.intro}</p>
+        <div className="rule-lead-note"><Icon.info /><span>{GUIDE.rules.note}</span></div>
       </div>
 
-      <h2 style={{ marginTop: 22, fontSize: 18 }}>2. 표현 가이드</h2>
-      <div className="allow-deny">
-        <div className="ad-box ad-allow">
-          <span className="ad-icon">⭕</span>
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>허용</div>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>{GUIDE.rules.expression.allow.title}</div>
-          <div style={{ opacity: 0.85, lineHeight: 1.5 }}>{GUIDE.rules.expression.allow.example}</div>
-        </div>
-        <div className="ad-box ad-deny">
-          <span className="ad-icon">❌</span>
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>불가</div>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>{GUIDE.rules.expression.deny.title}</div>
-          <ul style={{ padding: 0, margin: 0, listStyle: 'none' }}>
-            {GUIDE.rules.expression.deny.examples.map((e, i) => (
-              <li key={i} style={{ padding: '2px 0', opacity: 0.85, lineHeight: 1.5 }}>· {e}</li>
-            ))}
-          </ul>
+      <div className="rule-core">
+        <div className="rule-core-title">제작 전 핵심 체크</div>
+        <div className="rule-core-chips">
+          {['실물사진 포함', '제품 대사 금지', '대외비 준수', '저작권 준수'].map((label) => (
+            <span className="rule-core-chip" key={label}><span aria-hidden>✅</span><span>{label}</span></span>
+          ))}
         </div>
       </div>
 
-      <h2 style={{ marginTop: 22, fontSize: 18 }}>💗 브랜드 가치 보호 안내</h2>
-      <p style={{ fontSize: 12.5, color: 'var(--ink-800)', marginTop: 0, marginBottom: 10, lineHeight: 1.7 }}>
-        {GUIDE.rules.ipIntro}
-      </p>
-      {GUIDE.rules.ipProtect.map((r, i) => (
-        <div key={i} className="card" style={{ borderLeft: '3px solid oklch(0.7 0.2 320)' }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Icon.alert style={{ color: 'oklch(0.55 0.2 320)', width: 15, height: 15, flexShrink: 0 }} />{r.t}
+      <div className="rule-stack">
+        <RuleAccordion id={1} title="콘텐츠 제작 기준" summary="실물 사진 · 공식 이미지 · 제품 대사" open={openGroups.has(1)} onToggle={() => toggleGroup(1)} headerRef={(el) => { groupHeaders.current[1] = el; }}>
+          {['창작물 원칙 · 공식 이미지 활용 범위', '제품 실물 사진 최소 1장', '제품 대상 대사 금지'].map(renderRule)}
+          <div className="allow-deny">
+            <div className="ad-box ad-allow">
+              <span className="ad-icon">⭕</span><div style={{ fontWeight: 700, marginBottom: 4 }}>가능합니다</div>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>{GUIDE.rules.expression.allow.title}</div>
+              <div style={{ opacity: 0.85, lineHeight: 1.5 }}>{GUIDE.rules.expression.allow.example}</div>
+            </div>
+            <div className="ad-box ad-deny">
+              <span className="ad-icon">❌</span><div style={{ fontWeight: 700, marginBottom: 4 }}>어렵습니다</div>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>{GUIDE.rules.expression.deny.title}</div>
+              <ul style={{ padding: 0, margin: 0, listStyle: 'none' }}>{GUIDE.rules.expression.deny.examples.map((e, i) => <li key={i} style={{ padding: '2px 0', opacity: 0.85, lineHeight: 1.5 }}>· {e}</li>)}</ul>
+            </div>
           </div>
-          <div style={{ fontSize: 12.5, color: 'var(--ink-800)', lineHeight: 1.7 }}>{r.d}</div>
-        </div>
-      ))}
+        </RuleAccordion>
+
+        <RuleAccordion id={2} title="대외비 · 소재 · 저작권" summary="협업 조건 · 수위 및 소재 · 타인 창작물" open={openGroups.has(2)} onToggle={() => toggleGroup(2)} headerRef={(el) => { groupHeaders.current[2] = el; }}>
+          {['대외비 유출 금지', '수위 및 소재', '저작권 준수 및 도용 금지'].map(renderRule)}
+          <div className="alert danger alert-danger-outline" style={{ fontWeight: 500, marginTop: 12 }}><Icon.alert /><span><strong>본 협업 가이드 페이지의 유출 · 재배포를 금합니다.</strong><br/>페이지 내용은 협업 진행을 위한 용도로만 열람·사용해주세요.</span></div>
+        </RuleAccordion>
+
+        <RuleAccordion id={3} title="IP와 팬덤 보호" summary="차별·공격적 분쟁 · IP 및 팬덤 비하" open={openGroups.has(3)} onToggle={() => toggleGroup(3)} headerRef={(el) => { groupHeaders.current[3] = el; }}>
+          <p style={{ fontSize: 12, color: 'var(--ink-700)', margin: '0 0 8px', lineHeight: 1.65 }}>{GUIDE.rules.ipIntro}</p>
+          {GUIDE.rules.ipProtect.map((item) => <div className="rule-item" key={item.t}><div className="rule-item-title">{item.t}</div><div className="rule-item-copy">{item.d}</div></div>)}
+        </RuleAccordion>
+      </div>
+
+      <button type="button" className="rule-all-toggle" onClick={() => {
+        if (allOpen) { setOpenGroups(new Set([activeGroup.current])); }
+        else { setOpenGroups(new Set([1, 2, 3])); }
+      }}>{allOpen ? '전체 접기' : '전체 펼쳐 보기'}</button>
     </div>
   );
 }
@@ -1179,6 +1303,7 @@ function Final_Rules() {
 // ─── 챕터 5: 보상 ──────────────────────────────
 function Final_Reward({ reply }) {
   const R = GUIDE.reward;
+  const selectedTrack = R.tracks.find((track) => track.id === reply?.trackId);
   return (
     <div className="section">
       {/* ─── 얼마를 받나 (유입 수 기준) ───────────────────────
@@ -1216,28 +1341,47 @@ function Final_Reward({ reply }) {
           비교할 수 있게 한다.
           '이런 분께 맞아요'는 뺐다 — "10만 원대 단품 구매 계획"이라고 적으면
           후지급을 고르면 무조건 10만 원을 받는 것처럼 읽히기 때문. */}
-      <div className="rwd" style={{ marginTop: 16 }}>
+      <div className="rwd" id="reward-track-choice" style={{ marginTop: 16 }}>
         <div className="rwd-title"><span className="rwd-title-num">2</span> 언제 받나</div>
         <div className="rwd-sub">{R.trackIntro}</div>
-        <div className="trk-grid">
-          {R.tracks.map((t) => (
-            <div className={`trk-card trk-${t.id}`} key={t.id}>
-              <div className="trk-card-top">
-                <span className="trk-emoji">{t.emoji}</span>
-                <span className="trk-name">{t.name}</span>
-              </div>
-              <div className="trk-tag">{t.tag}</div>
-              <div className="trk-rows">
-                {t.rows.map((r, i) => (
-                  <div className="trk-row" key={i}>
-                    {r.when && <span className="trk-when">{r.when}</span>}
-                    <span className="trk-what">{r.what}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+        <div className={`trk-choice-prompt${selectedTrack ? ' is-picked' : ''}`} aria-live="polite">
+          <span className="trk-choice-prompt-icon">{selectedTrack ? '✓' : '!'}</span>
+          <span>
+            {selectedTrack
+              ? <strong>{selectedTrack.name}을 선택했어요</strong>
+              : <><strong>수령 방식을 선택해 주세요</strong><small>두 카드를 비교한 뒤 하나를 눌러주세요.</small></>}
+          </span>
         </div>
+        <div className="trk-grid" role="radiogroup" aria-label="보상 수령 방식">
+          {R.tracks.map((t) => {
+            const selected = reply?.trackId === t.id;
+            return (
+              <button type="button" className={`trk-card trk-${t.id}${selected ? ' is-selected' : ''}`} key={t.id}
+                role="radio" aria-checked={selected} onClick={() => reply?.setTrackId(t.id)}>
+                <div className="trk-card-top">
+                  <span className="trk-emoji">{t.emoji}</span>
+                  <span className="trk-name">{t.name}</span>
+                  <span className="trk-select-state">{selected ? '● 선택됨' : '○'}</span>
+                </div>
+                <div className="trk-tag">{t.tag}</div>
+                <div className="trk-rows">
+                  {t.rows.map((r, i) => (
+                    <div className="trk-row" key={i}>
+                      {r.when && <span className="trk-when">{r.when}</span>}
+                      <span className="trk-what">{r.what}</span>
+                    </div>
+                  ))}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        {selectedTrack?.notes && (
+          <div className="trk-detail">
+            <div className="trk-detail-title">{selectedTrack.name} 선택 시 꼭 확인해 주세요</div>
+            <ul>{selectedTrack.notes.map((note, i) => <li key={i}>{note}</li>)}</ul>
+          </div>
+        )}
         <ul className="rwd-notes rwd-cautions">
           {R.trackCautions.map((c, i) => <li key={i}>{c}</li>)}
         </ul>
@@ -1271,9 +1415,6 @@ function Final_Faq({ openFaq, setOpenFaq, onGoTab }) {
           </div>
         </div>
       ))}
-
-      {/* 문의 입력 박스 → 챗봇으로 대체 (chat-widget.jsx) */}
-      <ChatBox brand="megahouse" onGoTab={onGoTab} />
     </div>
   );
 }
