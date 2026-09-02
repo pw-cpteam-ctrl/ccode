@@ -843,16 +843,6 @@ function Final_Flow() {
             ))}
           </div>
         )}
-        {/* 수령 방식은 이 단계에서 정하고 나중에 바꿀 수 없어서, 진행 순서에도 넣어 둔다 */}
-        {step1.after && (
-          <div className="alert info" style={{ marginTop: 12, marginBottom: 0 }}>
-            <Icon.info />
-            <span>
-              <strong>{step1.after.t}</strong>
-              <br />{step1.after.d}
-            </span>
-          </div>
-        )}
       </div>
 
       {/* STEP 2 */}
@@ -874,7 +864,7 @@ function Final_Flow() {
             {ss.bullets && <ul className="nested-bullets">{ss.bullets.map((b, j) => <li key={j}>{b}</li>)}</ul>}
             {ss.tip && (
               <div className="alert info" style={{ marginTop: 10, marginBottom: 0 }}>
-                <Icon.info /> <span>{ss.tip}</span>
+                <Icon.info /> <span style={{ whiteSpace: 'pre-line' }}>{ss.tip}</span>
               </div>
             )}
           </div>
@@ -941,11 +931,10 @@ function Final_Upload() {
       {step3.preInfo && (
         <div className="step-nested-group">
           <div className="card" style={{ background: 'var(--ink-50)', borderStyle: 'dashed' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7, flexWrap: 'wrap' }}>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, background: 'var(--ink-200)', color: 'var(--ink-700)', padding: '2px 7px', borderRadius: 999 }}>사전 안내</span>
-              <span style={{ fontSize: 11, color: 'var(--ink-600)', fontWeight: 600 }}>※ 담당자가 먼저 진행하는 절차</span>
+              <span style={{ fontSize: 13.5, color: 'var(--ink-900)', fontWeight: 700 }}>{step3.preInfo.t}</span>
             </div>
-            <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 4 }}>{step3.preInfo.t}</div>
             <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-800)', lineHeight: 1.7 }}>{step3.preInfo.d}</p>
             {step3.preInfo.bullets && <ul className="nested-bullets">{step3.preInfo.bullets.map((b, j) => <li key={j}>{b}</li>)}</ul>}
           </div>
