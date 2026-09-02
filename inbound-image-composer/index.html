@@ -36,8 +36,11 @@
      않게 한다 — 원래는 오른쪽 끝 "사전 관리"와 나란히 있어서 단계 표시와 멀어
      보였다. */
   .steps-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .steps-row .memo-pill { font: inherit; cursor: pointer; }
-  .steps-row .memo-pill:hover { background: #e4e7ec; }
+  .steps-row .memo-pill {
+    font-family: inherit; cursor: pointer;
+    background: #edf8f6; border-color: #b5e3dc; color: #2fbca7; font-weight: 700;
+  }
+  .steps-row .memo-pill:hover { background: #e1f3f0; }
   button.link-btn { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 13px; text-decoration: underline; padding: 0; }
   main { max-width: 1180px; margin: 0 auto; padding: 24px; }
   @media (max-width: 768px) { main { padding: 16px; } }
