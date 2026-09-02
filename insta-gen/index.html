@@ -235,6 +235,12 @@
   details.explain .body { font-size:12px; line-height:1.6; padding-top:9px; }
   details.explain .body > div + div { margin-top:8px; }
   details.explain.q > summary { color:var(--muted); font-weight:600; font-size:11.5px; }
+  .explain-mini { font-size:11.5px; color:var(--muted); line-height:1.55; }
+  /* 개선사항 메모장 목록 */
+  .memo-list { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+  .memo-item { background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-size:12.5px; }
+  .memo-item .at { color:var(--muted); font-size:11px; margin-right:6px; }
+  .memo-item .sync { font-size:11px; margin-top:2px; color:var(--muted); }
 
   /* ===== 하단 고정 바 — 결과물(다운로드·복사)이 항상 손 닿는 곳에 =====
      예전엔 PNG 다운로드가 미리보기에서 1,225px 아래에 있었다. */
@@ -509,6 +515,19 @@
       </details>
       <div class="igcrop-grid" id="igcropGrid"></div>
       <div class="igcrop-hint">사진을 클릭하면 선택되고, 그때만 삭제 버튼이 나타납니다 · 다운로드는 마우스를 올리면 나옵니다</div>
+    </div>
+
+    <div class="card">
+      <details class="explain" id="exMemo">
+        <summary><span class="caret">▶</span>✎ 개선사항 메모장</summary>
+        <div class="body">
+          <div class="explain-mini" style="margin-bottom:8px">여기 적는 내용은 <b>AI에 절대 전송되지 않습니다.</b> 사람이 나중에 훑어보고 고칠지 판단하는 용도예요.</div>
+          <div class="field"><textarea id="inMemo" rows="2" placeholder="예) 세부 항목 드롭다운에 새 시리즈 추가해줬으면"></textarea></div>
+          <button type="button" class="btn2" id="btnSaveMemo">메모 저장</button>
+          <div class="note" id="memoStatus" style="margin-top:8px;margin-bottom:0"></div>
+          <div class="memo-list" id="memoList"></div>
+        </div>
+      </details>
     </div>
   </div>
 
@@ -1404,6 +1423,56 @@ function setupExplainMemory(){
   });
 }
 
+/* ── 개선사항 메모장 — product-sns-formatter의 공용 엔드포인트를 그대로 호출한다.
+   이 메모는 AI에 절대 전송되지 않는다. 브라우저에 먼저 저장해서 새로고침해도
+   안 사라지게 한 뒤, 서버로 보내 파일에 쌓고 이슈/슬랙/메일로 알린다.
+   서버 함수·환경변수를 여기 새로 만들지 않기 위해 이미 있는 주소를 그대로 쓴다. ── */
+const MEMO_TOOL = 'insta-gen';
+const MEMO_API = 'https://ccode-vbvi.vercel.app/api/save-memo';
+const MEMO_KEY = `${MEMO_TOOL}:memos`;
+function memoLoad(){ try{ return JSON.parse(localStorage.getItem(MEMO_KEY)||'[]'); }catch(e){ return []; } }
+function memoPersist(list){ try{ localStorage.setItem(MEMO_KEY, JSON.stringify(list)); }catch(e){ console.warn('메모 로컬 저장 실패:', e); } }
+function memoEscape(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function memoRender(){
+  const el = document.getElementById('memoList'); if(!el) return;
+  el.innerHTML = memoLoad().slice().reverse().map(m=>`
+    <div class="memo-item">
+      <span class="at">${memoEscape(new Date(m.at).toLocaleString())}</span>${memoEscape(m.text)}
+      <div class="sync">${m.synced ? '서버에 저장됨' : '이 브라우저에만 저장됨'}</div>
+    </div>`).join('');
+}
+// 저장 순서가 중요하다: 브라우저에 먼저 넣고 화면에 띄운 뒤 서버로 보낸다 —
+// 서버(또는 인터넷)가 안 되는 상황에서도 적은 내용이 사라지지 않게 하려는 것이다.
+async function saveMemoNote(){
+  const ta = document.getElementById('inMemo');
+  const status = document.getElementById('memoStatus');
+  const text = ta.value.trim();
+  if(!text){ alert('메모 내용을 입력해주세요.'); return; }
+  const list = memoLoad();
+  const entry = { at: new Date().toISOString(), text, synced:false };
+  list.push(entry); memoPersist(list); memoRender();
+  ta.value = '';
+  status.textContent = '이 브라우저에 저장했어요. 서버에도 저장을 시도합니다...';
+  try{
+    const res = await fetch(MEMO_API, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ memo:text, tool: MEMO_TOOL }),
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
+    entry.synced = true; memoPersist(list); memoRender();
+    // 저장은 됐는데 알림만 실패한 걸 "다 됐다"로 뭉뚱그리면, 담당자가 못 보고
+    // 지나갔을 때 원인을 못 찾는다 — 어디까지 갔는지 그대로 알려준다.
+    const 경로 = [data.notified && '기록', data.slacked && '슬랙', data.mailed && '메일'].filter(Boolean);
+    status.textContent = 경로.length
+      ? `메모를 저장하고 ${경로.join('·')}으로 알렸어요.`
+      : '메모를 저장했어요. (알림은 실패했어요 — 메모 자체는 남아 있어요)';
+  }catch(err){
+    status.textContent = `서버 저장은 실패했지만 이 브라우저에는 남아있어요 (${err.message}).`;
+  }
+}
+document.getElementById('btnSaveMemo').addEventListener('click', saveMemoNote);
+
 document.getElementById('previewToggle').addEventListener('click', function(){
   const open = document.body.classList.toggle('preview-open');
   this.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -1441,7 +1510,7 @@ function restoreSlot(s){
   // 폴백 폰트로 잘못 계산돼 타이틀 한 줄/두 줄 판단·크기가 어긋나는 것을 막는다.
   // (헤드라인 800, 타이틀 700, 푸터 500, 제품명 300)
   try{ await Promise.all(['800 76px Pretendard','700 80px Pretendard','500 34px Pretendard','300 60px Pretendard'].map(f=>document.fonts.load(f))); await document.fonts.ready; }catch{}
-  setupNotice(); setupExplainMemory();
+  setupNotice(); setupExplainMemory(); memoRender();
   const slots=loadSlots();
   // 저장된 슬롯이 없는 첫 방문에서도 ③시리즈/라인 드롭다운을 실제 값(state.line)에 맞춰준다.
   // 안 하면 드롭다운은 목록 첫 항목('룩업')을 보여주는데 카드/타이틀엔 state.line 기본값

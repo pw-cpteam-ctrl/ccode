@@ -5,11 +5,19 @@
 
 import { appendToGithubFile } from '../lib/github.js';
 
-// 이슈 제목·본문에 붙는 도구 이름. 다른 도구가 이 함수를 같이 쓰게 되면 요청 본문에서
-// 받도록 바꾸면 된다 — 지금은 이 페이지 전용이라 고정해둔다.
+// 이 페이지 전용으로 고정했던 이름 — 요청 본문에 tool이 안 오면(=지금 이 페이지처럼
+// 예전 방식으로 부르는 호출자) 그대로 이 이름과 이 경로를 쓴다. 하위 호환용 기본값이다.
 const TOOL_LABEL = '원고작성페이지';
+const DEFAULT_TOOL_SLUG = 'product-sns-formatter';
 
 export default async function handler(req, res) {
+  // 다른 주소(insta-gen 등 다른 도구)에서도 이 함수를 부를 수 있게 한다 — 도구마다
+  // 서버 함수·환경변수를 새로 만들지 않기 위한 공용 엔드포인트다. 메모를 받는
+  // 것뿐이라 위험하지 않지만, 남이 장난으로 채워 넣는 게 걱정되면 '*' 대신 허용
+  // 주소 목록을 검사한다.
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') { res.status(204).end(); return; }
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'POST 요청만 지원합니다.' });
     return;
@@ -24,11 +32,21 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { memo } = req.body || {};
+  const { memo, tool } = req.body || {};
   if (!memo || !memo.trim()) {
     res.status(400).json({ error: '저장할 메모 내용이 비어 있어요.' });
     return;
   }
+  // 실수로 원고를 통째로 붙여넣는 경우를 막는다
+  if (memo.length > 2000) {
+    res.status(400).json({ error: '메모가 너무 길어요(2000자 이내).' });
+    return;
+  }
+
+  // tool을 안 보내는 호출자(이 페이지 자신)는 기존 경로·표시 이름을 그대로 쓴다.
+  // tool을 보내는 다른 도구는 그 이름을 폴더명이자 표시 이름으로 그대로 쓴다.
+  const toolSlug = tool ? String(tool).trim().slice(0, 40) : DEFAULT_TOOL_SLUG;
+  const toolLabel = tool ? toolSlug : TOOL_LABEL;
 
   try {
     const line = `- [${new Date().toISOString()}] ${memo.trim().replace(/\n/g, ' ')}`;
@@ -37,7 +55,7 @@ export default async function handler(req, res) {
       owner,
       repo,
       branch,
-      path: 'product-sns-formatter/improvement-notes.md',
+      path: `${toolSlug}/improvement-notes.md`,
       newLine: line,
       message: '개선사항 메모 추가',
     });
@@ -62,8 +80,8 @@ export default async function handler(req, res) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          title: `[개선사항] ${TOOL_LABEL} — ${first}${memo.trim().length > 40 ? '…' : ''}`,
-          body: `**도구**: ${TOOL_LABEL}\n**적은 시각**: ${new Date().toISOString()}\n\n${memo.trim()}\n\n---\n처리했으면 이 이슈를 닫아주세요. 열려 있는 이슈 = 아직 처리 안 한 개선사항입니다.`,
+          title: `[개선사항] ${toolLabel} — ${first}${memo.trim().length > 40 ? '…' : ''}`,
+          body: `**도구**: ${toolLabel}\n**적은 시각**: ${new Date().toISOString()}\n\n${memo.trim()}\n\n---\n처리했으면 이 이슈를 닫아주세요. 열려 있는 이슈 = 아직 처리 안 한 개선사항입니다.`,
           labels: ['개선사항'],
           assignees: [assignee],
         }),
@@ -86,7 +104,7 @@ export default async function handler(req, res) {
     const hook = process.env.SLACK_WEBHOOK_URL;
     if (hook) {
       try {
-        const body = `*[개선사항] ${TOOL_LABEL}*\n${memo.trim()}` + (issueUrl ? `\n${issueUrl}` : '');
+        const body = `*[개선사항] ${toolLabel}*\n${memo.trim()}` + (issueUrl ? `\n${issueUrl}` : '');
         const slackRes = await fetch(hook, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -115,8 +133,8 @@ export default async function handler(req, res) {
             // 본인 주소로 제한된다. 팀원에게도 보내려면 도메인 인증이 필요하다.
             from: process.env.MEMO_MAIL_FROM || 'onboarding@resend.dev',
             to: [mailTo],
-            subject: `[개선사항] ${TOOL_LABEL} — ${memo.trim().replace(/\s+/g, ' ').slice(0, 40)}`,
-            text: `도구: ${TOOL_LABEL}\n적은 시각: ${new Date().toISOString()}\n\n${memo.trim()}` +
+            subject: `[개선사항] ${toolLabel} — ${memo.trim().replace(/\s+/g, ' ').slice(0, 40)}`,
+            text: `도구: ${toolLabel}\n적은 시각: ${new Date().toISOString()}\n\n${memo.trim()}` +
                   (issueUrl ? `\n\n처리 기록: ${issueUrl}` : ''),
           }),
         });
