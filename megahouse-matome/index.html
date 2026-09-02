@@ -86,12 +86,13 @@ input[type=file][hidden]{display:none;}
 
 /* 하단 버튼 */
 .actions{position:sticky;bottom:0;padding-top:10px;margin-top:12px;
-  background:linear-gradient(transparent,var(--ui-panel) 35%);display:flex;gap:7px;}
+  background:linear-gradient(transparent 0,var(--ui-panel) 10px);display:flex;gap:7px;}
 button.primary,button.ghost{flex:1;padding:10px;border-radius:7px;font-size:15px;font-weight:700;
   cursor:pointer;border:1px solid var(--ui-border);font-family:inherit;}
 button.primary{background:var(--ui-accent);color:#fff;border-color:var(--ui-accent);}
 button.primary:hover{filter:brightness(1.1);}
-button.ghost{background:transparent;color:var(--ui-text);}
+/* 투명 배경이면 sticky 액션바 뒤 패널 글자가 버튼을 통과해 겹쳐 보임 */
+button.ghost{background:var(--ui-card);color:var(--ui-text);}
 button.ghost:hover{border-color:var(--ui-accent);}
 details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:4px 0;}
 
