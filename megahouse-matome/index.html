@@ -393,7 +393,7 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
       <div class="field"><label>상단 로고 크기</label><input type="range" id="logoSize" min="32" max="120" value="64" oninput="syncLogoSize()"/></div>
       <div class="field"><label>하단 PW 로고</label><input type="range" id="pwLogoSize" min="16" max="100" value="32" oninput="syncLogoSize()"/></div>
     </div>
-    <div class="sec">그라데이션</div>
+    <div class="sec">하단 그라데</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
       <div class="field" style="text-align:center"><label>시작점<br/><span id="gradValS" style="font-size:12px">20%</span></label><input type="range" id="gradStart" min="0" max="90" value="20" step="1" oninput="syncGrad()"/></div>
       <div class="field" style="text-align:center"><label>퍼짐<br/><span id="gradValW" style="font-size:12px">30%</span></label><input type="range" id="gradWidth" min="5" max="200" value="30" step="1" oninput="syncGrad()"/></div>
@@ -426,7 +426,7 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
     <button class="ghost" style="width:100%;margin-bottom:4px" id="btnApplyBulk">적용</button>
     <div class="sec">줄별 제품명 크기</div>
     <div id="rowControls"><div style="font-size:13px;color:var(--ui-sub)">사진을 올리면 표시됩니다.</div></div>
-    <div class="sec">블러 설정 (블러 체크된 셀에 적용)</div>
+    <div class="sec">셀 배경 블러 (셀 배경이 '블러'인 칸에만 적용)</div>
     <div class="row2">
       <div class="field"><label>퍼짐 <span id="blurPxVal">10</span>px</label><input type="range" id="sliderBlurPx" min="0" max="30" value="10" oninput="blurPx=+this.value;document.getElementById('blurPxVal').textContent=this.value;refresh()"/></div>
       <div class="field"><label>밝기 <span id="blurBrightVal">80</span>%</label><input type="range" id="sliderBlurBright" min="50" max="120" value="80" oninput="blurBright=+this.value;document.getElementById('blurBrightVal').textContent=this.value;refresh()"/></div>
