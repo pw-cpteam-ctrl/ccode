@@ -207,6 +207,18 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 /* 라벨 · 드롭다운 · 버튼을 한 줄에 */
 .slotrow{display:grid;grid-template-columns:82px 1fr auto;align-items:center;gap:8px;margin-bottom:10px;}
 .p-head-1{display:flex;align-items:center;gap:6px;}
+.guide-wrap{position:relative;margin-left:auto;flex:0 0 auto;}
+.guide-btn{border:1px solid var(--ui-accent);background:var(--ui-card);color:var(--ui-accent);
+  border-radius:999px;padding:4px 11px;font-size:12px;font-weight:700;cursor:pointer;
+  font-family:inherit;white-space:nowrap;}
+.guide-btn:hover,.guide-btn.on{background:var(--ui-accent);color:#fff;}
+.guide-pop{display:none;position:absolute;right:0;top:calc(100% + 7px);z-index:80;width:290px;
+  background:var(--ui-card);border:1px solid var(--ui-border);border-radius:10px;
+  box-shadow:0 6px 22px rgba(37,32,24,.2);padding:11px 14px 12px;}
+.guide-pop.open{display:block;}
+.guide-ttl{font-size:12px;font-weight:800;color:var(--ui-accent);letter-spacing:.02em;margin-bottom:7px;}
+.guide-pop ul{margin:0;padding-left:17px;display:flex;flex-direction:column;gap:5px;}
+.guide-pop li{font-size:13px;line-height:1.5;color:var(--ui-text);word-break:keep-all;}
 .p-head-1 h1{margin:0;flex:0 0 auto;}
 .gtabs{display:grid;grid-template-columns:repeat(3,1fr);background:var(--ui-bg);
   border:1px solid var(--ui-border);border-radius:8px;overflow:hidden;margin-bottom:10px;}
@@ -246,12 +258,13 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
 @media (hover:none){.item .ctrl{opacity:1;}}
 
 /* 결과물 버튼 2줄 + 개선사항 메모장 */
-.actrow{display:flex;gap:6px;}
-.actrow .primary,.actrow .ghost{flex:1 1 0;min-width:0;padding:9px 4px;}
+.actrow{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px;}
+.actrow .primary,.actrow .ghost{min-width:0;padding:9px 4px;}
+.actrow .memo-wrap .ghost{width:100%;}
 .btn-reset{display:block;margin:5px 0 0 auto;border:none;background:none;color:var(--ui-sub);
   font-size:12px;cursor:pointer;font-family:inherit;text-decoration:underline;text-underline-offset:3px;padding:1px 2px;}
 .btn-reset:hover{color:#c0392b;}
-.memo-wrap{position:relative;flex:1 1 0;min-width:0;}
+.memo-wrap{position:relative;min-width:0;}
 .memo-pop{display:none;position:absolute;left:0;right:0;bottom:calc(100% + 7px);z-index:70;
   background:var(--ui-card);border:1px solid var(--ui-border);border-radius:10px;
   box-shadow:0 6px 22px rgba(37,32,24,.2);padding:11px 12px;max-height:56vh;overflow-y:auto;text-align:left;}
@@ -294,6 +307,21 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
   <div class="p-head">
     <div class="p-head-1">
       <h1>메가하우스 신제품 예고 메이커</h1>
+      <!-- 제목 오른쪽 빈 자리 활용 — 배치할 때 지켜야 하는 원칙이라 사진 작업 중
+           언제든 꺼내볼 수 있어야 해서 탭 안이 아니라 항상 보이는 자리에 둠 -->
+      <div class="guide-wrap">
+        <button class="guide-btn" id="btnGuide" title="배치할 때 지킬 것">작업가이드</button>
+        <div class="guide-pop" id="guidePop">
+          <div class="guide-ttl">배치할 때 지킬 것</div>
+          <ul>
+            <li>인기 상품 위로 배치</li>
+            <li>같은 IP는 상하 혹은 좌우로 인접</li>
+            <li>제품 사진 크게 (작아 보이지 않게)</li>
+            <li>글자가 피규어를 너무 가리지 않게</li>
+            <li>흰 배경 사진 사용 지양</li>
+          </ul>
+        </div>
+      </div>
     </div>
     <p class="desc" style="margin:0">셀 위 드래그=위치 조정 · 스크롤=확대. 12장 초과 시 자동으로 2페이지.</p>
   </div>
@@ -2041,6 +2069,18 @@ function switchGroup(id, btn) {
   document.querySelectorAll('.gt').forEach(b => b.classList.toggle('on', b === btn));
   document.querySelector('.pane-scroll').scrollTop = 0;
 }
+
+// 작업가이드 — 배치 원칙은 사진을 옮기는 도중에 확인하는 것이라 항상 보이는 자리에서 열리게
+(function() {
+  const btn = $('#btnGuide'), pop = $('#guidePop');
+  if (!btn || !pop) return;
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    btn.classList.toggle('on', pop.classList.toggle('open'));
+  });
+  pop.addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', () => { pop.classList.remove('open'); btn.classList.remove('on'); });
+})();
 
 // 개선사항 메모장 — 도움말 안에 묻어두면 못 찾아서 결과물 버튼 옆에서 바로 열리게
 (function() {
