@@ -805,7 +805,7 @@ function Final_Flow() {
       {/* 전체 분량이 주는 부담을 먼저 덜고, 마지막에 무엇을 답해야 하는지 미리 알려 준다.
           다 읽고 나서야 숙제가 처음 등장하던 것이 회신율이 낮은 원인이었다. */}
       <div className="opener">
-        <div className="opener-h">⏱ {GUIDE.opener.t}</div>
+        <div className="opener-h">📌 {GUIDE.opener.t}</div>
         <p className="opener-lead">{GUIDE.opener.lead}</p>
         <ul className="opener-keys">
           {GUIDE.opener.keys.map((k, i) => <li key={i}>{k}</li>)}
