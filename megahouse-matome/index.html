@@ -221,10 +221,24 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 .guide-pop li{font-size:13px;line-height:1.5;color:var(--ui-text);word-break:keep-all;}
 .p-head-1 h1{margin:0;flex:0 0 auto;}
 .gtabs{display:grid;grid-template-columns:repeat(3,1fr);background:var(--ui-bg);
-  border:1px solid var(--ui-border);border-radius:8px;overflow:hidden;margin-bottom:10px;}
-.gt{border:none;background:none;padding:9px 2px;cursor:pointer;font-size:13.5px;font-weight:700;
-  color:var(--ui-sub);font-family:inherit;border-bottom:2px solid transparent;}
-.gt.on{color:#fff;background:var(--ui-accent);border-bottom-color:var(--ui-accent);}
+  border-bottom:1px solid var(--ui-border);margin-bottom:11px;}
+.gt{border:none;background:none;padding:10px 2px 9px;cursor:pointer;font-size:13.5px;font-weight:700;
+  color:var(--ui-sub);font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-1px;}
+.gt:hover{color:var(--ui-text);}
+.gt.on{color:var(--ui-accent);background:var(--ui-panel);border-bottom-color:var(--ui-accent);}
+
+/* 페이지 탭 줄 — 큰 파란 박스가 한 줄을 다 먹던 것을 내용 폭만 쓰는 알약형으로 */
+.pgbar{display:flex;align-items:center;gap:6px;margin-bottom:10px;}
+.pgbar .ptabs{flex:0 1 auto;}
+.pgbar .ptab{flex:0 0 auto;padding:4px 10px;font-size:12.5px;}
+.icon-add{flex:0 0 auto;width:24px;height:24px;display:grid;place-items:center;padding:0;
+  border:1px solid var(--ui-border);background:var(--ui-card);color:var(--ui-sub);
+  border-radius:6px;cursor:pointer;font-size:13px;font-family:inherit;}
+.icon-add:hover{border-color:var(--ui-accent);color:var(--ui-accent);}
+.saved{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:11px;
+  color:var(--ui-sub);white-space:nowrap;}
+.saved .dot{width:6px;height:6px;border-radius:50%;background:#2f6b3a;flex:0 0 auto;transition:background .2s;}
+.saved.saving .dot{background:#c39b1e;}
 .gpane{display:none;}
 .gpane.on{display:block;}
 
@@ -340,6 +354,14 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
     <span class="flbl">저장 슬롯<br>(월별)</span>
     <select id="slotSelect" onchange="switchSlot(this.value)" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:6px 8px;font-size:14px;font-family:inherit;"></select>
     <button class="ptab" id="btnNewSlot" style="padding:7px 12px;font-size:16px;" title="새 슬롯 추가 (YYYY-MM)">＋</button>
+  </div>
+
+  <!-- ══ 페이지 탭: 어느 탭에 있든 지금 몇 페이지를 편집 중인지 보여야 하므로
+       사진 섹션 안이 아니라 그룹 탭 위 고정 자리에 둠 ══ -->
+  <div class="pgbar">
+    <div class="ptabs" id="tabsRow" style="margin:0;flex-wrap:wrap;"></div>
+    <button class="icon-add" id="btnAddPage" title="새 페이지 추가">＋</button>
+    <span class="saved" id="savedInd"><span class="dot"></span><span id="savedTxt">저장됨</span></span>
   </div>
 
   <!-- ══ 그룹 탭: 한 번에 한 묶음만 보이게 ══ -->
@@ -489,10 +511,6 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
   <!-- ══ 사진 ══ -->
   <div class="gpane on" id="sec-photo">
     <div class="sec">사진 업로드</div>
-    <div style="display:flex;gap:6px;margin-bottom:9px;align-items:center;">
-      <div class="ptabs" id="tabsRow" style="flex:1;margin:0;"></div>
-      <button class="ptab" id="btnAddPage" style="flex:0 0 auto;padding:7px 13px;font-size:15px;" title="새 페이지 추가">＋</button>
-    </div>
     <div class="dropzone" id="drop"><b>클릭</b>하거나 사진을 <b>드래그</b> — 현재 탭에 추가됩니다</div>
     <input type="file" id="fileInput" accept="image/*" multiple hidden/>
     <div class="items" id="itemList"></div>
@@ -2271,7 +2289,18 @@ function buildState() {
 // 먼저 시작한 쓰기(옛 데이터)가 나중에 커밋되면 최신 저장을 덮어쓸 수 있기 때문.
 // JSON은 호출 시점에 직렬화해 큐에 순서대로 넣으므로 항상 마지막 호출 내용이 최종본이 된다.
 let _saveQueue = Promise.resolve();
+// 저장이 실제로 끝났는지 화면에서 알 수 있게 (결과가 최신인지 모르는 상태를 없앰)
+let _savedTimer;
+function markSaving() {
+  const ind = document.getElementById('savedInd'), txt = document.getElementById('savedTxt');
+  if (!ind || !txt) return;
+  ind.classList.add('saving'); txt.textContent = '저장 중…';
+  clearTimeout(_savedTimer);
+  _savedTimer = setTimeout(() => { ind.classList.remove('saving'); txt.textContent = '저장됨'; }, 500);
+}
+
 function saveState() {
+  markSaving();
   const json = JSON.stringify(buildState());
   const key = slotStateKey(getActiveSlot());
   _saveQueue = _saveQueue.then(() => idbSet(key, json)).catch(() => {
