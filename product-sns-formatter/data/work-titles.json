@@ -1,11 +1,16 @@
 {
  "note": "작품(시리즈)의 한국 정식 제목 사전. 원고작성페이지에서 사람이 확인한 표기가 쌓인다.",
- "updatedAt": "2026-08-20T08:38:52.242Z",
+ "updatedAt": "2026-09-03T00:38:33.361Z",
  "entries": [
   {
    "work": "Azur Lane",
    "workJa": "",
    "ko": "벽람항로"
+  },
+  {
+   "work": "The Melancholy of Haruhi Suzumiya",
+   "workJa": "",
+   "ko": "스즈미야 하루히"
   },
   {
    "work": "Umamusume: Cinderella Gray",
