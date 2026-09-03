@@ -416,10 +416,10 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
     <div class="frow pair"><span class="flbl">박스<br>색 / 투명도</span>
       <div class="field"><button id="ohBoxBtn" class="ptab" style="width:100%;padding:5px 0;font-size:14px" onclick="toggleOhBox()">검정</button></div>
       <div class="field"><input type="range" id="ohBoxOpacity" min="0" max="100" value="40" oninput="applyOhBox();saveState()"/></div></div>
-    <div class="frow pair"><span class="flbl">그라데<br>시작 / 퍼짐</span>
+    <div class="frow pair"><span class="flbl">그라데이션<br>시작 / 퍼짐</span>
       <div class="field"><input type="range" id="ohGradStart" min="0" max="90" value="0" oninput="syncOhGrad()"/></div>
       <div class="field"><input type="range" id="ohGradSpread" min="10" max="90" value="60" oninput="syncOhGrad()"/></div></div>
-    <div class="frow pair"><span class="flbl">그라데<br>농도 / 압축</span>
+    <div class="frow pair"><span class="flbl">그라데이션<br>농도 / 압축</span>
       <div class="field"><input type="range" id="ohGradOpacity" min="0" max="100" value="60" oninput="syncOhGrad()"/></div>
       <div class="field"><input type="range" id="ohGradCompress" min="0" max="60" value="0" oninput="syncOhGrad()"/></div></div>
     <div class="sec">재판 배지</div>
@@ -458,7 +458,15 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
     </div>
     <div class="dropzone" id="drop"><b>클릭</b>하거나 사진을 <b>드래그</b> — 현재 탭에 추가됩니다</div>
     <input type="file" id="fileInput" accept="image/*" multiple hidden/>
-    <!-- 페이지 전체 사진에 걸리는 설정이라 목록보다 위, 드롭존 바로 밑에 고정 -->
+    <div class="items" id="itemList"></div>
+    <div class="sec">제품명 일괄입력</div>
+    <div class="field">
+      <label>줄마다 한 제품명 → 순서대로 반영 (현재 페이지 기준)</label>
+      <textarea id="bulkInput" placeholder="주술회전&#10;귀멸의 칼날&#10;원피스&#10;(빈 줄 = 해당 칸 비움)"></textarea>
+    </div>
+    <button class="ghost" style="width:100%;margin-bottom:4px" id="btnApplyBulk">적용</button>
+
+    <!-- 페이지 전체 사진에 걸리는 설정 묶음 -->
     <div class="fixedbox">
     <div class="sec">셀 배경 블러 (셀 배경이 '블러'인 칸에만 적용)</div>
     <div class="frow pair"><span class="flbl">퍼짐 <span id="blurPxVal">10</span>px<br>밝기 <span id="blurBrightVal">80</span>%</span>
@@ -467,7 +475,7 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
     <div class="frow"><span class="flbl">일괄</span>
       <div class="fin"><button class="ptab" style="flex:1;padding:6px" onclick="setAllBlur(true)">블러 전체 ON</button>
         <button class="ptab" style="flex:1;padding:6px" onclick="setAllBlur(false)">블러 전체 OFF</button></div></div>
-    <div class="sec">하단 그라데</div>
+    <div class="sec">하단 그라데이션</div>
     <div class="frow pair"><span class="flbl">시작 <span id="gradValS">20%</span><br>퍼짐 <span id="gradValW">30%</span></span>
       <div class="field"><input type="range" id="gradStart" min="0" max="90" value="20" step="1" oninput="syncGrad()"/></div>
       <div class="field"><input type="range" id="gradWidth" min="5" max="200" value="30" step="1" oninput="syncGrad()"/></div></div>
@@ -475,13 +483,7 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
       <div class="field"><input type="range" id="gradOpacity" min="0" max="200" value="88" step="1" oninput="syncGrad()"/></div>
       <div class="field"><input type="range" id="gradCompress" min="0" max="60" value="0" step="1" oninput="syncGrad()"/></div></div>
     </div>
-    <div class="items" id="itemList"></div>
-    <div class="sec">제품명 일괄입력</div>
-    <div class="field">
-      <label>줄마다 한 제품명 → 순서대로 반영 (현재 페이지 기준)</label>
-      <textarea id="bulkInput" placeholder="주술회전&#10;귀멸의 칼날&#10;원피스&#10;(빈 줄 = 해당 칸 비움)"></textarea>
-    </div>
-    <button class="ghost" style="width:100%;margin-bottom:4px" id="btnApplyBulk">적용</button>
+
     <div class="sec">줄별 제품명 크기</div>
     <div id="rowControls"><div style="font-size:13px;color:var(--ui-sub)">사진을 올리면 표시됩니다.</div></div>
 
