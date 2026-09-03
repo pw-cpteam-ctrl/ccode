@@ -1254,12 +1254,6 @@ body {
 .carou-dot.is-on{ background: var(--blue-500); width: 16px; border-radius: 999px; }
 .carou-hint{ margin-left: auto; font-size: 10.8px; color: var(--ink-600); }
 
-/* 06 두 축 안내 */
-.rwd-axis{
-  margin: 0 0 10px; padding: 9px 12px;
-  background: var(--blue-50); border-radius: 9px;
-  font-size: 12.5px; line-height: 1.6; color: var(--blue-700); font-weight: 600;
-}
 
 /* ─── 01 모바일 한 줄 플로우 ───────────────────────────────────── */
 .workflow { margin-bottom: 24px; }
