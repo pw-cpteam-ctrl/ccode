@@ -27,7 +27,7 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:'Pretendard',-appl
   background:var(--ui-panel);padding:16px 15px 11px;display:grid;grid-template-rows:auto 1fr auto;min-height:0;}
 .pane-scroll{overflow-y:auto;min-height:0;padding-bottom:10px;}
 .panel h1{font-size:16px;margin:0 0 2px;font-weight:700;}
-.panel .desc{color:var(--ui-sub);font-size:13px;margin:0 0 12px;line-height:1.5;}
+.panel .desc{color:var(--ui-sub);font-size:12px;margin:0 0 12px;line-height:1.5;}
 .field{margin-bottom:10px;}
 .field label{display:block;font-size:13px;color:var(--ui-sub);margin-bottom:4px;font-weight:600;}
 .field input[type=text],.field textarea,.field input[type=range]{
@@ -204,6 +204,8 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
    또 조작요소가 앉은 줄 77개 중 40개가 혼자 한 줄을 차지(그중 26개는 폭 절반 미만)
    하던 것을 라벨·조작·값 한 줄 배치로 바꿈. */
 .p-head{display:grid;gap:7px;margin-bottom:9px;}
+/* 라벨 · 드롭다운 · 버튼을 한 줄에 */
+.slotrow{display:grid;grid-template-columns:82px 1fr auto;align-items:center;gap:8px;margin-bottom:10px;}
 .p-head-1{display:flex;align-items:center;gap:6px;}
 .p-head-1 h1{margin:0;flex:0 0 auto;}
 .gtabs{display:grid;grid-template-columns:repeat(3,1fr);background:var(--ui-bg);
@@ -297,12 +299,10 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
   </div>
 
   <!-- ══ 저장 슬롯 (월별) ══ -->
-  <div class="row2" style="align-items:flex-end;margin-bottom:10px;">
-    <div class="field" style="margin:0;flex:1">
-      <label>저장 슬롯 (월별)</label>
-      <select id="slotSelect" onchange="switchSlot(this.value)" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:7px 8px;font-size:14.5px;font-family:inherit;"></select>
-    </div>
-    <button class="ptab" id="btnNewSlot" style="flex:0 0 auto;padding:8px 12px;font-size:16px;" title="새 슬롯 추가 (YYYY-MM)">＋</button>
+  <div class="slotrow">
+    <span class="flbl">저장 슬롯<br>(월별)</span>
+    <select id="slotSelect" onchange="switchSlot(this.value)" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:6px 8px;font-size:14px;font-family:inherit;"></select>
+    <button class="ptab" id="btnNewSlot" style="padding:7px 12px;font-size:16px;" title="새 슬롯 추가 (YYYY-MM)">＋</button>
   </div>
 
   <!-- ══ 그룹 탭: 한 번에 한 묶음만 보이게 ══ -->
