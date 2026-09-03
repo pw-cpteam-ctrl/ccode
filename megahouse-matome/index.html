@@ -265,9 +265,13 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
   font-size:12px;cursor:pointer;font-family:inherit;text-decoration:underline;text-underline-offset:3px;padding:1px 2px;}
 .btn-reset:hover{color:#c0392b;}
 .memo-wrap{position:relative;min-width:0;}
-.memo-pop{display:none;position:absolute;left:0;right:0;bottom:calc(100% + 7px);z-index:70;
+/* left:0;right:0 이면 감싸는 버튼 칸(112px) 폭에 갇혀 입력창이 우표만 해짐.
+   오른쪽만 고정하고 폭은 패널 안쪽 폭(350px)에 맞춤 */
+.memo-pop{display:none;position:absolute;right:0;width:350px;max-width:calc(100vw - 30px);
+  bottom:calc(100% + 7px);z-index:70;
   background:var(--ui-card);border:1px solid var(--ui-border);border-radius:10px;
-  box-shadow:0 6px 22px rgba(37,32,24,.2);padding:11px 12px;max-height:56vh;overflow-y:auto;text-align:left;}
+  box-shadow:0 6px 22px rgba(37,32,24,.2);padding:12px 14px;max-height:60vh;overflow-y:auto;text-align:left;}
+.memo-pop #inMemo{min-height:70px;}
 .memo-pop.open{display:block;}
 
 /* 아이템 row 선택 하이라이트 */
