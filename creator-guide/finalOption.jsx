@@ -7,7 +7,7 @@ const CHAPTER_META = {
   body:   { tag: '게시글 본문 작성 가이드', emoji: '🖊', title: '본문은 이렇게 작성해주세요', lead: '평소 스타일 그대로! 단, 아래 필수 내용만 꼭 포함해주시면 됩니다.' },
   example:{ tag: '홍보 게시글 예시', emoji: '📎', title: '홍보 게시글 예시', lead: '광고 표기 보충 안내와 실제 게시글 예시를 확인해주세요.' },
   rules:  { tag: '제작 가이드 및 유의 사항', emoji: '🚫', title: '이것만 지켜주세요', lead: '기본적으로 자유 창작! 단, IP 보호를 위한 몇 가지는 함께 지켜주세요.' },
-  reward: { tag: '보상 안내', emoji: '🎁', title: '유입 수에 따라 차등 지급돼요', lead: '① 얼마를 받나 · ② 언제 받나 — 이 두 가지가 따로 정해져요.' },
+  reward: { tag: '보상 안내', emoji: '🎁', title: '유입 수에 따라 차등 지급돼요', lead: '보상 수령 방식과 보상 형태는 선택 후 변경·교환이 어렵습니다.' },
   faq:    { tag: '보충: 협업 관련 FAQ', emoji: '❓', title: '자주 묻는 문의', lead: '미리 받은 주요 문의를 정리했어요. 탭해서 답변을 펼쳐보세요.' },
 };
 
@@ -1309,6 +1309,7 @@ function Final_Reward({ reply }) {
           예전엔 큰 카드 4개로 펼쳐져 있었는데, 표로 바꾸면 같은 정보를 훨씬
           짧게 담을 수 있고 아래 '언제 받나' 표와 형태가 같아져 비교가 쉬워진다. */}
       <div className="rwd">
+        <p className="rwd-axis">{GUIDE.reward.axisNote}</p>
         <div className="rwd-title"><span className="rwd-title-num">1</span> 얼마를 받나</div>
         <div className="rwd-table">
           <div className="rwd-row rwd-head">
