@@ -20,7 +20,12 @@
 body{background:var(--ui-bg);color:var(--ui-text);font-family:'Pretendard',-apple-system,'Malgun Gothic',sans-serif;display:flex;min-height:100vh;}
 
 /* ═══ 패널 ═══ */
-.panel{width:380px;min-width:380px;height:100vh;overflow-y:auto;border-right:1px solid var(--ui-border);background:var(--ui-panel);padding:16px 15px 100px;}
+/* [고정 머리 | 스크롤 본문 | 고정 버튼] 3단.
+   예전엔 버튼 바가 position:sticky였는데 패널의 padding-bottom:100px 때문에
+   화면 맨 아래가 아니라 그보다 100px 위에 멈춰서 목록 중간을 덮었음. */
+.panel{width:380px;min-width:380px;height:100vh;overflow:hidden;border-right:1px solid var(--ui-border);
+  background:var(--ui-panel);padding:16px 15px 11px;display:grid;grid-template-rows:auto 1fr auto;min-height:0;}
+.pane-scroll{overflow-y:auto;min-height:0;padding-bottom:10px;}
 .panel h1{font-size:16px;margin:0 0 2px;font-weight:700;}
 .panel .desc{color:var(--ui-sub);font-size:13px;margin:0 0 12px;line-height:1.5;}
 .field{margin-bottom:10px;}
@@ -85,8 +90,7 @@ input[type=file][hidden]{display:none;}
 .rci .val{min-width:28px;text-align:right;font-size:12.5px;color:var(--ui-sub);}
 
 /* 하단 버튼 */
-.actions{position:sticky;bottom:0;padding-top:10px;margin-top:12px;
-  background:linear-gradient(transparent 0,var(--ui-panel) 10px);display:flex;gap:7px;}
+.actions{padding-top:10px;border-top:1px solid var(--ui-border);background:var(--ui-panel);}
 button.primary,button.ghost{flex:1;padding:10px;border-radius:7px;font-size:15px;font-weight:700;
   cursor:pointer;border:1px solid var(--ui-border);font-family:inherit;}
 button.primary{background:var(--ui-accent);color:#fff;border-color:var(--ui-accent);}
@@ -194,15 +198,63 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 .p-ft-logo-wrap{flex-shrink:0;display:flex;align-items:center;justify-content:flex-end;}
 .p-ft-logo{height:32px;width:auto;display:block;}
 
-/* 2-section panel toggles */
-.psec-toggle{width:100%;text-align:left;padding:10px 12px;border-radius:8px;border:none;
-  background:var(--ui-accent);color:#fff;font-size:13px;font-weight:700;cursor:pointer;
-  font-family:inherit;display:flex;justify-content:space-between;align-items:center;margin-bottom:0;}
-.psec-toggle:hover{filter:brightness(1.1);}
-.psec-toggle .arrow{transition:transform .2s;display:inline-block;}
-.psec-toggle.collapsed .arrow{transform:rotate(-90deg);}
-.psec-body{overflow:hidden;transition:max-height .25s ease;max-height:9000px;}
-.psec-body.collapsed{max-height:0;}
+/* ═══ 사이드바 개편 (2026-09-03) ═══
+   아코디언 4개를 동시에 펼 수 있어 패널 스크롤이 3157px(1366 화면의 4.1배)까지
+   길어지던 걸, 사진 / 디자인 / 도움말 3개 탭으로 나눠 한 번에 한 묶음만 보이게 함.
+   또 조작요소가 앉은 줄 77개 중 40개가 혼자 한 줄을 차지(그중 26개는 폭 절반 미만)
+   하던 것을 라벨·조작·값 한 줄 배치로 바꿈. */
+.p-head{display:grid;gap:7px;margin-bottom:9px;}
+.p-head-1{display:flex;align-items:center;gap:6px;}
+.p-head-1 h1{margin:0;flex:0 0 auto;}
+.gtabs{display:grid;grid-template-columns:repeat(3,1fr);background:var(--ui-bg);
+  border:1px solid var(--ui-border);border-radius:8px;overflow:hidden;margin-bottom:10px;}
+.gt{border:none;background:none;padding:9px 2px;cursor:pointer;font-size:13.5px;font-weight:700;
+  color:var(--ui-sub);font-family:inherit;border-bottom:2px solid transparent;}
+.gt.on{color:#fff;background:var(--ui-accent);border-bottom-color:var(--ui-accent);}
+.gpane{display:none;}
+.gpane.on{display:block;}
+
+/* 라벨 · 조작 · 값을 한 줄에 */
+.frow{display:grid;grid-template-columns:82px 1fr;align-items:center;gap:8px;min-height:32px;margin-bottom:5px;}
+.frow.pair{grid-template-columns:82px 1fr 1fr;}
+.frow > .flbl{font-size:12.5px;font-weight:600;color:var(--ui-sub);text-align:right;line-height:1.25;}
+.frow .field{margin:0;}
+.frow .field label{display:none;}
+.frow > .fin{display:flex;align-items:center;gap:7px;font-size:13.5px;}
+.frow input[type=range]{width:100%;margin:0;}
+hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
+
+/* 페이지 전체 사진에 걸리는 설정 — 드롭존 바로 밑에 고정 */
+.fixedbox{background:var(--ui-bg);border:1px solid var(--ui-border);border-radius:8px;
+  padding:8px 10px 4px;margin-bottom:9px;}
+.fixedbox .frow{grid-template-columns:76px 1fr;}
+.fixedbox .frow.pair{grid-template-columns:76px 1fr 1fr;}
+
+/* 사진 행: 상시 노출 13개 → 접힌 행 + 선택 시 상세 */
+.item-exp{width:24px;height:44px;flex:0 0 24px;border:1px solid var(--ui-border);background:var(--ui-bg);
+  color:var(--ui-sub);border-radius:5px;cursor:pointer;font-size:11px;font-family:inherit;padding:0;}
+.item-exp:hover{border-color:var(--ui-accent);color:var(--ui-accent);}
+.item.sel .item-exp{background:var(--ui-accent);border-color:var(--ui-accent);color:#fff;}
+.item .item-extra{display:none;}
+.item.sel{border-color:var(--ui-accent);}
+.item.sel .item-extra{display:flex;align-items:center;gap:7px;flex-basis:100%;
+  border-top:1px solid var(--ui-border);padding-top:7px;margin-top:1px;}
+.item .ctrl{opacity:0;transition:opacity .12s;}
+.item:hover .ctrl,.item.sel .ctrl{opacity:1;}
+@media (hover:none){.item .ctrl{opacity:1;}}
+
+/* 결과물 버튼 2줄 + 개선사항 메모장 */
+.actrow{display:flex;gap:6px;}
+.actrow .primary,.actrow .ghost{flex:1 1 0;min-width:0;padding:9px 4px;}
+.btn-reset{display:block;margin:5px 0 0 auto;border:none;background:none;color:var(--ui-sub);
+  font-size:12px;cursor:pointer;font-family:inherit;text-decoration:underline;text-underline-offset:3px;padding:1px 2px;}
+.btn-reset:hover{color:#c0392b;}
+.memo-wrap{position:relative;flex:1 1 0;min-width:0;}
+.memo-pop{display:none;position:absolute;left:0;right:0;bottom:calc(100% + 7px);z-index:70;
+  background:var(--ui-card);border:1px solid var(--ui-border);border-radius:10px;
+  box-shadow:0 6px 22px rgba(37,32,24,.2);padding:11px 12px;max-height:56vh;overflow-y:auto;text-align:left;}
+.memo-pop.open{display:block;}
+
 /* 아이템 row 선택 하이라이트 */
 .item.selected{background:rgba(66,133,244,.22);border-radius:7px;}
 /* 토스트 */
@@ -237,11 +289,15 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 
 <!-- ═══ 컨트롤 패널 ═══ -->
 <div class="panel">
-  <h1>메가하우스 신제품 예고 메이커</h1>
-  <p class="desc">셀 위 드래그=위치 조정 · 스크롤=확대. 12장 초과 시 자동으로 2페이지.</p>
+  <div class="p-head">
+    <div class="p-head-1">
+      <h1>메가하우스 신제품 예고 메이커</h1>
+    </div>
+    <p class="desc" style="margin:0">셀 위 드래그=위치 조정 · 스크롤=확대. 12장 초과 시 자동으로 2페이지.</p>
+  </div>
 
   <!-- ══ 저장 슬롯 (월별) ══ -->
-  <div class="row2" style="align-items:flex-end;margin-bottom:12px;">
+  <div class="row2" style="align-items:flex-end;margin-bottom:10px;">
     <div class="field" style="margin:0;flex:1">
       <label>저장 슬롯 (월별)</label>
       <select id="slotSelect" onchange="switchSlot(this.value)" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:7px 8px;font-size:14.5px;font-family:inherit;"></select>
@@ -249,9 +305,16 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
     <button class="ptab" id="btnNewSlot" style="flex:0 0 auto;padding:8px 12px;font-size:16px;" title="새 슬롯 추가 (YYYY-MM)">＋</button>
   </div>
 
-  <!-- ══ 섹션 0: 도움말 ══ -->
-  <button class="psec-toggle collapsed" onclick="toggleSection('sec-help',this)" style="background:#555;margin-bottom:0">❓ 도움말 / 사용법 <span class="arrow">▾</span></button>
-  <div class="psec-body collapsed" id="sec-help" style="padding-top:10px;margin-bottom:8px">
+  <!-- ══ 그룹 탭: 한 번에 한 묶음만 보이게 ══ -->
+  <nav class="gtabs">
+    <button class="gt on" onclick="switchGroup('sec-photo',this)">사진</button>
+    <button class="gt" onclick="switchGroup('sec-layout',this)">디자인</button>
+    <button class="gt" onclick="switchGroup('sec-help',this)">도움말</button>
+  </nav>
+
+  <div class="pane-scroll">
+  <!-- ══ 도움말 ══ -->
+  <div class="gpane" id="sec-help">
     <div style="font-size:14px;color:var(--ui-text);line-height:1.75;display:flex;flex-direction:column;gap:10px;">
 
       <div style="background:var(--ui-bg);border-radius:8px;padding:10px 12px;border:1px solid var(--ui-border)">
@@ -299,33 +362,21 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
     </div>
   </div>
 
-  <!-- ══ 섹션 0.5: 개선사항 메모장 ══ -->
-  <button class="psec-toggle collapsed" onclick="toggleSection('sec-memo',this)" style="background:#555;margin-bottom:0">✎ 개선사항 메모장 <span class="arrow">▾</span></button>
-  <div class="psec-body collapsed" id="sec-memo" style="padding-top:10px;margin-bottom:8px">
-    <p style="font-size:12px;color:var(--ui-sub);margin:0 0 8px;">여기 적는 내용은 <b>LLM에 절대 전송되지 않습니다.</b> 사람이 나중에 훑어보고 고칠지 판단하는 용도예요.</p>
-    <div class="field">
-      <textarea id="inMemo" rows="2" placeholder="예) 배지 위치가 가끔 어색하게 잡힘"></textarea>
-    </div>
-    <button class="ptab" id="btnSaveMemo" style="width:100%">메모 저장</button>
-    <div id="memoStatus" style="font-size:11px;color:var(--ui-sub);margin-top:6px;"></div>
-    <div id="memoList" style="margin-top:10px;display:flex;flex-direction:column;gap:6px;"></div>
-  </div>
 
-  <!-- ══ 섹션 1: 레이아웃 수정 ══ -->
-  <button class="psec-toggle collapsed" onclick="toggleSection('sec-layout',this)">레이아웃 수정 <span class="arrow">▾</span></button>
-  <div class="psec-body collapsed" id="sec-layout" style="padding-top:10px">
+
+  <!-- ══ 디자인 (헤더 · 배지 · 푸터 · 로고) ══ -->
+  <div class="gpane" id="sec-layout">
     <div class="sec">프리뷰용 헤더</div>
-    <div class="row2" style="align-items:center">
-      <label style="display:flex;align-items:center;gap:7px;font-size:14px;cursor:pointer;"><input type="checkbox" id="chkHeader" checked onchange="toggleHeader()"/> 헤더 표시</label>
-      <div class="field" style="margin:0"><label>꺼짐 여백</label><input type="range" id="headerPad" min="5" max="120" value="30" oninput="toggleHeader()"/></div>
-    </div>
-    <div class="row2" style="margin-top:6px">
-      <div class="field"><label>월</label><input type="text" id="inMonth" value="6월"/></div>
-      <div class="field"><label>오픈일 (노란색)</label><input type="text" id="inOpen" value="6/4"/></div>
-    </div>
-    <div class="row2">
-      <div class="field"><label>스토어명 텍스트</label><input type="text" id="inStore" value="메가하우스 공식 스토어"/></div>
-      <div class="field"><label>굵기</label>
+    <div class="frow"><span class="flbl">헤더 표시</span>
+      <div class="fin"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="chkHeader" checked onchange="toggleHeader()"/> 사용</label>
+        <span style="font-size:12.5px;color:var(--ui-sub);white-space:nowrap">꺼짐 여백</span>
+        <input type="range" id="headerPad" min="5" max="120" value="30" oninput="toggleHeader()" style="flex:1"/></div></div>
+    <div class="frow pair"><span class="flbl">월 / 오픈일</span>
+      <div class="field"><input type="text" id="inMonth" value="6월"/></div>
+      <div class="field"><input type="text" id="inOpen" value="6/4"/></div></div>
+    <div class="frow pair"><span class="flbl">스토어명<br>글자 / 굵기</span>
+      <div class="field"><input type="text" id="inStore" value="메가하우스 공식 스토어"/></div>
+      <div class="field">
         <select id="storeFontWeight" onchange="syncHeader()" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:6px 8px;font-size:14px;font-family:inherit;">
           <option value="100">1—Thin</option><option value="200">2—ExtraLight</option><option value="300">3—Light</option>
           <option value="400">4—Regular</option><option value="500" selected>5—Medium</option><option value="600">6—SemiBold</option>
@@ -333,19 +384,19 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
         </select>
       </div>
     </div>
-    <div class="row2">
-      <div class="field"><label>스토어명 크기</label><input type="range" id="storeFontSize" min="14" max="40" value="22" oninput="syncHeader()"/></div>
-      <div class="field"><label>타이틀 크기</label><input type="range" id="titleFontSize" min="40" max="120" value="92" oninput="syncHeader()"/></div>
-      <div class="field"><label>스토어명 위치</label><input type="range" id="storeOffset" min="-400" max="400" value="0" oninput="syncHeader()"/></div>
-    </div>
+    <div class="frow pair"><span class="flbl">스토어명<br>크기 / 위치</span>
+      <div class="field"><input type="range" id="storeFontSize" min="14" max="40" value="22" oninput="syncHeader()"/></div>
+      <div class="field"><input type="range" id="storeOffset" min="-400" max="400" value="0" oninput="syncHeader()"/></div></div>
+    <div class="frow"><span class="flbl">타이틀 크기</span>
+      <div class="field"><input type="range" id="titleFontSize" min="40" max="120" value="92" oninput="syncHeader()"/></div></div>
     <div class="sec">오픈용 헤더</div>
-    <div class="row2" style="align-items:center">
-      <label style="display:flex;align-items:center;gap:7px;font-size:14px;cursor:pointer;"><input type="checkbox" id="chkOpenHeader" onchange="toggleOpenHeader()"/> 오픈용 헤더 사용 (검정 그라데이션 오버레이로 전환)</label>
-    </div>
-    <div class="row2" style="margin-top:6px">
-      <div class="field"><label>타이틀 문구</label><input type="text" id="inOhTitle" value="26년 6월 신제품"/></div>
-      <div class="field"><label>날짜 문구</label><input type="text" id="inOhDate" value="6/4~7/12"/></div>
-      <div class="field"><label>굵기</label>
+    <div class="frow"><span class="flbl">사용</span>
+      <div class="fin"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="chkOpenHeader" onchange="toggleOpenHeader()"/> 검정 그라데이션 오버레이로 전환</label></div></div>
+    <div class="frow pair"><span class="flbl">타이틀 / 날짜</span>
+      <div class="field"><input type="text" id="inOhTitle" value="26년 6월 신제품"/></div>
+      <div class="field"><input type="text" id="inOhDate" value="6/4~7/12"/></div></div>
+    <div class="frow"><span class="flbl">타이틀 굵기</span>
+      <div class="field">
         <select id="ohTitleFontWeight" onchange="syncOpenHeader()" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:6px 8px;font-size:14px;font-family:inherit;">
           <option value="300">3—Light</option>
           <option value="400">4—Regular</option>
@@ -356,50 +407,41 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
         </select>
       </div>
     </div>
-    <div class="row2">
-      <div class="field"><label>타이틀 크기</label><input type="range" id="ohTitleSize" min="20" max="80" value="38" oninput="syncOpenHeader()"/></div>
-      <div class="field"><label>날짜 크기</label><input type="range" id="ohDateSize" min="12" max="48" value="22" oninput="syncOpenHeader()"/></div>
-      <div class="field"><label>박스 색</label>
-        <button id="ohBoxBtn" class="ptab" style="width:100%;padding:5px 0;font-size:15px" onclick="toggleOhBox()">검정</button>
-      </div>
-    </div>
-    <div class="row2">
-      <div class="field"><label>스토어명 텍스트</label><input type="text" id="inOhStore" value="메가하우스 공식 스토어"/></div>
-      <div class="field"><label>스토어명 크기</label><input type="range" id="ohStoreSize" min="12" max="60" value="34" oninput="syncOpenHeader()"/></div>
-      <div class="field"><label>박스 투명도</label><input type="range" id="ohBoxOpacity" min="0" max="100" value="40" oninput="applyOhBox();saveState()"/></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
-      <div class="field"><label>그라데이션 시작점</label><input type="range" id="ohGradStart" min="0" max="90" value="0" oninput="syncOhGrad()"/></div>
-      <div class="field"><label>그라데이션 퍼짐</label><input type="range" id="ohGradSpread" min="10" max="90" value="60" oninput="syncOhGrad()"/></div>
-      <div class="field"><label>그라데이션 농도</label><input type="range" id="ohGradOpacity" min="0" max="100" value="60" oninput="syncOhGrad()"/></div>
-      <div class="field"><label>그라데이션 압축</label><input type="range" id="ohGradCompress" min="0" max="60" value="0" oninput="syncOhGrad()"/></div>
-    </div>
+    <div class="frow pair"><span class="flbl">크기<br>타이틀 / 날짜</span>
+      <div class="field"><input type="range" id="ohTitleSize" min="20" max="80" value="38" oninput="syncOpenHeader()"/></div>
+      <div class="field"><input type="range" id="ohDateSize" min="12" max="48" value="22" oninput="syncOpenHeader()"/></div></div>
+    <div class="frow pair"><span class="flbl">스토어명<br>글자 / 크기</span>
+      <div class="field"><input type="text" id="inOhStore" value="메가하우스 공식 스토어"/></div>
+      <div class="field"><input type="range" id="ohStoreSize" min="12" max="60" value="34" oninput="syncOpenHeader()"/></div></div>
+    <div class="frow pair"><span class="flbl">박스<br>색 / 투명도</span>
+      <div class="field"><button id="ohBoxBtn" class="ptab" style="width:100%;padding:5px 0;font-size:14px" onclick="toggleOhBox()">검정</button></div>
+      <div class="field"><input type="range" id="ohBoxOpacity" min="0" max="100" value="40" oninput="applyOhBox();saveState()"/></div></div>
+    <div class="frow pair"><span class="flbl">그라데<br>시작 / 퍼짐</span>
+      <div class="field"><input type="range" id="ohGradStart" min="0" max="90" value="0" oninput="syncOhGrad()"/></div>
+      <div class="field"><input type="range" id="ohGradSpread" min="10" max="90" value="60" oninput="syncOhGrad()"/></div></div>
+    <div class="frow pair"><span class="flbl">그라데<br>농도 / 압축</span>
+      <div class="field"><input type="range" id="ohGradOpacity" min="0" max="100" value="60" oninput="syncOhGrad()"/></div>
+      <div class="field"><input type="range" id="ohGradCompress" min="0" max="60" value="0" oninput="syncOhGrad()"/></div></div>
     <div class="sec">재판 배지</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:4px">
-      <div class="field"><label>배경색</label><input type="color" id="badgeBg" value="#0d1580" oninput="syncBadgeStyle();saveState()" style="width:100%;height:32px;border:none;background:none;cursor:pointer;padding:0;border-radius:6px;"/></div>
-      <div class="field"><label>글자색</label><input type="color" id="badgeFg" value="#ffffff" oninput="syncBadgeStyle();saveState()" style="width:100%;height:32px;border:none;background:none;cursor:pointer;padding:0;border-radius:6px;"/></div>
-      <div class="field"><label>글자그림자</label><button id="badgeBlurBtn" class="ptab" style="width:100%;padding:5px 0;font-size:15px" onclick="toggleBadgeBlur()">OFF</button></div>
-    </div>
+    <div class="frow pair"><span class="flbl">배경 / 글자색</span>
+      <div class="field"><input type="color" id="badgeBg" value="#0d1580" oninput="syncBadgeStyle();saveState()" style="width:100%;height:28px;border:none;background:none;cursor:pointer;padding:0;border-radius:6px;"/></div>
+      <div class="field"><input type="color" id="badgeFg" value="#ffffff" oninput="syncBadgeStyle();saveState()" style="width:100%;height:28px;border:none;background:none;cursor:pointer;padding:0;border-radius:6px;"/></div></div>
+    <div class="frow"><span class="flbl">글자그림자</span>
+      <div class="field"><button id="badgeBlurBtn" class="ptab" style="width:100%;padding:5px 0;font-size:14px" onclick="toggleBadgeBlur()">OFF</button></div></div>
     <div class="sec">푸터</div>
-    <div class="row2">
-      <div class="field"><label>푸터 텍스트</label><input type="text" id="inFooter" value="국내외 사정에 따라 출시 시점 등 일부 사항이 변동될 수 있습니다."/></div>
-      <div class="field"><label>푸터 위치</label><input type="range" id="footerOffset" min="-400" max="400" value="0" oninput="syncHeader()"/></div>
-    </div>
-    <div class="row2">
-      <div class="field"><label>푸터 텍스트 크기</label><input type="range" id="footerFontSize" min="10" max="28" value="18" oninput="syncHeader()"/></div>
-      <div class="field"><label>푸터 높이</label><input type="range" id="footerHeight" min="40" max="160" value="54" oninput="syncHeader()"/></div>
-    </div>
-    <div class="row2">
-      <div class="field"><label>상단 로고 크기</label><input type="range" id="logoSize" min="32" max="120" value="64" oninput="syncLogoSize()"/></div>
-      <div class="field"><label>하단 PW 로고</label><input type="range" id="pwLogoSize" min="16" max="100" value="32" oninput="syncLogoSize()"/></div>
-    </div>
-    <div class="sec">하단 그라데</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
-      <div class="field" style="text-align:center"><label>시작점<br/><span id="gradValS" style="font-size:12px">20%</span></label><input type="range" id="gradStart" min="0" max="90" value="20" step="1" oninput="syncGrad()"/></div>
-      <div class="field" style="text-align:center"><label>퍼짐<br/><span id="gradValW" style="font-size:12px">30%</span></label><input type="range" id="gradWidth" min="5" max="200" value="30" step="1" oninput="syncGrad()"/></div>
-      <div class="field" style="text-align:center"><label>농도<br/><span id="gradValO" style="font-size:12px">88%</span></label><input type="range" id="gradOpacity" min="0" max="200" value="88" step="1" oninput="syncGrad()"/></div>
-      <div class="field" style="text-align:center"><label>압축<br/><span id="gradValC" style="font-size:12px">0%</span></label><input type="range" id="gradCompress" min="0" max="60" value="0" step="1" oninput="syncGrad()"/></div>
-    </div>
+    <div class="frow"><span class="flbl">문구</span>
+      <div class="field"><input type="text" id="inFooter" value="국내외 사정에 따라 출시 시점 등 일부 사항이 변동될 수 있습니다."/></div></div>
+    <div class="frow pair"><span class="flbl">크기 / 위치</span>
+      <div class="field"><input type="range" id="footerFontSize" min="10" max="28" value="18" oninput="syncHeader()"/></div>
+      <div class="field"><input type="range" id="footerOffset" min="-400" max="400" value="0" oninput="syncHeader()"/></div></div>
+    <div class="frow"><span class="flbl">푸터 높이</span>
+      <div class="field"><input type="range" id="footerHeight" min="40" max="160" value="54" oninput="syncHeader()"/></div></div>
+    <hr class="pdiv">
+    <div class="sec" style="margin-top:0">로고</div>
+    <div class="frow pair"><span class="flbl">크기<br>상단 / 하단</span>
+      <div class="field"><input type="range" id="logoSize" min="32" max="120" value="64" oninput="syncLogoSize()"/></div>
+      <div class="field"><input type="range" id="pwLogoSize" min="16" max="100" value="32" oninput="syncLogoSize()"/></div></div>
+
     <details class="logos" style="margin-top:8px">
       <summary>로고 직접 교체</summary>
       <div class="field" style="margin-top:7px"><label>메가하우스 로고</label><input type="file" id="logoMega" accept="image/*"/></div>
@@ -407,9 +449,8 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
     </details>
   </div>
 
-  <!-- ══ 섹션 2: 사진 수정 ══ -->
-  <button class="psec-toggle" onclick="toggleSection('sec-photo',this)" style="margin-top:8px">사진 수정 <span class="arrow">▾</span></button>
-  <div class="psec-body" id="sec-photo" style="padding-top:10px">
+  <!-- ══ 사진 ══ -->
+  <div class="gpane on" id="sec-photo">
     <div class="sec">사진 업로드</div>
     <div style="display:flex;gap:6px;margin-bottom:9px;align-items:center;">
       <div class="ptabs" id="tabsRow" style="flex:1;margin:0;"></div>
@@ -417,6 +458,23 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
     </div>
     <div class="dropzone" id="drop"><b>클릭</b>하거나 사진을 <b>드래그</b> — 현재 탭에 추가됩니다</div>
     <input type="file" id="fileInput" accept="image/*" multiple hidden/>
+    <!-- 페이지 전체 사진에 걸리는 설정이라 목록보다 위, 드롭존 바로 밑에 고정 -->
+    <div class="fixedbox">
+    <div class="sec">셀 배경 블러 (셀 배경이 '블러'인 칸에만 적용)</div>
+    <div class="frow pair"><span class="flbl">퍼짐 <span id="blurPxVal">10</span>px<br>밝기 <span id="blurBrightVal">80</span>%</span>
+      <div class="field"><input type="range" id="sliderBlurPx" min="0" max="30" value="10" oninput="blurPx=+this.value;document.getElementById('blurPxVal').textContent=this.value;refresh()"/></div>
+      <div class="field"><input type="range" id="sliderBlurBright" min="50" max="120" value="80" oninput="blurBright=+this.value;document.getElementById('blurBrightVal').textContent=this.value;refresh()"/></div></div>
+    <div class="frow"><span class="flbl">일괄</span>
+      <div class="fin"><button class="ptab" style="flex:1;padding:6px" onclick="setAllBlur(true)">블러 전체 ON</button>
+        <button class="ptab" style="flex:1;padding:6px" onclick="setAllBlur(false)">블러 전체 OFF</button></div></div>
+    <div class="sec">하단 그라데</div>
+    <div class="frow pair"><span class="flbl">시작 <span id="gradValS">20%</span><br>퍼짐 <span id="gradValW">30%</span></span>
+      <div class="field"><input type="range" id="gradStart" min="0" max="90" value="20" step="1" oninput="syncGrad()"/></div>
+      <div class="field"><input type="range" id="gradWidth" min="5" max="200" value="30" step="1" oninput="syncGrad()"/></div></div>
+    <div class="frow pair"><span class="flbl">농도 <span id="gradValO">88%</span><br>압축 <span id="gradValC">0%</span></span>
+      <div class="field"><input type="range" id="gradOpacity" min="0" max="200" value="88" step="1" oninput="syncGrad()"/></div>
+      <div class="field"><input type="range" id="gradCompress" min="0" max="60" value="0" step="1" oninput="syncGrad()"/></div></div>
+    </div>
     <div class="items" id="itemList"></div>
     <div class="sec">제품명 일괄입력</div>
     <div class="field">
@@ -426,23 +484,34 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
     <button class="ghost" style="width:100%;margin-bottom:4px" id="btnApplyBulk">적용</button>
     <div class="sec">줄별 제품명 크기</div>
     <div id="rowControls"><div style="font-size:13px;color:var(--ui-sub)">사진을 올리면 표시됩니다.</div></div>
-    <div class="sec">셀 배경 블러 (셀 배경이 '블러'인 칸에만 적용)</div>
-    <div class="row2">
-      <div class="field"><label>퍼짐 <span id="blurPxVal">10</span>px</label><input type="range" id="sliderBlurPx" min="0" max="30" value="10" oninput="blurPx=+this.value;document.getElementById('blurPxVal').textContent=this.value;refresh()"/></div>
-      <div class="field"><label>밝기 <span id="blurBrightVal">80</span>%</label><input type="range" id="sliderBlurBright" min="50" max="120" value="80" oninput="blurBright=+this.value;document.getElementById('blurBrightVal').textContent=this.value;refresh()"/></div>
-    </div>
-    <div class="row2" style="margin-top:4px">
-      <button class="ptab" style="flex:1;padding:7px" onclick="setAllBlur(true)">블러 전체 ON</button>
-      <button class="ptab" style="flex:1;padding:7px" onclick="setAllBlur(false)">블러 전체 OFF</button>
-    </div>
+
   </div>
 
-  <div class="actions" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
-    <button class="ghost" id="btnReset">초기화</button>
-    <button class="primary" id="btnDownload">개별 다운로드</button>
-    <button class="primary" id="btnDownloadAll">전체 다운로드</button>
-    <button class="ghost" id="btnExport">📤 내보내기</button>
-    <button class="ghost" id="btnImport">📥 불러오기</button>
+  </div>
+
+  <div class="actions" style="display:grid;gap:6px;">
+    <div class="actrow">
+      <button class="primary" id="btnDownload">개별 다운로드</button>
+      <button class="primary" id="btnDownloadAll">전체 다운로드</button>
+    </div>
+    <div class="actrow">
+      <button class="ghost" id="btnExport">📤 내보내기</button>
+      <button class="ghost" id="btnImport">📥 불러오기</button>
+      <div class="memo-wrap">
+        <button class="ghost" id="btnMemoOpen" style="width:100%">✎ 개선사항</button>
+        <!-- 도움말 안에 묻어두면 못 찾아서, 결과물 버튼 옆에 둠 -->
+        <div class="memo-pop" id="memoPop">
+    <p style="font-size:12px;color:var(--ui-sub);margin:0 0 8px;">여기 적는 내용은 <b>LLM에 절대 전송되지 않습니다.</b> 사람이 나중에 훑어보고 고칠지 판단하는 용도예요.</p>
+    <div class="field">
+      <textarea id="inMemo" rows="2" placeholder="예) 배지 위치가 가끔 어색하게 잡힘"></textarea>
+    </div>
+    <button class="ptab" id="btnSaveMemo" style="width:100%">메모 저장</button>
+    <div id="memoStatus" style="font-size:11px;color:var(--ui-sub);margin-top:6px;"></div>
+    <div id="memoList" style="margin-top:10px;display:flex;flex-direction:column;gap:6px;"></div>
+        </div>
+      </div>
+    </div>
+    <button class="btn-reset" id="btnReset">모두 초기화</button>
     <input type="file" id="importFile" accept=".json" style="display:none">
   </div>
 </div>
@@ -1281,8 +1350,13 @@ function makeItemRow(it, i, pg) {
   memoLbl.textContent = '메모';
   memoWrap.append(memoChk, memoLbl);
 
-  inpRow.append(inp, rpWrap, spWrap, bgStepper, memoWrap);
+  // 재판·초회특전·셀배경·메모 체크는 평소엔 접어두고 행을 눌렀을 때만 펼침
+  // (사진 8장이면 상시 노출 조작요소가 104개까지 늘어나 시선을 똑같이 나눠 먹었음)
+  const extra = document.createElement('div'); extra.className = 'item-extra';
+  extra.append(rpWrap, spWrap, bgStepper, memoWrap);
+  inpRow.append(inp);
   grow.appendChild(inpRow);
+  grow.appendChild(extra);
 
   // 메모 컨트롤 행 (체크 시 표시)
   const memoRow = document.createElement('div');
@@ -1332,6 +1406,18 @@ function makeItemRow(it, i, pg) {
   wrap.appendChild(grow);
 
   // ctrl: swap page + delete (▲▼ removed; drag handles reorder)
+  // 부가 설정(재판·초회특전·셀배경·메모) 펼침 버튼 — 항상 보여야 찾을 수 있으므로
+  // hover에 숨기는 .ctrl 바깥에 따로 둠
+  const expand = document.createElement('button');
+  expand.className = 'item-exp'; expand.textContent = '▾'; expand.title = '세부 설정 펼치기';
+  expand.addEventListener('click', e => {
+    e.stopPropagation();
+    const on = wrap.classList.toggle('sel');
+    expand.textContent = on ? '▴' : '▾';
+    expand.title = on ? '세부 설정 접기' : '세부 설정 펼치기';
+  });
+  wrap.appendChild(expand);
+
   const ctrl = document.createElement('div'); ctrl.className = 'ctrl';
   // 페이지 이동: 이전/다음 버튼을 각각 따로 둠. 예전엔 버튼이 하나뿐이라
   // 1페이지에선 "다음으로"만, 2페이지 이상에선 "이전으로"만 가능해서
@@ -1439,11 +1525,6 @@ function syncHeader() {
     if (ftEl) ftEl.style.height = fh;
   });
   if (_bootDone) saveState();
-}
-function toggleSection(id, btn) {
-  const body = document.getElementById(id);
-  const collapsed = body.classList.toggle('collapsed');
-  btn.classList.toggle('collapsed', collapsed);
 }
 function toggleHeader() {
   const on = $('#chkHeader').checked;
@@ -1950,6 +2031,26 @@ $('#importFile').addEventListener('change', e => {
 
   $('#btnSaveMemo').addEventListener('click', saveMemo);
   renderMemos(loadMemos());
+})();
+
+// 그룹 탭 전환 — 아코디언(동시 펼침)을 대체. 한 번에 한 묶음만 보이게 함
+function switchGroup(id, btn) {
+  document.querySelectorAll('.gpane').forEach(p => p.classList.toggle('on', p.id === id));
+  document.querySelectorAll('.gt').forEach(b => b.classList.toggle('on', b === btn));
+  document.querySelector('.pane-scroll').scrollTop = 0;
+}
+
+// 개선사항 메모장 — 도움말 안에 묻어두면 못 찾아서 결과물 버튼 옆에서 바로 열리게
+(function() {
+  const btn = $('#btnMemoOpen'), pop = $('#memoPop');
+  if (!btn || !pop) return;
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const on = pop.classList.toggle('open');
+    if (on) $('#inMemo').focus();
+  });
+  pop.addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', () => pop.classList.remove('open'));
 })();
 
 $('#btnReset').addEventListener('click', () => {
