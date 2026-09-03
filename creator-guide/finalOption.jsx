@@ -449,7 +449,7 @@ function FloatingChatDock({ brand, onGoTab, inline = false }) {
           <div className="ai-dock-head">
             <div>
               <strong>{inline ? 'FAQ에서 원하는 답을 찾지 못하셨나요?' : '가이드 AI'}</strong>
-              <span>{inline ? '가이드 AI에게 상황을 직접 설명해 주세요. 기존 대화도 이곳에서 이어집니다.' : '읽다가 헷갈리는 내용을 바로 물어보세요'}</span>
+              <span>{inline ? '가이드 AI에게 상황을 직접 설명해 주세요' : '읽다가 헷갈리는 내용을 바로 물어보세요'}</span>
             </div>
             {!inline && <button type="button" className="ai-dock-close" onClick={close} aria-label="AI 질문창 접기">›</button>}
           </div>
@@ -653,7 +653,7 @@ function FinalOption() {
             아직 안 골랐으면 그 자리로 보내준다 — 다 읽고 "끝났다" 상태에서 새로
             입력을 요구하면 그냥 넘겨버리기 때문. */}
         <div className="done-body">
-          <div className="done-card">
+          <div className={`done-card${canCopy ? '' : ' is-todo'}`}>
             <div className="done-card-head">
               <span className="done-card-icon">📨</span>
               <span className="done-card-title">담당자에게 알려주실 내용</span>
