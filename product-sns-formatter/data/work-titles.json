@@ -1,6 +1,6 @@
 {
  "note": "작품(시리즈)의 한국 정식 제목 사전. 원고작성페이지에서 사람이 확인한 표기가 쌓인다.",
- "updatedAt": "2026-09-03T00:38:33.361Z",
+ "updatedAt": "2026-09-03T00:44:37.954Z",
  "entries": [
   {
    "work": "Azur Lane",
@@ -16,6 +16,11 @@
    "work": "Umamusume: Cinderella Gray",
    "workJa": "",
    "ko": "우마무스메 신데렐라 그레이"
+  },
+  {
+   "work": "To Love-Ru Darkness",
+   "workJa": "",
+   "ko": "To LOVE 트러블"
   }
  ]
 }
