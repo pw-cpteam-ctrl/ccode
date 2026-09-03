@@ -245,14 +245,19 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
 .fixedbox .frow.pair{grid-template-columns:76px 1fr 1fr;}
 
 /* 사진 행: 상시 노출 13개 → 접힌 행 + 선택 시 상세 */
-.item-exp{width:24px;height:44px;flex:0 0 24px;border:1px solid var(--ui-border);background:var(--ui-bg);
-  color:var(--ui-sub);border-radius:5px;cursor:pointer;font-size:11px;font-family:inherit;padding:0;}
+/* 점처럼 보이지 않게 크기를 키움 */
+.item-exp{width:30px;height:44px;flex:0 0 30px;border:1px solid var(--ui-border);background:var(--ui-bg);
+  color:var(--ui-sub);border-radius:5px;cursor:pointer;font-size:15px;line-height:1;font-family:inherit;padding:0;}
 .item-exp:hover{border-color:var(--ui-accent);color:var(--ui-accent);}
 .item.sel .item-exp{background:var(--ui-accent);border-color:var(--ui-accent);color:#fff;}
-.item .item-extra{display:none;}
+.item-body{display:none;flex-basis:100%;border-top:1px solid var(--ui-border);
+  margin-top:2px;padding-top:8px;}
 .item.sel{border-color:var(--ui-accent);}
-.item.sel .item-extra{display:flex;align-items:center;gap:7px;flex-basis:100%;
-  border-top:1px solid var(--ui-border);padding-top:7px;margin-top:1px;}
+.item.sel .item-body{display:grid;gap:6px;}
+.irow{display:grid;grid-template-columns:56px 1fr;align-items:center;gap:8px;}
+.ilbl{font-size:11.5px;font-weight:600;color:var(--ui-sub);text-align:right;}
+.item-extra{display:flex;align-items:center;gap:9px;}
+.pg-box{display:flex;gap:5px;}
 .item .ctrl{opacity:0;transition:opacity .12s;}
 .item:hover .ctrl,.item.sel .ctrl{opacity:1;}
 @media (hover:none){.item .ctrl{opacity:1;}}
@@ -1390,15 +1395,26 @@ function makeItemRow(it, i, pg) {
   extra.append(rpWrap, spWrap, bgStepper, memoWrap);
   inpRow.append(inp);
   grow.appendChild(inpRow);
-  grow.appendChild(extra);
+
+  // 펼쳤을 때 나오는 부분. 약식 체크박스 한 줄(재판·특전·셀배경·메모)은 그대로 쓰고,
+  // 그 밖의 것(메모 상세, 페이지 이동)만 라벨 붙은 줄로 정리함 — 예전엔 오른쪽
+  // 세로 칸에 ←2 / ✕ 가 끼어 있어서 무슨 버튼인지 알 수 없었음
+  const body = document.createElement('div'); body.className = 'item-body';
+  function irow(label, el) {
+    const r = document.createElement('div'); r.className = 'irow';
+    const l = document.createElement('span'); l.className = 'ilbl'; l.textContent = label;
+    r.append(l, el); return r;
+  }
+  body.appendChild(irow('표시', extra));
 
   // 메모 컨트롤 행 (체크 시 표시)
   const memoRow = document.createElement('div');
-  memoRow.style.cssText = `display:${it.memoOn ? 'flex' : 'none'};margin-top:4px;gap:3px;align-items:center;`;
+  // 보임/숨김은 감싸는 줄(memoRowWrap)이 담당하므로 여기선 항상 flex
+  memoRow.style.cssText = 'display:flex;gap:3px;align-items:center;flex-wrap:wrap;';
 
   const memoInp = document.createElement('input'); memoInp.type='text';
   memoInp.placeholder = '메모…'; memoInp.value = it.memo || '';
-  memoInp.style.cssText = 'flex:1;min-width:0;height:28px;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:3px 6px;font-size:12px;font-family:inherit;';
+  memoInp.style.cssText = 'flex:1 1 90px;min-width:0;height:28px;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:3px 6px;font-size:12px;font-family:inherit;';
   memoInp.addEventListener('input', () => { it.memo = memoInp.value; renderGrid(pg); saveState(); });
 
   const memoSizeInp = document.createElement('input'); memoSizeInp.type='number';
@@ -1429,10 +1445,13 @@ function makeItemRow(it, i, pg) {
   posSideBtn.addEventListener('click',  () => { it.memoPos='side';  updatePosBtns(); renderGrid(pg); saveState(); });
 
   memoRow.append(memoInp, memoSizeInp, memoColorInp, posAboveBtn, posSideBtn);
+  memoRow.style.flex = '1';
+  const memoRowWrap = irow('메모 내용', memoRow);
+  memoRowWrap.style.display = it.memoOn ? 'grid' : 'none';
 
   memoChk.addEventListener('change', () => {
     it.memoOn = memoChk.checked;
-    memoRow.style.display = it.memoOn ? 'flex' : 'none';
+    memoRowWrap.style.display = it.memoOn ? 'grid' : 'none';
     if (it.memoOn) { if (!it.memoPos) it.memoPos='side'; memoInp.focus(); }
     renderGrid(pg); saveState();
   });
@@ -1473,14 +1492,19 @@ function makeItemRow(it, i, pg) {
     });
     return btn;
   }
-  if (pg > 1) ctrl.appendChild(makeSwapBtn(pg - 1, `←${pg - 1}`));
-  ctrl.appendChild(makeSwapBtn(pg + 1, `→${pg + 1}`));
+  const pgBox = document.createElement('div'); pgBox.className = 'pg-box';
+  if (pg > 1) pgBox.appendChild(makeSwapBtn(pg - 1, `← ${pg - 1}페이지`));
+  pgBox.appendChild(makeSwapBtn(pg + 1, `→ ${pg + 1}페이지`));
+  body.appendChild(memoRowWrap);
+  body.appendChild(irow('옮기기', pgBox));
+
   const del = mkbtn('✕', () => { pages[pg-1].splice(i,1); refresh(); }); del.classList.add('del');
+  del.title = '이 사진 삭제';
   ctrl.appendChild(del);
   wrap.appendChild(ctrl);
+  wrap.appendChild(body);
   // 메모 행: wrap 전체 너비 (썸네일 포함)
-  memoRow.style.flexBasis = '100%';
-  wrap.appendChild(memoRow);
+
 
   // ── drag & drop for reorder ──
   wrap.addEventListener('dragstart', e => {
