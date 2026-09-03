@@ -270,8 +270,16 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
 .item.sel .item-body{display:grid;gap:6px;}
 .irow{display:grid;grid-template-columns:56px 1fr;align-items:center;gap:8px;}
 .ilbl{font-size:11.5px;font-weight:600;color:var(--ui-sub);text-align:right;}
-.item-extra{display:flex;align-items:center;gap:9px;}
-.pg-box{display:flex;gap:5px;}
+.item-extra{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+.ex-sep{width:1px;height:22px;background:var(--ui-border);flex:0 0 auto;}
+.bgstep{display:flex;align-items:center;gap:3px;flex:0 0 auto;}
+.bgstep button{width:19px;height:20px;border:1px solid var(--ui-border);background:var(--ui-bg);
+  color:var(--ui-sub);border-radius:4px;cursor:pointer;font-size:8px;line-height:1;padding:0;
+  font-family:inherit;display:grid;place-items:center;}
+.bgstep button:hover{border-color:var(--ui-accent);color:var(--ui-accent);}
+.bgstep .bgv{font-size:11.5px;font-weight:700;color:var(--ui-text);min-width:36px;text-align:center;}
+.bgstep .bgcolor{width:24px;height:20px;border:1px solid var(--ui-border);border-radius:4px;
+  background:none;padding:0;cursor:pointer;flex:0 0 auto;}
 .item .ctrl{opacity:0;transition:opacity .12s;}
 .item:hover .ctrl,.item.sel .ctrl{opacity:1;}
 @media (hover:none){.item .ctrl{opacity:1;}}
@@ -834,6 +842,7 @@ function makeCell(it, ri, pg) {
   cell.dataset.idx = pages[pg-1].indexOf(it);
 
   if (it.whiteBg) cell.style.background = '#fff';
+  else if (it.bgColorOn) cell.style.background = it.bgColor || '#fff';
 
   // drag handle for reorder
   const dh = document.createElement('div');
@@ -1049,7 +1058,7 @@ function applyImgTransform(img, it) {
   // 사진이 항상 칸을 덮어버려 배경이 보일 자리 자체가 없어짐. 이 둘을 같은 기준으로
   // 묶어둬야 블러↔흰배경을 오갈 때 사진 크기가 안 바뀌고(=줌이 리셋된 것처럼 안 보임),
   // "없음"으로 바꿀 때만 cover로 전환됨
-  const baseScale = (it.blur || it.whiteBg)
+  const baseScale = (it.blur || it.whiteBg || it.bgColorOn)
     ? Math.min(cw / iw, ch / ih)
     : Math.max(cw / iw, ch / ih) * SLOP;
   const eff = baseScale * (it.scale || 1);
@@ -1107,7 +1116,10 @@ window.addEventListener('mouseup', e => {
     const span = cell.querySelector('.name-text');
     if (span) { span.contentEditable='true'; span.focus(); }
     // 패널 해당 row 선택 하이라이트 (이전 선택 해제 후 유지)
+    // 파란 표시만 주면 세부 설정은 또 화살표를 눌러야 나와서 두 번 일함.
+    // 누른 칸의 행을 바로 펼치고, 한 번에 하나만 펼쳐 두도록 이전 것은 접음
     document.querySelectorAll('.item.selected').forEach(r => r.classList.remove('selected'));
+    setOpenItem(it.id);
     const row = document.querySelector(`.item[data-item-id="${it.id}"]`);
     if (row) {
       row.classList.add('selected');
@@ -1306,11 +1318,25 @@ function renderRowControls() {
 /* ═══════════════════════════════════════
    패널 아이템 목록
 ═══════════════════════════════════════ */
+// 지금 펼쳐 둔 상품. refresh()가 목록을 다시 그리기 때문에 DOM 클래스만으로는
+// 상태가 유지되지 않아(값을 하나 바꾸면 행이 접혔음) 여기에 따로 들고 있음
+let _openItemId = null;
+function setOpenItem(id) {
+  _openItemId = id;
+  document.querySelectorAll('.item').forEach(r => {
+    const on = String(r.dataset.itemId) === String(id);
+    r.classList.toggle('sel', on);
+    const b = r.querySelector('.item-exp');
+    if (b) { b.textContent = on ? '▴' : '▾'; b.title = on ? '세부 설정 접기' : '세부 설정 펼치기'; }
+  });
+}
+
 function makeItemRow(it, i, pg) {
   const wrap = document.createElement('div');
   wrap.className = 'item';
   wrap.draggable = true;
   wrap.dataset.pg = pg; wrap.dataset.idx = i; wrap.dataset.itemId = it.id;
+  if (String(_openItemId) === String(it.id)) wrap.classList.add('sel');
 
   // drag handle + 번호 통합
   const dh = document.createElement('span'); dh.className = 'drag-handle';
@@ -1376,26 +1402,35 @@ function makeItemRow(it, i, pg) {
   spWrap.append(spChk, spLbl);
 
   // 블러/흰배경/없음 스테퍼 — 세로배치 (라벨 위에 ▲▼)
-  const BG_OPTS = ['블러','흰배경','없음'];
-  let bgIdx = it.whiteBg ? 1 : (it.blur !== false ? 0 : 2);
+  // 셀 배경: 블러 / 흰배경 / 색상(직접 고름) / 없음.
+  // 예전엔 ▲▼ 세로 화살표라 어디를 누르는지 알기 어려웠음 → ◀ 이름 ▶ 가로형
+  const BG_OPTS = ['블러','흰배경','색상','없음'];
+  let bgIdx = it.bgColorOn ? 2 : (it.whiteBg ? 1 : (it.blur !== false ? 0 : 3));
   const bgStepper = document.createElement('div');
-  bgStepper.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0;';
-  const bgLbl = document.createElement('span');
-  bgLbl.style.cssText = 'font-size:10px;color:var(--ui-text);white-space:nowrap;line-height:1;text-align:center;';
-  bgLbl.textContent = BG_OPTS[bgIdx];
-  const bgArrows = document.createElement('div');
-  bgArrows.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:0px;';
-  const bgBtnStyle = 'width:28px;height:11px;border:none;background:transparent;color:var(--ui-text);cursor:pointer;font-size:9px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;';
-  const bgUp = document.createElement('button'); bgUp.textContent='▲'; bgUp.style.cssText = bgBtnStyle;
-  const bgDn = document.createElement('button'); bgDn.textContent='▼'; bgDn.style.cssText = bgBtnStyle;
+  bgStepper.className = 'bgstep';
+  const bgPrev = document.createElement('button'); bgPrev.textContent = '◀'; bgPrev.title = '이전';
+  const bgLbl = document.createElement('span'); bgLbl.className = 'bgv';
+  const bgNext = document.createElement('button'); bgNext.textContent = '▶'; bgNext.title = '다음';
+  const bgColor = document.createElement('input'); bgColor.type = 'color';
+  bgColor.className = 'bgcolor';
+  bgColor.value = it.bgColor || '#ffffff';
+  bgColor.title = '배경색 고르기';
+  bgColor.addEventListener('click', e => e.stopPropagation());
+  bgColor.addEventListener('input', () => { it.bgColor = bgColor.value; refresh(); saveState(); });
   function applyBgMode() {
     bgLbl.textContent = BG_OPTS[bgIdx];
-    it.blur = bgIdx===0; it.whiteBg = bgIdx===1; refresh(); saveState();
+    it.blur = bgIdx === 0;
+    it.whiteBg = bgIdx === 1;
+    it.bgColorOn = bgIdx === 2;
+    if (it.bgColorOn && !it.bgColor) it.bgColor = '#ffffff';
+    bgColor.style.display = it.bgColorOn ? 'block' : 'none';
+    refresh(); saveState();
   }
-  bgUp.addEventListener('click', () => { bgIdx = (bgIdx + BG_OPTS.length - 1) % BG_OPTS.length; applyBgMode(); });
-  bgDn.addEventListener('click', () => { bgIdx = (bgIdx + 1) % BG_OPTS.length; applyBgMode(); });
-  bgArrows.append(bgUp, bgDn);
-  bgStepper.append(bgLbl, bgArrows);
+  bgPrev.addEventListener('click', e => { e.stopPropagation(); bgIdx = (bgIdx + BG_OPTS.length - 1) % BG_OPTS.length; applyBgMode(); });
+  bgNext.addEventListener('click', e => { e.stopPropagation(); bgIdx = (bgIdx + 1) % BG_OPTS.length; applyBgMode(); });
+  bgLbl.textContent = BG_OPTS[bgIdx];
+  bgColor.style.display = bgIdx === 2 ? 'block' : 'none';
+  bgStepper.append(bgPrev, bgLbl, bgNext, bgColor);
 
   // 메모 체크박스
   const memoWrap = document.createElement('label');
@@ -1409,8 +1444,10 @@ function makeItemRow(it, i, pg) {
 
   // 재판·초회특전·셀배경·메모 체크는 평소엔 접어두고 행을 눌렀을 때만 펼침
   // (사진 8장이면 상시 노출 조작요소가 104개까지 늘어나 시선을 똑같이 나눠 먹었음)
+  // 체크 3개 | 구분선 | 배경 스테퍼. '표시' 같은 라벨은 자리만 먹어서 안 넣음
   const extra = document.createElement('div'); extra.className = 'item-extra';
-  extra.append(rpWrap, spWrap, bgStepper, memoWrap);
+  const sep = document.createElement('span'); sep.className = 'ex-sep';
+  extra.append(rpWrap, spWrap, memoWrap, sep, bgStepper);
   inpRow.append(inp);
   grow.appendChild(inpRow);
 
@@ -1420,10 +1457,10 @@ function makeItemRow(it, i, pg) {
   const body = document.createElement('div'); body.className = 'item-body';
   function irow(label, el) {
     const r = document.createElement('div'); r.className = 'irow';
-    const l = document.createElement('span'); l.className = 'ilbl'; l.textContent = label;
-    r.append(l, el); return r;
+    if (label) { const l = document.createElement('span'); l.className = 'ilbl'; l.textContent = label; r.appendChild(l); }
+    r.appendChild(el); return r;
   }
-  body.appendChild(irow('표시', extra));
+  body.appendChild(extra);
 
   // 메모 컨트롤 행 (체크 시 표시)
   const memoRow = document.createElement('div');
@@ -1464,7 +1501,7 @@ function makeItemRow(it, i, pg) {
 
   memoRow.append(memoInp, memoSizeInp, memoColorInp, posAboveBtn, posSideBtn);
   memoRow.style.flex = '1';
-  const memoRowWrap = irow('메모 내용', memoRow);
+  const memoRowWrap = irow('', memoRow);
   memoRowWrap.style.display = it.memoOn ? 'grid' : 'none';
 
   memoChk.addEventListener('change', () => {
@@ -1481,11 +1518,11 @@ function makeItemRow(it, i, pg) {
   // hover에 숨기는 .ctrl 바깥에 따로 둠
   const expand = document.createElement('button');
   expand.className = 'item-exp'; expand.textContent = '▾'; expand.title = '세부 설정 펼치기';
+  expand.textContent = String(_openItemId) === String(it.id) ? '▴' : '▾';
   expand.addEventListener('click', e => {
     e.stopPropagation();
-    const on = wrap.classList.toggle('sel');
-    expand.textContent = on ? '▴' : '▾';
-    expand.title = on ? '세부 설정 접기' : '세부 설정 펼치기';
+    // 한 번에 하나만 펼쳐 둠 (여러 개가 열려 있으면 목록을 훑기 어려움)
+    setOpenItem(String(_openItemId) === String(it.id) ? null : it.id);
   });
   wrap.appendChild(expand);
 
@@ -1510,15 +1547,15 @@ function makeItemRow(it, i, pg) {
     });
     return btn;
   }
-  const pgBox = document.createElement('div'); pgBox.className = 'pg-box';
-  if (pg > 1) pgBox.appendChild(makeSwapBtn(pg - 1, `← ${pg - 1}페이지`));
-  pgBox.appendChild(makeSwapBtn(pg + 1, `→ ${pg + 1}페이지`));
   body.appendChild(memoRowWrap);
-  body.appendChild(irow('옮기기', pgBox));
 
+  // 삭제 ✕ 아래에 페이지 이동을 세로로 수납 — 별도 줄로 빼면 라벨까지 붙어
+  // 자리만 먹었음. 3페이지 중 2페이지를 보고 있으면 ✕ / ←1 / →3 세 칸이 됨
   const del = mkbtn('✕', () => { pages[pg-1].splice(i,1); refresh(); }); del.classList.add('del');
   del.title = '이 사진 삭제';
   ctrl.appendChild(del);
+  if (pg > 1) ctrl.appendChild(makeSwapBtn(pg - 1, `←${pg - 1}`));
+  ctrl.appendChild(makeSwapBtn(pg + 1, `→${pg + 1}`));
   wrap.appendChild(ctrl);
   wrap.appendChild(body);
   // 메모 행: wrap 전체 너비 (썸네일 포함)
