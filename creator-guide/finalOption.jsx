@@ -593,6 +593,8 @@ function FinalOption() {
         setSent(rec);
         saveSent(rec);
         setEditing(false);
+      } else if (data.reason === 'confirmed') {
+        setSendErr('담당자 확인이 완료되어 변경이 어렵습니다. 담당자에게 문의해 주세요.');
       } else if (data.reason === 'nick') {
         setSendErr('활동명을 확인할 수 없습니다. 새로고침 후 다시 시도해 주세요.');
       } else {

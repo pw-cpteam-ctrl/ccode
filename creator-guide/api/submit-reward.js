@@ -23,7 +23,7 @@
 // ⚠️ 개인정보: 활동명은 크리에이터가 직접 적은 값이라 연락처를 적을 수도 있다.
 //    지금은 공개 저장소에 쌓이므로 저장 직전에 scrub()으로 가린다.
 
-import { appendToGithubFile } from '../lib/github.js';
+import { appendToGithubFile, readGithubFile } from '../lib/github.js';
 
 const NICK_MAX = 20;
 const MAX_LEN = 200;
@@ -84,6 +84,19 @@ export default async function handler(req, res) {
   if (!gh.token || !gh.owner || !gh.repo) {
     res.status(503).json({ ok: false, reason: 'unconfigured' });
     return;
+  }
+
+  // 담당자가 확정한 뒤에는 더 이상 받지 않는다. 확정 여부를 화면에 미리
+  // 보여주지는 않고, 바꾸려고 할 때만 알린다 — 처리 상태를 실시간으로 중계하면
+  // 크리에이터가 담당자 업무를 들여다보는 모양이 되기 때문이다.
+  try {
+    const f = await readGithubFile({ ...gh, path: 'creator-logs/confirmed.json' });
+    if (f) {
+      const map = JSON.parse(f.content) || {};
+      if (map[name]) { res.status(409).json({ ok: false, reason: 'confirmed' }); return; }
+    }
+  } catch {
+    // 확정 목록을 못 읽었다고 접수를 막지는 않는다. 못 내는 쪽이 더 큰 문제다.
   }
 
   const now = new Date();

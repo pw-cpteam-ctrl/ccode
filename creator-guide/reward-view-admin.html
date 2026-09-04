@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<!-- 검색에 잡히지 않게 막는다. 담당자만 주소를 알고 들어오는 페이지다. -->
+<meta name="robots" content="noindex, nofollow, noarchive" />
+<title>진행 정보 접수 현황</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%8B%3C/text%3E%3C/svg%3E" />
+<style>
+  :root {
+    --ink: #1c1917; --ink-500: #78716c; --ink-400: #a8a29e;
+    --line: #e7e5e4; --bg: #f5f5f4; --card: #fff;
+    --blue: #2563eb; --green: #16a34a; --red: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+                 "Malgun Gothic", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    font-size: 14px; line-height: 1.5;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 24px 16px 60px; }
+
+  /* ─── 코드 입력 ─── */
+  .gate { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .gate-card {
+    width: 100%; max-width: 340px; background: var(--card);
+    border-radius: 16px; padding: 32px 24px; text-align: center;
+    box-shadow: 0 8px 30px rgba(0,0,0,.06), 0 0 0 1px rgba(0,0,0,.04);
+  }
+  .gate-title { font-size: 16px; font-weight: 700; margin: 0 0 4px; }
+  .gate-desc { font-size: 12.5px; color: var(--ink-500); margin: 0 0 20px; }
+  .input {
+    width: 100%; padding: 12px 14px; font-size: 16px; text-align: center;
+    border: 1.5px solid var(--line); border-radius: 10px;
+    background: #fafaf9; color: var(--ink); outline: none;
+  }
+  .input:focus { border-color: var(--ink); background: #fff; }
+  .btn {
+    width: 100%; padding: 12px; margin-top: 10px;
+    font-size: 14px; font-weight: 600; color: #fff; background: var(--ink);
+    border: 0; border-radius: 10px; cursor: pointer;
+  }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .msg { font-size: 12.5px; min-height: 18px; margin-top: 8px; color: var(--red); }
+
+  /* ─── 목록 ─── */
+  .head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+  .head h1 { font-size: 19px; font-weight: 800; margin: 0; letter-spacing: -.02em; }
+  .head .count { font-size: 13px; color: var(--ink-500); }
+  .sub { font-size: 12.5px; color: var(--ink-500); margin: 0 0 16px; }
+
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  .bar .search {
+    flex: 1; min-width: 180px; padding: 9px 12px; font-size: 14px;
+    border: 1px solid var(--line); border-radius: 9px; background: #fff; outline: none;
+  }
+  .bar .search:focus { border-color: var(--ink); }
+  .mini {
+    padding: 9px 13px; font-size: 13px; font-weight: 600;
+    border: 1px solid var(--line); border-radius: 9px;
+    background: #fff; color: var(--ink); cursor: pointer; white-space: nowrap;
+  }
+  .mini:hover { background: #fafaf9; }
+  .mini.is-done { border-color: var(--green); color: var(--green); }
+
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 1px var(--line); }
+  th, td { padding: 11px 12px; text-align: left; font-size: 13.5px; border-bottom: 1px solid var(--line); }
+  th { background: #fafaf9; font-size: 11.5px; font-weight: 700; color: var(--ink-500); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  td.nick { font-weight: 700; }
+  .tag { display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 11.5px; font-weight: 700; }
+  .tag.split { background: #eff6ff; color: #1d4ed8; }
+  .tag.after { background: #fefce8; color: #a16207; }
+  .tag.coupon { background: #f5f3ff; color: #6d28d9; }
+  .tag.goods { background: #fdf2f8; color: #be185d; }
+  .tag.ok { background: #f0fdf4; color: var(--green); }
+  /* 같은 사람이 여러 번 낸 경우, 지난 제출은 흐리게 해서 최신만 눈에 들어오게 한다 */
+  tr.is-old td { color: var(--ink-400); background: #fcfcfb; }
+  tr.is-old td.nick { font-weight: 400; }
+  .old-note { font-size: 11.5px; color: var(--ink-400); }
+  .empty { padding: 40px 16px; text-align: center; color: var(--ink-500); }
+  .scroll { overflow-x: auto; }
+  .foot { margin-top: 14px; font-size: 12px; color: var(--ink-400); line-height: 1.6; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // 이 페이지는 담당자만 쓴다. 관리자 코드는 서버에서 대조하며, 여기에는
+  // 정답이 들어 있지 않다. 코드는 이 브라우저에 저장하지 않는다 —
+  // 공용 PC에서 열어둔 채 자리를 비우는 상황을 만들지 않기 위해서다.
+  var TRACK = { split: '선지급', after: '후지급' };
+  var REWARD = { coupon: '금액 쿠폰', goods: '상품 쿠폰' };
+
+  var root = document.getElementById('root');
+  var code = '';
+  var rows = [];
+  var confirmed = {};
+  var keyword = '';
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function fmtDate(v) {
+    var p = String(v || '').split('-');
+    if (p.length !== 3) return v || '-';
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    var w = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+    return (+p[1]) + '월 ' + (+p[2]) + '일 (' + w + ')';
+  }
+
+  function fmtAt(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '-';
+    var pad = function (n) { return String(n).padStart(2, '0'); };
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  function api(body) {
+    return fetch('api/admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        return { status: r.status, data: d };
+      });
+    });
+  }
+
+  // ─── 코드 입력 화면 ───
+  function renderGate(message) {
+    root.innerHTML =
+      '<div class="gate"><div class="gate-card">' +
+      '<p class="gate-title">진행 정보 접수 현황</p>' +
+      '<p class="gate-desc">담당자용 페이지입니다.</p>' +
+      '<input class="input" id="code" type="password" placeholder="관리자 코드" autocomplete="off" />' +
+      '<button class="btn" id="go">확인</button>' +
+      '<p class="msg">' + esc(message || '') + '</p>' +
+      '</div></div>';
+    var input = document.getElementById('code');
+    var go = document.getElementById('go');
+    var submit = function () {
+      var v = input.value.trim();
+      if (!v) { input.focus(); return; }
+      go.disabled = true;
+      document.querySelector('.msg').textContent = '불러오는 중…';
+      api({ code: v, action: 'list' }).then(function (r) {
+        if (r.status === 200 && r.data.ok) {
+          code = v;
+          rows = r.data.rows || [];
+          confirmed = r.data.confirmed || {};
+          renderList();
+        } else if (r.status === 401) {
+          go.disabled = false;
+          renderGate('코드가 맞지 않습니다.');
+        } else if (r.data.reason === 'unconfigured') {
+          go.disabled = false;
+          renderGate('아직 설정이 끝나지 않았습니다. 개발 담당자에게 문의해 주세요.');
+        } else {
+          go.disabled = false;
+          renderGate('불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        }
+      }).catch(function () {
+        go.disabled = false;
+        renderGate('연결이 불안정합니다. 다시 시도해 주세요.');
+      });
+    };
+    go.addEventListener('click', submit);
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+    input.focus();
+  }
+
+  // 같은 활동명 중 가장 나중에 낸 것만 '최신'으로 본다.
+  // 덮어쓰지 않고 쌓는 구조라, 어느 것이 유효한지 여기서 가려 준다.
+  function withLatestFlag(list) {
+    var seen = {};
+    var sorted = list.slice().sort(function (a, b) {
+      return String(b.at || '').localeCompare(String(a.at || ''));
+    });
+    return sorted.map(function (r) {
+      var isLatest = !seen[r.nick];
+      seen[r.nick] = true;
+      return Object.assign({}, r, { latest: isLatest });
+    });
+  }
+
+  function visibleRows() {
+    var all = withLatestFlag(rows);
+    if (!keyword) return all;
+    var k = keyword.toLowerCase();
+    return all.filter(function (r) { return String(r.nick || '').toLowerCase().indexOf(k) >= 0; });
+  }
+
+  // 노션에 그대로 붙여넣을 수 있게 탭으로 구분한 표를 만든다.
+  // 최신 제출만 담는다 — 지난 제출까지 넘어가면 중복 행이 생긴다.
+  function tableText() {
+    var head = ['활동명', '초안 공유 예정일', '보상 수령 방식', '보상 형태', '제출 시각', '확정'];
+    var lines = [head.join('\t')];
+    visibleRows().filter(function (r) { return r.latest; }).forEach(function (r) {
+      lines.push([
+        r.nick,
+        fmtDate(r.draftDate),
+        TRACK[r.track] || r.track,
+        REWARD[r.reward] || r.reward,
+        fmtAt(r.at),
+        confirmed[r.nick] ? '확정' : '',
+      ].join('\t'));
+    });
+    return lines.join('\n');
+  }
+
+  function copyTable(btn) {
+    var text = tableText();
+    var done = function () {
+      btn.textContent = '✓ 복사됐어요';
+      btn.classList.add('is-done');
+      setTimeout(function () { btn.textContent = '표 전체 복사'; btn.classList.remove('is-done'); }, 2000);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
+    } else {
+      fallback(text, done);
+    }
+  }
+
+  function fallback(text, done) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed'; ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      done();
+    } catch (e) {
+      window.prompt('아래 내용을 복사해 주세요.', text);
+    }
+  }
+
+  function toggleConfirm(nick, on) {
+    api({ code: code, action: on ? 'confirm' : 'unconfirm', nick: nick }).then(function (r) {
+      if (r.status === 200 && r.data.ok) {
+        confirmed = r.data.confirmed || {};
+        renderList();
+      } else {
+        window.alert('처리하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    }).catch(function () {
+      window.alert('연결이 불안정합니다. 다시 시도해 주세요.');
+    });
+  }
+
+  // ─── 목록 화면 ───
+  function renderList() {
+    var list = visibleRows();
+    var latestCount = list.filter(function (r) { return r.latest; }).length;
+
+    var body = list.map(function (r) {
+      var isOn = !!confirmed[r.nick];
+      return '<tr class="' + (r.latest ? '' : 'is-old') + '">' +
+        '<td class="nick">' + esc(r.nick) + (r.latest ? '' : ' <span class="old-note">지난 제출</span>') + '</td>' +
+        '<td>' + esc(fmtDate(r.draftDate)) + '</td>' +
+        '<td><span class="tag ' + esc(r.track) + '">' + esc(TRACK[r.track] || r.track) + '</span></td>' +
+        '<td><span class="tag ' + esc(r.reward) + '">' + esc(REWARD[r.reward] || r.reward) + '</span></td>' +
+        '<td>' + esc(fmtAt(r.at)) + '</td>' +
+        '<td>' + (r.latest
+          ? '<button class="mini' + (isOn ? ' is-done' : '') + '" data-nick="' + esc(r.nick) + '" data-on="' + (isOn ? '1' : '0') + '">' +
+            (isOn ? '✓ 확정됨' : '확정하기') + '</button>'
+          : '') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    root.innerHTML =
+      '<div class="wrap">' +
+      '<div class="head"><h1>진행 정보 접수 현황</h1>' +
+      '<span class="count">' + latestCount + '명 · 전체 기록 ' + list.length + '건</span></div>' +
+      '<p class="sub">같은 분이 여러 번 내신 경우 <b>가장 마지막 제출</b>이 유효합니다. 지난 제출은 흐리게 표시됩니다.</p>' +
+      '<div class="bar">' +
+      '<input class="search" id="q" type="search" placeholder="활동명으로 찾기" value="' + esc(keyword) + '" />' +
+      '<button class="mini" id="copy">표 전체 복사</button>' +
+      '<button class="mini" id="reload">새로고침</button>' +
+      '</div>' +
+      (list.length
+        ? '<div class="scroll"><table><thead><tr>' +
+          '<th>활동명</th><th>초안 공유 예정일</th><th>보상 수령 방식</th><th>보상 형태</th><th>제출 시각</th><th>확정</th>' +
+          '</tr></thead><tbody>' + body + '</tbody></table></div>'
+        : '<div class="empty">아직 접수된 내용이 없습니다.</div>') +
+      '<p class="foot">‘표 전체 복사’는 최신 제출만 담습니다. 노션 표에 그대로 붙여넣을 수 있어요.<br />' +
+      '‘확정하기’를 누르면 그분은 더 이상 내용을 수정할 수 없습니다.</p>' +
+      '</div>';
+
+    var q = document.getElementById('q');
+    q.addEventListener('input', function () {
+      keyword = q.value.trim();
+      var pos = q.selectionStart;
+      renderList();
+      var nq = document.getElementById('q');
+      nq.focus();
+      try { nq.setSelectionRange(pos, pos); } catch (e) { /* 무시 */ }
+    });
+    document.getElementById('copy').addEventListener('click', function () { copyTable(this); });
+    document.getElementById('reload').addEventListener('click', function () {
+      api({ code: code, action: 'list' }).then(function (r) {
+        if (r.status === 200 && r.data.ok) {
+          rows = r.data.rows || [];
+          confirmed = r.data.confirmed || {};
+          renderList();
+        }
+      });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('button[data-nick]'), function (b) {
+      b.addEventListener('click', function () {
+        toggleConfirm(b.getAttribute('data-nick'), b.getAttribute('data-on') !== '1');
+      });
+    });
+  }
+
+  renderGate('');
+})();
+</script>
+</body>
+</html>
