@@ -1625,3 +1625,17 @@ body {
   border-radius: 0 8px 8px 0;
   font-size: 12.5px; line-height: 1.55; color: #b91c1c;
 }
+
+/* 상품 쿠폰을 고른 사람에게만 보이는 희망 상품 입력칸 */
+.reply-wish { margin-top: 12px; }
+.reply-wish-label {
+  display: block; font-size: 12.5px; font-weight: 700;
+  color: var(--ink-700, #44403c); margin-bottom: 6px;
+}
+.reply-wish-input {
+  width: 100%; box-sizing: border-box;
+  padding: 11px 13px; font-size: 16px;   /* 16px 미만이면 iOS에서 화면이 확대된다 */
+  border: 1.5px solid var(--ink-200, #e7e5e4); border-radius: 10px;
+  background: #fff; color: var(--ink-900, #1c1917); outline: none;
+}
+.reply-wish-input:focus { border-color: var(--ink-900, #1c1917); }

@@ -17,15 +17,21 @@
 //   끝내기 위해서다. 같은 사람이 여러 번 내면 여러 줄이 남고, 가장 마지막 것이
 //   유효한 값이다. 지운 기록이 없어야 나중에 확인할 수 있다.
 //
+//   담당자가 확정 표시를 해도 다시 내는 것을 막지 않는다. 확정은 담당자가
+//   "여기까지 확인했다"고 표시해 두는 용도이지, 크리에이터를 잠그는 장치가
+//   아니다. 몇 분 차이로 문이 닫히면 결국 담당자에게 문의가 들어와 일만
+//   늘어난다. 확정 뒤에 새로 들어온 건은 담당자 화면에서 눈에 띄게 보여준다.
+//
 // 환경변수(없으면 접수를 건너뛰고 화면은 복사 안내로 되돌아간다):
 //   GITHUB_TOKEN / GITHUB_OWNER / GITHUB_REPO / GITHUB_LOG_BRANCH(기본 chatbot-logs)
 //
 // ⚠️ 개인정보: 활동명은 크리에이터가 직접 적은 값이라 연락처를 적을 수도 있다.
 //    지금은 공개 저장소에 쌓이므로 저장 직전에 scrub()으로 가린다.
 
-import { appendToGithubFile, readGithubFile } from '../lib/github.js';
+import { appendToGithubFile } from '../lib/github.js';
 
 const NICK_MAX = 20;
+const WISH_MAX = 60;
 const MAX_LEN = 200;
 
 // 화면에서 고를 수 있는 값만 받는다. 여기 없는 값이 오면 접수하지 않는다 —
@@ -65,13 +71,17 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ ok: false }); return; }
   if (!isSameOrigin(req)) { res.status(403).json({ ok: false }); return; }
 
-  const { brand, nick, draftDate, trackId, rewardId } = req.body || {};
+  const { brand, nick, draftDate, trackId, rewardId, wish } = req.body || {};
 
   const name = scrub(nick).replace(/\s+/g, ' ').trim().slice(0, NICK_MAX);
   if (!name) { res.status(400).json({ ok: false, reason: 'nick' }); return; }
   if (!isDate(draftDate)) { res.status(400).json({ ok: false, reason: 'date' }); return; }
   if (!TRACKS.includes(trackId)) { res.status(400).json({ ok: false, reason: 'track' }); return; }
   if (!REWARDS.includes(rewardId)) { res.status(400).json({ ok: false, reason: 'reward' }); return; }
+  // 상품 쿠폰을 고르면 어떤 룩업인지까지 받아야 한다. 이게 없으면 담당자가
+  // 결국 따로 물어보게 되어, 폼으로 받는 의미가 사라진다.
+  const want = scrub(wish).replace(/\s+/g, ' ').trim().slice(0, WISH_MAX);
+  if (rewardId === 'goods' && !want) { res.status(400).json({ ok: false, reason: 'wish' }); return; }
 
   const gh = {
     token: process.env.GITHUB_TOKEN,
@@ -86,19 +96,6 @@ export default async function handler(req, res) {
     return;
   }
 
-  // 담당자가 확정한 뒤에는 더 이상 받지 않는다. 확정 여부를 화면에 미리
-  // 보여주지는 않고, 바꾸려고 할 때만 알린다 — 처리 상태를 실시간으로 중계하면
-  // 크리에이터가 담당자 업무를 들여다보는 모양이 되기 때문이다.
-  try {
-    const f = await readGithubFile({ ...gh, path: 'creator-logs/confirmed.json' });
-    if (f) {
-      const map = JSON.parse(f.content) || {};
-      if (map[name]) { res.status(409).json({ ok: false, reason: 'confirmed' }); return; }
-    }
-  } catch {
-    // 확정 목록을 못 읽었다고 접수를 막지는 않는다. 못 내는 쪽이 더 큰 문제다.
-  }
-
   const now = new Date();
   const month = now.toISOString().slice(0, 7); // YYYY-MM
 
@@ -109,6 +106,7 @@ export default async function handler(req, res) {
     draftDate,
     track: trackId,
     reward: rewardId,
+    wish: want,
   });
 
   try {

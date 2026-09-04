@@ -254,15 +254,16 @@ function loadReply() {
     if (!saved || !saved.savedAt || Date.now() - saved.savedAt > REPLY_TTL_MS) return {};
     // 예전에 저장된 값에 없는 항목이 있어도 깨지지 않도록 항상 기본값을 깔아둔다.
     // track은 나중에 추가된 항목이라, 그전에 저장된 값에는 아예 없다.
-    return { date: saved.date ?? '', track: saved.track ?? '', reward: saved.reward ?? '' };
+    // wish는 나중에 추가된 항목이라, 그전에 저장된 값에는 아예 없다.
+    return { date: saved.date ?? '', track: saved.track ?? '', reward: saved.reward ?? '', wish: saved.wish ?? '' };
   } catch {
     return {};   // 저장값이 망가져 있어도 화면은 정상 동작해야 한다
   }
 }
 
-function saveReply(date, track, reward) {
+function saveReply(date, track, reward, wish) {
   try {
-    localStorage.setItem(REPLY_KEY, JSON.stringify({ v: 2, date, track, reward, savedAt: Date.now() }));
+    localStorage.setItem(REPLY_KEY, JSON.stringify({ v: 3, date, track, reward, wish, savedAt: Date.now() }));
   } catch { /* 저장 실패해도 이번 이용엔 지장 없다 */ }
 }
 
@@ -277,7 +278,7 @@ function loadSent() {
   try {
     const v = JSON.parse(localStorage.getItem(SENT_KEY) || 'null');
     if (!v || !v.at) return null;
-    return { at: v.at, date: v.date ?? '', track: v.track ?? '', reward: v.reward ?? '', nick: v.nick ?? '' };
+    return { at: v.at, date: v.date ?? '', track: v.track ?? '', reward: v.reward ?? '', wish: v.wish ?? '', nick: v.nick ?? '' };
   } catch {
     return null;
   }
@@ -317,6 +318,13 @@ function SentSummary({ sent, onEdit }) {
         <span className="sum-label"><span className="reply-num">③</span> 보상 형태</span>
         <span className="sum-value">{reward ? reward.label : '-'}</span>
       </div>
+      {sent.wish && (
+        <div className="sum-row">
+          <span className="sum-check">✅</span>
+          <span className="sum-label">희망 상품</span>
+          <span className="sum-value">{sent.wish}</span>
+        </div>
+      )}
       <button type="button" className="sum-edit" onClick={onEdit}>수정하기</button>
       <div className="reply-guide">다시 제출하시면 마지막에 보내신 내용이 적용됩니다</div>
     </>
@@ -327,7 +335,7 @@ function SentSummary({ sent, onEdit }) {
 // 원래는 마지막 페이지에 있었는데, 다 읽고 "끝났다" 상태에서는 그냥 넘겨버려서
 // 회신율이 낮았다. 가이드 원문이 이미 이 자리에서 "수령 방식을 사전 공유해달라"고
 // 부탁하고 있으므로, 부탁하는 문장 바로 옆에 답하는 칸을 둔다.
-function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, canCopy,
+function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, wish, setWish, canCopy,
                      sent, editing, sending, sendErr, onSubmit, onEdit }) {
   // 수령 방식은 이제 이 폼이 아니라 바로 위 '언제 받나' 카드에서 직접 고른다.
   // 아직 안 골랐으면 그 자리로 스크롤해 이동시켜 준다.
@@ -394,6 +402,23 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, ca
           ))}
         </div>
         <div className="reply-hint">금액·구성은 유입 수에 따라 정해져요</div>
+        {/* 상품 쿠폰은 '어느 룩업인지'가 있어야 준비가 된다. 고른 사람에게만
+            보여주고, 금액 쿠폰을 고른 사람에게는 묻지 않는다. */}
+        {rewardId === 'goods' && (
+          <div className="reply-wish">
+            <label className="reply-wish-label" htmlFor="wish-input">희망하시는 룩업 상품</label>
+            <input
+              id="wish-input"
+              className="reply-wish-input"
+              type="text"
+              maxLength={60}
+              value={wish}
+              onChange={(e) => setWish(e.target.value)}
+              placeholder="예: 9월 라인업 ○○ 룩업"
+            />
+            <div className="reply-hint">아직 정하지 못하셨다면 &lsquo;상담 후 결정&rsquo;이라고 적어주셔도 됩니다</div>
+          </div>
+        )}
       </div>
 
       <div className="reply-warn">제출하신 뒤에도 담당자 확인 전까지는 수정하실 수 있습니다. 확인된 뒤에는 변경·교환이 어렵습니다.</div>
@@ -553,6 +578,9 @@ function FinalOption() {
   const [draftDate, setDraftDate] = React.useState(() => loadReply().date ?? '');
   const [trackId, setTrackId] = React.useState(() => loadReply().track ?? '');
   const [rewardId, setRewardId] = React.useState(() => loadReply().reward ?? '');
+  // 상품 쿠폰을 고르면 '어느 룩업인지'까지 받는다. 이게 없으면 담당자가 결국
+  // 따로 물어보게 되어, 폼으로 받는 의미가 사라진다.
+  const [wish, setWish] = React.useState(() => loadReply().wish ?? '');
   const [copied, setCopied] = React.useState(false);
 
   // 접수 상태 — 냈으면 그 내용을 그대로 다시 보여주고, 수정하기를 누르면
@@ -563,11 +591,12 @@ function FinalOption() {
   const [sendErr, setSendErr] = React.useState('');
 
   // 고른 값이 바뀔 때마다 저장 — 중간에 새로고침해도 남아 있게
-  React.useEffect(() => { saveReply(draftDate, trackId, rewardId); }, [draftDate, trackId, rewardId]);
+  React.useEffect(() => { saveReply(draftDate, trackId, rewardId, wish); }, [draftDate, trackId, rewardId, wish]);
 
   const track = TRACK_CHOICES.find(t => t.id === trackId);
   const reward = REWARD_CHOICES.find(r => r.id === rewardId);
-  const canCopy = Boolean(draftDate && track && reward);
+  // 상품 쿠폰이면 희망 상품까지 적어야 낼 수 있다
+  const canCopy = Boolean(draftDate && track && reward && (rewardId !== 'goods' || wish.trim()));
 
   // 사이트가 직접 접수한다. 실패하면 예전 방식(복사해서 전달)으로 안내를 되돌려,
   // "냈다고 생각했는데 안 간" 상태가 생기지 않게 한다.
@@ -585,16 +614,17 @@ function FinalOption() {
           draftDate,
           trackId,
           rewardId,
+          wish: wish.trim(),
         }),
       });
       const data = await r.json().catch(() => ({}));
       if (r.ok && data.ok) {
-        const rec = { at: data.at || new Date().toISOString(), date: draftDate, track: trackId, reward: rewardId, nick: window.CG_NICK || '' };
+        const rec = { at: data.at || new Date().toISOString(), date: draftDate, track: trackId, reward: rewardId, wish: wish.trim(), nick: window.CG_NICK || '' };
         setSent(rec);
         saveSent(rec);
         setEditing(false);
-      } else if (data.reason === 'confirmed') {
-        setSendErr('담당자 확인이 완료되어 변경이 어렵습니다. 담당자에게 문의해 주세요.');
+      } else if (data.reason === 'wish') {
+        setSendErr('희망하시는 룩업 상품을 적어 주세요.');
       } else if (data.reason === 'nick') {
         setSendErr('활동명을 확인할 수 없습니다. 새로고침 후 다시 시도해 주세요.');
       } else {
@@ -802,6 +832,13 @@ function FinalOption() {
                   <span className="sum-label"><span className="reply-num">③</span> 보상 형태</span>
                   <span className="sum-value">{reward.label}</span>
                 </div>
+                {rewardId === 'goods' && wish.trim() && (
+                  <div className="sum-row">
+                    <span className="sum-check">✅</span>
+                    <span className="sum-label">희망 상품</span>
+                    <span className="sum-value">{wish.trim()}</span>
+                  </div>
+                )}
 
                 <button type="button" className="reply-copy" disabled={sending} onClick={submitReply}>
                   {sending ? '보내는 중…' : '제출하기'}
@@ -836,6 +873,13 @@ function FinalOption() {
                   <span className="sum-label"><span className="reply-num">③</span> 보상 형태</span>
                   <span className="sum-value">{reward ? reward.label : '미선택'}</span>
                 </div>
+                {rewardId === 'goods' && (
+                  <div className={`sum-row${wish.trim() ? '' : ' is-todo'}`}>
+                    <span className="sum-check">{wish.trim() ? '✅' : '⬜'}</span>
+                    <span className="sum-label">희망 상품</span>
+                    <span className="sum-value">{wish.trim() || '미입력'}</span>
+                  </div>
+                )}
                 <button type="button" className="reply-copy" onClick={goReward}>고르러 가기</button>
                 <div className="reply-guide">06 보상 탭으로 이동해요</div>
               </>
@@ -895,7 +939,7 @@ function FinalOption() {
       {tab === 'rules'   && <Final_Rules />}
       {tab === 'reward'  && (
         <Final_Reward
-          reply={{ draftDate, setDraftDate, trackId, setTrackId, rewardId, setRewardId, canCopy,
+          reply={{ draftDate, setDraftDate, trackId, setTrackId, rewardId, setRewardId, wish, setWish, canCopy,
                    sent, editing, sending, sendErr, onSubmit: submitReply, onEdit: () => setEditing(true) }}
         />
       )}
