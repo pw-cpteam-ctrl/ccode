@@ -15,6 +15,8 @@
   --gap:14px;
   --ui-bg:#f0ede7; --ui-panel:#faf8f4; --ui-border:#ddd8ce;
   --ui-text:#252018; --ui-sub:#7d7568; --ui-accent:#1452c0; --ui-card:#fff;
+  /* 작업가이드 전용 노랑 — 포스터 오픈일 노랑(#FFE500)을 UI 밝기에 맞춰 낮춘 톤 */
+  --ui-guide-bg:#fff8d6; --ui-guide-line:#e3c53d; --ui-guide-fg:#6b5300; --ui-guide-strong:#ffd83a;
 }
 *{box-sizing:border-box;}html,body{margin:0;padding:0;}
 body{background:var(--ui-bg);color:var(--ui-text);font-family:'Pretendard',-apple-system,'Malgun Gothic',sans-serif;display:flex;min-height:100vh;}
@@ -134,7 +136,12 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 .p-hd .brand{display:flex;align-items:center;gap:13px;flex-shrink:0;}
 .p-logo{height:64px;width:auto;display:block;}
 /* 스토어명: 로고~오픈일 사이 가운데 */
-.p-store{font-size:22px;font-weight:800;letter-spacing:5px;opacity:.95;flex:1;text-align:center;}
+/* flex:1이면 로고·오픈일이 차지하고 남은 공간의 가운데에 놓여서, 오픈일 글자 수가
+   바뀔 때마다 좌우로 밀렸음(그래서 매번 드래그바로 맞춰야 했음).
+   헤더 폭 기준으로 진짜 가운데에 두고, '스토어명 위치' 슬라이더는 그 중앙을 0으로 삼음 */
+.p-store{position:absolute;left:0;right:0;text-align:center;pointer-events:none;
+  font-size:22px;font-weight:800;letter-spacing:5px;opacity:.95;}
+.p-hd .top{position:relative;}
 .p-open{font-weight:700;font-size:38px;color:#FFE500;line-height:1;white-space:nowrap;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.15);flex-shrink:0;}
 .p-title{font-family:'Paperlogy','Pretendard',sans-serif;font-weight:900;font-size:92px;line-height:1;letter-spacing:-2px;text-shadow:0 3px 0 rgba(0,0,0,.1);text-align:center;}
 
@@ -208,15 +215,17 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 .slotrow{display:grid;grid-template-columns:82px 1fr auto;align-items:center;gap:8px;margin-bottom:10px;}
 .p-head-1{display:flex;align-items:center;gap:6px;}
 .guide-wrap{position:relative;margin-left:auto;flex:0 0 auto;}
-.guide-btn{border:1px solid var(--ui-accent);background:var(--ui-card);color:var(--ui-accent);
-  border-radius:999px;padding:4px 11px;font-size:12px;font-weight:700;cursor:pointer;
+/* 패널 강조색(#1452c0)과 같으면 다른 파란 버튼들에 묻힘.
+   포스터 오픈일에 이미 쓰는 노랑(#FFE500)을 UI 밝기에 맞춰 낮춘 톤이라 팔레트가 안 깨짐 */
+.guide-btn{border:1px solid var(--ui-guide-line);background:var(--ui-guide-bg);color:var(--ui-guide-fg);
+  border-radius:999px;padding:4px 11px;font-size:12px;font-weight:800;cursor:pointer;
   font-family:inherit;white-space:nowrap;}
-.guide-btn:hover,.guide-btn.on{background:var(--ui-accent);color:#fff;}
+.guide-btn:hover,.guide-btn.on{background:var(--ui-guide-strong);border-color:var(--ui-guide-strong);color:#3a2f05;}
 .guide-pop{display:none;position:absolute;right:0;top:calc(100% + 7px);z-index:80;width:290px;
   background:var(--ui-card);border:1px solid var(--ui-border);border-radius:10px;
   box-shadow:0 6px 22px rgba(37,32,24,.2);padding:11px 14px 12px;}
 .guide-pop.open{display:block;}
-.guide-ttl{font-size:12px;font-weight:800;color:var(--ui-accent);letter-spacing:.02em;margin-bottom:7px;}
+.guide-ttl{font-size:12px;font-weight:800;color:var(--ui-guide-fg);letter-spacing:.02em;margin-bottom:7px;}
 .guide-pop ul{margin:0;padding-left:17px;display:flex;flex-direction:column;gap:5px;}
 .guide-pop li{font-size:13px;line-height:1.5;color:var(--ui-text);word-break:keep-all;}
 .p-head-1 h1{margin:0;flex:0 0 auto;}
@@ -239,12 +248,15 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
   color:var(--ui-sub);white-space:nowrap;}
 .saved .dot{width:6px;height:6px;border-radius:50%;background:#2f6b3a;flex:0 0 auto;transition:background .2s;}
 .saved.saving .dot{background:#c39b1e;}
+.saved.failed .dot{background:#c0392b;}
+.saved.failed{color:#c0392b;font-weight:700;}
 .gpane{display:none;}
 .gpane.on{display:block;}
 
 /* 라벨 · 조작 · 값을 한 줄에 */
 .frow{display:grid;grid-template-columns:82px 1fr;align-items:center;gap:8px;min-height:32px;margin-bottom:5px;}
 .frow.pair{grid-template-columns:82px 1fr 1fr;}
+.frow.trio{grid-template-columns:82px 1fr 58px 1fr;}
 .frow > .flbl{font-size:12.5px;font-weight:600;color:var(--ui-sub);text-align:right;line-height:1.25;}
 .frow .field{margin:0;}
 .frow .field label{display:none;}
@@ -259,22 +271,19 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
 .fixedbox .frow.pair{grid-template-columns:76px 1fr 1fr;}
 
 /* 사진 행: 상시 노출 13개 → 접힌 행 + 선택 시 상세 */
-/* 점처럼 보이지 않게 크기를 키움 */
-.item-exp{width:30px;height:44px;flex:0 0 30px;border:1px solid var(--ui-border);background:var(--ui-bg);
-  color:var(--ui-sub);border-radius:5px;cursor:pointer;font-size:15px;line-height:1;font-family:inherit;padding:0;}
-.item-exp:hover{border-color:var(--ui-accent);color:var(--ui-accent);}
-.item.sel .item-exp{background:var(--ui-accent);border-color:var(--ui-accent);color:#fff;}
-.item-body{display:none;flex-basis:100%;border-top:1px solid var(--ui-border);
-  margin-top:2px;padding-top:8px;}
+/* 가로 구분선은 파란 테두리로 이미 펼친 게 보이는 상태에서 한 번 더 긋는 셈이라 없앰
+   (선 1px보다 위아래 여백 10px이 자리를 더 먹었음) */
+.item-body{display:none;flex-basis:100%;margin-top:1px;}
 .item.sel{border-color:var(--ui-accent);}
 .item.sel .item-body{display:grid;gap:6px;}
 .irow{display:grid;grid-template-columns:56px 1fr;align-items:center;gap:8px;}
 .ilbl{font-size:11.5px;font-weight:600;color:var(--ui-sub);text-align:right;}
-.item-extra{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+.item-extra{display:flex;align-items:center;justify-content:center;gap:11px;flex-wrap:wrap;}
 .ex-sep{width:1px;height:22px;background:var(--ui-border);flex:0 0 auto;}
 .bgstep{display:flex;align-items:center;gap:3px;flex:0 0 auto;}
-.bgstep button{width:19px;height:20px;border:1px solid var(--ui-border);background:var(--ui-bg);
-  color:var(--ui-sub);border-radius:4px;cursor:pointer;font-size:8px;line-height:1;padding:0;
+/* 가로형으로 눕히며 폭을 28→19px로 미리 줄여놨는데 실제로 넘치지 않아 원래대로 되돌림 */
+.bgstep button{width:28px;height:20px;border:1px solid var(--ui-border);background:var(--ui-bg);
+  color:var(--ui-sub);border-radius:4px;cursor:pointer;font-size:10px;line-height:1;padding:0;
   font-family:inherit;display:grid;place-items:center;}
 .bgstep button:hover{border-color:var(--ui-accent);color:var(--ui-accent);}
 .bgstep .bgv{font-size:11.5px;font-weight:700;color:var(--ui-text);min-width:36px;text-align:center;}
@@ -350,6 +359,8 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
             <li>제품 사진 크게 (작아 보이지 않게)</li>
             <li>글자가 피규어를 너무 가리지 않게</li>
             <li>흰 배경 사진 사용 지양</li>
+            <li>웬만하면 첫 줄 2칸 권장</li>
+            <li>비인기 / 남성향 상품은 뒷페이지에 그룹핑</li>
           </ul>
         </div>
       </div>
@@ -438,8 +449,12 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
       <div class="fin"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="chkHeader" checked onchange="toggleHeader()"/> 사용</label>
         <span style="font-size:12.5px;color:var(--ui-sub);white-space:nowrap">꺼짐 여백</span>
         <input type="range" id="headerPad" min="5" max="120" value="30" oninput="toggleHeader()" style="flex:1"/></div></div>
-    <div class="frow pair"><span class="flbl">월 / 오픈일</span>
+    <div class="frow trio"><span class="flbl">월 / 차수<br>/ 오픈일</span>
       <div class="field"><input type="text" id="inMonth" value="6월"/></div>
+      <div class="field"><select id="titleSeq" onchange="syncHeader()" title="같은 달에 두 번 나갈 때 타이틀 뒤에 -2, -3처럼 붙임"
+        style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:5px 4px;font-size:13px;font-family:inherit;">
+        <option value="">—</option><option value="2">-2</option><option value="3">-3</option>
+        <option value="4">-4</option><option value="5">-5</option></select></div>
       <div class="field"><input type="text" id="inOpen" value="6/4"/></div></div>
     <div class="frow pair"><span class="flbl">스토어명<br>글자 / 굵기</span>
       <div class="field"><input type="text" id="inStore" value="메가하우스 공식 스토어"/></div>
@@ -1119,7 +1134,7 @@ window.addEventListener('mouseup', e => {
     // 파란 표시만 주면 세부 설정은 또 화살표를 눌러야 나와서 두 번 일함.
     // 누른 칸의 행을 바로 펼치고, 한 번에 하나만 펼쳐 두도록 이전 것은 접음
     document.querySelectorAll('.item.selected').forEach(r => r.classList.remove('selected'));
-    setOpenItem(it.id);
+    setOpenItem(String(_openItemId) === String(it.id) ? null : it.id);
     const row = document.querySelector(`.item[data-item-id="${it.id}"]`);
     if (row) {
       row.classList.add('selected');
@@ -1324,10 +1339,7 @@ let _openItemId = null;
 function setOpenItem(id) {
   _openItemId = id;
   document.querySelectorAll('.item').forEach(r => {
-    const on = String(r.dataset.itemId) === String(id);
-    r.classList.toggle('sel', on);
-    const b = r.querySelector('.item-exp');
-    if (b) { b.textContent = on ? '▴' : '▾'; b.title = on ? '세부 설정 접기' : '세부 설정 펼치기'; }
+    r.classList.toggle('sel', String(r.dataset.itemId) === String(id));
   });
 }
 
@@ -1514,17 +1526,6 @@ function makeItemRow(it, i, pg) {
   wrap.appendChild(grow);
 
   // ctrl: swap page + delete (▲▼ removed; drag handles reorder)
-  // 부가 설정(재판·초회특전·셀배경·메모) 펼침 버튼 — 항상 보여야 찾을 수 있으므로
-  // hover에 숨기는 .ctrl 바깥에 따로 둠
-  const expand = document.createElement('button');
-  expand.className = 'item-exp'; expand.textContent = '▾'; expand.title = '세부 설정 펼치기';
-  expand.textContent = String(_openItemId) === String(it.id) ? '▴' : '▾';
-  expand.addEventListener('click', e => {
-    e.stopPropagation();
-    // 한 번에 하나만 펼쳐 둠 (여러 개가 열려 있으면 목록을 훑기 어려움)
-    setOpenItem(String(_openItemId) === String(it.id) ? null : it.id);
-  });
-  wrap.appendChild(expand);
 
   const ctrl = document.createElement('div'); ctrl.className = 'ctrl';
   // 페이지 이동: 이전/다음 버튼을 각각 따로 둠. 예전엔 버튼이 하나뿐이라
@@ -1625,7 +1626,9 @@ function syncHeader() {
 
   pages.forEach((_, i) => { const p = i+1;
     const titleEl = $(`#title${p}`); if (!titleEl) return;
-    titleEl.textContent = m ? `${m} 신제품 예고` : '신제품 예고';
+    // 같은 달에 두 번 나갈 때 타이틀 뒤에 -2, -3을 붙임
+    const seq = $('#titleSeq') ? $('#titleSeq').value : '';
+    titleEl.textContent = (m ? `${m} 신제품 예고` : '신제품 예고') + (seq ? `-${seq}` : '');
     titleEl.style.fontSize = tSize;
     const openEl = $(`#open${p}`); if (openEl) openEl.textContent = o ? `${o} 오픈` : '';
     const storeEl = $(`#store${p}`);
@@ -2292,6 +2295,7 @@ function buildState() {
       pwLogoSize: $('#pwLogoSize') ? $('#pwLogoSize').value : '32',
       storeFontWeight: $('#storeFontWeight') ? $('#storeFontWeight').value : '800',
       storeOffset: $('#storeOffset') ? $('#storeOffset').value : '0',
+      titleSeq: $('#titleSeq') ? $('#titleSeq').value : '',
       gradStart: $('#gradStart') ? $('#gradStart').value : '20',
       gradWidth: $('#gradWidth') ? $('#gradWidth').value : '30',
       gradOpacity: $('#gradOpacity') ? $('#gradOpacity').value : '88',
@@ -2326,25 +2330,33 @@ function buildState() {
 // 먼저 시작한 쓰기(옛 데이터)가 나중에 커밋되면 최신 저장을 덮어쓸 수 있기 때문.
 // JSON은 호출 시점에 직렬화해 큐에 순서대로 넣으므로 항상 마지막 호출 내용이 최종본이 된다.
 let _saveQueue = Promise.resolve();
-// 저장이 실제로 끝났는지 화면에서 알 수 있게 (결과가 최신인지 모르는 상태를 없앰)
-let _savedTimer;
-function markSaving() {
+// 저장이 실제로 끝났는지 화면에서 알 수 있게.
+// 예전엔 저장 함수가 불린 뒤 0.5초 타이머로 '저장됨'을 띄워서, 실제로 실패해도
+// 저장된 것처럼 보였음 → 브라우저 저장소 쓰기가 끝난 시점에 맞춰 바꿈
+function setSaveState(state) {
   const ind = document.getElementById('savedInd'), txt = document.getElementById('savedTxt');
   if (!ind || !txt) return;
-  ind.classList.add('saving'); txt.textContent = '저장 중…';
-  clearTimeout(_savedTimer);
-  _savedTimer = setTimeout(() => { ind.classList.remove('saving'); txt.textContent = '저장됨'; }, 500);
+  ind.classList.remove('saving', 'failed');
+  if (state === 'saving') { ind.classList.add('saving'); txt.textContent = '저장 중…'; }
+  else if (state === 'failed') { ind.classList.add('failed'); txt.textContent = '저장 실패'; }
+  else { txt.textContent = '저장됨'; }
 }
 
 function saveState() {
-  markSaving();
+  setSaveState('saving');
   const json = JSON.stringify(buildState());
   const key = slotStateKey(getActiveSlot());
-  _saveQueue = _saveQueue.then(() => idbSet(key, json)).catch(() => {
-    // IndexedDB 실패 시 localStorage 폴백 (5MB 한도 내에서만 성공)
-    try { localStorage.setItem(key, json); }
-    catch(e) { toast('⚠️ 저장 실패: 브라우저 저장소에 기록하지 못했습니다. 📤 내보내기로 백업하세요.'); }
-  });
+  _saveQueue = _saveQueue
+    .then(() => idbSet(key, json))
+    .then(() => setSaveState('saved'))
+    .catch(() => {
+      // IndexedDB 실패 시 localStorage 폴백 (5MB 한도 내에서만 성공)
+      try { localStorage.setItem(key, json); setSaveState('saved'); }
+      catch(e) {
+        setSaveState('failed');
+        toast('⚠️ 저장 실패: 브라우저 저장소에 기록하지 못했습니다. 📤 내보내기로 백업하세요.');
+      }
+    });
   return _saveQueue;
 }
 // 휠 확대·드래그처럼 짧은 시간에 수십 번 발생하는 조작용 — 마지막 조작 후 한 번만 저장
@@ -2391,6 +2403,8 @@ async function loadState() {
     if (st.pwLogoSize && $('#pwLogoSize')) $('#pwLogoSize').value = st.pwLogoSize;
     if (st.storeFontWeight && $('#storeFontWeight')) $('#storeFontWeight').value = st.storeFontWeight;
     if (st.storeOffset && $('#storeOffset')) $('#storeOffset').value = st.storeOffset;
+    // 이 항목이 없던 예전 저장본은 '없음'으로 열림
+    if (st.titleSeq != null && $('#titleSeq')) $('#titleSeq').value = st.titleSeq;
     if (st.gradStart && $('#gradStart')) $('#gradStart').value = st.gradStart;
     if (st.gradWidth && $('#gradWidth')) $('#gradWidth').value = st.gradWidth;
     if (st.gradOpacity && $('#gradOpacity')) $('#gradOpacity').value = st.gradOpacity;
