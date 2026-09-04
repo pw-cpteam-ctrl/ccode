@@ -1737,11 +1737,24 @@ function applyOhBox() {
     el.style.color = ohBoxWhite ? '#111' : '#fff';
   });
 }
+// 가로를 width:auto로 두면 "원본 비율대로 알아서" 계산되길 기대하는 건데,
+// 다운로드용 이미지 생성 라이브러리(html-to-image)는 이 추론을 놓치고 정사각으로
+// 그리는 경우가 있음. 추론할 여지가 없게 가로 픽셀을 직접 계산해 박아넣음
+function fixLogoAspect(el, heightPx) {
+  el.style.height = heightPx + 'px';
+  const apply = () => {
+    if (!el.naturalWidth || !el.naturalHeight) return;
+    el.style.width = (heightPx * el.naturalWidth / el.naturalHeight).toFixed(2) + 'px';
+  };
+  if (el.complete && el.naturalWidth) apply();
+  else el.addEventListener('load', apply, { once: true });
+}
+
 function syncLogoSize() {
-  const topSz = $('#logoSize').value + 'px';
-  document.querySelectorAll('.p-logo').forEach(el => el.style.height = topSz);
-  const pwSz = $('#pwLogoSize').value + 'px';
-  document.querySelectorAll('.p-ft-logo').forEach(el => el.style.height = pwSz);
+  const topSz = +$('#logoSize').value;
+  document.querySelectorAll('.p-logo').forEach(el => fixLogoAspect(el, topSz));
+  const pwSz = +$('#pwLogoSize').value;
+  document.querySelectorAll('.p-ft-logo').forEach(el => fixLogoAspect(el, pwSz));
   if (_bootDone) saveState();
 }
 function initWrapLogos(pg) {
@@ -1899,6 +1912,7 @@ function loadLogoFile(file, ids, isMega) {
     const src = e.target.result;
     if (isMega) customMegaSrc = src; else customPWSrc = src;
     ids.forEach(id => { const el = $(id); if(el) el.src = src; });
+    syncLogoSize(); // 새 로고의 원본 비율로 가로 폭을 다시 계산
     saveState();
   };
   r.readAsDataURL(file);
@@ -2418,7 +2432,7 @@ async function loadState() {
     toggleHeader();
     if (st.blurPx != null) { blurPx = st.blurPx; const sl=$('#sliderBlurPx'); if(sl){sl.value=blurPx;} const lbl=$('#blurPxVal'); if(lbl) lbl.textContent=blurPx; }
     if (st.blurBright != null) { blurBright = st.blurBright; const sl=$('#sliderBlurBright'); if(sl){sl.value=blurBright;} const lbl=$('#blurBrightVal'); if(lbl) lbl.textContent=blurBright; }
-    if (st.customMegaSrc) { customMegaSrc = st.customMegaSrc; document.querySelectorAll('.p-logo').forEach(el => el.src = customMegaSrc); document.querySelectorAll('.oh-logo').forEach(el => el.src = customMegaSrc); }
+    if (st.customMegaSrc) { customMegaSrc = st.customMegaSrc; document.querySelectorAll('.p-logo').forEach(el => el.src = customMegaSrc); document.querySelectorAll('.oh-logo').forEach(el => el.src = customMegaSrc); syncLogoSize(); }
     if (st.customPWSrc) { customPWSrc = st.customPWSrc; document.querySelectorAll('.p-ft-logo').forEach(el => el.src = customPWSrc); }
     if (st.ohTitle != null && $('#inOhTitle')) $('#inOhTitle').value = st.ohTitle;
     if (st.ohDate != null && $('#inOhDate')) $('#inOhDate').value = st.ohDate;
