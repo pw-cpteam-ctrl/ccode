@@ -24,6 +24,27 @@
   const LOCKED_URL = script.dataset.locked;   // 예: locked/megahouse.enc
   const STORAGE_KEY = 'cg-access';            // 코드 기억용
   const REMEMBER_DAYS = 30;                   // 한 번 입력하면 이 기간 동안 유지
+  const NICK_MAX = 20;                        // 닉네임 길이 상한
+
+  // ─── 워터마크 설정 ─────────────────────────────────────────────
+  // 입장할 때 받은 닉네임을 화면 전체에 아주 옅게 반복해서 깐다. 유출을 막지는
+  // 못하지만, 캡처본이 돌아다닐 때 어느 계정에서 나갔는지 되짚을 수 있다.
+  //
+  // WM_ALPHA가 핵심이다. 눈으로는 안 보이되 편집 도구에서 명도를 극단적으로
+  // 올리면 드러나는 값이어야 한다. 너무 낮추면 캡처가 메신저를 거치며 다시
+  // 압축될 때 뭉개져서 아예 사라지므로, 값을 바꾸면 반드시 실제로 캡처해서
+  // 메신저로 주고받은 뒤 복원되는지 확인할 것.
+  // 아래 값은 실제로 재서 정한 것이다. 흰 배경에 깔고 카톡급(JPEG 품질 0.7)으로
+  // 다시 압축했을 때, 글자 자리와 배경 자리의 평균 밝기 차이를 측정했다.
+  //   17px · alpha 0.016 → 압축 후 신호 2.76 (28% 손실)
+  //   34px · alpha 0.016 → 압축 후 신호 3.47 (11% 손실)
+  //   32px · alpha 0.030 → 압축 후 신호 7 안팎
+  // 글자가 클수록 압축에 강하다. 작은 글씨를 촘촘히 까는 쪽이 직관적이지만
+  // 정반대라서, 큰 글씨로 가되 칸을 좁혀 개수를 늘리는 방향으로 잡았다.
+  const WM_ALPHA = 0.03;    // 안 보이는 워터마크의 진하기 (255 중 약 7)
+  const WM_TILE_W = 200;    // 한 칸의 가로 크기(px) — 작을수록 촘촘해진다
+  const WM_TILE_H = 130;
+  const WM_FONT = 32;       // 글자 크기 — 작으면 압축에 먼저 뭉개진다
 
   // 본문을 열고 나서 필요한 외부 라이브러리. 잠긴 동안엔 받지 않는다
   // (코드를 모르는 사람에게 굳이 3MB를 내려줄 이유가 없다).
@@ -116,7 +137,71 @@
     .cg-msg.is-bad { color: #dc2626; }
     .cg-msg.is-busy { color: #78716c; }
     .cg-help { font-size: 11.5px; color: #a8a29e; margin: 18px 0 0; line-height: 1.6; }
+    .cg-label { font-size: 11.5px; color: #a8a29e; text-align: left; margin: 2px 0 -4px 4px; }
+
+    /* 화면 전체에 깔리는 워터마크. 클릭을 막지 않도록 pointer-events를 끄고,
+       글자가 드래그로 잡히지 않게 선택도 막는다. */
+    .cg-wm {
+      position: fixed; inset: 0; z-index: 2147483000;
+      pointer-events: none; user-select: none; -webkit-user-select: none;
+    }
+    /* 눈에 보이는 표식 — 억제용으로 딱 한 군데만 둔다.
+       떠 있는 챗봇 버튼이 오른쪽 아래에 있으므로 왼쪽 아래에 붙인다. */
+    .cg-wm-visible {
+      position: fixed; left: 10px; bottom: 8px; z-index: 2147483001;
+      font-size: 10px; line-height: 1; color: #d6d3d1;
+      pointer-events: none; user-select: none; -webkit-user-select: none;
+      font-family: inherit; letter-spacing: .2px;
+    }
+    @media print {
+      .cg-wm, .cg-wm-visible { display: block !important; }
+    }
   `;
+
+  // ─── 워터마크 ──────────────────────────────────────────────────
+  // 반복 무늬는 SVG 한 칸을 배경 이미지로 깔아서 만든다. 요소를 수백 개 만드는
+  // 방식보다 가볍고, 화면 크기가 바뀌어도 알아서 채워진다.
+  function watermarkTile(nick) {
+    const esc = (s) => s.replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${WM_TILE_W}" height="${WM_TILE_H}">` +
+      `<text x="50%" y="50%" fill="#000" fill-opacity="${WM_ALPHA}"` +
+      ` font-family="sans-serif" font-size="${WM_FONT}" font-weight="700"` +
+      ` text-anchor="middle" dominant-baseline="middle"` +
+      ` transform="rotate(-30 ${WM_TILE_W / 2} ${WM_TILE_H / 2})">${esc(nick)}</text>` +
+      `</svg>`;
+    return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
+  }
+
+  function applyWatermark(nick) {
+    if (!nick) return;
+    document.querySelectorAll('.cg-wm, .cg-wm-visible').forEach((el) => el.remove());
+
+    const layer = document.createElement('div');
+    layer.className = 'cg-wm';
+    layer.setAttribute('aria-hidden', 'true');
+    layer.style.backgroundImage = watermarkTile(nick);
+    layer.style.backgroundRepeat = 'repeat';
+    document.body.appendChild(layer);
+
+    const mark = document.createElement('div');
+    mark.className = 'cg-wm-visible';
+    mark.setAttribute('aria-hidden', 'true');
+    mark.textContent = nick;
+    document.body.appendChild(mark);
+  }
+
+  // 닉네임 정리 — 줄바꿈·보이지 않는 문자를 걷어내고 길이를 제한한다.
+  function cleanNick(raw) {
+    return String(raw || '')
+      // 제어문자와 폭 없는 문자(눈에 안 보이지만 글자로 세어지는 것)를 걷어낸다
+      .replace(/[\u0000-\u001f\u007f\u200b-\u200f\u2028\u2029\ufeff]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, NICK_MAX);
+  }
 
   function render() {
     const style = document.createElement('style');
@@ -129,15 +214,19 @@
       <div class="cg-card">
         <div class="cg-lock">🔒</div>
         <p class="cg-title">크리에이터 협업 가이드</p>
-        <p class="cg-desc">담당자에게 받으신 접속 코드를 입력해 주세요.</p>
+        <p class="cg-desc">활동명과 담당자에게 받으신 접속 코드를 입력해 주세요.</p>
         <form class="cg-form" novalidate>
-          <input class="cg-input" type="password" placeholder="접속 코드"
+          <input class="cg-input cg-nick" type="text" placeholder="활동명 (닉네임)"
+                 autocomplete="off" autocapitalize="off" autocorrect="off"
+                 spellcheck="false" maxlength="${NICK_MAX}" aria-label="활동명" />
+          <input class="cg-input cg-code" type="password" placeholder="접속 코드"
                  autocomplete="off" autocapitalize="off" autocorrect="off"
                  spellcheck="false" aria-label="접속 코드" />
           <button class="cg-btn" type="submit">입장하기</button>
           <p class="cg-msg"></p>
         </form>
-        <p class="cg-help">코드를 모르시면 담당자에게 문의해 주세요.<br />
+        <p class="cg-help">활동명은 보상 안내를 드릴 때 본인 확인용으로 쓰입니다.<br />
+          코드를 모르시면 담당자에게 문의해 주세요.<br />
           한 번 입력하면 이 기기에서 ${REMEMBER_DAYS}일간 다시 묻지 않습니다.</p>
       </div>`;
     document.body.appendChild(gate);
@@ -177,10 +266,11 @@
     return payloadPromise;
   }
 
-  function remember(password) {
+  function remember(password, nick) {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         code: password,
+        nick,
         until: Date.now() + REMEMBER_DAYS * 24 * 60 * 60 * 1000,
       }));
     } catch { /* 저장 실패해도 이번 접속은 정상 동작한다 */ }
@@ -189,7 +279,11 @@
   function recall() {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-      if (saved && saved.code && saved.until > Date.now()) return saved.code;
+      // nick은 나중에 추가된 항목이라, 예전에 저장된 값에는 없을 수 있다.
+      // 없으면 빈 값으로 두고 아래에서 다시 입력받는다.
+      if (saved && saved.code && saved.until > Date.now()) {
+        return { code: saved.code, nick: cleanNick(saved.nick) };
+      }
       localStorage.removeItem(STORAGE_KEY); // 기간이 지났거나 형식이 깨진 경우
     } catch { /* 무시 */ }
     return null;
@@ -198,7 +292,8 @@
   async function start() {
     const gate = render();
     const form = gate.querySelector('.cg-form');
-    const input = gate.querySelector('.cg-input');
+    const nickInput = gate.querySelector('.cg-nick');
+    const input = gate.querySelector('.cg-code');
     const button = gate.querySelector('.cg-btn');
     const msg = gate.querySelector('.cg-msg');
 
@@ -208,7 +303,7 @@
     };
 
     // 코드가 맞았을 때: 본문을 실행하고 입력 화면을 걷어낸다.
-    async function enter(code, { save }) {
+    async function enter(code, nick, { save }) {
       button.disabled = true;
       say('여는 중…', 'busy');
       try {
@@ -222,8 +317,12 @@
           return false;
         }
         await run(text);
-        if (save) remember(code);
+        if (save) remember(code, nick);
         gate.remove();
+        // 본문이 그려진 뒤에 워터마크를 얹는다. 다른 화면으로 넘어가도
+        // 이 층은 화면에 고정되어 있어 다시 깔 필요가 없다.
+        window.CG_NICK = nick;   // 나중에 보상 제출에서 제출자 식별에 쓴다
+        applyWatermark(nick);
         return true;
       } catch (err) {
         button.disabled = false;
@@ -234,26 +333,36 @@
 
     // 예전에 입력해둔 코드가 있으면 입력 화면을 보여주지 않고 바로 연다.
     const saved = recall();
-    if (saved) {
-      const ok = await enter(saved, { save: false });
+    if (saved && saved.nick) {
+      const ok = await enter(saved.code, saved.nick, { save: false });
       if (ok) return;
       // 저장된 코드가 더 이상 맞지 않는 경우(= 코드가 교체됨) → 다시 입력받는다
       localStorage.removeItem(STORAGE_KEY);
       input.classList.remove('is-bad');
       say('접속 코드가 변경되었습니다. 새 코드를 입력해 주세요.', 'bad');
+    } else if (saved) {
+      // 활동명을 받기 전에 저장된 값 — 코드는 채워두고 활동명만 받는다
+      input.value = saved.code;
     }
 
     getPayload().catch(() => {}); // 입력하는 동안 미리 받아둔다
-    input.focus();
-    input.addEventListener('input', () => {
-      input.classList.remove('is-bad');
+    nickInput.focus();
+    [nickInput, input].forEach((el) => el.addEventListener('input', () => {
+      el.classList.remove('is-bad');
       if (msg.classList.contains('is-bad')) say('');
-    });
+    }));
     form.addEventListener('submit', (e) => {
       e.preventDefault();
+      const nick = cleanNick(nickInput.value);
       const code = input.value.trim();
+      if (!nick) {
+        nickInput.classList.add('is-bad');
+        say('활동명을 입력해 주세요.', 'bad');
+        nickInput.focus();
+        return;
+      }
       if (!code) { input.focus(); return; }
-      enter(code, { save: true });
+      enter(code, nick, { save: true });
     });
   }
 
