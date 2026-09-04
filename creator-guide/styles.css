@@ -1608,3 +1608,20 @@ body {
   .example-grid { gap: 4px; padding: 6px; }
   .example-thumb-label { font-size: 10px; }
 }
+
+
+/* ─── 접수(제출) 관련 ─────────────────────────────────────────── */
+/* 냈다는 사실과 낸 시각을 눈에 띄게 보여준다 — "된 거 맞나?"를 여기서 끝낸다 */
+.sent-badge {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 12px; margin-bottom: 12px;
+  background: #f0fdf4; border: 1px solid #86efac; border-radius: 10px;
+  font-size: 13px; font-weight: 700; color: #15803d;
+}
+/* 접수가 안 됐을 때만 보인다. 복사해서 보내는 예전 방법으로 안내한다 */
+.sent-err {
+  margin-top: 10px; padding: 10px 12px;
+  background: #fef2f2; border-left: 3px solid var(--danger-accent, #dc2626);
+  border-radius: 0 8px 8px 0;
+  font-size: 12.5px; line-height: 1.55; color: #b91c1c;
+}

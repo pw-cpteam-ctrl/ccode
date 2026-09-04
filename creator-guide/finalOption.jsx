@@ -266,16 +266,86 @@ function saveReply(date, track, reward) {
   } catch { /* 저장 실패해도 이번 이용엔 지장 없다 */ }
 }
 
+// ─── 접수 기록 ────────────────────────────────────────────────────
+// 사이트가 직접 접수한 뒤, 이 브라우저에 "언제 무엇을 냈는지"를 남긴다.
+// 화면에 그대로 다시 보여주기 위한 것으로, 서버에서 불러오지 않는다 —
+// 활동명은 추측할 수 있어서, 이름만으로 조회하게 만들면 남의 제출 내용을
+// 볼 수 있게 되기 때문이다. 기기를 바꾸면 안 보이지만 다시 내면 된다.
+const SENT_KEY = 'cg-sent';
+
+function loadSent() {
+  try {
+    const v = JSON.parse(localStorage.getItem(SENT_KEY) || 'null');
+    if (!v || !v.at) return null;
+    return { at: v.at, date: v.date ?? '', track: v.track ?? '', reward: v.reward ?? '', nick: v.nick ?? '' };
+  } catch {
+    return null;
+  }
+}
+
+function saveSent(rec) {
+  try { localStorage.setItem(SENT_KEY, JSON.stringify(rec)); } catch { /* 무시 */ }
+}
+
+// 2026-09-04T06:12:00.000Z → "9월 4일 15:12"
+function formatSentAt(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// 접수한 내용을 그대로 다시 보여주는 카드. "낸 게 맞나?"를 눈으로 확인시켜 준다.
+function SentSummary({ sent, onEdit }) {
+  const track = TRACK_CHOICES.find(t => t.id === sent.track);
+  const reward = REWARD_CHOICES.find(r => r.id === sent.reward);
+  return (
+    <>
+      <div className="sent-badge">✓ 제출되었습니다 · {formatSentAt(sent.at)}</div>
+      <div className="sum-row">
+        <span className="sum-check">✅</span>
+        <span className="sum-label"><span className="reply-num">①</span> 초안 공유 예정일</span>
+        <span className="sum-value">{sent.date ? formatDate(sent.date) : '-'}</span>
+      </div>
+      <div className="sum-row">
+        <span className="sum-check">✅</span>
+        <span className="sum-label"><span className="reply-num">②</span> 보상 수령 방식</span>
+        <span className="sum-value">{track ? track.label : '-'}</span>
+      </div>
+      <div className="sum-row">
+        <span className="sum-check">✅</span>
+        <span className="sum-label"><span className="reply-num">③</span> 보상 형태</span>
+        <span className="sum-value">{reward ? reward.label : '-'}</span>
+      </div>
+      <button type="button" className="sum-edit" onClick={onEdit}>수정하기</button>
+      <div className="reply-guide">다시 제출하시면 마지막에 보내신 내용이 적용됩니다</div>
+    </>
+  );
+}
+
 // ─── 담당자에게 알려줄 내용 (06 보상 탭 맨 아래) ──────────────────
 // 원래는 마지막 페이지에 있었는데, 다 읽고 "끝났다" 상태에서는 그냥 넘겨버려서
 // 회신율이 낮았다. 가이드 원문이 이미 이 자리에서 "수령 방식을 사전 공유해달라"고
 // 부탁하고 있으므로, 부탁하는 문장 바로 옆에 답하는 칸을 둔다.
-function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, canCopy, copied, onCopy, onGoReward }) {
+function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, canCopy,
+                     sent, editing, sending, sendErr, onSubmit, onEdit }) {
   // 수령 방식은 이제 이 폼이 아니라 바로 위 '언제 받나' 카드에서 직접 고른다.
   // 아직 안 골랐으면 그 자리로 스크롤해 이동시켜 준다.
   const goToTrackChoice = () => {
     document.getElementById('reward-track-choice')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
+
+  if (sent && !editing) {
+    return (
+      <div className="done-card">
+        <div className="done-card-head">
+          <span className="done-card-icon">📨</span>
+          <span className="done-card-title">담당자에게 전달된 내용</span>
+        </div>
+        <SentSummary sent={sent} onEdit={onEdit} />
+      </div>
+    );
+  }
 
   return (
     <div className="done-card">
@@ -326,15 +396,16 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, ca
         <div className="reply-hint">금액·구성은 유입 수에 따라 정해져요</div>
       </div>
 
-      <div className="reply-warn">보상 수령 방식과 보상 형태는 선택 후 변경·교환이 어렵습니다.</div>
+      <div className="reply-warn">제출하신 뒤에도 담당자 확인 전까지는 수정하실 수 있습니다. 확인된 뒤에는 변경·교환이 어렵습니다.</div>
 
-      <button type="button" className={`reply-copy${copied ? ' is-done' : ''}`}
-        disabled={!canCopy} onClick={onCopy}>
-        {copied ? '✓  복사됐어요!' : '📋  복사하기'}
+      <button type="button" className="reply-copy"
+        disabled={!canCopy || sending} onClick={onSubmit}>
+        {sending ? '보내는 중…' : '제출하기'}
       </button>
       <div className="reply-guide">
-        {canCopy ? '담당자에게 붙여넣기만 하면 끝!' : '위 항목을 모두 고르시면 복사할 수 있어요'}
+        {canCopy ? '담당자에게 바로 전달됩니다' : '위 항목을 모두 고르시면 제출할 수 있어요'}
       </div>
+      {sendErr && <div className="sent-err">{sendErr}</div>}
     </div>
   );
 }
@@ -484,12 +555,55 @@ function FinalOption() {
   const [rewardId, setRewardId] = React.useState(() => loadReply().reward ?? '');
   const [copied, setCopied] = React.useState(false);
 
+  // 접수 상태 — 냈으면 그 내용을 그대로 다시 보여주고, 수정하기를 누르면
+  // 다시 고를 수 있게 편집 화면으로 돌아간다.
+  const [sent, setSent] = React.useState(() => loadSent());
+  const [editing, setEditing] = React.useState(false);
+  const [sending, setSending] = React.useState(false);
+  const [sendErr, setSendErr] = React.useState('');
+
   // 고른 값이 바뀔 때마다 저장 — 중간에 새로고침해도 남아 있게
   React.useEffect(() => { saveReply(draftDate, trackId, rewardId); }, [draftDate, trackId, rewardId]);
 
   const track = TRACK_CHOICES.find(t => t.id === trackId);
   const reward = REWARD_CHOICES.find(r => r.id === rewardId);
   const canCopy = Boolean(draftDate && track && reward);
+
+  // 사이트가 직접 접수한다. 실패하면 예전 방식(복사해서 전달)으로 안내를 되돌려,
+  // "냈다고 생각했는데 안 간" 상태가 생기지 않게 한다.
+  const submitReply = async () => {
+    if (!canCopy || sending) return;
+    setSending(true);
+    setSendErr('');
+    try {
+      const r = await fetch('api/submit-reward', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brand: 'megahouse',
+          nick: window.CG_NICK || '',
+          draftDate,
+          trackId,
+          rewardId,
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (r.ok && data.ok) {
+        const rec = { at: data.at || new Date().toISOString(), date: draftDate, track: trackId, reward: rewardId, nick: window.CG_NICK || '' };
+        setSent(rec);
+        saveSent(rec);
+        setEditing(false);
+      } else if (data.reason === 'nick') {
+        setSendErr('활동명을 확인할 수 없습니다. 새로고침 후 다시 시도해 주세요.');
+      } else {
+        setSendErr('지금은 접수가 되지 않습니다. 아래 복사하기로 담당자에게 보내주세요.');
+      }
+    } catch {
+      setSendErr('연결이 불안정합니다. 아래 복사하기로 담당자에게 보내주세요.');
+    } finally {
+      setSending(false);
+    }
+  };
 
   const copyReply = async () => {
     if (!canCopy) return;
@@ -667,7 +781,9 @@ function FinalOption() {
               <span className="done-card-title">담당자에게 알려주실 내용</span>
             </div>
 
-            {canCopy ? (
+            {sent && !editing ? (
+              <SentSummary sent={sent} onEdit={() => setEditing(true)} />
+            ) : canCopy ? (
               <>
                 <div className="sum-row">
                   <span className="sum-check">✅</span>
@@ -685,10 +801,17 @@ function FinalOption() {
                   <span className="sum-value">{reward.label}</span>
                 </div>
 
-                <button type="button" className={`reply-copy${copied ? ' is-done' : ''}`} onClick={copyReply}>
-                  {copied ? '✓  복사됐어요!' : '📋  복사하기'}
+                <button type="button" className="reply-copy" disabled={sending} onClick={submitReply}>
+                  {sending ? '보내는 중…' : '제출하기'}
                 </button>
-                <div className="reply-guide">담당자에게 붙여넣기만 하면 끝!</div>
+                <div className="reply-guide">
+                  제출하신 뒤에도 담당자 확인 전까지는 수정하실 수 있습니다
+                </div>
+                {sendErr && <div className="sent-err">{sendErr}</div>}
+                {/* 접수가 안 될 때를 대비한 예전 방식. 평소에는 눈에 띌 필요가 없다 */}
+                <button type="button" className={`sum-edit${copied ? ' is-done' : ''}`} onClick={copyReply}>
+                  {copied ? '✓ 복사됐어요' : '내용 복사하기'}
+                </button>
                 <button type="button" className="sum-edit" onClick={goReward}>내용 수정하기</button>
               </>
             ) : (
@@ -770,7 +893,8 @@ function FinalOption() {
       {tab === 'rules'   && <Final_Rules />}
       {tab === 'reward'  && (
         <Final_Reward
-          reply={{ draftDate, setDraftDate, trackId, setTrackId, rewardId, setRewardId, canCopy, copied, onCopy: copyReply }}
+          reply={{ draftDate, setDraftDate, trackId, setTrackId, rewardId, setRewardId, canCopy,
+                   sent, editing, sending, sendErr, onSubmit: submitReply, onEdit: () => setEditing(true) }}
         />
       )}
       {tab === 'faq'     && <Final_Faq openFaq={openFaq} setOpenFaq={setOpenFaq} onGoTab={(id) => {
