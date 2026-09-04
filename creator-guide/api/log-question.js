@@ -6,13 +6,14 @@
 //   구멍이다.
 //
 // 어디에 쌓이나:
-//   같은 GitHub 저장소의  creator-logs/questions-YYYY-MM.jsonl  파일.
-//   ⚠️ 반드시 creator-guide/ 폴더 '바깥'에 쌓아야 한다. 폴더 안에 쌓으면 로그가
-//   하나 남을 때마다 Vercel이 이 프로젝트를 재배포한다(vercel.json의 ignoreCommand가
-//   creator-guide/ 폴더 변경만 감지하기 때문).
+//   같은 GitHub 저장소의  chatbot-logs 브랜치  →  creator-logs/questions-YYYY-MM.jsonl
+//   ⚠️ main이 아닌 별도 브랜치에, 그리고 creator-guide/ 폴더 '바깥'에 쌓는다.
+//   두 조건 모두 배포가 도는 것을 막기 위한 것이다 (자세한 이유는 아래 handler 안 주석).
+//   로그를 볼 때는 GitHub에서 chatbot-logs 브랜치로 전환해서 본다.
+//   2026-09-04 이전 기록은 main 브랜치에 남아 있다.
 //
 // 환경변수(없으면 기록을 조용히 건너뛴다 — 챗봇 기능 자체엔 전혀 영향 없음):
-//   GITHUB_TOKEN / GITHUB_OWNER / GITHUB_REPO / GITHUB_BRANCH(기본 main)
+//   GITHUB_TOKEN / GITHUB_OWNER / GITHUB_REPO / GITHUB_LOG_BRANCH(기본 chatbot-logs)
 //
 // ⚠️ 개인정보: 크리에이터가 채팅에 계정명·연락처를 적을 수 있다. 지금은 공개
 //    저장소에 쌓이므로, 저장 직전에 아래 scrub()로 이메일·전화번호·@아이디·긴
@@ -50,11 +51,21 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ ok: false }); return; }
   if (!isSameOrigin(req)) { res.status(403).json({ ok: false }); return; }
 
+  // 로그는 main이 아니라 별도 브랜치에 쌓는다.
+  //
+  // 이 저장소에는 배포 프로젝트가 여러 개 붙어 있어서, main에 커밋이 하나 올라가면
+  // 프로젝트 수만큼 배포가 만들어진다(대부분 즉시 취소되지만 하루 배포 횟수는 그만큼
+  // 소모된다). 문의 한 건마다 커밋이 생기는 이 기능은 사용량에 비례해 그 소모가
+  // 늘어나서, 문의가 몰리는 날 저장소 전체의 배포가 막힐 수 있다.
+  //
+  // 각 프로젝트의 vercel.json이 main이 아닌 브랜치의 배포를 아예 만들지 않도록
+  // 막아두었으므로("deploymentEnabled"), 로그를 다른 브랜치로 보내면 배포가 한 건도
+  // 생기지 않는다. 로그를 읽을 때는 GitHub에서 아래 브랜치로 전환해서 본다.
   const gh = {
     token: process.env.GITHUB_TOKEN,
     owner: process.env.GITHUB_OWNER,
     repo: process.env.GITHUB_REPO,
-    branch: process.env.GITHUB_BRANCH || 'main',
+    branch: process.env.GITHUB_LOG_BRANCH || 'chatbot-logs',
   };
   if (!gh.token || !gh.owner || !gh.repo) {
     res.status(200).json({ ok: false, skipped: true });
