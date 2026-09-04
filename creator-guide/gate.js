@@ -38,13 +38,14 @@
   // 다시 압축했을 때, 글자 자리와 배경 자리의 평균 밝기 차이를 측정했다.
   //   alpha 0.030 → 7단계 — 육안으로 그냥 보인다. 쓰면 안 되는 값
   //   alpha 0.012 → 3단계, 압축 후 2.44
-  //   alpha 0.008 → 2단계, 압축 후 1.52  ← 지금 값
-  //   alpha 0.005 → 1단계 (화면이 색을 256단계로만 표현해서 더는 못 내려간다)
+  //   alpha 0.008 → 2단계, 압축 후 1.52
+  //   alpha 0.005 → 1단계, 압축 후 0.97  ← 지금 값. 화면이 색을 256단계로만
+  //                 표현하므로 이보다 옅게는 만들 수 없다(하한)
   // 목표는 '육안으로는 절대 안 보이되 편집 도구로 명도를 극단적으로 올리면
   // 드러나는' 선이다. 진하기를 올리고 싶어지면 그 전에 반드시 육안 확인부터 할 것.
   // 글자는 클수록 압축에 강하다(17px는 28%, 34px는 11% 손실). 작은 글씨를
   // 촘촘히 까는 쪽이 직관적이지만 정반대다.
-  const WM_ALPHA = 0.008;   // 안 보이는 워터마크의 진하기 (255 중 2단계)
+  const WM_ALPHA = 0.005;   // 안 보이는 워터마크의 진하기 (255 중 1단계 = 하한)
   const WM_TILE_W = 200;    // 한 칸의 가로 크기(px) — 작을수록 촘촘해진다
   const WM_TILE_H = 130;
   const WM_FONT = 32;       // 글자 크기 — 작으면 압축에 먼저 뭉개진다
@@ -170,9 +171,12 @@
     return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
   }
 
-  // 화면 위에 층을 하나 덮는 방식이 아니라, 본문의 '배경'에 깐다.
-  // 카드·박스처럼 자기 배경색을 가진 요소는 위를 덮으므로, 워터마크는 여백에만
+  // 화면 위에 층을 하나 덮는 방식이 아니라, 본문 영역(.section)의 배경에 깐다.
+  // 카드·박스처럼 자기 배경색을 가진 요소는 위를 덮으므로 워터마크는 여백에만
   // 남는다. 화면 전체에 덮어씌우면 아무리 옅어도 글자 위에까지 얹혀서 눈에 띈다.
+  //
+  // .app-shell이나 body에 걸면 안 된다 — 좁은 화면에서는 그 영역이 본문에 가려
+  // 거의 드러나지 않아, 정작 사람들이 캡처하는 자리에는 아무것도 안 남는다.
   function applyWatermark(nick) {
     if (!nick) return;
     document.getElementById('cg-wm-style')?.remove();
@@ -184,8 +188,8 @@
     // .app-shell은 background 한 줄로 색을 지정해 두었기 때문에, 뒤에 오는 이
     // 규칙이 이미지를 얹는다. 본문이 아직 안 그려졌어도 규칙은 미리 넣어둔다.
     st.textContent =
-      `.app-shell { background-image: ${tile} !important; background-repeat: repeat !important; }` +
-      `body { background-image: ${tile}; background-repeat: repeat; }`;
+      `.section, .ev-body { background-image: ${tile} !important;` +
+      ` background-repeat: repeat !important; }`;
     document.head.appendChild(st);
 
     const mark = document.createElement('div');
