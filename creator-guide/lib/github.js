@@ -22,6 +22,33 @@ function contentsUrl(owner, repo, path) {
   return `${API_BASE}/repos/${owner}/${repo}/contents/${encodeURIComponent(path).replace(/%2F/g, '/')}`;
 }
 
+// 파일을 읽는다. 없으면(404) null, 있으면 { sha, content }를 돌려준다.
+export async function readGithubFile({ token, owner, repo, branch, path }) {
+  const res = await fetch(`${contentsUrl(owner, repo, path)}?ref=${branch}`, { headers: ghHeaders(token) });
+  if (res.status === 404) return null;
+  if (res.status !== 200) throw new Error(`파일 조회 실패 (${res.status})`);
+  const file = await res.json();
+  return { sha: file.sha, content: Buffer.from(file.content, 'base64').toString('utf-8') };
+}
+
+// 파일 전체를 새 내용으로 덮어쓴다(없으면 새로 만든다).
+// 줄을 이어붙이는 appendToGithubFile과 달리, "읽어서 고친 뒤 통째로 다시 쓰는"
+// 경우(예: 확정 여부를 담은 JSON)에 쓴다.
+export async function writeGithubFile({ token, owner, repo, branch, path, content, message, sha }) {
+  const res = await fetch(contentsUrl(owner, repo, path), {
+    method: 'PUT',
+    headers: ghHeaders(token),
+    body: JSON.stringify({
+      message,
+      content: Buffer.from(content, 'utf-8').toString('base64'),
+      branch,
+      ...(sha ? { sha } : {}),
+    }),
+  });
+  if (!res.ok) throw new Error(`커밋 실패 (${res.status})`);
+  return res.json();
+}
+
 // path 파일 끝에 newLine을 덧붙여 커밋한다. 파일이 없으면 새로 만든다.
 export async function appendToGithubFile({ token, owner, repo, branch, path, newLine, message }) {
   const headers = ghHeaders(token);
