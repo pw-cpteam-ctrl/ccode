@@ -117,13 +117,27 @@ function buildReplyText(dateLabel, track, reward) {
   ].join('\n');
 }
 
-// 메가하우스 오픈일은 매월 첫 번째 목요일로 고정돼 있다. 크리에이터가 초안 일정을
+// 메가하우스 오픈일은 매월 첫 번째 목요일이 기본이다. 크리에이터가 초안 일정을
 // 잡을 때 기준이 되는 날짜라, 다음 오픈일이 실제로 며칠인지 계산해서 보여준다
 // (문구로만 "매월 첫 목요일"이라고 적으면 직접 달력을 세어봐야 하기 때문).
 function firstThursday(year, month) {
   const first = new Date(year, month, 1);
   // 0=일 … 4=목. 1일이 목요일이면 그대로, 아니면 다음 목요일까지 더한다
   return new Date(year, month, 1 + ((4 - first.getDay() + 7) % 7));
+}
+
+// 첫 목요일이 아닌 달이 가끔 있다. 메가하우스 쪽 사정으로 그때그때 정해지는
+// 것이라 계산으로 알아낼 방법이 없어, 담당자에게 전달받으면 여기에 한 줄씩
+// 적어 둔다. 적어 두지 않은 달은 위의 기본 규칙(첫 목요일)을 따른다.
+//   키: 'YYYY-MM'   값: 그 달의 오픈 날짜(일)
+const OPEN_DAY_EXCEPTIONS = {
+  '2026-09': 10,   // 첫 목요일은 3일이지만 10일로 진행
+};
+
+// 그 달의 오픈일이 며칠인지 돌려준다. month는 0부터 시작한다(0=1월).
+function openDayOf(year, month) {
+  const key = `${year}-${String(month + 1).padStart(2, '0')}`;
+  return OPEN_DAY_EXCEPTIONS[key] ?? firstThursday(year, month).getDate();
 }
 
 
@@ -169,7 +183,7 @@ function CalendarPicker({ value, onChange }) {
 
   const year = view.getFullYear();
   const month = view.getMonth();
-  const openDay = firstThursday(year, month).getDate();
+  const openDay = openDayOf(year, month);
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const leading = new Date(year, month, 1).getDay();   // 1일 앞의 빈 칸 수
 
