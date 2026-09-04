@@ -36,12 +36,15 @@
   // 메신저로 주고받은 뒤 복원되는지 확인할 것.
   // 아래 값은 실제로 재서 정한 것이다. 흰 배경에 깔고 카톡급(JPEG 품질 0.7)으로
   // 다시 압축했을 때, 글자 자리와 배경 자리의 평균 밝기 차이를 측정했다.
-  //   17px · alpha 0.016 → 압축 후 신호 2.76 (28% 손실)
-  //   34px · alpha 0.016 → 압축 후 신호 3.47 (11% 손실)
-  //   32px · alpha 0.030 → 압축 후 신호 7 안팎
-  // 글자가 클수록 압축에 강하다. 작은 글씨를 촘촘히 까는 쪽이 직관적이지만
-  // 정반대라서, 큰 글씨로 가되 칸을 좁혀 개수를 늘리는 방향으로 잡았다.
-  const WM_ALPHA = 0.03;    // 안 보이는 워터마크의 진하기 (255 중 약 7)
+  //   alpha 0.030 → 7단계 — 육안으로 그냥 보인다. 쓰면 안 되는 값
+  //   alpha 0.012 → 3단계, 압축 후 2.44
+  //   alpha 0.008 → 2단계, 압축 후 1.52  ← 지금 값
+  //   alpha 0.005 → 1단계 (화면이 색을 256단계로만 표현해서 더는 못 내려간다)
+  // 목표는 '육안으로는 절대 안 보이되 편집 도구로 명도를 극단적으로 올리면
+  // 드러나는' 선이다. 진하기를 올리고 싶어지면 그 전에 반드시 육안 확인부터 할 것.
+  // 글자는 클수록 압축에 강하다(17px는 28%, 34px는 11% 손실). 작은 글씨를
+  // 촘촘히 까는 쪽이 직관적이지만 정반대다.
+  const WM_ALPHA = 0.008;   // 안 보이는 워터마크의 진하기 (255 중 2단계)
   const WM_TILE_W = 200;    // 한 칸의 가로 크기(px) — 작을수록 촘촘해진다
   const WM_TILE_H = 130;
   const WM_FONT = 32;       // 글자 크기 — 작으면 압축에 먼저 뭉개진다
@@ -139,12 +142,6 @@
     .cg-help { font-size: 11.5px; color: #a8a29e; margin: 18px 0 0; line-height: 1.6; }
     .cg-label { font-size: 11.5px; color: #a8a29e; text-align: left; margin: 2px 0 -4px 4px; }
 
-    /* 화면 전체에 깔리는 워터마크. 클릭을 막지 않도록 pointer-events를 끄고,
-       글자가 드래그로 잡히지 않게 선택도 막는다. */
-    .cg-wm {
-      position: fixed; inset: 0; z-index: 2147483000;
-      pointer-events: none; user-select: none; -webkit-user-select: none;
-    }
     /* 눈에 보이는 표식 — 억제용으로 딱 한 군데만 둔다.
        떠 있는 챗봇 버튼이 오른쪽 아래에 있으므로 왼쪽 아래에 붙인다. */
     .cg-wm-visible {
@@ -153,9 +150,7 @@
       pointer-events: none; user-select: none; -webkit-user-select: none;
       font-family: inherit; letter-spacing: .2px;
     }
-    @media print {
-      .cg-wm, .cg-wm-visible { display: block !important; }
-    }
+    @media print { .cg-wm-visible { display: block !important; } }
   `;
 
   // ─── 워터마크 ──────────────────────────────────────────────────
@@ -175,16 +170,23 @@
     return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
   }
 
+  // 화면 위에 층을 하나 덮는 방식이 아니라, 본문의 '배경'에 깐다.
+  // 카드·박스처럼 자기 배경색을 가진 요소는 위를 덮으므로, 워터마크는 여백에만
+  // 남는다. 화면 전체에 덮어씌우면 아무리 옅어도 글자 위에까지 얹혀서 눈에 띈다.
   function applyWatermark(nick) {
     if (!nick) return;
-    document.querySelectorAll('.cg-wm, .cg-wm-visible').forEach((el) => el.remove());
+    document.getElementById('cg-wm-style')?.remove();
+    document.querySelectorAll('.cg-wm-visible').forEach((el) => el.remove());
 
-    const layer = document.createElement('div');
-    layer.className = 'cg-wm';
-    layer.setAttribute('aria-hidden', 'true');
-    layer.style.backgroundImage = watermarkTile(nick);
-    layer.style.backgroundRepeat = 'repeat';
-    document.body.appendChild(layer);
+    const tile = watermarkTile(nick);
+    const st = document.createElement('style');
+    st.id = 'cg-wm-style';
+    // .app-shell은 background 한 줄로 색을 지정해 두었기 때문에, 뒤에 오는 이
+    // 규칙이 이미지를 얹는다. 본문이 아직 안 그려졌어도 규칙은 미리 넣어둔다.
+    st.textContent =
+      `.app-shell { background-image: ${tile} !important; background-repeat: repeat !important; }` +
+      `body { background-image: ${tile}; background-repeat: repeat; }`;
+    document.head.appendChild(st);
 
     const mark = document.createElement('div');
     mark.className = 'cg-wm-visible';

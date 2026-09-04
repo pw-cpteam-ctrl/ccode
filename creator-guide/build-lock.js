@@ -136,7 +136,7 @@ for (const [srcName, lockName] of TARGETS) {
 
   // 본문을 걷어낸 자리에 코드 입력 화면을 넣는다
   const gateTag =
-    `<script src="gate.js?v=2" data-locked="locked/${lockName}"></script>\n`;
+    `<script src="gate.js?v=3" data-locked="locked/${lockName}"></script>\n`;
   fs.writeFileSync(srcPath, stripped.replace(/<\/body>/i, `${gateTag}</body>`), 'utf-8');
 
   const kb = (fs.statSync(path.join(LOCK_DIR, lockName)).size / 1024).toFixed(0);
