@@ -250,6 +250,10 @@ button.danger{background:var(--ui-warn);color:#fff;}
 .ctl-block .cl{font-size:11px;font-weight:800;margin-bottom:6px;}
 .ctl-block input[type=range]{width:100%;}
 .grad4-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;}
+.copy-preview{margin-top:6px;font-size:12px;font-weight:700;color:var(--ui-text);
+  background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:6px;padding:6px 9px;
+  word-break:break-all;}
+.copy-preview.empty{font-weight:400;color:var(--ui-sub);}
 .ctl-block textarea{width:100%;background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;font-size:12.5px;color:var(--ui-text);font-family:inherit;resize:none;}
 /* 한 줄에 하나씩 쌓여 있던 칸을 같은 줄에 앉히는 규칙들 — 입력칸이 폭을 다 쓰고
    그 아래 작은 버튼이 또 한 줄을 먹던 자리를 없앤다. */
@@ -892,6 +896,8 @@ function makeBlankProduct() {
     textSub: '',
     textSubManual: false, // 사람이 부제를 직접 고쳤는지 — true면 제품 라인 자동 채움이 덮어쓰지 않음
     badgeKind: 'new', // 'new' | 'decided' | 'prototype' | 'custom' — 주황틀 좌상단 표시
+    // IP 카피라이트(좌하단). 한 줄에 하나씩 적으면 ©가 자동으로 붙고 여러 개는 /로 이어진다.
+    copyrightText: '',
     badgeCustomText: '',
   };
 }
@@ -974,6 +980,8 @@ const imgCache = new Map(); // key -> HTMLImageElement (메모리 캐시, 상품
    1080x1350(4:5) 해상도로 그리고 화면에는 CSS로 축소해서 보여준다.
    레이어 순서: 사진(cover-fit) → 검정 그라데이션 → 흰 텍스트(중앙정렬, 대표 슬라이드만) → 실제 틀 PNG. */
 const CW = 1080, CH = 1350;
+// 좌하단 IP 카피라이트 — 작게 넣는 표기라 본문 글자보다 훨씬 작다.
+const COPY_FONT_SIZE = 22, COPY_LINE_H = 30;
 // 브랜드별 틀 PNG. inner는 그 틀의 투명 창(사진이 실제로 보이는 영역)을 실측한 좌표로,
 // 각 PNG의 알파 채널을 픽셀 단위로 스캔해서 얻은 값이다. 틀마다 로고띠 두께와 테두리
 // 폭이 달라서(주황 위 117px / 초록 위 112px) 한 좌표를 공용으로 쓰면 사진이 테두리
@@ -1023,6 +1031,17 @@ function fitRectFor(slide, frame) {
   return (slide && slide.noFrame)
     ? { x0: 0, y0: 0, w: CW, h: CH }
     : { x0: frame.inner.x0, y0: frame.inner.y0, w: frame.w, h: frame.h };
+}
+// 한 줄에 하나씩 적은 IP를 화면에 그릴 한 줄로 조립한다.
+// ©를 사람이 칠 필요가 없게 자동으로 붙이고, 발주서에서 ©가 붙은 채로 붙여넣어도
+// 중복되지 않게 앞에 있는 ©/(C)/ⓒ는 떼고 다시 붙인다.
+function formatCopyright(raw) {
+  return String(raw || '')
+    .split('\n')
+    .map(l => l.trim().replace(/^\s*(?:©|ⓒ|\(c\)|\(C\))\s*/, '').trim())
+    .filter(Boolean)
+    .map(l => '©' + l)
+    .join('/');
 }
 function getBadgeText(p) {
   if (p.badgeKind === 'decided') return '상품화 결정';
@@ -1124,7 +1143,7 @@ function computeGradientStops(s, w, oRaw, c) {
 }
 // frame: frameOf(상품)이 돌려준 틀 한 벌. 브랜드마다 틀 그림과 투명 창 좌표가 다르므로
 // 그리는 쪽에서 정해서 넘긴다(안 넘어오면 기본 틀 기준으로 그린다).
-function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText, badgeLetterSpacing, titleFontSize, subFontSize, frame) {
+function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText, badgeLetterSpacing, titleFontSize, subFontSize, frame, copyText) {
   const fr = frame || frameOf(null);
   ctx.clearRect(0, 0, CW, CH);
   ctx.imageSmoothingEnabled = true;
@@ -1173,7 +1192,8 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText,
     ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 7; ctx.shadowOffsetY = 2;
     const cx = CW / 2;
     const maxTextWidth = fr.w - 80; // 좌우 여백 (틀 테두리에 안 붙게)
-    let ty = fr.inner.y1 - 26; // 투명 창 하단에서 살짝 띄운 기준선(테두리에 안 붙게)
+    // 카피라이트가 있으면 그 한 줄만큼 제목·부제를 위로 올린다 — 둘 다 하단이라 안 그러면 겹친다.
+    let ty = fr.inner.y1 - 26 - (copyText ? COPY_LINE_H : 0);
     if (textSub) {
       ctx.font = `700 ${subFontSize ?? 27}px ${CANVAS_FONT}`; // 프리젠테이션은 굵기마다 파일이 따로라 700(Bold)로 통일
       ctx.fillText(textSub, cx, ty);
@@ -1205,6 +1225,28 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText,
       ctx.textBaseline = 'alphabetic'; // 다른 텍스트(제목 등)에 영향 안 가게 기본값으로 복원
     }
   }
+  // IP 카피라이트 — 법적 표기라 대표 슬라이드만이 아니라 모든 슬라이드에 넣는다.
+  // 틀을 그린 뒤에 그려서 틀에 가리지 않게 하고, 틀을 끈 슬라이드에서는 캔버스
+  // 왼쪽 아래를 기준으로 삼는다.
+  if (copyText) {
+    const noFrame = !!(slide && slide.noFrame);
+    const x = (noFrame ? 0 : fr.inner.x0) + 14;
+    const bottom = (noFrame ? CH : fr.inner.y1) - 12;
+    const maxW = (noFrame ? CW : fr.inner.x1) - x - 14;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 1;
+    // IP가 여러 개면 길어지므로, 넘치면 읽을 수 있는 하한(13px)까지 줄여서 맞춘다.
+    let size = COPY_FONT_SIZE;
+    ctx.font = `700 ${size}px ${CANVAS_FONT}`;
+    while (size > 13 && ctx.measureText(copyText).width > maxW) {
+      size -= 1;
+      ctx.font = `700 ${size}px ${CANVAS_FONT}`;
+    }
+    ctx.fillText(copyText, x, bottom);
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    ctx.textAlign = 'center';
+  }
 }
 async function exportSlidePng(p, idx) {
   await ensureCanvasFont(); // 내보내는 파일에까지 기본 폰트로 굳어버리지 않게 한 번 더 확인
@@ -1214,7 +1256,7 @@ async function exportSlidePng(p, idx) {
   const slide = p.images[idx];
   const c = document.createElement('canvas');
   c.width = CW; c.height = CH;
-  drawSlide(c.getContext('2d'), slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p));
+  drawSlide(c.getContext('2d'), slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p), formatCopyright(p.copyrightText));
   return new Promise(res => c.toBlob(res, 'image/png'));
 }
 
@@ -1309,6 +1351,12 @@ function imageStageHtml(p) {
           </div>
         </div>
 
+        <div class="ctl-block">
+          <div class="cl">IP 카피라이트 <span style="font-weight:400;color:var(--ui-sub);">(좌하단 · 모든 슬라이드)</span></div>
+          <textarea id="copyrightInput" rows="2" placeholder="BanG Dream! Project&#10;Bushiroad">${escapeHtml(p.copyrightText || '')}</textarea>
+          <div class="copy-preview" id="copyrightPreview"></div>
+        </div>
+
         <div class="status" id="imgExportStatus"></div>
       </div>
     </div>
@@ -1342,6 +1390,21 @@ function wireImageStage(p) {
     p.textSubManual = !!ts.value.trim();
     drawComposer(p); drawAllThumbs(p); saveProductsSoon();
   });
+  const cr = $('#copyrightInput'), crPrev = $('#copyrightPreview');
+  const paintCopyPreview = () => {
+    if (!crPrev) return;
+    const t = formatCopyright(p.copyrightText);
+    // 실제로 그려질 문자열을 그대로 보여준다 — ©가 어떻게 붙고 여러 개가 어떻게
+    // 이어지는지 화면에서 바로 확인되게 하려는 것이다.
+    crPrev.textContent = t || '한 줄에 하나씩 적으면 ©가 자동으로 붙어요 (여러 개는 /로 이어져요)';
+    crPrev.classList.toggle('empty', !t);
+  };
+  if (cr) cr.addEventListener('input', () => {
+    p.copyrightText = cr.value;
+    paintCopyPreview();
+    drawComposer(p); drawAllThumbs(p); saveProductsSoon();
+  });
+  paintCopyPreview();
   const titleFs = $('#titleFontSizeRange'), subFs = $('#subFontSizeRange');
   if (titleFs) titleFs.addEventListener('input', () => { GLOBAL_GRAD.titleFontSize = Number(titleFs.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
   if (subFs) subFs.addEventListener('input', () => { GLOBAL_GRAD.subFontSize = Number(subFs.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
@@ -1512,7 +1575,7 @@ function drawAllThumbs(p) {
     if (idx === editingIdx) canvas.classList.add('sel');
     const ctx = canvas.getContext('2d');
     ctx.scale(60 / CW, 75 / CH);
-    drawSlide(ctx, slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p));
+    drawSlide(ctx, slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p), formatCopyright(p.copyrightText));
     canvas.addEventListener('click', () => { editingIdx = idx; drawAllThumbs(p); drawComposer(p); });
     const star = document.createElement('div');
     star.className = 'th-star' + (idx === p.mainIndex ? ' on' : '');
@@ -1578,7 +1641,7 @@ function drawComposer(p) {
   const canvas = $('#composerCanvas');
   if (!canvas) return;
   const slide = p.images[editingIdx];
-  drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p));
+  drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p), formatCopyright(p.copyrightText));
   const rect = canvas.getBoundingClientRect();
   composerScale = (rect.width || canvas.clientWidth || 315) / CW;
 }
