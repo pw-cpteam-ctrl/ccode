@@ -1089,6 +1089,18 @@ function applySource(){
   el.textContent=msg; el.style.color=col;
 }
 
+// 일본어 해시태그 칸의 단어 하나를 한글로 번역 — 작품명(work)만 번역 대상이다.
+// 라인업/시리즈명(룩업·메가캣 등)은 이미 그 자체로 통용되는 표기라 번역하지 않고 그대로
+// 둔다(예: るかっぷ→룩업으로 바꾸지 않음. 루카푸처럼 이미 정착된 표기도 그대로 유지).
+// 그 외 단어는 사전에 없으면 가나 음역을, 그마저 실패하면 원문 그대로 돌려준다.
+function translateHashtagWord(raw){
+  const t=raw.trim(); if(!t) return '';
+  if(DICT.works[t]) return DICT.works[t];
+  for(const l of LINES) if(l.kw.includes(t)) return t;   // 라인업명은 번역 제외
+  const tr=kanaToHangul(t);
+  return tr.ok ? tr.text : t;
+}
+
 /* ── 원고(캡션) 자동 생성 ──
    · 긴 작품(약칭 등록됨): [헤드라인] 풀작품명  /  시리즈 접두어 약칭  /  •캐릭터…
    · 짧은 작품:            [헤드라인] 작품 시리즈 /  시리즈 접두어    /  •캐릭터…
@@ -1114,8 +1126,17 @@ function buildCopy(){
   if(h==='한정 재판매 결정') prodLines=prodLines.map(l=>l+' 【한정 재판매판】');
   if(state.bullet) prodLines=prodLines.map(l=>'• '+l);
   const block=[infoLines.join('\n'), prodLines.join('\n')].filter(Boolean).join('\n');   // 추가정보줄 + 캐릭터들 = 한 단락
-  const tag = s => '#'+s.replace(/[^\w가-힣ぁ-んァ-ヶ㐀-鿿]/g,''); // ☆×・공백 등 태그 깨는 기호 제거
-  const raw=[ state.jp.trim()?tag(state.jp):null, work?tag(work):null, '#메가하우스공식스토어' ].filter(Boolean);
+  const tag = s => '#'+s.replace(/[^\w가-힣ぁ-んァ-ヶー㐀-鿿]/g,''); // ☆×・공백 등 태그 깨는 기호 제거(장음 ー는 살림)
+  // 일본어 해시태그 칸에 원문 해시태그를 통째로 복붙하면(예: "#ナルト #るかっぷ") 공백으로
+  // 여러 단어가 들어온다 — 잘라내지 않고, 단어마다 "일본어 원문 태그 + 한글 번역 태그"를
+  // 같이 만든다(원어 유지 규칙은 살리면서, 번역도 같이 붙여 알아보기 쉽게).
+  const jpTags = state.jp.trim()
+    ? state.jp.trim().split(/\s+/).map(w=>w.replace(/^#+/,'')).filter(Boolean).flatMap(w=>{
+        const kr = translateHashtagWord(w);
+        return kr && kr!==w ? [tag(w), tag(kr)] : [tag(w)];
+      })
+    : [];
+  const raw=[ ...jpTags, work?tag(work):null, '#메가하우스공식스토어' ].filter(Boolean);
   const tags=[...new Set(raw)].join(' ');
   // 개발중(원형/채색원형 최초공개) → 팔로우 멘트 / 그 외(판매정보) → ※ 멘트 (줄바꿈 고정)
   const bottom = isDev
