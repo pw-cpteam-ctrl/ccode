@@ -19,10 +19,14 @@ const fs = require('fs');
 const { buildComparisonReport, applyManualPosts } = require('./aggregate');
 
 const CONFIG_PATH = './notion-config.json';
-const CACHE_PATH = './reports/_last-collection.json';
-const MANUAL_MATCHES_PATH = './manual-matches.json';
-const IGNORE_POSTS_PATH = './ignore-posts.json';
-const MANUAL_POSTS_PATH = './manual-posts.json';
+// 캐시/수동매칭 파일 위치는 브랜드별로 갈림(brand-config.js) — 아래에서 선택된 브랜드 기준으로 읽음
+const { prepareBrand, parseBrandArg } = require('./brand-config');
+const { brandKey: NOTION_BRAND_KEY } = parseBrandArg(process.argv.slice(2));
+const BRAND = prepareBrand(NOTION_BRAND_KEY);
+const CACHE_PATH = BRAND.paths.cache;
+const MANUAL_MATCHES_PATH = BRAND.paths.manualMatches;
+const IGNORE_POSTS_PATH = BRAND.paths.ignorePosts;
+const MANUAL_POSTS_PATH = BRAND.paths.manualPosts;
 const NOTION_VERSION = '2022-06-28';
 
 // html-report.js의 FIELD_ICONS와 동일한 이모지 — 노션 표는 칸이 넓어지기 쉬워서 텍스트

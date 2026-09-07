@@ -22,10 +22,12 @@ const { buildComparisonReport } = require('./aggregate');
 const { buildPeriodComparisonHtml } = require('./period-comparison');
 const { savePeriodComparisonToExcel } = require('./period-excel');
 const { archiveAndGetPath } = require('./report-archive');
+const { prepareBrand, parseBrandArg } = require('./brand-config');
 
-const PERIOD_CACHE_DIR = './reports/period-cache';
-const OUTPUT_DIR = './reports';
-const EXCEL_PATH = './reports/period-comparison.xlsx';
+// 브랜드별로 기간 캐시/출력 위치가 갈림(brand-config.js) — 아래 main()에서 채워짐
+let PERIOD_CACHE_DIR;
+let OUTPUT_DIR;
+let EXCEL_PATH;
 
 function loadPeriod(id) {
   const cachePath = path.join(PERIOD_CACHE_DIR, `${id}.json`);
@@ -42,9 +44,15 @@ function loadPeriod(id) {
 }
 
 async function main() {
-  const ids = process.argv.slice(2);
+  const { brandKey, rest: ids } = parseBrandArg(process.argv.slice(2));
+  const brand = prepareBrand(brandKey);
+  PERIOD_CACHE_DIR = brand.paths.periodCacheDir;
+  OUTPUT_DIR = brand.paths.htmlDir;
+  EXCEL_PATH = brand.paths.periodExcel;
+  console.log(`🏷️  브랜드: ${brand.label} (${brand.key})`);
+
   if (ids.length < 2) {
-    console.error('❌ 사용법: node compare-periods.js <시작일_종료일> <시작일_종료일> ... (2개 이상)');
+    console.error('❌ 사용법: node compare-periods.js [brand=브랜드키] <시작일_종료일> <시작일_종료일> ... (기간 2개 이상)');
     console.error('   예: node compare-periods.js 2026-06-10_2026-06-13 2026-06-18_2026-06-22');
     process.exit(1);
   }

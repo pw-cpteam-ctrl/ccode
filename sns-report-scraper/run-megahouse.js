@@ -50,43 +50,44 @@ const { buildComparisonReport, applyManualPosts } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
 const { saveHtmlReport } = require('./html-report');
 const { buildStockComparison } = require('./stock-report');
-const { captureSnapshot, HISTORY_PATH: STOCK_HISTORY_PATH } = require('./naver-stock-snapshot');
+const { captureSnapshot } = require('./naver-stock-snapshot');
 const { archiveAndGetPath } = require('./report-archive');
+const { prepareBrand, parseBrandArg, saveLastRun, readLastRun } = require('./brand-config');
 
+// 수집 계정·저장 경로는 전부 브랜드 설정(brands/<브랜드>.json)에서 가져옴 — 예전엔 여기에
+// 메가하우스 전용으로 하드코딩돼 있었는데, 브랜드가 늘어나면 같은 파일을 서로 덮어써서
+// 먼저 수집한 브랜드 데이터가 사라지는 문제가 있어서 brand-config.js로 분리함.
+// CONFIG는 아래 main()에서 선택된 브랜드 기준으로 채워짐.
 const CONFIG = {
-  // startDate/endDate는 기본값 없이 커맨드라인에서 항상 받아야 함(main()에서 검증) — 아래
-  // main()이 cliDates 파싱 후 채워 넣음.
-  outputPath: './reports/sns-report.xlsx',
-  // HTML은 매번 새로 만들 때 파일명에 생성 시각을 붙이고, 예전 파일은 reports/old/로 자동
+  // startDate/endDate는 기본값 없이 커맨드라인에서 항상 받아야 함(main()에서 검증)
+};
+
+function applyBrandToConfig(brand) {
+  CONFIG.brand = brand;
+  CONFIG.outputPath = brand.paths.excel;
+  // HTML은 매번 새로 만들 때 파일명에 생성 시각을 붙이고, 예전 파일은 <브랜드>/old/로 자동
   // 이동함(report-archive.js) — 과거 데이터 보존은 엑셀(outputPath, 시트 누적)이 따로 담당.
-  htmlOutputDir: './reports',
-  htmlOutputBaseName: 'sns-report',
+  CONFIG.htmlOutputDir = brand.paths.htmlDir;
+  CONFIG.htmlOutputBaseName = brand.paths.htmlBaseName;
   // 수집한 원본 게시물을 여기에 캐시해둠 — 리포트 포맷만 고칠 땐 재수집(몇 분) 없이
   // rebuild-report.js로 이 캐시만 다시 읽어서 몇 초 안에 엑셀만 새로 뽑을 수 있음.
-  cachePath: './reports/_last-collection.json',
-  // compare-periods.js가 읽는 기간별 원본 캐시 저장 위치 (아래 main()에서 매 실행마다
-  // "시작일_종료일.json" 파일로 하나씩 남김 — cachePath와 달리 덮어써지지 않음)
-  periodCacheDir: './reports/period-cache',
+  CONFIG.cachePath = brand.paths.cache;
+  // compare-periods.js가 읽는 기간별 원본 캐시 저장 위치 (매 실행마다 "시작일_종료일.json"
+  // 파일로 하나씩 남김 — cachePath와 달리 덮어써지지 않음)
+  CONFIG.periodCacheDir = brand.paths.periodCacheDir;
   // 자동 매칭이 놓친 게시물을 수동으로 짝지어주는 목록. "매칭 안 됨" 목록에서 번호(PW #n,
   // BH #n)로 지정해서 { pw: [링크], bh: [링크], label: "표시할 이름" } 형태로 추가하면 됨.
-  manualMatchesPath: './manual-matches.json',
+  CONFIG.manualMatchesPath = brand.paths.manualMatches;
   // 상품이 아닌 공지/이벤트/쿠폰 게시물 — "매칭 안 됨" 목록에 안 보이게 걸러내지만, 계정
   // 총계(팔로워/게시물 지표)에는 그대로 포함됨. { twitter: {pw:[], bh:[링크,...]}, ... } 형태.
-  ignorePostsPath: './ignore-posts.json',
+  CONFIG.ignorePostsPath = brand.paths.ignorePosts;
   // 스크래퍼가 놓친 게시물을 리포트의 "붙여넣기로 게시물 추가" 기능으로 저장해둔 파일.
   // { twitter: { pw: [게시물 객체...], bh: [...] }, instagram: {...} } 형태 — 있으면 실제
   // 수집분에 "(수동 추가)" 계정으로 합쳐진 뒤 평소처럼 자동 매칭이 다시 돌아감.
-  manualPostsPath: './manual-posts.json',
-
-  own: [
-    { platform: 'twitter', account: 'megahousestore', sessionFile: './x-session.json' },
-    { platform: 'instagram', account: 'megahouse_store', sessionFile: './instagram-session.json' },
-  ],
-  competitors: [
-    { platform: 'twitter', account: 'megahouse_BH', sessionFile: './x-session.json' },
-    { platform: 'instagram', account: 'megahouse_korea_dt_bh', sessionFile: './instagram-session.json' },
-  ],
-};
+  CONFIG.manualPostsPath = brand.paths.manualPosts;
+  CONFIG.own = brand.own.filter(a => a.account);
+  CONFIG.competitors = brand.competitors.filter(a => a.account);
+}
 
 async function collectAll(accounts) {
   const collections = [];
@@ -112,13 +113,52 @@ function todayKst() {
 }
 
 async function main() {
-  const args = process.argv.slice(2);
+  const { brandKey, rest: args } = parseBrandArg(process.argv.slice(2));
+  const brand = prepareBrand(brandKey);
+  applyBrandToConfig(brand);
+  console.log(`🏷️  브랜드: ${brand.label} (${brand.key}) — 저장 위치: ${path.relative(__dirname, brand.paths.dataDir)}/`);
+
+  if (CONFIG.own.length === 0 && CONFIG.competitors.length === 0) {
+    console.error(
+      `❌ [${brand.label}] 수집할 계정이 설정돼 있지 않음 — brands/${brand.key}.json 파일을 열어서\n` +
+      '   own(자사)/competitors(경쟁사)의 "account"에 실제 계정 아이디(@ 없이)를 채워주세요.'
+    );
+    process.exit(1);
+  }
+
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
   let platformFilter;
+  // 재고 스냅샷은 기본으로 같이 찍되(안 찍으면 추이 그래프용 시점이 안 쌓임), SNS만 빠르게
+  // 보고 싶을 때는 nostock으로 끌 수 있게 함(대시보드 체크박스가 이 인자를 넘김).
+  let withStock = true;
+  // 리포트에 재고를 어떻게 넣을지: none(안 넣음, 기본) / ratio(비율·지수만).
+  // 절대 수량은 대외비로 취급해서 리포트 파일에 아예 안 심는 방침 — html-report.js 참고.
+  let stockMode = brand.defaultStockMode;
   const cliDates = [];
   for (const arg of args) {
     if (arg === 'twitter' || arg === 'instagram') platformFilter = arg;
-    else if (arg === 'today') {
+    else if (arg === 'nostock' || arg === '--no-stock') withStock = false;
+    else if (/^--?stock=(none|ratio)$/.test(arg) || /^stock=(none|ratio)$/.test(arg)) {
+      stockMode = arg.split('=')[1];
+    } else if (arg === 'since-last' || arg === '--since-last') {
+      // "마지막 수집 이후 전부" — 굿스마일처럼 게시 주기가 뜨문한 브랜드에서 빠뜨리는 기간이
+      // 없게 하려고, 지난번 수집 종료일 다음날부터 오늘까지를 자동으로 잡아줌.
+      const last = readLastRun(brand);
+      const today = todayKst();
+      if (!last || !last.endDate) {
+        console.error(`❌ [${brand.label}]는 아직 수집 기록이 없어서 "마지막 수집 이후"를 계산할 수 없음 — 날짜를 직접 지정해주세요(예: node run-megahouse.js brand=${brand.key} 2026-08-01 2026-09-07)`);
+        process.exit(1);
+      }
+      const next = new Date(`${last.endDate}T00:00:00Z`);
+      next.setUTCDate(next.getUTCDate() + 1);
+      const start = next.toISOString().slice(0, 10);
+      if (start > today) {
+        console.error(`❌ 마지막 수집(${last.startDate}~${last.endDate}) 이후로 아직 지난 날짜가 없음 — 오늘(${today})까지 이미 수집돼 있습니다.`);
+        process.exit(1);
+      }
+      cliDates.push(start, today);
+      console.log(`⏩ 마지막 수집(${last.endDate}) 다음날부터 오늘까지: ${start} ~ ${today}`);
+    } else if (arg === 'today') {
       if (cliDates.length > 0) {
         console.error('❌ "today"는 다른 날짜 인자와 같이 못 씀 (단독으로: node run-megahouse.js today)');
         process.exit(1);
@@ -132,7 +172,12 @@ async function main() {
       }
       cliDates.push(arg);
     } else {
-      console.error(`❌ 사용법: node run-megahouse.js [twitter|instagram] [today | 시작일 종료일 (YYYY-MM-DD YYYY-MM-DD)]`);
+      console.error(
+        '❌ 사용법: node run-megahouse.js [brand=메가하우스키] [twitter|instagram] [today | since-last | 시작일 종료일] [nostock] [stock=none|ratio]\n' +
+        '   예) node run-megahouse.js today                          — 메가하우스, 오늘 하루\n' +
+        '   예) node run-megahouse.js brand=goodsmile since-last      — 굿스마일, 마지막 수집 이후 전부\n' +
+        '   예) node run-megahouse.js 2026-09-01 2026-09-07 nostock   — 재고는 안 찍고 SNS만'
+      );
       process.exit(1);
     }
   }
@@ -220,20 +265,30 @@ async function main() {
   // 그러다 보니 며칠씩 안 찍혀서 추이 그래프가 마지막으로 찍은 날짜에서 멈춰있는 문제가
   // 있었음. 재고 사이트 접속이 실패해도(구조 변경 등) SNS 리포트 저장까지 막으면 안 되므로
   // 실패해도 여기서 삼키고 경고만 남김 — 데이터 유실 방지가 우선.
-  try {
-    await captureSnapshot();
-  } catch (e) {
-    console.warn(`⚠️ 재고 스냅샷 촬영 실패(SNS 리포트는 정상 진행): ${e.message}`);
+  if (withStock) {
+    try {
+      await captureSnapshot(brand);
+    } catch (e) {
+      console.warn(`⚠️ 재고 스냅샷 촬영 실패(SNS 리포트는 정상 진행): ${e.message}`);
+    }
+  } else {
+    console.log('⏭️  재고 스냅샷 건너뜀(nostock) — SNS만 수집함');
   }
 
-  const stockHistory = fs.existsSync(STOCK_HISTORY_PATH)
-    ? JSON.parse(fs.readFileSync(STOCK_HISTORY_PATH, 'utf-8'))
+  // 리포트에 재고를 넣을 때만 히스토리를 읽음. stockMode가 'none'이면 아예 안 읽고 안 넣음 —
+  // "리포트 한 장에 정보가 너무 많아 정신없다"는 피드백 + 재고 수량은 대외비라 파일에
+  // 안 심는 게 낫다는 판단(가리는 게 아니라 애초에 포함하지 않음).
+  const stockHistory = stockMode !== 'none' && fs.existsSync(brand.paths.stockHistory)
+    ? JSON.parse(fs.readFileSync(brand.paths.stockHistory, 'utf-8'))
     : null;
   const stockComparison = stockHistory ? buildStockComparison(stockHistory) : null;
 
   const htmlOutputPath = archiveAndGetPath(CONFIG.htmlOutputDir, CONFIG.htmlOutputBaseName, 'html');
-  saveHtmlReport(report, htmlOutputPath, stockComparison);
-  console.log(`✅ HTML 저장 완료: ${htmlOutputPath} (브라우저로 열어서 확인, 이전 파일은 reports/old/로 이동됨)`);
+  saveHtmlReport(report, htmlOutputPath, stockComparison, { brandLabel: brand.label, stockMode });
+  console.log(`✅ HTML 저장 완료: ${htmlOutputPath} (브라우저로 열어서 확인, 이전 파일은 ${path.relative(__dirname, CONFIG.htmlOutputDir)}/old/로 이동됨)`);
+
+  // 이번에 수집한 기간을 기록 — 다음에 "마지막 수집 이후 전부"를 누르면 여기서부터 이어받음
+  saveLastRun(brand, { startDate: CONFIG.startDate, endDate: CONFIG.endDate });
 }
 
 main().catch(err => {

@@ -16,6 +16,7 @@ const { savePeriodComparisonToExcel } = require('./period-excel');
 const { extractFromHtml, sanitizeJsonLiteral, extractAssignedJson, withPageParam } = require('./naver-stock');
 const { buildStockComparison, rankStockProducts, findStockMatch, matchPwBhStockProducts, buildIntegratedStockRows, renderStockSectionHtml } = require('./stock-report');
 const { buildHtmlReport } = require('./html-report');
+const { listBrands, loadBrand, ensureBrandDirs, parseBrandArg, saveLastRun, readLastRun, DEFAULT_BRAND } = require('./brand-config');
 const { archiveAndGetPath } = require('./report-archive');
 
 function check(label, fn) {
@@ -652,17 +653,57 @@ check('html-report: SNS 표 우측 매출 칸(PW vs BH 분할 바) + 하단 재�
     storeComparable: { PW: true, BH: true },
   };
 
-  const html = buildHtmlReport(report, stockComparison);
+  // 2026-09-07부터 재고는 stockMode를 켜야만 리포트에 들어감(기본은 SNS 전용) —
+  // "한 장에 정보가 너무 많다"는 팀 피드백 + 재고 수량은 대외비라는 방침 반영.
+  const html = buildHtmlReport(report, stockComparison, { stockMode: 'ratio' });
   assert.ok(html.includes('📦 매출 (PW vs BH)'), '헤더에 매출 칸이 리트윗/좋아요와 같은 "PW vs BH" 형식으로 있어야 함');
-  assert.ok(html.includes('class="metricbar-val pw">513개') && html.includes('class="metricbar-val bh">30개'),
-    'PW/BH 매출이 리트윗/좋아요와 같은 분할 바 형식(metricbar-val)으로 나와야 함');
-  assert.ok(html.includes('class="metric-diff">94:6</div>'),
-    '리트윗/좋아요의 "N배" 캡션처럼 매출도 PW:BH 점유율("94:6")이 회색 작은 글씨로 병기돼야 함(513:30 → 반올림 94:6)');
-  assert.ok(html.includes('재고 스냅샷 (실험적)'), '하단 독립 재고 섹션도 그대로 남아있어야 함(삭제 금지)');
-  assert.ok(html.includes('매출순위'), '독립 섹션에도 매출순위 컬럼이 있어야 함');
+  assert.ok(html.includes('class="metricbar-val pw">94%') && html.includes('class="metricbar-val bh">6%'),
+    '매출 칸은 개수 대신 PW:BH 점유율(%)로 나와야 함(513:30 → 94%:6%)');
+  assert.ok(html.includes('재고 비교 (비율만)'), '하단 재고 섹션(비율 전용)도 함께 나와야 함');
 
-  assert.strictEqual(buildHtmlReport(report, null).includes('재고 스냅샷'), false,
-    '재고 히스토리가 아예 없으면(null) 독립 섹션도 안 나와야 함');
+  assert.strictEqual(buildHtmlReport(report, null, { stockMode: 'ratio' }).includes('재고 비교'), false,
+    '재고 히스토리가 아예 없으면(null) 하단 섹션도 안 나와야 함');
+});
+
+check('html-report: 기본값은 SNS 전용 — 재고 데이터가 있어도 리포트에 재고가 하나도 안 들어가야 함 (2026-09-07 팀 피드백)', () => {
+  const stockComparison = {
+    latestTakenAt: '2026-07-08T00:00:00.000Z',
+    previousTakenAt: '2026-07-06T00:00:00.000Z',
+    snapshotCount: 2,
+    stores: {
+      PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9486, totalSold: 513, totalSoldIsEstimated: false }],
+      BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 470, totalSold: 30, totalSoldIsEstimated: false }],
+    },
+    storeComparable: { PW: true, BH: true },
+  };
+  const html = buildHtmlReport(report, stockComparison); // stockMode 미지정 = 'none'
+  assert.ok(!html.includes('📦 매출'), '기본값에서는 SNS 표에 매출 칸이 없어야 함');
+  assert.ok(!html.includes('재고 비교') && !html.includes('재고 스냅샷 ('), '기본값에서는 하단 재고 섹션도 없어야 함');
+  assert.ok(html.includes('SNS 전용(재고 미포함)'), '리포트 상단에 SNS 전용이라는 표시가 있어야 함');
+});
+
+check('html-report: 비율 모드에서 판매 개수·재고 수량이 파일에 남지 않아야 함 (대외비 — 가리는 게 아니라 미포함)', () => {
+  // 감추기(display:none/토글)로는 소스 보기로 다 보이므로, 비율 모드에서는 절대 수치를
+  // 애초에 HTML에 안 심는 것이 요구사항. 툴팁·축 라벨까지 포함해 새는 곳이 없는지 확인.
+  const history = {
+    snapshots: [
+      { takenAt: '2026-07-06T00:00:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '[예약] 은혼 GEM 카무이 ver.2', price: 220000, stock: 9777 }],
+        BH: [{ productId: 'Y1', name: '[예약] 은혼 GEM 카무이 세컨드', price: 210000, stock: 9888 }],
+      } },
+      { takenAt: '2026-07-08T00:00:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '[예약] 은혼 GEM 카무이 ver.2', price: 220000, stock: 9486 }],
+        BH: [{ productId: 'Y1', name: '[예약] 은혼 GEM 카무이 세컨드', price: 210000, stock: 9470 }],
+      } },
+    ],
+  };
+  const compared = buildStockComparison(history);
+  const html = buildHtmlReport(report, compared, { stockMode: 'ratio' });
+  // 이 데이터의 실제 판매추정치/재고값 문자열이 HTML 어디에도 없어야 함
+  const leaked = ['514개', '530개', '9,486', '9,470', '9,777', '9,888', '판매추정(재고'].filter(v => html.includes(v));
+  assert.deepStrictEqual(leaked, [], '절대 수량이 HTML에 남아있음: ' + leaked.join(', '));
+  assert.ok(html.includes('점유율'), '대신 점유율은 표시돼야 함');
+  assert.ok(html.includes('지수'), '추이는 지수로 표시돼야 함');
 });
 
 check('html-report/stock-report: 직전 스냅샷이 있어도 특정 store만 그때 수집 실패(0건)했으면 "신규" 오표시하면 안 됨 — 초기 한도 추정치로 대체', () => {
@@ -691,9 +732,9 @@ check('html-report/stock-report: 직전 스냅샷이 있어도 특정 store만 �
   assert.strictEqual(bhProduct.totalSold, 530, '10000 - 9470 = 530이 추정 판매량이어야 함');
   assert.strictEqual(bhProduct.totalSoldIsEstimated, true, 'BH도 예약 상품이므로 초기한도 추정');
 
-  const html = buildHtmlReport(report, compared);
-  assert.ok(html.includes('class="metricbar-val pw">514개*') && html.includes('class="metricbar-val bh">530개*'),
-    'PW/BH 둘 다 같은 분할 바 형식(초기한도 추정, "*" 표시)으로 나와야 함');
+  const html = buildHtmlReport(report, compared, { stockMode: 'ratio' });
+  assert.ok(html.includes('class="metricbar-val pw">49%') && html.includes('class="metricbar-val bh">51%'),
+    'PW/BH 둘 다 같은 분할 바 형식(비율 모드에서는 점유율 %)으로 나와야 함(514:530 → 49%:51%)');
   // 각주 설명 문구엔 "신규"라는 단어 자체가 나오지만(의미 설명용), 실제 셀 내용(>신규<)으로
   // 렌더링되면 안 됨 — BH는 직전 데이터가 없었을 뿐 진짜 신규가 아님.
   assert.ok(!html.includes('>신규<'), 'BH는 직전 데이터가 없었을 뿐 진짜 신규가 아니므로 "신규" 셀로 표시하면 안 됨');
@@ -1157,6 +1198,104 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
     assert.ok(wbPeriod.getWorksheet(sheetP1), '이전 기간 조합 시트가 남아있어야 함');
     assert.ok(wbPeriod.getWorksheet(sheetP3));
   });
+
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 브랜드 분리 (2026-09-07) — 메가하우스/굿스마일이 같은 파일을 덮어쓰지 않는지
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  check('brand-config: 브랜드 목록에 메가하우스/굿스마일이 있고, 계정 설정 여부(ready)를 알려줘야 함', () => {
+  const list = listBrands();
+  const keys = list.map(b => b.key);
+  assert.ok(keys.includes('megahouse'), '메가하우스 브랜드가 있어야 함');
+  assert.ok(keys.includes('goodsmile'), '굿스마일 브랜드가 있어야 함');
+  assert.strictEqual(list[0].key, DEFAULT_BRAND, '기본 브랜드(메가하우스)가 목록 맨 앞에 와야 함');
+  const mega = list.find(b => b.key === 'megahouse');
+  assert.strictEqual(mega.ready, true, '메가하우스는 계정이 채워져 있어야 함');
+  const gsc = list.find(b => b.key === 'goodsmile');
+  assert.strictEqual(gsc.ready, false, '굿스마일은 계정 핸들이 아직 비어 있어서 ready=false여야 함(채우면 true)');
+});
+
+  check('brand-config: 브랜드마다 저장 경로가 완전히 갈려야 함 (같은 파일을 덮어쓰면 먼저 수집한 브랜드 데이터가 사라짐)', () => {
+  const mega = loadBrand('megahouse');
+  const gsc = loadBrand('goodsmile');
+  const keysToCheck = ['cache', 'stockHistory', 'excel', 'periodCacheDir', 'manualMatches', 'ignorePosts', 'manualPosts', 'lastRun'];
+  for (const key of keysToCheck) {
+    assert.notStrictEqual(mega.paths[key], gsc.paths[key], `${key} 경로가 두 브랜드에서 같으면 서로 덮어씀`);
+  }
+  assert.ok(mega.paths.cache.includes('megahouse'), '메가하우스 캐시는 megahouse 폴더 안이어야 함');
+  assert.ok(gsc.paths.cache.includes('goodsmile'), '굿스마일 캐시는 goodsmile 폴더 안이어야 함');
+});
+
+  check('brand-config: 굿스마일은 재고 스토어가 비어 있어서 재고 단계를 건너뛰게 돼 있어야 함', () => {
+  assert.strictEqual(loadBrand('goodsmile').stockStores.length, 0, '스토어가 정해지면 brands/goodsmile.json에 채우면 됨');
+  assert.ok(loadBrand('megahouse').stockStores.length >= 1, '메가하우스는 재고 스토어가 설정돼 있어야 함');
+});
+
+  check('brand-config: 예전(브랜드 폴더 도입 전) 데이터를 브랜드 폴더로 복사하고, 이미 있는 파일은 덮어쓰지 않아야 함', () => {
+  const os = require('os');
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'brandmig-'));
+  // brand-config는 자기 파일 위치(__dirname) 기준으로 동작하므로, 이관 로직만 같은 규칙으로
+  // 재현해서 검증함(실제 사용자 데이터를 건드리지 않기 위해 임시 폴더에서).
+  const legacyCache = path.join(tmpRoot, 'reports', '_last-collection.json');
+  const brandCache = path.join(tmpRoot, 'reports', 'megahouse', '_last-collection.json');
+  fs.mkdirSync(path.dirname(legacyCache), { recursive: true });
+  fs.writeFileSync(legacyCache, JSON.stringify({ marker: '예전데이터' }));
+
+  const copyIfAbsent = (src, dest) => {
+    if (!fs.existsSync(src) || fs.existsSync(dest)) return false;
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(src, dest);
+    return true;
+  };
+
+  assert.strictEqual(copyIfAbsent(legacyCache, brandCache), true, '브랜드 폴더에 없으면 예전 파일을 복사해야 함');
+  assert.strictEqual(JSON.parse(fs.readFileSync(brandCache, 'utf-8')).marker, '예전데이터', '복사된 내용이 같아야 함');
+  assert.ok(fs.existsSync(legacyCache), '원본은 남겨둬야 함(되돌릴 수 있게)');
+
+  fs.writeFileSync(brandCache, JSON.stringify({ marker: '이미있던새데이터' }));
+  assert.strictEqual(copyIfAbsent(legacyCache, brandCache), false, '브랜드 폴더에 이미 있으면 건드리면 안 됨');
+  assert.strictEqual(JSON.parse(fs.readFileSync(brandCache, 'utf-8')).marker, '이미있던새데이터', '기존 파일이 덮어써지면 데이터 유실');
+
+  fs.rmSync(tmpRoot, { recursive: true, force: true });
+});
+
+  check('brand-config: parseBrandArg — brand= 인자만 걷어내고 나머지 인자는 그대로 넘겨야 함', () => {
+  assert.deepStrictEqual(parseBrandArg(['brand=goodsmile', 'today', 'nostock']), { brandKey: 'goodsmile', rest: ['today', 'nostock'] });
+  assert.deepStrictEqual(parseBrandArg(['--brand=megahouse', '2026-09-01', '2026-09-07']), { brandKey: 'megahouse', rest: ['2026-09-01', '2026-09-07'] });
+  assert.deepStrictEqual(parseBrandArg(['today']), { brandKey: DEFAULT_BRAND, rest: ['today'] }, '브랜드를 안 주면 기본 브랜드(메가하우스)');
+});
+
+  check('brand-config: 마지막 수집 기간 기록/읽기 — "마지막 수집 이후 전부" 버튼의 근거 데이터', () => {
+  const os = require('os');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lastrun-'));
+  const fakeBrand = { paths: { lastRun: path.join(tmp, '_last-run.json') } };
+  assert.strictEqual(readLastRun(fakeBrand), null, '기록이 없으면 null (버튼이 비활성화돼야 함)');
+  saveLastRun(fakeBrand, { startDate: '2026-09-01', endDate: '2026-09-07' });
+  const got = readLastRun(fakeBrand);
+  assert.strictEqual(got.startDate, '2026-09-01');
+  assert.strictEqual(got.endDate, '2026-09-07');
+  fs.writeFileSync(fakeBrand.paths.lastRun, '{깨진 JSON');
+  assert.strictEqual(readLastRun(fakeBrand), null, '파일이 깨져 있어도 수집 자체를 막지 않고 null로 넘어가야 함');
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+  check('matching-core: 굿스마일 POP UP PARADE가 메가하우스 POP(스케일) 라인으로 오분류되면 안 됨 (부분 문자열 충돌)', () => {
+  const { detectProductLine } = require('./matching-core');
+  assert.strictEqual(detectProductLine('굿스마일 POP UP PARADE 프리렌 피규어'), 'POP UP PARADE');
+  assert.strictEqual(detectProductLine('팝업퍼레이드 프리렌'), 'POP UP PARADE', '한글 표기도 같은 라인으로 통일돼야 함');
+  assert.strictEqual(detectProductLine('넨도로이드 하츠네 미쿠'), '넨도로이드');
+  assert.strictEqual(detectProductLine('figma 링크'), 'figma');
+  assert.strictEqual(detectProductLine('원피스 POP 시리즈 루피'), 'POP', '메가하우스 POP 라인은 그대로 잡혀야 함');
+  assert.strictEqual(detectProductLine('원피스 스케일 피규어 루피'), 'POP', '스케일=POP 별칭도 유지');
+});
+
+  check('matching-core: 굿스마일 브랜드명은 상품 구분 키워드에서 빠져야 함(메가하우스와 같은 처리)', () => {
+  const { extractKeywords } = require('./matching-core');
+  const kw = extractKeywords('굿스마일 POP UP PARADE 프리렌 피규어');
+  assert.ok(!kw.includes('굿스마일') && !kw.some(k => /GOODSMILE/i.test(k)), '브랜드명은 매칭 키워드에서 제외돼야 함');
+  assert.ok(kw.includes('프리렌'), '실제 상품명 키워드는 남아야 함');
+});
 
   console.log(`\n(생성된 검증용 엑셀 파일: ${outPath} — 직접 열어서 표 형태도 확인 가능)`);
   if (process.exitCode) {

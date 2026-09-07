@@ -1,0 +1,32 @@
+{
+  "label": "메가하우스",
+  "note": "자사(PW)=메가하우스 공식, 경쟁사(BH)=총판 경쟁사. 계정은 원칙적으로 고정 — 예외 계정을 한 번만 볼 때는 대시보드의 '특정 계정 하나만 단독으로 보기'를 쓸 것.",
+  "own": [
+    { "platform": "twitter", "account": "megahousestore", "sessionFile": "./x-session.json" },
+    { "platform": "instagram", "account": "megahouse_store", "sessionFile": "./instagram-session.json" }
+  ],
+  "competitors": [
+    { "platform": "twitter", "account": "megahouse_BH", "sessionFile": "./x-session.json" },
+    { "platform": "instagram", "account": "megahouse_korea_dt_bh", "sessionFile": "./instagram-session.json" }
+  ],
+  "datePresets": [
+    { "id": "today", "label": "오늘" },
+    { "id": "2weeks", "label": "최근 2주", "days": 14 }
+  ],
+  "defaultDateMode": "today",
+  "defaultStockMode": "none",
+  "stockStores": [
+    {
+      "label": "PW",
+      "url": "https://brand.naver.com/megahouse/category/a1b6775bba66406296df046187baf675?st=POPULAR&dt=IMAGE&page=1&size=80",
+      "note": "월별 카테고리 URL — 달이 바뀌면 그 달 카테고리 주소로 갱신해야 이번 달 상품만 잡힘"
+    },
+    {
+      "label": "BH",
+      "url": "https://m.site.naver.com/1X24n",
+      "paginate": true,
+      "pageUrlTemplate": "https://smartstore.naver.com/megahousemall/category/1422883dc67d4ac7add2b41009c62d39?st=TOTALSALE&dt=IMAGE&page={page}&size=40",
+      "note": "카테고리 URL로 직접 들어가면 로그인 게이트에 걸려서, 단축링크로 먼저 통과한 뒤 페이지 패턴으로 이동"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "label": "굿스마일",
+  "note": "⚠️ 계정 핸들이 아직 비어 있음 — 아래 own/competitors의 \"account\"에 실제 계정 아이디(@ 없이)를 채워야 수집이 됩니다. 로그인 세션 파일은 메가하우스와 같은 걸 그대로 씁니다(내 계정으로 로그인한 상태에서 공개 게시물을 보는 방식이라 브랜드별로 따로 로그인할 필요 없음).",
+  "own": [
+    { "platform": "twitter", "account": "", "sessionFile": "./x-session.json" },
+    { "platform": "instagram", "account": "", "sessionFile": "./instagram-session.json" }
+  ],
+  "competitors": [
+    { "platform": "twitter", "account": "", "sessionFile": "./x-session.json" },
+    { "platform": "instagram", "account": "", "sessionFile": "./instagram-session.json" }
+  ],
+  "datePresets": [
+    { "id": "2weeks", "label": "최근 2주", "days": 14 },
+    { "id": "2months", "label": "최근 2개월", "days": 60 }
+  ],
+  "defaultDateMode": "custom",
+  "defaultStockMode": "none",
+  "stockStores": [],
+  "stockNote": "굿스마일 쪽 네이버 스토어 재고 연동은 아직 안 붙임 — 붙일 스토어가 정해지면 메가하우스 설정처럼 label/url(필요하면 paginate·pageUrlTemplate)을 채우면 됩니다. 비어 있으면 재고 수집 단계를 조용히 건너뜁니다."
+}

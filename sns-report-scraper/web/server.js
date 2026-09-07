@@ -17,6 +17,16 @@ const express = require('express');
 const ROOT = path.join(__dirname, '..'); // sns-report-scraper 폴더 (스크립트들이 있는 곳)
 const REPORTS_DIR = path.join(ROOT, 'reports');
 const PORT = 4848;
+const { listBrands, loadBrand, prepareBrand, readLastRun, DEFAULT_BRAND } = require(path.join(ROOT, 'brand-config'));
+
+// 브랜드(메가하우스/굿스마일…)는 화면에서 고르고, 그 값이 모든 버튼에 같이 넘어옴.
+// 아무 브랜드나 문자열로 들어오면 안 되니 brands/*.json에 실제로 있는 키만 통과시킴.
+function resolveBrandKey(raw) {
+  const keys = listBrands().map(b => b.key);
+  if (!raw) return DEFAULT_BRAND;
+  if (!keys.includes(raw)) throw new Error(`알 수 없는 브랜드입니다: ${raw} (가능: ${keys.join(', ')})`);
+  return raw;
+}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HANDLE_RE = /^[A-Za-z0-9_]{1,15}$/; // 트위터 핸들 형식(영문/숫자/밑줄, 최대 15자)
@@ -75,23 +85,72 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ── 처음 쓰는 사람을 위한 준비 상태 확인(로그인 세션 있는지 등) ──
 app.get('/api/status', (req, res) => {
+  let brandInfo = null;
+  try {
+    const brand = loadBrand(resolveBrandKey(req.query.brand));
+    const lastRun = readLastRun(brand);
+    brandInfo = {
+      key: brand.key,
+      label: brand.label,
+      accounts: [...brand.own, ...brand.competitors].filter(a => a.account).length,
+      ready: [...brand.own, ...brand.competitors].some(a => a.account),
+      hasStock: brand.stockStores.length > 0,
+      hasCache: fs.existsSync(brand.paths.cache),
+      lastRun,
+      datePresets: brand.datePresets,
+      defaultDateMode: brand.defaultDateMode,
+    };
+  } catch (e) {
+    brandInfo = { error: e.message };
+  }
   res.json({
     hasTwitterSession: fs.existsSync(path.join(ROOT, 'x-session.json')),
     hasInstagramSession: fs.existsSync(path.join(ROOT, 'instagram-session.json')),
     hasNotionConfig: fs.existsSync(path.join(ROOT, 'notion-config.json')),
+    brand: brandInfo,
     job: currentJob ? { id: currentJob.id, label: currentJob.label, status: currentJob.status } : null,
   });
 });
 
+// ── 설치된 브랜드 목록(화면 맨 위 브랜드 선택용) ──
+app.get('/api/brands', (req, res) => {
+  try {
+    res.json(listBrands());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── 리포트 목록(다운로드용) ──
 app.get('/api/reports', (req, res) => {
-  const files = fs.readdirSync(REPORTS_DIR, { withFileTypes: true })
-    .filter(e => e.isFile() && (e.name.endsWith('.html') || e.name.endsWith('.xlsx')))
-    .map(e => {
-      const stat = fs.statSync(path.join(REPORTS_DIR, e.name));
-      return { name: e.name, size: stat.size, mtime: stat.mtimeMs };
-    })
-    .sort((a, b) => b.mtime - a.mtime);
+  let brandKey;
+  try {
+    brandKey = resolveBrandKey(req.query.brand);
+  } catch (e) {
+    return badRequest(res, e.message);
+  }
+  // 브랜드 폴더(reports/<브랜드>/) 안의 리포트를 보여줌. 추가로 기본 브랜드일 때는 예전
+  // 위치(reports/ 바로 아래)에 있던 파일도 같이 보여줌 — 브랜드 폴더 도입 전에 만든
+  // 리포트가 목록에서 갑자기 사라진 것처럼 보이면 안 되므로(데이터 유실 오해 방지).
+  const dirs = [{ rel: brandKey, abs: path.join(REPORTS_DIR, brandKey) }];
+  if (brandKey === DEFAULT_BRAND) dirs.push({ rel: '', abs: REPORTS_DIR });
+
+  const files = [];
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir.abs)) continue;
+    for (const e of fs.readdirSync(dir.abs, { withFileTypes: true })) {
+      if (!e.isFile() || !(e.name.endsWith('.html') || e.name.endsWith('.xlsx'))) continue;
+      const stat = fs.statSync(path.join(dir.abs, e.name));
+      files.push({
+        name: e.name,
+        path: dir.rel ? `${dir.rel}/${e.name}` : e.name,
+        legacy: dir.rel === '',
+        size: stat.size,
+        mtime: stat.mtimeMs,
+      });
+    }
+  }
+  files.sort((a, b) => b.mtime - a.mtime);
   res.json(files);
 });
 
@@ -116,8 +175,14 @@ function badRequest(res, message) {
 
 // ── 오늘/기간 지정 수집 (run-megahouse.js) ──
 app.post('/api/collect', (req, res) => {
-  const { mode, startDate, endDate, platform } = req.body || {};
-  const args = [];
+  const { mode, startDate, endDate, platform, withStock, stockMode } = req.body || {};
+  let brandKey;
+  try {
+    brandKey = resolveBrandKey((req.body || {}).brand);
+  } catch (e) {
+    return badRequest(res, e.message);
+  }
+  const args = [`brand=${brandKey}`];
   if (platform) {
     if (platform !== 'twitter' && platform !== 'instagram') return badRequest(res, '플랫폼은 twitter 또는 instagram만 가능합니다.');
     args.push(platform);
@@ -127,11 +192,18 @@ app.post('/api/collect', (req, res) => {
   } else if (mode === 'range') {
     if (!DATE_RE.test(startDate) || !DATE_RE.test(endDate)) return badRequest(res, '날짜 형식이 올바르지 않습니다(YYYY-MM-DD).');
     args.push(startDate, endDate);
+  } else if (mode === 'since-last') {
+    // 게시 주기가 뜨문한 브랜드(굿스마일 등)에서 빠뜨리는 기간이 없게 — 마지막 수집 다음날부터 오늘까지
+    args.push('since-last');
   } else {
-    return badRequest(res, '오늘(today) 또는 기간(range) 중 하나를 선택해주세요.');
+    return badRequest(res, '오늘(today) / 기간(range) / 마지막 수집 이후(since-last) 중 하나를 선택해주세요.');
   }
+  // 재고 스냅샷은 기본으로 같이 찍음(안 찍으면 나중에 소급이 안 돼서 추이가 비어버림).
+  // 화면에서 체크를 끄면 nostock으로 넘어와서 SNS만 수집.
+  if (withStock === false) args.push('nostock');
+  if (stockMode === 'ratio' || stockMode === 'none') args.push(`stock=${stockMode}`);
   try {
-    const id = startJob('SNS 실적 수집', 'run-megahouse.js', args);
+    const id = startJob(`SNS 실적 수집 (${brandKey})`, 'run-megahouse.js', args);
     res.json({ jobId: id });
   } catch (e) {
     badRequest(res, e.message);
@@ -140,8 +212,17 @@ app.post('/api/collect', (req, res) => {
 
 // ── 캐시로만 재생성 (rebuild-report.js) ──
 app.post('/api/rebuild', (req, res) => {
+  const { stockMode } = req.body || {};
+  let brandKey;
   try {
-    const id = startJob('캐시로 리포트 재생성', 'rebuild-report.js', []);
+    brandKey = resolveBrandKey((req.body || {}).brand);
+  } catch (e) {
+    return badRequest(res, e.message);
+  }
+  const args = [`brand=${brandKey}`];
+  if (stockMode === 'ratio' || stockMode === 'none') args.push(`stock=${stockMode}`);
+  try {
+    const id = startJob(`캐시로 리포트 재생성 (${brandKey})`, 'rebuild-report.js', args);
     res.json({ jobId: id });
   } catch (e) {
     badRequest(res, e.message);
@@ -153,8 +234,14 @@ app.post('/api/rebuild', (req, res) => {
 // 수십 초면 끝남. 추이 그래프는 같은 상품이 2개 시점 이상 관측돼야 나오므로, SNS 수집과
 // 무관하게 재고만 자주 쌓고 싶을 때 쓰라고 분리한 버튼.
 app.post('/api/stock-snapshot', (req, res) => {
+  let brandKey;
   try {
-    const id = startJob('재고 스냅샷 찍기', 'naver-stock-snapshot.js', []);
+    brandKey = resolveBrandKey((req.body || {}).brand);
+  } catch (e) {
+    return badRequest(res, e.message);
+  }
+  try {
+    const id = startJob(`재고 스냅샷 찍기 (${brandKey})`, 'naver-stock-snapshot.js', [`brand=${brandKey}`]);
     res.json({ jobId: id });
   } catch (e) {
     badRequest(res, e.message);
@@ -163,8 +250,14 @@ app.post('/api/stock-snapshot', (req, res) => {
 
 // ── 노션으로 보내기 (notion-export.js) ──
 app.post('/api/export-notion', (req, res) => {
+  let brandKey;
   try {
-    const id = startJob('노션으로 리포트 보내기', 'notion-export.js', []);
+    brandKey = resolveBrandKey((req.body || {}).brand);
+  } catch (e) {
+    return badRequest(res, e.message);
+  }
+  try {
+    const id = startJob(`노션으로 리포트 보내기 (${brandKey})`, 'notion-export.js', [`brand=${brandKey}`]);
     res.json({ jobId: id });
   } catch (e) {
     badRequest(res, e.message);
@@ -174,6 +267,12 @@ app.post('/api/export-notion', (req, res) => {
 // ── 노션용 마크다운 표(복사-붙여넣기용) — 연동/토큰 필요 없이 바로 계산해서 반환 ──
 app.get('/api/export-markdown', (req, res) => {
   try {
+    // notion-export.js는 로드 시점에 커맨드라인에서 브랜드를 읽으므로, 여기서 브랜드별로
+    // 다시 불러오려면 모듈 캐시를 비워야 함 — 대시보드에서 브랜드를 바꿔 눌렀을 때
+    // 이전 브랜드 캐시를 그대로 쓰는 것을 막기 위함.
+    const brandKey = resolveBrandKey(req.query.brand);
+    process.argv = [process.argv[0], process.argv[1], `brand=${brandKey}`];
+    delete require.cache[require.resolve(path.join(ROOT, 'notion-export'))];
     const { loadReport, buildMarkdownExport } = require(path.join(ROOT, 'notion-export'));
     const report = loadReport();
     res.json({ markdown: buildMarkdownExport(report) });
@@ -185,10 +284,16 @@ app.get('/api/export-markdown', (req, res) => {
 // ── 기간별 비교 (compare-periods.js) ──
 app.post('/api/compare-periods', (req, res) => {
   const { periods } = req.body || {};
+  let brandKey;
+  try {
+    brandKey = resolveBrandKey((req.body || {}).brand);
+  } catch (e) {
+    return badRequest(res, e.message);
+  }
   if (!Array.isArray(periods) || periods.length < 2) return badRequest(res, '기간을 2개 이상 입력해주세요.');
   if (!periods.every(p => PERIOD_ID_RE.test(p))) return badRequest(res, '기간 형식이 올바르지 않습니다(예: 2026-06-10_2026-06-13).');
   try {
-    const id = startJob('기간별 비교', 'compare-periods.js', periods);
+    const id = startJob(`기간별 비교 (${brandKey})`, 'compare-periods.js', [`brand=${brandKey}`, ...periods]);
     res.json({ jobId: id });
   } catch (e) {
     badRequest(res, e.message);

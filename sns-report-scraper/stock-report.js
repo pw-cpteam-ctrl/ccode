@@ -440,7 +440,10 @@ function deltaPairText(pwDelta, bhDelta) {
 // 목적이라 0을 포함할 필요가 없음. 이러면 PW의 994~999개짜리 미세한 변화도, BH의
 // 진짜로 변화 없는 평평한 선도 각자 제대로 보임. 값이 완전히 똑같아 축 범위가 0이
 // 되는 경우엔 위아래로 최소 여백을 줘서 선이 차트 중앙에 보이게 함.
-function stockTrendChart(pwSeries, bhSeries, pwName, bhName) {
+function stockTrendChart(pwSeries, bhSeries, pwName, bhName, opts = {}) {
+  // mode 'index': 절대 수량 대신 지수(첫 시점=100)만 그림 — 재고 수량이 대외비인 경우를 위해
+  // 축 라벨·툴팁까지 전부 지수로 바꿔서, 완성된 HTML 파일 어디에도 실제 개수가 남지 않게 함.
+  const mode = opts.mode === 'index' ? 'index' : 'absolute';
   const allDates = [...new Set([...pwSeries, ...bhSeries].map(p => p.takenAt))].sort();
   if (allDates.length < 2) {
     // ⚠️ 문구 주의: 여기 개수는 **전체 스냅샷 수가 아니라 "이 상품이 관측된 시점 수"**임.
@@ -454,8 +457,32 @@ function stockTrendChart(pwSeries, bhSeries, pwName, bhName) {
   function toSoldSeries(series) {
     return series.map(p => ({ takenAt: p.takenAt, stock: p.stock, totalSold: estimateInitialCap(p.stock) - p.stock }));
   }
-  const pwSold = toSoldSeries(pwSeries);
-  const bhSold = toSoldSeries(bhSeries);
+
+  // 그래프에 실제로 찍을 값(value)과 점 툴팁 문구(tip)를 여기서 확정함.
+  // 지수 모드에서는 절대 수량이 value/tip 어디에도 들어가지 않으므로, 완성된 HTML을
+  // 소스 보기로 뒤져도 개수가 남지 않음(가리는 방식이 아니라 애초에 안 넣는 방식).
+  function toDisplaySeries(series) {
+    const sold = toSoldSeries(series);
+    if (mode === 'absolute') {
+      return sold.map(p => ({
+        takenAt: p.takenAt,
+        value: p.totalSold,
+        tip: `${formatTakenAt(p.takenAt)} · ${p.totalSold.toLocaleString()}개 판매추정(재고 ${p.stock.toLocaleString()}개)`,
+      }));
+    }
+    const first = sold.length > 0 ? sold[0].totalSold : 0;
+    const peak = sold.reduce((m, p) => Math.max(m, p.totalSold), 0);
+    // 첫 시점이 0이면(그때는 아직 한 개도 안 팔린 상품) 첫 시점 기준 지수를 만들 수 없어서
+    // 그 상품의 최고치를 100으로 잡음 — 어느 쪽이든 절대 수량은 노출되지 않음.
+    const base = first > 0 ? first : peak;
+    const baseLabel = first > 0 ? '첫 시점=100' : '최고치=100';
+    return sold.map(p => {
+      const idx = base > 0 ? Math.round((p.totalSold / base) * 100) : 100;
+      return { takenAt: p.takenAt, value: idx, tip: `${formatTakenAt(p.takenAt)} · 지수 ${idx} (${baseLabel})` };
+    });
+  }
+  const pwSold = toDisplaySeries(pwSeries);
+  const bhSold = toDisplaySeries(bhSeries);
 
   const w = Math.max(560, allDates.length * 100);
   const ml = 60, mr = 20;
@@ -468,7 +495,7 @@ function stockTrendChart(pwSeries, bhSeries, pwName, bhName) {
   const x = i => ml + (allDates.length > 1 ? (i / (allDates.length - 1)) * chartW : chartW / 2);
 
   function panel(series, color, name, yOffset) {
-    const values = series.map(p => p.totalSold);
+    const values = series.map(p => p.value);
     const rawMin = Math.min(...values), rawMax = Math.max(...values);
     // 값이 다 같으면(rawMax===rawMin) 범위가 0이 되니 최소 여백을 강제로 줌.
     const pad = (rawMax - rawMin) * 0.2 || Math.max(1, Math.abs(rawMax) * 0.05, 1);
@@ -487,8 +514,8 @@ function stockTrendChart(pwSeries, bhSeries, pwName, bhName) {
     const points = allDates
       .map((d, i) => { const rec = series.find(p => p.takenAt === d); return rec ? { i, rec } : null; })
       .filter(Boolean);
-    const path = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${x(p.i)},${y(p.rec.totalSold)}`).join(' ');
-    const dots = points.map(p => `<circle cx="${x(p.i)}" cy="${y(p.rec.totalSold)}" r="3.5" fill="#fff" stroke="${color}" stroke-width="2"><title>${escapeHtml(formatTakenAt(p.rec.takenAt))} · ${p.rec.totalSold.toLocaleString()}개 판매추정(재고 ${p.rec.stock.toLocaleString()}개)</title></circle>`).join('');
+    const path = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${x(p.i)},${y(p.rec.value)}`).join(' ');
+    const dots = points.map(p => `<circle cx="${x(p.i)}" cy="${y(p.rec.value)}" r="3.5" fill="#fff" stroke="${color}" stroke-width="2"><title>${escapeHtml(p.rec.tip)}</title></circle>`).join('');
     const label = `<text x="${ml}" y="${yOffset + 12}" font-size="11" font-weight="700" fill="${color}">${escapeHtml(name)}</text>`;
     return `${label}${gridLines.join('')}<path d="${path}" fill="none" stroke="${color}" stroke-width="2"/>${dots}`;
   }
@@ -508,8 +535,11 @@ function stockTrendChart(pwSeries, bhSeries, pwName, bhName) {
 
   const svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${pwPanel}${divider}${bhPanel}${xLabels}</svg>`;
 
+  const sub = mode === 'index'
+    ? '판매 추이 지수 · PW/BH 각자 변화폭에 맞춰 축을 따로 확대함(둘의 축 스케일이 서로 다를 수 있음) · 절대 수량은 이 파일에 포함되지 않음'
+    : '총판매추정(개) 추이 · PW/BH 각자 변화폭에 맞춰 축을 따로 확대함(둘의 축 스케일이 서로 다를 수 있음) · 실제 재고 수량은 점에 마우스를 올리면 확인 가능';
   return `<div class="trend-wrap">
-    <div class="trend-sub">총판매추정(개) 추이 · PW/BH 각자 변화폭에 맞춰 축을 따로 확대함(둘의 축 스케일이 서로 다를 수 있음) · 실제 재고 수량은 점에 마우스를 올리면 확인 가능</div>
+    <div class="trend-sub">${sub}</div>
     <div class="trend-scroll">${svg}</div>
   </div>`;
 }
@@ -589,6 +619,95 @@ function renderStoreTable(label, products) {
 // 리포트 맨 아래에 붙는 독립 섹션 — PW/BH 재고 전체 목록(SNS와 매칭 여부 무관하게 전체 현황).
 // SNS 표 우측의 매출 매칭 컬럼(findStockMatch)과는 별개로, 이건 항상 존재해야 하는 기능임 —
 // 지우면 안 됨(한 번 실수로 지웠다가 복구한 적 있음).
+/**
+ * 직전/그 전 스냅샷 대비 "판매 증가율(%)"만 — 절대 수량을 노출하지 않기 위한 비율 표기.
+ * 누적 판매추정치가 그 사이 몇 % 늘었는지를 보여줌(개수 대신 비율).
+ */
+function deltaRatePairText(pwSeries, bhSeries, stepsBack) {
+  const rate = series => {
+    const sold = (series || []).map(p => estimateInitialCap(p.stock) - p.stock);
+    if (sold.length <= stepsBack) return null; // 비교할 과거 시점이 아직 없음
+    const now = sold[sold.length - 1];
+    const prev = sold[sold.length - 1 - stepsBack];
+    if (prev <= 0) return now > 0 ? 'new' : 0; // 그때는 판매가 0이라 증가율을 낼 수 없음
+    return ((now - prev) / prev) * 100;
+  };
+  const one = v => {
+    if (v === null) return '-';
+    if (v === 'new') return '신규 발생';
+    if (Math.abs(v) < 0.05) return '변화 없음';
+    return `${v > 0 ? '+' : ''}${v.toFixed(1)}%`;
+  };
+  const pw = rate(pwSeries);
+  const bh = rate(bhSeries);
+  if (pw === null && bh === null) return '-';
+  return `PW ${one(pw)} · BH ${one(bh)}`;
+}
+
+/**
+ * 재고 섹션의 "비율 전용" 버전 — 판매 개수·재고 수량 같은 절대 수치를 리포트 파일에
+ * **아예 넣지 않고** 점유율·증감률·추이 지수만 넣는다.
+ *
+ * ⚠️ 왜 기존 renderStockSectionHtml에서 숫자만 가리지 않고 별도 함수로 뒀는가:
+ * 가리는 방식(display:none, 토글)은 데이터가 HTML 안에 그대로 남아서 소스 보기(Ctrl+U)로
+ * 다 보임 — 재고 수량을 대외비로 취급하는 목적에는 전혀 맞지 않음. 여기서는 함수가
+ * 절대 수량을 만들어내지도, 넘기지도 않으므로 구조적으로 새어나갈 경로가 없음.
+ * (개수가 필요한 사람은 공유하지 않는 엑셀/재고 히스토리 파일을 보면 됨)
+ */
+function renderStockRatioSectionHtml(comparison) {
+  if (!comparison) return '';
+  const rows = buildIntegratedStockRows(comparison);
+
+  // 짝지어진 상품이 하나도 없을 때도 섹션 자체는 보여주고 이유를 적어둠 — 재고를 넣기로
+  // 선택했는데 아무것도 안 보이면 "왜 안 나오지"로 헤매게 되므로.
+  const body = rows.length === 0
+    ? `<tr><td colspan="5" class="empty">PW/BH 상품명이 짝지어진 항목이 없어서 비교할 게 없음 — 스냅샷이 더 쌓이거나 양쪽에 같은 상품이 올라오면 표시됩니다.</td></tr>`
+    : rows.map((row, i) => {
+    const rowId = `stock-trend-${i}`;
+    const chart = stockTrendChart(row.pwSeries, row.bhSeries, row.pw.name, row.bh.name, { mode: 'index' });
+    return `<tr>
+        <td class="sd-name" title="PW: ${escapeHtml(row.pw.name)} · BH: ${escapeHtml(row.bh.name)}">${escapeHtml(row.pw.name)}</td>
+        <td>${escapeHtml(shareText(row.pw, row.bh))}</td>
+        <td>${escapeHtml(deltaRatePairText(row.pwSeries, row.bhSeries, 1))}</td>
+        <td>${escapeHtml(deltaRatePairText(row.pwSeries, row.bhSeries, 2))}</td>
+        <td><button class="toggle-btn" onclick="toggleStockTrend('${rowId}', this)">▶ 보기</button></td>
+      </tr>
+      <tr class="trend-row" id="${rowId}"><td colspan="5">${chart}</td></tr>`;
+      }).join('');
+
+  return `
+  <section class="platform stock-section">
+    <div class="section-head">
+      <h2>📦 재고 비교 (비율만)</h2>
+      <div class="toggle-all">
+        <button class="toggle-all-btn" onclick="toggleAllStockTrends(true)">전체 펼치기</button>
+        <button class="toggle-all-btn" onclick="toggleAllStockTrends(false)">전체 접기</button>
+      </div>
+    </div>
+    <div class="sub">
+      최신 수집: ${escapeHtml(formatTakenAt(comparison.latestTakenAt))} (KST) · 누적 스냅샷 ${comparison.snapshotCount}개 ·
+      <b>판매 개수·재고 수량은 대외비라 이 파일에 넣지 않았습니다</b> — 점유율/증감률/추이 지수만 표시
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>상품 (PW 기준)</th><th>점유율 (PW : BH)</th><th>직전 대비</th><th>그 전 대비</th><th>추이</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+    <div class="foot">
+      ※ "점유율"은 PW/BH 판매추정치 합산을 100으로 봤을 때의 비중입니다(개수 비공개).<br>
+      ※ "직전/그 전 대비"는 그 사이 누적 판매추정이 몇 % 늘었는지입니다 — 스냅샷이 그만큼
+      쌓이지 않은 상품은 "-"로 남습니다.<br>
+      ※ "추이"의 세로축은 지수입니다(첫 관측 시점을 100으로 봤을 때의 상대값, 첫 시점 판매가
+      0인 상품은 그 상품의 최고치를 100으로 봄) — 실제 개수는 표시되지 않습니다.<br>
+      ※ 정확한 개수가 필요하면 공유하지 않는 엑셀(<code>sns-report.xlsx</code>)이나 재고
+      히스토리 파일을 확인하세요.
+    </div>
+  </section>`;
+}
+
 function renderStockSectionHtml(comparison) {
   if (!comparison) return '';
 
@@ -667,5 +786,7 @@ module.exports = {
   matchPwBhStockProducts,
   buildIntegratedStockRows,
   renderStockSectionHtml,
+  renderStockRatioSectionHtml,
+  deltaRatePairText,
   STOCK_SECTION_STYLE,
 };

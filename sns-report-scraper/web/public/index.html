@@ -34,6 +34,19 @@ button.secondary:hover{background:#eef2ff}
 .report-list a:hover{text-decoration:underline}
 .report-list .meta{color:#9099a6;font-size:11px}
 .period-inputs{display:flex;flex-direction:column;gap:6px}
+.brandbar{background:#fff;border:2px solid #3b5bdb;border-radius:12px;padding:14px 18px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.brandbar h2{font-size:15px;margin:0 0 8px}
+.brand-tabs{display:flex;gap:8px;flex-wrap:wrap}
+.brand-tab{border:1px solid #d0d5e0;background:#fff;color:#374151;font-size:14px;font-weight:700;padding:9px 18px;border-radius:8px;cursor:pointer}
+.brand-tab:hover{background:#eef2ff}
+.brand-tab.active{background:#3b5bdb;border-color:#3b5bdb;color:#fff}
+.brand-tab .tag{display:block;font-size:10px;font-weight:400;opacity:.8;margin-top:2px}
+.brand-note{font-size:12px;color:#6b7280;margin-top:8px;line-height:1.6}
+.brand-note.warn{color:#c0504d}
+.opt-row{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:12px;color:#374151;margin-bottom:10px}
+.opt-row label{display:flex;align-items:center;gap:5px}
+.opt-row input[type=checkbox]{width:auto;min-width:auto}
+.preset-btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 </style>
 </head>
 <body>
@@ -44,6 +57,12 @@ button.secondary:hover{background:#eef2ff}
     ⚠️ 이 화면은 <b>이 컴퓨터 안에서만</b> 동작해요. 다른 컴퓨터·팀원은 이 주소로 못 들어오고,
     각자 자기 컴퓨터에서 이 프로그램을 따로 실행해야 해요. 로그인 정보도 이 컴퓨터 밖으로
     전송되지 않고 여기 파일로만 저장돼요.
+  </div>
+
+  <div class="brandbar">
+    <h2>어느 브랜드를 볼까요?</h2>
+    <div class="brand-tabs" id="brandTabs">불러오는 중...</div>
+    <div class="brand-note" id="brandNote"></div>
   </div>
 
   <div class="panel">
@@ -73,13 +92,22 @@ button.secondary:hover{background:#eef2ff}
       자사(PW)·경쟁사(BH)의 오늘 하루 트위터·인스타그램 게시물을 모아서 비교 리포트를
       만들어요. 실제로 인터넷을 오가며 게시물을 읽어오는 거라 보통 몇 분 정도 걸려요.
     </p>
-    <div class="row">
+    <div class="opt-row">
       <label>플랫폼
         <select id="collectPlatform"><option value="">둘 다</option><option value="twitter">트위터만</option><option value="instagram">인스타그램만</option></select>
       </label>
-      <button onclick="collect('today')">오늘 하루 수집</button>
+      <label title="재고는 지금 시점만 조회할 수 있어서, 안 찍고 지나간 날은 나중에 되돌릴 수 없어요. 특별한 이유가 없으면 켜두는 게 좋아요.">
+        <input type="checkbox" id="withStock" checked> 재고도 같이 기록 <span style="color:#9099a6">(권장 — 나중에 소급 불가)</span>
+      </label>
+      <label>리포트에 재고 표시
+        <select id="stockMode">
+          <option value="none">넣지 않음 (SNS만)</option>
+          <option value="ratio">점유율·추이만 (개수 비공개)</option>
+        </select>
+      </label>
     </div>
-    <div class="sub" style="margin-top:12px">특정 기간을 지정하고 싶다면</div>
+    <div class="preset-btns" id="datePresetBtns"></div>
+    <div class="sub" style="margin-top:12px">특정 기간을 직접 지정하고 싶다면</div>
     <div class="row" style="margin-top:8px">
       <label>시작일 <input type="date" id="rangeStart" onchange="document.getElementById('rangeEnd').value = this.value"></label>
       <label>종료일(이 날짜도 포함돼요) <input type="date" id="rangeEnd"></label>
@@ -93,6 +121,14 @@ button.secondary:hover{background:#eef2ff}
       재수집(몇 분) 없이, 방금 수집해둔 원본 데이터로 엑셀·화면 리포트만 몇 초 안에 다시
       만들어요. 수동으로 매칭을 조정했거나 리포트 형식만 다시 보고 싶을 때 사용해요.
     </p>
+    <div class="opt-row">
+      <label>리포트에 재고 표시
+        <select id="rebuildStockMode">
+          <option value="none">넣지 않음 (SNS만)</option>
+          <option value="ratio">점유율·추이만 (개수 비공개)</option>
+        </select>
+      </label>
+    </div>
     <button onclick="rebuild()">캐시로 다시 만들기</button>
   </div>
 
@@ -100,7 +136,7 @@ button.secondary:hover{background:#eef2ff}
     <h2>4. 재고만 찍기 (SNS 수집 없이)</h2>
     <p class="desc">
       네이버 스토어의 지금 재고만 기록해요. SNS 수집(몇 분)과 로그인 없이 수십 초면 끝나요.
-      리포트의 재고 추이 그래프는 같은 상품이 <b>3번 이상 기록</b>돼야 나오니, 그래프를 보고
+      리포트의 재고 추이 그래프는 같은 상품이 <b>2번 이상 기록</b>돼야 나오니, 그래프를 보고
       싶으면 며칠에 걸쳐 이 버튼을 몇 번 눌러두면 돼요. (SNS 수집을 할 때는 재고도 자동으로
       같이 기록되니 그때는 따로 누르지 않아도 돼요)
     </p>
@@ -172,6 +208,93 @@ button.secondary:hover{background:#eef2ff}
 <script>
 let evtSource = null;
 let jobRunning = false;
+// 선택된 브랜드는 화면을 새로 열어도 유지되게 브라우저에 저장해둠(값 변경 → 화면 반영 → 저장).
+let brands = [];
+let currentBrand = localStorage.getItem('snsReportBrand') || '';
+
+function brandQuery() {
+  return currentBrand ? ('?brand=' + encodeURIComponent(currentBrand)) : '';
+}
+function withBrand(body) {
+  return Object.assign({ brand: currentBrand || undefined }, body || {});
+}
+
+async function loadBrands() {
+  const res = await fetch('/api/brands');
+  brands = await res.json();
+  if (brands.length === 0) { document.getElementById('brandTabs').textContent = '브랜드 설정 파일(brands/*.json)이 없어요.'; return; }
+  if (!brands.some(b => b.key === currentBrand)) currentBrand = brands[0].key;
+  renderBrandTabs();
+  await selectBrand(currentBrand);
+}
+
+function renderBrandTabs() {
+  const box = document.getElementById('brandTabs');
+  box.innerHTML = '';
+  brands.forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = 'brand-tab' + (b.key === currentBrand ? ' active' : '');
+    btn.innerHTML = b.label + (b.ready ? '' : '<span class="tag">계정 설정 필요</span>');
+    btn.onclick = () => selectBrand(b.key);
+    box.appendChild(btn);
+  });
+}
+
+async function selectBrand(key) {
+  currentBrand = key;
+  localStorage.setItem('snsReportBrand', key);
+  renderBrandTabs();
+  await refreshStatus();
+  await refreshReports();
+}
+
+function renderDatePresets(brandInfo) {
+  const box = document.getElementById('datePresetBtns');
+  if (!box) return;
+  box.innerHTML = '';
+  const presets = (brandInfo && brandInfo.datePresets) || [];
+  presets.forEach(preset => {
+    const btn = document.createElement('button');
+    btn.textContent = preset.label + ' 수집';
+    btn.onclick = () => collectPreset(preset);
+    box.appendChild(btn);
+  });
+  // "마지막 수집 이후 전부" — 게시가 뜨문한 브랜드(굿스마일 등)에서 빠뜨리는 기간이 없게.
+  const sinceBtn = document.createElement('button');
+  sinceBtn.className = 'secondary';
+  const last = brandInfo && brandInfo.lastRun;
+  sinceBtn.textContent = last ? ('마지막 수집(' + last.endDate + ') 이후 전부') : '마지막 수집 이후 전부';
+  sinceBtn.disabled = !last;
+  sinceBtn.title = last ? '' : '아직 이 브랜드로 수집한 기록이 없어서 쓸 수 없어요 — 먼저 한 번 기간을 지정해 수집해주세요.';
+  sinceBtn.onclick = () => collect('since-last');
+  box.appendChild(sinceBtn);
+}
+
+// 한국어 조사 처리 — 받침이 있으면 "은/이", 없으면 "는/가" (예: 굿스마일'은', 메가하우스'는')
+function withParticle(word, withFinal, withoutFinal) {
+  const last = (word || '').trim().slice(-1);
+  const code = last.charCodeAt(0);
+  const isHangul = code >= 0xac00 && code <= 0xd7a3;
+  const hasFinal = isHangul && (code - 0xac00) % 28 !== 0;
+  return word + (hasFinal ? withFinal : withoutFinal);
+}
+
+function renderBrandNote(brandInfo) {
+  const note = document.getElementById('brandNote');
+  if (!brandInfo) { note.textContent = ''; return; }
+  if (brandInfo.error) { note.className = 'brand-note warn'; note.textContent = '⚠️ ' + brandInfo.error; return; }
+  const bits = [];
+  if (!brandInfo.ready) {
+    note.className = 'brand-note warn';
+    note.innerHTML = '⚠️ <b>' + brandInfo.label + '</b>' + withParticle(brandInfo.label, '은', '는').slice(brandInfo.label.length) + ' 아직 수집할 계정이 설정되지 않았어요 — <code>brands/' + brandInfo.key + '.json</code> 파일의 own/competitors에 계정 아이디(@ 없이)를 넣어주세요(이 파일은 업데이트해도 안 덮어써져요).';
+    return;
+  }
+  note.className = 'brand-note';
+  bits.push('계정 ' + brandInfo.accounts + '개');
+  bits.push(brandInfo.hasStock ? '네이버 재고 연동 있음' : '네이버 재고 연동 없음(재고 관련 버튼은 건너뜀)');
+  bits.push(brandInfo.lastRun ? ('마지막 수집: ' + brandInfo.lastRun.startDate + ' ~ ' + brandInfo.lastRun.endDate) : '수집 기록 없음');
+  note.textContent = brandInfo.label + ' · ' + bits.join(' · ');
+}
 
 function setButtonsDisabled(disabled) {
   document.querySelectorAll('button').forEach(b => { if (b.id !== 'cancelBtn' && b.id !== 'confirmLoginBtn') b.disabled = disabled; });
@@ -179,10 +302,18 @@ function setButtonsDisabled(disabled) {
 }
 
 async function refreshStatus() {
-  const res = await fetch('/api/status');
+  const res = await fetch('/api/status' + brandQuery());
   const data = await res.json();
   setSession('twitter', data.hasTwitterSession);
   setSession('instagram', data.hasInstagramSession);
+  renderBrandNote(data.brand);
+  renderDatePresets(data.brand);
+  // 재고 연동이 없는 브랜드는 "재고도 같이 기록" 체크를 켜도 할 일이 없으니 꺼두고 잠금
+  const stockChk = document.getElementById('withStock');
+  if (stockChk && data.brand && !data.brand.error) {
+    stockChk.disabled = !data.brand.hasStock;
+    if (!data.brand.hasStock) stockChk.checked = false;
+  }
   if (data.job && data.job.status === 'running') {
     jobRunning = true;
     setButtonsDisabled(true);
@@ -251,9 +382,17 @@ async function runOrAlert(fn) {
   }
 }
 
+function collectOptions() {
+  const chk = document.getElementById('withStock');
+  return {
+    platform: document.getElementById('collectPlatform').value || undefined,
+    withStock: chk ? chk.checked : true,
+    stockMode: document.getElementById('stockMode').value,
+  };
+}
+
 function collect(mode) {
-  const platform = document.getElementById('collectPlatform').value;
-  const body = { mode, platform: platform || undefined };
+  const body = withBrand(Object.assign({ mode }, collectOptions()));
   if (mode === 'range') {
     body.startDate = document.getElementById('rangeStart').value;
     body.endDate = document.getElementById('rangeEnd').value;
@@ -262,21 +401,33 @@ function collect(mode) {
   runOrAlert(() => fetch('/api/collect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
 }
 
+// 브랜드 설정의 기간 프리셋([오늘], [최근 2주] 등) — days가 있으면 오늘부터 그만큼 거슬러 올라감.
+function collectPreset(preset) {
+  if (preset.id === 'today' || !preset.days) { collect('today'); return; }
+  const end = new Date();
+  const start = new Date(end.getTime() - (preset.days - 1) * 86400000);
+  const fmt = d => d.toISOString().slice(0, 10);
+  document.getElementById('rangeStart').value = fmt(start);
+  document.getElementById('rangeEnd').value = fmt(end);
+  collect('range');
+}
+
 function rebuild() {
-  runOrAlert(() => fetch('/api/rebuild', { method: 'POST' }));
+  const body = withBrand({ stockMode: document.getElementById('rebuildStockMode').value });
+  runOrAlert(() => fetch('/api/rebuild', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
 }
 
 function stockSnapshot() {
-  runOrAlert(() => fetch('/api/stock-snapshot', { method: 'POST' }));
+  runOrAlert(() => fetch('/api/stock-snapshot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withBrand()) }));
 }
 
 function exportNotion() {
-  runOrAlert(() => fetch('/api/export-notion', { method: 'POST' }));
+  runOrAlert(() => fetch('/api/export-notion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withBrand()) }));
 }
 
 async function copyMarkdownForNotion() {
   try {
-    const res = await fetch('/api/export-markdown');
+    const res = await fetch('/api/export-markdown' + brandQuery());
     const data = await res.json();
     if (!res.ok) { alert('실패: ' + (data.error || '알 수 없는 오류')); return; }
     await navigator.clipboard.writeText(data.markdown);
@@ -290,7 +441,7 @@ function comparePeriods() {
   const raw = document.getElementById('periodsInput').value.trim();
   const periods = raw.split('\n').map(s => s.trim()).filter(Boolean);
   if (periods.length < 2) { alert('기간을 2개 이상 적어주세요.'); return; }
-  runOrAlert(() => fetch('/api/compare-periods', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ periods }) }));
+  runOrAlert(() => fetch('/api/compare-periods', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withBrand({ periods })) }));
 }
 
 function collectAccount() {
@@ -317,7 +468,7 @@ function cancelJob() {
 }
 
 async function refreshReports() {
-  const res = await fetch('/api/reports');
+  const res = await fetch('/api/reports' + brandQuery());
   const files = await res.json();
   const ul = document.getElementById('reportList');
   ul.innerHTML = files.length === 0 ? '<li>아직 만들어진 리포트가 없어요.</li>' : '';
@@ -325,13 +476,14 @@ async function refreshReports() {
     const li = document.createElement('li');
     const sizeKb = Math.round(f.size / 1024).toLocaleString();
     const date = new Date(f.mtime).toLocaleString('ko-KR');
-    li.innerHTML = '<a href="/reports/' + encodeURIComponent(f.name) + '" download>' + f.name + '</a><span class="meta">' + sizeKb + 'KB · ' + date + '</span>';
+    const href = '/reports/' + (f.path || f.name).split('/').map(encodeURIComponent).join('/');
+    const tag = f.legacy ? ' <span class="meta">(브랜드 폴더 도입 전 파일)</span>' : '';
+    li.innerHTML = '<a href="' + href + '" download>' + f.name + '</a>' + tag + '<span class="meta">' + sizeKb + 'KB · ' + date + '</span>';
     ul.appendChild(li);
   });
 }
 
-refreshStatus();
-refreshReports();
+loadBrands();
 </script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { formatTakenAt, rankStockProducts, assignStockMatches, renderStockSectionHtml, STOCK_SECTION_STYLE } = require('./stock-report');
+const { formatTakenAt, rankStockProducts, assignStockMatches, renderStockSectionHtml, renderStockRatioSectionHtml, STOCK_SECTION_STYLE } = require('./stock-report');
 const { extractKeywords, PLATFORM_TEXT_FIELD } = require('./aggregate');
 
 const FIELD_LABELS = { likes: '좋아요', retweets: '리트윗', comments: '댓글' };
@@ -135,10 +135,31 @@ function embedBlockquote(platformKey, post) {
 // 대조해야 했음 — 리트윗/좋아요 칸(metricBar)과 형식을 통일해서 "부분 대 전체" 분할 바로
 // 바꿈. 재고 매칭은 PW/BH가 서로 다른 store 안에서 각자 순위가 매겨지는 거라(총 판매
 // 추정치, stock-report.js) 그 절대 개수를 막대 비율로 비교.
-function salesBar(pwMatch, bhMatch) {
+function salesBar(pwMatch, bhMatch, stockMode = 'ratio') {
   const pwVal = pwMatch && typeof pwMatch.totalSold === 'number' ? pwMatch.totalSold : null;
   const bhVal = bhMatch && typeof bhMatch.totalSold === 'number' ? bhMatch.totalSold : null;
   if (pwVal === null && bhVal === null) return '<td class="metric sm-none">-</td>';
+
+  // 'ratio' 모드에서는 판매 개수를 아예 안 내보내고 점유율(막대 + "77:23")만 넣음 —
+  // 재고 수량이 대외비라 리포트 파일에 남기지 않기 위함(가리는 게 아니라 미포함).
+  if (stockMode === 'ratio') {
+    const pwR = Math.max(pwVal ?? 0, 0);
+    const bhR = Math.max(bhVal ?? 0, 0);
+    const sum = pwR + bhR;
+    if (sum <= 0) return '<td class="metric sm-none">-</td>';
+    const pwPct = Math.round((pwR / sum) * 100);
+    const title = `PW: ${pwMatch ? (pwMatch.name || '매칭 안 됨') : '매칭 안 됨'} · BH: ${bhMatch ? (bhMatch.name || '매칭 안 됨') : '매칭 안 됨'} (개수는 대외비로 미포함)`;
+    return `<td class="metric" title="${escapeHtml(title)}">
+      <div class="metriccell">
+        <div class="metricbar">
+          <span class="metricbar-val pw">${pwPct}%</span>
+          <div class="metricbar-track"><div class="metricbar-pw" style="width:${pwPct}%"></div><div class="metricbar-bh" style="width:${100 - pwPct}%"></div></div>
+          <span class="metricbar-val bh">${100 - pwPct}%</span>
+        </div>
+        <div class="metric-diff">점유율</div>
+      </div>
+    </td>`;
+  }
 
   // 재입고(음수)는 막대 비율 계산에서 0으로 취급 — 라벨엔 실제 값("재입고+N")을 그대로 보여줌.
   const pwBar = Math.max(pwVal ?? 0, 0);
@@ -173,13 +194,15 @@ function salesBar(pwMatch, bhMatch) {
   </td>`;
 }
 
-function renderPlatformSection(platformKey, data, stockComparison) {
+function renderPlatformSection(platformKey, data, stockComparison, stockMode = 'none') {
   const { products, ownUnmatched, competitorUnmatched, displayFields } = data.productComparison;
   const title = PLATFORM_TITLES[platformKey] || platformKey;
 
   // 재고 스냅샷이 있으면 store(PW/BH)별로 순위 매긴 목록을 미리 만들어두고, 상품 행마다
   // ip/line으로 근사 매칭 — SNS 실적 순위표 우측에 매출순위 컬럼으로 붙임(별도 섹션 아님).
-  const hasStock = Boolean(stockComparison);
+  // stockMode가 'none'이면(기본) 이 컬럼 자체를 안 만듦 — "리포트 한 장에 정보가 너무 많다"는
+  // 피드백에 따라 기본 리포트는 SNS만 담고, 재고는 넣을 때도 비율만 넣음.
+  const hasStock = Boolean(stockComparison) && stockMode !== 'none';
   const pwStockRanked = hasStock ? rankStockProducts(stockComparison.stores.PW || []) : null;
   const bhStockRanked = hasStock ? rankStockProducts(stockComparison.stores.BH || []) : null;
 
@@ -237,7 +260,7 @@ function renderPlatformSection(platformKey, data, stockComparison) {
       `<td>${verdictBadge(p.verdict, p.needsReview)}</td>`,
       `<td><button class="toggle-btn" onclick="toggleEmbeds('${embedRowId}','${platformKey}',this)">▶ 보기</button></td>`,
       ...(hasStock ? [
-        salesBar(pwStockAssignment.get(p) || null, bhStockAssignment.get(p) || null),
+        salesBar(pwStockAssignment.get(p) || null, bhStockAssignment.get(p) || null, stockMode),
       ] : []),
     ].join('');
 
@@ -293,7 +316,7 @@ function renderPlatformSection(platformKey, data, stockComparison) {
         <button class="toggle-all-btn" onclick="captureSection('${platformKey}','${title}')">📷 스크린샷</button>
       </div>
     </div>
-    ${hasStock ? `<div class="sub">📦 재고 매칭 기준 스냅샷: ${escapeHtml(formatTakenAt(stockComparison.latestTakenAt))} (KST) · 초기 판매한도 가정 역산 기준 총 판매추정치(*는 초기 한도 추정임을 표시) — 표 우측 끝(가로 스크롤) 참고</div>` : ''}
+    ${hasStock ? `<div class="sub">📦 재고 매칭 기준 스냅샷: ${escapeHtml(formatTakenAt(stockComparison.latestTakenAt))} (KST) · 표 우측 끝(가로 스크롤)에 PW:BH 점유율만 표시 — 판매 개수는 대외비로 이 파일에 넣지 않음</div>` : ''}
     ${cards}
     <div class="table-wrap">
       <table>
@@ -357,19 +380,28 @@ function renderPlatformSection(platformKey, data, stockComparison) {
  * 스크립트를 불러와야 함 — 오프라인이면 게시물 링크로만 보임(그래도 클릭하면 이동 가능).
  *
  * @param {object} report aggregate.js의 buildComparisonReport() 결과
- * @param {object|null} [stockComparison] stock-report.js의 buildStockComparison() 결과 —
- *   있으면 각 상품 행 우측 끝에 매칭된 재고 매출순위 컬럼 2개(PW/BH)를 추가함. 별도 섹션으로
- *   안 빼고 같은 표 안(가로 스크롤)에 두는 게 방침 — 위아래로 왔다갔다하며 대조하지 않게.
+ * @param {object|null} [stockComparison] stock-report.js의 buildStockComparison() 결과
+ * @param {object} [options]
+ * @param {string} [options.brandLabel] 리포트 상단에 표시할 브랜드 이름(메가하우스/굿스마일) —
+ *   브랜드가 여러 개라서 파일만 보고 어느 브랜드 리포트인지 알 수 있어야 함
+ * @param {'none'|'ratio'} [options.stockMode='none'] 재고를 리포트에 어떻게 넣을지.
+ *   'none'(기본)이면 재고 관련 내용을 아예 안 넣어서 SNS 전용 리포트가 됨("한 장에 정보가
+ *   너무 많다"는 팀 피드백 반영). 'ratio'면 점유율·증감률·추이 지수만 넣고 판매 개수·재고
+ *   수량 같은 절대 수치는 **파일에 심지 않음**(대외비 — 가리는 게 아니라 미포함).
  * @returns {string} HTML 문서 전체
  */
-function buildHtmlReport(report, stockComparison = null) {
+function buildHtmlReport(report, stockComparison = null, options = {}) {
+  const { brandLabel = '' } = options;
+  const stockMode = options.stockMode === 'ratio' ? 'ratio' : 'none';
+  const showStock = Boolean(stockComparison) && stockMode !== 'none';
   const platformKeys = Object.keys(report.platforms);
-  const sections = platformKeys.map(key => renderPlatformSection(key, report.platforms[key], stockComparison)).join('\n');
+  const sections = platformKeys.map(key => renderPlatformSection(key, report.platforms[key], stockComparison, stockMode)).join('\n');
   const needsTwitterWidget = platformKeys.includes('twitter');
   const needsInstagramWidget = platformKeys.includes('instagram');
+  const titleText = brandLabel ? `${brandLabel} SNS 성과 비교 리포트` : 'SNS 성과 비교 리포트';
 
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SNS 성과 비교 리포트</title><style>
+<title>${escapeHtml(titleText)}</title><style>
 *{box-sizing:border-box}body{margin:0;font-family:'Malgun Gothic',system-ui,sans-serif;background:#f4f6fb;color:#1f2937}
 .wrap{max-width:1200px;margin:0 auto;padding:28px 18px}
 h1{font-size:24px;margin:0 0 4px}.sub{color:#6b7280;font-size:13px;margin-bottom:24px}
@@ -482,17 +514,17 @@ tr.manual-row td.name{position:relative}
 }
 ${STOCK_SECTION_STYLE}
 </style></head><body><div class="wrap">
-<h1>📊 SNS 성과 비교 리포트</h1>
-<div class="sub">수집 기간: ${escapeHtml(report.startDate)} ~ ${escapeHtml(report.endDate)} · 생성: ${escapeHtml(report.generatedAt)} · <b>PW=자사, BH=경쟁사</b> · 랭킹: PW+BH 지표 합산순</div>
+<h1>📊 ${escapeHtml(titleText)}</h1>
+<div class="sub">${brandLabel ? `브랜드: <b>${escapeHtml(brandLabel)}</b> · ` : ''}수집 기간: ${escapeHtml(report.startDate)} ~ ${escapeHtml(report.endDate)} · 생성: ${escapeHtml(report.generatedAt)} · <b>PW=자사, BH=경쟁사</b> · 랭킹: PW+BH 지표 합산순${showStock ? '' : ' · SNS 전용(재고 미포함)'}</div>
 ${sections}
 <div class="foot">
 ※ 상품명은 게시물 본문에서 자동 추출(당사: 첫 줄 / 경쟁사: 링크 줄 위) 후, 키워드 2개 이상 겹치는 게시물끼리 그룹화한 결과입니다.<br>
 ※ 표현이 서로 다르거나 상품명을 못 뽑은 게시물은 "매칭 안 됨" 목록에 별도로 있습니다 — 조용히 빠진 게 아닙니다.<br>
 ※ 결과(우세/경합/약세)는 표에 표시된 지표(리트윗+좋아요 또는 좋아요+댓글)가 둘 다 PW가 크면 우세, 둘 다 작으면 약세, 엇갈리면 경합입니다.<br>
 ※ "게시물 보기"는 인터넷 연결된 브라우저에서 열어야 실제 카드로 보입니다 — 오프라인/차단 상태면 링크만 보임.<br>
-※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).${stockComparison ? '<br>※ 📦 매출 칸(표 우측 끝, 가로 스크롤): 상품명으로 네이버 재고 데이터와 근사 매칭한 결과를 리트윗/좋아요 칸과 같은 분할 바로 표시 — 막대는 PW/BH 총 판매추정치(개수) 비율, 숫자 뒤 "*"는 현재 재고를 가장 가까운 1000단위로 올려 "초기 판매한도였을 것"으로 가정하고 역산한 추정치라는 표시. "매칭 안 됨"은 그 스토어에서 이름이 비슷한 재고 상품을 못 찾은 경우, "-"는 PW/BH 둘 다 못 찾은 경우. 마우스 올리면 실제로 매칭된 재고 상품명이 보이니 매칭이 맞는지 확인해보세요.' : ''}
+※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).${showStock ? '<br>※ 📦 매출 칸(표 우측 끝, 가로 스크롤): 상품명으로 네이버 재고 데이터와 근사 매칭한 결과를 PW:BH 점유율(%)로만 표시합니다 — 판매 개수·재고 수량은 대외비라 이 파일에 포함하지 않았습니다(정확한 개수는 공유하지 않는 엑셀에서 확인). "-"는 이름이 비슷한 재고 상품을 못 찾은 경우입니다. 마우스를 올리면 실제로 매칭된 상품명이 보이니 매칭이 맞는지 확인해보세요.' : ''}
 </div>
-${renderStockSectionHtml(stockComparison)}
+${showStock ? renderStockRatioSectionHtml(stockComparison) : ''}
 <div class="export-box" id="export-box" style="display:none">
   <h3>💾 표에 추가한 게시물 저장</h3>
   <p>아래 내용을 통째로 복사해서 <code>manual-posts.json</code> 파일에 붙여넣으면, 다음에 리포트를 다시 만들 때도(재수집 없이 <code>rebuild-report.js</code>만 돌려도) 계속 반영됩니다. 이 리포트 파일을 다시 열면 지금 추가한 내용은 초기화됩니다 — 저장하지 않으면 이 화면에서만 보인 미리보기일 뿐입니다.</p>
@@ -1005,8 +1037,8 @@ ${needsInstagramWidget ? '<script async src="https://www.instagram.com/embed.js"
  * HTML 리포트를 파일로 저장. 히스토리 누적 안 함(매번 최신 결과로 덮어씀) — 과거 데이터
  * 보존은 엑셀(saveReportToExcel)이 담당.
  */
-function saveHtmlReport(report, outputPath, stockComparison = null) {
-  const html = buildHtmlReport(report, stockComparison);
+function saveHtmlReport(report, outputPath, stockComparison = null, options = {}) {
+  const html = buildHtmlReport(report, stockComparison, options);
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, html);
   return outputPath;
