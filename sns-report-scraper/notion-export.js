@@ -177,12 +177,39 @@ function saveConfig(config) {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
 }
 
+/**
+ * 노션 페이지/표 블록 ID를 **브랜드별로** 따로 보관 — 브랜드가 여러 개인데 한 군데에만
+ * 저장하면, 나중에 실행한 브랜드가 앞선 브랜드의 노션 페이지를 그 브랜드 데이터로
+ * 덮어써버림(엉뚱한 브랜드 숫자가 남의 페이지에 들어감). 그래서 config.brands[브랜드키]
+ * 아래로 분리하고, 브랜드 개념 없던 시절의 최상위 pageId는 기본 브랜드 것으로 옮겨줌
+ * (기존에 쓰던 노션 페이지가 계속 갱신되도록 — 새 페이지가 또 생기면 안 되니까).
+ */
+function brandState(config, brandKey) {
+  config.brands = config.brands || {};
+  if (!config.brands[brandKey]) {
+    const isDefault = brandKey === BRAND.key && config.pageId;
+    config.brands[brandKey] = isDefault
+      ? { pageId: config.pageId, paragraphBlockId: config.paragraphBlockId, tableBlockIds: config.tableBlockIds || {} }
+      : { tableBlockIds: {} };
+    if (isDefault) {
+      delete config.pageId;
+      delete config.paragraphBlockId;
+      delete config.tableBlockIds;
+      saveConfig(config);
+      console.log(`ℹ️ 예전에 쓰던 노션 페이지를 [${BRAND.label}] 브랜드 것으로 옮겨 기록했습니다(같은 페이지를 계속 갱신합니다).`);
+    }
+  }
+  return config.brands[brandKey];
+}
+
 function summaryText(report) {
   return `수집 기간: ${report.startDate} ~ ${report.endDate} · 생성: ${report.generatedAt} · PW=자사, BH=경쟁사`;
 }
 
 function pageTitle(report) {
-  return `SNS 성과 비교 (${report.startDate}~${report.endDate})`;
+  // 브랜드명을 제목에 넣어둠 — 노션에 페이지가 브랜드별로 하나씩 생기므로 목록에서 구분돼야 함
+  const brandPrefix = BRAND.label ? `[${BRAND.label}] ` : '';
+  return `${brandPrefix}SNS 성과 비교 (${report.startDate}~${report.endDate})`;
 }
 
 // 최초 1회: 새 페이지를 만들고, 다음부터 갱신할 수 있게 문단/표 블록 ID를 config에 저장해둠
@@ -207,13 +234,14 @@ async function createPage(config, report) {
   // 방금 만든 블록들의 실제 ID를 순서대로 가져옴(노션은 보낸 순서 그대로 반환함) — 다음
   // 갱신 때 "표 블록 자체는 그대로 두고 안의 행만 교체"하려면 이 ID들이 필요함.
   const created = await notionRequest('GET', `/blocks/${page.id}/children?page_size=100`, config.token);
-  config.pageId = page.id;
-  config.paragraphBlockId = created.results[0].id;
-  config.tableBlockIds = {};
+  const state = brandState(config, BRAND.key);
+  state.pageId = page.id;
+  state.paragraphBlockId = created.results[0].id;
+  state.tableBlockIds = {};
   let idx = 1;
   for (const platformKey of platformKeys) {
     idx++; // heading_2 블록 — 건너뜀
-    config.tableBlockIds[platformKey] = created.results[idx].id;
+    state.tableBlockIds[platformKey] = created.results[idx].id;
     idx++;
   }
   saveConfig(config);
@@ -223,32 +251,33 @@ async function createPage(config, report) {
 
 // 두 번째부터: 페이지/표 블록은 그대로 두고 내용(요약 문단, 표의 행)만 최신으로 교체.
 async function updatePage(config, report) {
-  console.log('기존 노션 페이지 갱신 중...');
-  await notionRequest('PATCH', `/pages/${config.pageId}`, config.token, {
+  const state = brandState(config, BRAND.key);
+  console.log(`기존 노션 페이지 갱신 중... [${BRAND.label}]`);
+  await notionRequest('PATCH', `/pages/${state.pageId}`, config.token, {
     properties: { title: { title: richText(pageTitle(report)) } },
   });
-  if (config.paragraphBlockId) {
-    await notionRequest('PATCH', `/blocks/${config.paragraphBlockId}`, config.token, {
+  if (state.paragraphBlockId) {
+    await notionRequest('PATCH', `/blocks/${state.paragraphBlockId}`, config.token, {
       paragraph: { rich_text: richText(summaryText(report)) },
     });
   }
 
-  config.tableBlockIds = config.tableBlockIds || {};
+  state.tableBlockIds = state.tableBlockIds || {};
   let configChanged = false;
   for (const platformKey of Object.keys(report.platforms)) {
     const { width, children: newRows } = buildTableRows(report.platforms[platformKey]);
-    let tableBlockId = config.tableBlockIds[platformKey];
+    let tableBlockId = state.tableBlockIds[platformKey];
 
     if (!tableBlockId) {
       // 이전엔 없던 플랫폼이 새로 생긴 경우 — 페이지 맨 끝에 새로 추가
       const title = PLATFORM_TITLES[platformKey] || platformKey;
-      const appended = await notionRequest('PATCH', `/blocks/${config.pageId}/children`, config.token, {
+      const appended = await notionRequest('PATCH', `/blocks/${state.pageId}/children`, config.token, {
         children: [
           { object: 'block', type: 'heading_2', heading_2: { rich_text: richText(`[${title}] 상품별 비교`) } },
           { object: 'block', type: 'table', table: { table_width: width, has_column_header: true, has_row_header: false, children: newRows } },
         ],
       });
-      config.tableBlockIds[platformKey] = appended.results[1].id;
+      state.tableBlockIds[platformKey] = appended.results[1].id;
       configChanged = true;
       continue;
     }
@@ -262,7 +291,7 @@ async function updatePage(config, report) {
     await notionRequest('PATCH', `/blocks/${tableBlockId}/children`, config.token, { children: newRows });
   }
   if (configChanged) saveConfig(config);
-  console.log(`✅ 노션 페이지 갱신 완료: https://notion.so/${String(config.pageId).replace(/-/g, '')}`);
+  console.log(`✅ 노션 페이지 갱신 완료: https://notion.so/${String(state.pageId).replace(/-/g, '')}`);
 }
 
 async function main() {
@@ -277,10 +306,12 @@ async function main() {
   }
 
   const report = loadReport();
+  const state = brandState(config, BRAND.key);
 
-  if (config.pageId) {
+  if (state.pageId) {
     await updatePage(config, report);
   } else {
+    console.log(`ℹ️ [${BRAND.label}] 브랜드용 노션 페이지가 아직 없어서 새로 만듭니다(브랜드마다 페이지가 따로 생깁니다).`);
     await createPage(config, report);
   }
 }

@@ -1290,6 +1290,34 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
   assert.strictEqual(detectProductLine('원피스 스케일 피규어 루피'), 'POP', '스케일=POP 별칭도 유지');
 });
 
+  check('matching-core: 한글 음역 vs 영문 원문 표기(카이타닉스 ↔ KAITANICS)도 같은 상품으로 매칭돼야 함 (2026-09-07)', () => {
+    // 실제 2026-08-06 수집분에서 끝까지 안 잡혔던 유일한 쌍 — 자사는 한글 음역, 경쟁사는
+    // 영문 원문으로 써서 글자가 하나도 안 겹쳤음(붙여쓰기 보정으로도 못 잡는 유형).
+    const own = [
+      { link: 'https://x.com/pw/kai', datetime: '2026-08-06T08:00:00.000Z', likes: '50', retweets: '20', text: '[예약시작] 카이타닉스 혼다 피규어\n\n슈퍼커브110 그린트 웨이브 블루 메탈릭\n\nhttps://mkt.shopping.naver.com/link/a' },
+      ...Array.from({ length: 15 }, (_, i) => ({ link: 'https://x.com/pw/f' + i, datetime: '2026-08-06T08:00:00.000Z', likes: '1', retweets: '1', text: '[예약시작] 무관한 상품 ' + i + '번 안내\n\nhttps://mkt.shopping.naver.com/link/f' + i })),
+    ];
+    const comp = [
+      { link: 'https://x.com/bh/kai', datetime: '2026-08-06T09:00:00.000Z', likes: '20', retweets: '10', text: '【 메가하우스 8월 신제품 예약 개시 】\n\nKAITANICS 혼다 슈퍼 커브 110 4종\n\n바로가기 : https://mkt.shopping.naver.com/link/c' },
+      ...Array.from({ length: 15 }, (_, i) => ({ link: 'https://x.com/bh/f' + i, datetime: '2026-08-06T09:00:00.000Z', likes: '1', retweets: '1', text: '【 신제품 안내 】\n\n무관한 경쟁사 상품 ' + i + '번\n\n바로가기 : https://mkt.shopping.naver.com/link/g' + i })),
+    ];
+    const r = buildProductComparison(own, comp, ['likes', 'retweets'], 'text', ['retweets', 'likes']);
+    const kai = r.products.find(p => (p.ip || '').includes('카이타닉스'));
+    assert.ok(kai, '카이타닉스(PW) ↔ KAITANICS(BH)가 한 상품으로 묶여야 함');
+    assert.strictEqual(kai.ownPosts.length, 1);
+    assert.strictEqual(kai.competitorPosts.length, 1);
+  });
+
+  check('matching-core: 일본어 원제/영문 표기도 한국어 표기로 통일돼야 함 (표기만 다른 같은 프랜차이즈)', () => {
+    const { extractKeywords } = require('./matching-core');
+    assert.deepStrictEqual(extractKeywords('은혼 카구라 #銀魂 #Gintama').sort(), ['은혼', '카구라'].sort(),
+      '銀魂/Gintama가 은혼으로 접혀서 중복 토큰이 되지 않아야 함');
+    assert.ok(extractKeywords('#ナルト 미나토').includes('나루토'), 'ナルト → 나루토');
+    assert.ok(extractKeywords('#ゴジラ 헤도라').includes('고질라'), 'ゴジラ → 고질라');
+    // 표에 없는 말은 그대로 남아야 함(임의로 바꾸면 안 됨)
+    assert.ok(extractKeywords('전혀 새로운 상품명').includes('새로운'));
+  });
+
   check('matching-core: 굿스마일 브랜드명은 상품 구분 키워드에서 빠져야 함(메가하우스와 같은 처리)', () => {
   const { extractKeywords } = require('./matching-core');
   const kw = extractKeywords('굿스마일 POP UP PARADE 프리렌 피규어');

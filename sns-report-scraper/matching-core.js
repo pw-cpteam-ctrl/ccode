@@ -156,6 +156,51 @@ function stripUrlNoise(text) {
   }).join('\n');
 }
 
+/**
+ * 같은 대상을 자사/경쟁사가 **다른 문자 체계로** 적어서 글자가 하나도 안 겹치는 경우를
+ * 하나로 맞춰주는 표(표기 변형 → 대표 표기).
+ *
+ * ⚠️ 왜 필요한가(실제 사례): 자사는 "카이타닉스 혼다 피규어", 경쟁사는 "KAITANICS 혼다
+ * 슈퍼 커브 110"으로 써서 같은 상품인데 공유 토큰이 `혼다` 하나뿐이었음 — 한글 음역과
+ * 영문 원문은 문자가 겹치지 않으니 붙여쓰기 보정(sharedTokens)으로도 절대 못 잡음.
+ * 굿스마일 쪽은 이 문제가 더 심할 게 확실해서(figma/피그마, Nendoroid/넨도로이드,
+ * 일본어 원제 병기) 표기 변형을 하나로 접어주는 단계를 매칭 앞단에 둠.
+ *
+ * 넣는 기준: **표기만 다르고 가리키는 대상이 100% 같은 것만.** 조금이라도 다른 상품을
+ * 가리킬 여지가 있으면 넣지 말 것(잘못 넣으면 무관한 상품이 한 행으로 묶임).
+ * 상품 라인명(룩업/GEM/POP UP PARADE 등)은 여기가 아니라 KNOWN_PRODUCT_LINES +
+ * LINE_ALIASES가 담당함 — 라인은 매칭 단계에서 키워드로 안 쓰고 따로 비교하기 때문.
+ */
+const KEYWORD_ALIASES = {
+  // 브랜드/콜라보 명칭 — 실제로 매칭이 막혔던 케이스
+  '카이타닉스': 'KAITANICS',
+  '카이타닉': 'KAITANICS',
+  // 프랜차이즈 이름: 일본어 원제·영문 표기를 한국어 표기로 통일
+  '銀魂': '은혼', 'GINTAMA': '은혼',
+  'ナルト': '나루토', 'NARUTO': '나루토',
+  'デジモン': '디지몬', 'DIGIMON': '디지몬',
+  'ゴジラ': '고질라', 'GODZILLA': '고질라',
+  'ワンピース': '원피스', 'ONEPIECE': '원피스',
+  'ブリーチ': '블리치', 'BLEACH': '블리치',
+  '呪術廻戦': '주술회전', 'JUJUTSUKAISEN': '주술회전',
+  'ヒロアカ': '히로아카', '僕のヒーローアカデミア': '히로아카',
+  '進撃の巨人': '진격의거인', 'SHINGEKI': '진격의거인',
+  '鬼滅の刃': '귀멸의칼날', 'KIMETSU': '귀멸의칼날',
+  'ハイキュー': '하이큐', 'HAIKYU': '하이큐',
+  '葬送のフリーレン': '프리렌', 'FRIEREN': '프리렌', 'フリーレン': '프리렌',
+  'チェンソーマン': '체인소맨', 'CHAINSAWMAN': '체인소맨',
+  '初音ミク': '하츠네미쿠', 'HATSUNEMIKU': '하츠네미쿠', '初音': '하츠네',
+  'ペルソナ': '페르소나', 'PERSONA': '페르소나',
+  'ハンター': '헌터', 'HUNTER': '헌터',
+};
+
+/** 토큰 하나를 대표 표기로 접어줌(대소문자 무시). 표에 없으면 원래 토큰 그대로. */
+function canonicalKeyword(token) {
+  if (KEYWORD_ALIASES[token]) return KEYWORD_ALIASES[token];
+  const upper = token.toUpperCase();
+  return KEYWORD_ALIASES[upper] || token;
+}
+
 // 상품명 매칭용 키워드 추출. **본문 전체**를 대상으로 함 — 자사/경쟁사 둘 다 실제
 // 프랜차이즈명이 제목 한 줄이 아니라 본문 여기저기(본문 중간 줄 + 해시태그)에 흩어져
 // 있어서, 좁은 "제목 한 줄"만 보면 진짜 식별 정보를 놓치는 경우가 많았음.
@@ -185,7 +230,7 @@ function extractKeywords(text) {
     cleaned = cleaned.replace(new RegExp(g.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ' ');
   });
   const tokens = cleaned.match(/[\p{L}]+/gu) || [];
-  return [...new Set(tokens.filter(t => t.length >= 2))];
+  return [...new Set(tokens.filter(t => t.length >= 2).map(canonicalKeyword))];
 }
 
 // 알려진 메가하우스 상품 라인명 — 본문에서 이 중 하나를 찾으면 "시리즈"로 분리하고
@@ -207,9 +252,14 @@ function extractKeywords(text) {
 const KNOWN_PRODUCT_LINES = [
   '룩업', 'Look Up', '테노히라', '손바닥', 'GEM', 'G.E.M', '메가캣', 'MegaCat',
   'GGG', 'G.M.G', 'GMG', '쁘띠라마', 'INSIDE FANTASY', '인사이드 판타지',
-  // 굿스마일 계열 라인 — POP보다 먼저 검사돼야 함(위 주석 참고)
+  // 굿스마일 계열 라인 — POP보다 먼저 검사돼야 함(위 주석 참고).
+  // ⚠️ 여기서도 긴 이름이 먼저: "넨도로이드 도이드"(옷 갈아입히는 인형 라인)는 "넨도로이드"를
+  // 포함하므로 반드시 앞에 둬야 함 — 뒤에 두면 전부 그냥 "넨도로이드"로 잡혀서 서로 다른
+  // 라인의 상품이 같은 라인으로 묶임.
+  '넨도로이드 도이드', '넨도로이드도이드', 'Nendoroid Doll',
   'POP UP PARADE', 'POPUP PARADE', '팝업퍼레이드', '팝업 퍼레이드',
   '넨도로이드', 'Nendoroid', 'figma', '피그마',
+  'MODEROID', '모데로이드', 'PLAMAX', '플라맥스', '하모니아', 'Harmonia',
   '스케일', 'POP', 'P.O.P',
 ];
 
@@ -224,6 +274,8 @@ const LINE_ALIASES = {
   // 굿스마일 계열 — 한글/영문 표기를 하나로 통일(자사와 경쟁사가 다르게 쓰는 경우 대비)
   'POPUP PARADE': 'POP UP PARADE', '팝업퍼레이드': 'POP UP PARADE', '팝업 퍼레이드': 'POP UP PARADE',
   'Nendoroid': '넨도로이드', '피그마': 'figma',
+  '넨도로이드도이드': '넨도로이드 도이드', 'Nendoroid Doll': '넨도로이드 도이드',
+  '모데로이드': 'MODEROID', '플라맥스': 'PLAMAX', 'Harmonia': '하모니아',
 };
 function canonicalLine(rawLine) {
   return rawLine ? (LINE_ALIASES[rawLine] || rawLine) : null;
@@ -295,5 +347,7 @@ if (typeof module !== 'undefined' && module.exports) {
     GENERIC_KEYWORDS,
     KNOWN_PRODUCT_LINES,
     LINE_ALIASES,
+    KEYWORD_ALIASES,
+    canonicalKeyword,
   };
 }

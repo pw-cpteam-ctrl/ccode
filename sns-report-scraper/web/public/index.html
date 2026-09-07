@@ -477,7 +477,11 @@ async function refreshReports() {
     const sizeKb = Math.round(f.size / 1024).toLocaleString();
     const date = new Date(f.mtime).toLocaleString('ko-KR');
     const href = '/reports/' + (f.path || f.name).split('/').map(encodeURIComponent).join('/');
-    const tag = f.legacy ? ' <span class="meta">(브랜드 폴더 도입 전 파일)</span>' : '';
+    // reports/ 바로 아래 있는 파일 중 sns-report*는 브랜드 폴더 도입 전에 만든 것이고,
+    // account-report/period-comparison 등은 브랜드와 무관한 별도 기능 산출물이라 구분해서 표기.
+    const tag = !f.legacy ? ''
+      : f.name.startsWith('sns-report') ? ' <span class="meta">(브랜드 폴더 도입 전 파일)</span>'
+      : ' <span class="meta">(브랜드 무관 · 계정 단독/기간 비교)</span>';
     li.innerHTML = '<a href="' + href + '" download>' + f.name + '</a>' + tag + '<span class="meta">' + sizeKb + 'KB · ' + date + '</span>';
     ul.appendChild(li);
   });
