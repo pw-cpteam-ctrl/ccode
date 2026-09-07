@@ -8,8 +8,8 @@
 
 import { updateGithubJsonFile } from '../lib/github.js';
 
-const VALID_SECTIONS = ['ipNameMap', 'gradeTable', 'moodClusters', 'storeProfiles', 'productLineNames'];
-const EMPTY = { ipNameMap: {}, gradeTable: { S: [], A: [] }, moodClusters: [], storeProfiles: {}, productLineNames: [] };
+const VALID_SECTIONS = ['ipNameMap', 'gradeTable', 'moodClusters', 'storeProfiles', 'productLineNames', 'copyrightMap'];
+const EMPTY = { ipNameMap: {}, gradeTable: { S: [], A: [] }, moodClusters: [], storeProfiles: {}, productLineNames: [], copyrightMap: {} };
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

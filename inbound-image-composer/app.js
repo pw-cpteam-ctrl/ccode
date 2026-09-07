@@ -21,7 +21,7 @@ const state = {
   items: [],            // { id, photoId, ip, tag, price, ship, subGrade, pushToEnd }
   nextPhotoNum: 1,
   nextItemId: 1,
-  dict: { ipNameMap: {}, gradeTable: { S: [], A: [] }, moodClusters: [], storeProfiles: {}, productLineNames: [] },
+  dict: { ipNameMap: {}, gradeTable: { S: [], A: [] }, moodClusters: [], storeProfiles: {}, productLineNames: [], copyrightMap: {} },
   activeStore: 'goodsmile',
   pendingDeleteIds: [],
   lastDeletedBatch: null, // [{ item, index }] — 실행취소용, 가장 최근 삭제 1건만 기억
@@ -29,6 +29,7 @@ const state = {
   finalPagesSig: null, // 페이지를 생성한 시점의 항목/설정 서명 — 이후 변경 감지용
   textLocked: false, // true면 IP명/가격/태그 등 글자 수정을 막고 카드 순서 변경만 허용
   showShipping: true, // false면 배송비(아이콘+글자)를 안 보여줌 — 항목별이 아니라 전체 스위치
+  copyrightText: '', // 내보내기 하단 고정 카피라이트 문구 — 페이지마다 실린 IP와 무관하게 이 배치(batch) 전체에 동일하게 들어감
 };
 
 // 2단계(표 정리)의 빈 배경 드래그 다중 선택은 3/4단계(카드 그리드)의 group-selected
@@ -69,6 +70,7 @@ async function loadDict() {
     moodClusters: window.SEED_MOOD_CLUSTERS.map((c) => ({ ...c, members: [...c.members] })),
     storeProfiles: JSON.parse(JSON.stringify(window.SEED_STORE_PROFILES)),
     productLineNames: [...window.SEED_PRODUCT_LINE_NAMES],
+    copyrightMap: {}, // 시드 없이 빈 값으로 시작 — 등록은 전부 사용자가 직접
   };
 
   let server = {};
@@ -87,6 +89,7 @@ async function loadDict() {
     moodClusters: mergeMoodClusters(seed.moodClusters, server.moodClusters, local.moodClusters),
     storeProfiles: { ...seed.storeProfiles, ...(server.storeProfiles || {}), ...(local.storeProfiles || {}) },
     productLineNames: uniqStrings([...seed.productLineNames, ...(server.productLineNames || []), ...(local.productLineNames || [])]),
+    copyrightMap: { ...seed.copyrightMap, ...(server.copyrightMap || {}), ...(local.copyrightMap || {}) },
   };
   if (!state.dict.storeProfiles[state.activeStore]) {
     state.activeStore = Object.keys(state.dict.storeProfiles)[0];
@@ -257,6 +260,7 @@ function snapshotState() {
     nextPhotoNum: state.nextPhotoNum,
     nextItemId: state.nextItemId,
     activeStore: state.activeStore,
+    copyrightText: state.copyrightText,
   };
 }
 
@@ -304,6 +308,7 @@ async function applySlot(s) {
   state.nextPhotoNum = s.nextPhotoNum || 1;
   state.nextItemId = s.nextItemId || 1;
   state.activeStore = s.activeStore || state.activeStore;
+  state.copyrightText = s.copyrightText ?? ''; // 예전 슬롯엔 이 필드가 없었으니 기본값으로 안전하게
   state.sources = []; // 원본 소스는 캐시 대상이 아니라 1단계 업로드 목록은 비워진 채로 시작
   renderSlots();
   goToStep(2); // 사진+표 데이터가 이미 다 있으니 표 정리 화면으로 바로 이동
@@ -1608,6 +1613,9 @@ function renderExportBar() {
   if (keep && state.headers.some((h) => h.id === keep)) headerSelect.value = keep;
   document.getElementById('exportSummary').textContent = splitSummaryText(state.items);
   updateHeaderPreview();
+  const copyrightInput = document.getElementById('copyrightInput');
+  if (copyrightInput) copyrightInput.value = state.copyrightText;
+  updateCopyrightPreview();
   refreshPagesStale();
 }
 
@@ -1620,7 +1628,44 @@ function pagesSignature() {
     items: state.items.map((i) => [i.id, i.ip, i.price, i.ship, i.tag]),
     ship: state.showShipping,
     header: headerSelect ? headerSelect.value : '',
+    copyright: state.copyrightText,
   });
+}
+
+// 한 줄에 하나씩 적은 IP를 화면(카피라이트 입력칸)에 그릴 한 줄로 조립한다.
+// ©를 사람이 칠 필요가 없게 자동으로 붙이고, 발주서에서 ©가 붙은 채로 붙여넣어도
+// 중복되지 않게 앞에 있는 ©/ⓒ/(c)는 떼고 다시 붙인다.
+function formatCopyright(raw) {
+  return String(raw || '')
+    .split('\n')
+    .map((l) => l.trim().replace(/^\s*(?:©|ⓒ|\(c\)|\(C\))\s*/, '').trim())
+    .filter(Boolean)
+    .map((l) => '©' + l)
+    .join('/');
+}
+
+function updateCopyrightPreview() {
+  const preview = document.getElementById('copyrightPreview');
+  if (!preview) return;
+  const formatted = formatCopyright(state.copyrightText);
+  preview.textContent = formatted || '입력 전 (모든 페이지 좌하단에 고정으로 들어감)';
+  preview.title = formatted;
+  preview.classList.toggle('empty', !formatted);
+}
+
+// 사전에 등록된 IP만 골라 채워주는 시작점 — 그 뒤엔 입력칸에서 자유롭게 고쳐도 된다.
+// 사전에 없는 새 IP는 조용히 빠지므로(등록 안 된 걸 티 안 나게 누락시키면 안 되니까)
+// 몇 개가 빠졌는지 안내한다.
+function loadCopyrightFromDict() {
+  const ips = [...new Set(state.items.map((i) => i.ip).filter(Boolean))];
+  const known = ips.filter((ip) => state.dict.copyrightMap[ip]);
+  const missing = ips.filter((ip) => !state.dict.copyrightMap[ip]);
+  const textarea = document.getElementById('copyrightInput');
+  textarea.value = known.map((ip) => state.dict.copyrightMap[ip]).join('\n');
+  state.copyrightText = textarea.value;
+  updateCopyrightPreview();
+  refreshPagesStale();
+  if (missing.length) alert(`사전에 없는 IP ${missing.length}개는 못 채웠어요: ${missing.join(', ')}\n입력칸에 직접 추가해주세요.`);
 }
 
 function refreshPagesStale() {
@@ -1657,9 +1702,10 @@ async function generatePages() {
   })));
 
   // 페이지별 renderPage 호출은 서로 독립적이므로 Promise.all로 병렬 렌더 (순차 대비 체감상 빠름)
+  const copyrightText = formatCopyright(state.copyrightText);
   const canvases = await Promise.all(cardGroups.map((cards) => RenderPage.renderPage(
     cards, header ? header.canvas : null,
-    { cols: 5, rows: 4, pageW: 1080, pageH: 1350, scale: 2, showShipping: state.showShipping },
+    { cols: 5, rows: 4, pageW: 1080, pageH: 1350, scale: 2, showShipping: state.showShipping, copyrightText },
   )));
 
   state.finalPages = canvases.map((canvas, i) => ({ canvas, index: i }));
@@ -1786,6 +1832,7 @@ function openDictDialog(focusTab) {
   renderClusterRows();
   renderStoreRows();
   renderLineNamesInput();
+  renderCopyrightDictRows();
   if (focusTab) switchDictTab(focusTab);
   document.getElementById('dictDialog').showModal();
 }
@@ -1838,6 +1885,22 @@ function addClusterRow(name = '', members = '') {
 
 function renderLineNamesInput() {
   document.getElementById('lineNamesInput').value = (state.dict.productLineNames || []).join(', ');
+}
+
+let copyrightDictDraft = {};
+function renderCopyrightDictRows() {
+  copyrightDictDraft = { ...state.dict.copyrightMap };
+  const container = document.getElementById('copyrightDictRows');
+  container.innerHTML = '';
+  Object.entries(copyrightDictDraft).forEach(([k, v]) => addCopyrightDictRow(k, v));
+}
+function addCopyrightDictRow(k = '', v = '') {
+  const container = document.getElementById('copyrightDictRows');
+  const row = document.createElement('div');
+  row.className = 'dict-row';
+  row.innerHTML = `<input class="k" placeholder="IP명" value="${k}" /><input class="v" placeholder="카피라이트 문구 (예: BanG Dream! Project)" value="${v}" /><button class="btn ghost">✕</button>`;
+  row.querySelector('button').addEventListener('click', () => row.remove());
+  container.appendChild(row);
 }
 
 function renderStoreRows() {
@@ -1910,6 +1973,15 @@ document.addEventListener('DOMContentLoaded', () => {
   function readLineNamesValue() {
     return document.getElementById('lineNamesInput').value.split(',').map((s) => s.trim()).filter(Boolean);
   }
+  function readCopyrightDictValue() {
+    const value = {};
+    document.querySelectorAll('#copyrightDictRows .dict-row').forEach((row) => {
+      const k = row.querySelector('.k').value.trim();
+      const v = row.querySelector('.v').value.trim();
+      if (k && v) value[k] = v;
+    });
+    return value;
+  }
 
   document.getElementById('saveIpDictBtn').addEventListener('click', () => {
     saveDictLocal('ipNameMap', readIpDictValue());
@@ -1957,6 +2029,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const value = readLineNamesValue();
     saveDictLocal('productLineNames', value);
     shareDictToGithub('productLineNames', value, `상품 라인명 (${value.length}건)`);
+  });
+
+  document.getElementById('addCopyrightRowBtn').addEventListener('click', () => addCopyrightDictRow());
+  document.getElementById('saveCopyrightDictBtn').addEventListener('click', () => {
+    saveDictLocal('copyrightMap', readCopyrightDictValue());
+  });
+  document.getElementById('shareCopyrightDictBtn').addEventListener('click', () => {
+    const value = readCopyrightDictValue();
+    saveDictLocal('copyrightMap', value);
+    shareDictToGithub('copyrightMap', value, `카피라이트 사전 (${Object.keys(value).length}건)`);
   });
 });
 
@@ -2049,6 +2131,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('generatePagesBtn').addEventListener('click', generatePages);
   document.getElementById('downloadAllBtn').addEventListener('click', downloadAllPages);
   document.getElementById('headerSelect').addEventListener('change', () => { updateHeaderPreview(); refreshPagesStale(); });
+  document.getElementById('copyrightInput').addEventListener('input', (e) => {
+    state.copyrightText = e.target.value;
+    updateCopyrightPreview();
+    refreshPagesStale();
+  });
+  document.getElementById('loadCopyrightDictBtn').addEventListener('click', () => loadCopyrightFromDict());
 
   setupHelpPanels();
   setupNotice();

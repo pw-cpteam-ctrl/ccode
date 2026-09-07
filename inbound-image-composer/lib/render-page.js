@@ -307,7 +307,7 @@ function drawCard(ctx, item, cx, cy, showShipping = true) {
 async function renderPage(items, headerImg, options = {}) {
   await ensureFontsLoaded();
 
-  const { cols = 5, rows = 4, pageW = 1080, pageH = 1350, scale = 2, showShipping = true, padTop = 24 } = options;
+  const { cols = 5, rows = 4, pageW = 1080, pageH = 1350, scale = 2, showShipping = true, padTop = 24, copyrightText = '' } = options;
 
   const canvas = document.createElement('canvas');
   canvas.width = pageW * scale;
@@ -351,7 +351,42 @@ async function renderPage(items, headerImg, options = {}) {
     yCursor += rowHeights[r] + rowGap;
   }
 
+  // IP 카피라이트 표기 — 페이지마다 새 여백을 만들지 않고 맨 아래 줄 사진 위에
+  // 바로 겹쳐 그린다(그리드 크기를 안 줄이려는 선택). 사진이 알록달록해도 읽히도록
+  // 흰 글자 + 그림자 조합을 쓴다. 배치(batch) 전체에 동일한 문구가 페이지마다 고정으로
+  // 들어간다 — 페이지에 실제로 어떤 IP가 있는지와 무관하게 사용자가 입력한 값 그대로.
+  drawCopyright(ctx, copyrightText, pageW, pageH);
+
   return canvas;
+}
+
+function drawCopyright(ctx, text, pageW, pageH) {
+  if (!text) return;
+  const FONT_SIZE = 22;   // 1080×1350 기준
+  const MIN_SIZE = 13;    // 이보다 작아지면 안 읽힘
+  const MARGIN = 14;
+  const maxW = pageW - MARGIN * 2;
+
+  ctx.save();
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+
+  let size = FONT_SIZE;
+  ctx.font = `700 ${size}px ${FONT}`;
+  while (size > MIN_SIZE && ctx.measureText(text).width > maxW) {
+    size -= 1;
+    ctx.font = `700 ${size}px ${FONT}`;
+  }
+
+  // 사진 위든 마지막 줄 글자(가격·배송비 등) 위든 뭐랑 겹치든 항상 읽히도록,
+  // 흰 글자만으로는 부족해서 뒤에 반투명 검은 띠를 깔고 그 위에 그린다.
+  const bandH = size + 16;
+  ctx.fillStyle = 'rgba(0,0,0,.55)';
+  ctx.fillRect(0, pageH - bandH, pageW, bandH);
+
+  ctx.fillStyle = '#fff';
+  ctx.fillText(text, MARGIN, pageH - MARGIN);
+  ctx.restore();
 }
 
 /**

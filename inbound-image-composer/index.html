@@ -221,6 +221,15 @@
   }
   .export-bar .header-mini { height: 28px; max-width: 150px; object-fit: contain; border: 1px solid var(--line2); border-radius: 4px; background: #fff; }
   @media (max-width: 640px) { .export-bar { padding: 8px 10px; gap: 8px; } .export-bar .header-mini { display: none; } }
+  .copyright-field { display: flex; align-items: center; gap: 6px; }
+  .copyright-field textarea {
+    width: 220px; min-height: 30px; resize: vertical; font-family: inherit; font-size: 12.5px;
+    padding: 5px 7px; border: 1px solid var(--line2); border-radius: 6px;
+  }
+  .copyright-preview { font-size: 11px; color: var(--text); max-width: 220px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .copyright-preview.empty { color: var(--muted); }
+  @media (max-width: 640px) { .copyright-field textarea, .copyright-preview { width: 140px; max-width: 140px; } }
   /* 생성 후 내용이 바뀌면 만들어둔 페이지를 흐리게 해서 "이건 예전 상태"임을 눈으로 보여준다 */
   .stale-note { background: #fff3d6; border: 1px solid #f0c869; border-radius: 8px; padding: 8px 12px; margin: 8px 0; font-size: 13px; color: #7a5200; }
   #pagesContainer.stale { opacity: .4; filter: grayscale(.5); }
@@ -424,6 +433,15 @@
       <select id="headerSelect"></select>
       <img id="headerPreviewImg" class="header-mini" alt="선택된 헤더 미리보기"
         title="선택된 헤더 미리보기 — 비어 있으면 원본 스크린샷에 매장 배너가 안 찍혀 있다는 뜻입니다." />
+
+      <label style="font-size:13px;">카피라이트</label>
+      <div class="copyright-field">
+        <textarea id="copyrightInput" rows="1" placeholder="한 줄에 IP 하나씩 (예: BanG Dream! Project)"
+          title="여기 입력한 문구가 모든 페이지 좌하단에 똑같이 들어갑니다. 한 줄에 하나씩 적으면 ©가 자동으로 붙고 여러 개는 /로 이어집니다."></textarea>
+        <button class="link-btn" id="loadCopyrightDictBtn" title="사전에 등록된 IP만 골라 채웁니다 — 그 뒤엔 자유롭게 고치세요">사전에서 불러오기</button>
+      </div>
+      <span id="copyrightPreview" class="copyright-preview"></span>
+
       <span id="exportSummary" class="tsummary"></span>
       <button class="btn primary" id="generatePagesBtn">페이지 생성 (JPEG q0.94)</button>
       <button class="btn" id="downloadAllBtn" disabled>전체 다운로드</button>
@@ -523,6 +541,7 @@
       <button data-tab="cluster">분위기 클러스터</button>
       <button data-tab="store">스토어 프로필</button>
       <button data-tab="lineNames">상품 라인명</button>
+      <button data-tab="copyright">카피라이트</button>
     </div>
 
     <p style="font-size:11px;color:var(--muted);margin:0 0 10px;">
@@ -577,6 +596,20 @@
       <div class="row between">
         <button class="btn primary" id="saveLineNamesBtn">이 브라우저에 저장</button>
         <button class="link-btn" id="shareLineNamesBtn">☁ GitHub에도 공유 (선택)</button>
+      </div>
+    </div>
+
+    <div class="dict-editor-tab" id="tab-copyright">
+      <p style="font-size:11px;color:var(--muted);">
+        IP명 → 카피라이트 문구를 한 번 등록해두면, 3단계 내보내기 바의 "사전에서
+        불러오기"로 바로 채울 수 있습니다. 여기 없는 새 IP는 그 자리에서 직접
+        입력하면 되고, 등록은 선택입니다.
+      </p>
+      <div id="copyrightDictRows"></div>
+      <button class="btn" id="addCopyrightRowBtn">+ 행 추가</button>
+      <div class="row between" style="margin-top:12px;">
+        <button class="btn primary" id="saveCopyrightDictBtn">이 브라우저에 저장</button>
+        <button class="link-btn" id="shareCopyrightDictBtn">☁ GitHub에도 공유 (선택)</button>
       </div>
     </div>
 
