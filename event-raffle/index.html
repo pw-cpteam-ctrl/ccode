@@ -12,7 +12,11 @@
 }
 *{box-sizing:border-box;}html,body{margin:0;padding:0;}
 body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Malgun Gothic',sans-serif;display:flex;justify-content:center;padding:40px 20px 100px;}
-.wrap{width:100%;max-width:760px;}
+/* 표에 컬럼이 9개씩 들어가는 데이터 도구인데 760px에 갇혀 있어서, 1920 화면에서도
+   표가 가로로 잘려 스크롤해야 했다(측정: 가로 60% 낭비, 표 81px 잘림).
+   표·컬럼 지정처럼 폭을 쓰는 영역만 넓히고, 줄글은 읽기 좋은 폭(760px)으로 묶어둔다. */
+.wrap{width:100%;max-width:1280px;}
+.readable{max-width:760px;}
 h1{font-size:22px;font-weight:800;margin:0 0 6px;}
 .sub{font-size:13px;color:var(--ui-sub);margin:0 0 28px;}
 .step{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;padding:20px 22px;margin-bottom:18px;}
@@ -29,11 +33,18 @@ button.secondary{background:var(--ui-card);color:var(--ui-text);}
 button:disabled{opacity:.5;cursor:not-allowed;}
 .status{font-size:12.5px;color:var(--ui-sub);margin-top:8px;}
 .warn-box{background:#fbf1e4;border:1px solid #ecd6ac;border-radius:8px;padding:12px 14px;margin-top:10px;font-size:12.5px;color:var(--ui-warn);display:none;}
-.tbl-wrap{overflow-x:auto;margin-top:10px;border:1px solid var(--ui-border);border-radius:8px;}
+/* 표 자체가 화면 높이 안에서 스크롤되게 한다. 예전엔 600명이면 표 하나가 57,714px
+   (화면의 53배)까지 늘어나서, 후보를 본 뒤 아래 "추첨" 단계로 가려면 54화면을 내려야
+   했다. 높이를 화면 기준(vh)으로 잡아 화면이 큰 사람은 더 많이 보게 하고, 고정 px로
+   박지 않는다. 이 max-height가 생겨야 아래 th의 sticky(헤더 고정)도 비로소 동작한다 —
+   전에는 스크롤 컨테이너에 높이 제한이 없어서 헤더가 그냥 같이 밀려 올라갔다. */
+.tbl-wrap{margin-top:10px;}
+.tbl-scroll{overflow:auto;max-height:70vh;border:1px solid var(--ui-border);border-radius:8px;}
 table{border-collapse:collapse;width:100%;font-size:12.5px;}
 th,td{padding:6px 10px;border-bottom:1px solid var(--ui-border);text-align:left;word-break:break-word;}
 td a{color:var(--ui-accent);text-decoration:underline;}
-th{background:var(--ui-card);position:sticky;top:0;white-space:nowrap;}
+/* sticky 요소에서는 border-bottom이 스크롤 중에 같이 밀려 사라져 보이므로 그림자로 대체 */
+th{background:var(--ui-card);position:sticky;top:0;z-index:2;white-space:nowrap;box-shadow:inset 0 -1px 0 var(--ui-border);}
 tr:last-child td{border-bottom:none;}
 tbody tr{cursor:pointer;}
 tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;}
@@ -64,8 +75,18 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 .slot-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
 .slot-row .slot-load{flex:1;min-width:0;text-align:left;background:var(--ui-card);color:var(--ui-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .slot-row .slot-delete{flex:0 0 auto;}
-.row-delete{padding:4px 10px;font-size:12px;white-space:nowrap;}
-.col-delete{padding:1px 5px;font-size:10.5px;font-weight:400;border-radius:4px;vertical-align:middle;}
+/* 행마다 늘 떠 있던 "삭제" 버튼이 화면 전체 버튼의 96%(600명 기준 600개)를 차지해서,
+   마우스를 올린 줄에서만 보이게 한다. 자리는 visibility로 미리 잡아둬서 표가 흔들리지
+   않고, hover가 없는 터치 기기와 키보드 이동 시에는 그대로 보이게 예외를 둔다. */
+.row-delete{padding:4px 10px;font-size:12px;white-space:nowrap;visibility:hidden;}
+tbody tr:hover .row-delete,tbody tr:focus-within .row-delete{visibility:visible;}
+@media (hover:none){.row-delete{visibility:visible;}}
+/* 같은 "삭제"인데 위치마다 크기·표기가 제각각이었다(삭제 46×27/12px, ✕ 23×16/10.5px,
+   ✕ 48×38/14px). 이미 누르기 편했던 캐시 삭제 버튼 쪽에 맞춰 통일한다. */
+.col-delete{padding:4px 9px;font-size:12px;font-weight:400;border-radius:4px;vertical-align:middle;}
+/* 조건을 고쳐놓고 "필터링 실행"을 안 누른 채 아래 후보표를 보면, 그 표는 예전 조건의
+   결과인데 최신처럼 보인다. 사용자에게 순서를 강제하는 대신 화면이 스스로 알린다. */
+.stale-note{display:none;margin-top:10px;background:#fbf1e4;border:1px solid #ecd6ac;border-radius:8px;padding:9px 12px;font-size:12.5px;color:var(--ui-warn);}
 .embed-card{margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--ui-border);}
 .embed-card:last-child{border-bottom:none;}
 .embed-label{font-size:13px;font-weight:700;margin-bottom:6px;}
@@ -74,9 +95,9 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 <body>
 <div class="wrap">
   <h1>이벤트 추첨기</h1>
-  <p class="sub">참가자 엑셀/CSV 업로드 → 자유텍스트 조건으로 필터링 → 랜덤 추첨</p>
+  <p class="sub readable">참가자 엑셀/CSV 업로드 → 자유텍스트 조건으로 필터링 → 랜덤 추첨</p>
 
-  <div class="intro">
+  <div class="intro readable">
     <p>이 도구는 SNS 이벤트 참가자 중 조건에 맞는 사람을 골라 당첨자를 뽑을 때 쓰는 도구입니다.</p>
     <ol>
       <li>참가자 명단(엑셀/CSV)을 업로드합니다.</li>
@@ -88,7 +109,7 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 
   <div class="step">
     <h2><span class="num">1</span>참가자 파일 업로드</h2>
-    <p class="desc">엑셀(.xlsx) 또는 CSV 파일. 첫 줄은 헤더(컬럼명)로 인식합니다.</p>
+    <p class="desc readable">엑셀(.xlsx) 또는 CSV 파일. 첫 줄은 헤더(컬럼명)로 인식합니다.</p>
     <div id="slotListWrap" style="display:none;margin-bottom:12px;">
       <div class="tbl-hint" style="margin:0 0 6px;">최근 불러온 파일 (이 PC의 브라우저에만 저장, 최대 5개) — 마지막 파일은 자동으로 불러왔어요.</div>
       <div id="slotList"></div>
@@ -119,7 +140,7 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 
   <div class="step">
     <h2><span class="num">2</span>이번 회차 조건</h2>
-    <p class="desc">조건을 하나씩 나눠서 입력하세요. 조건이 2개 이상이면 각 조건 사이의 관계(그리고/또는)를 직접 선택합니다 — 문장 하나에 다 적을 때보다 AI가 정확하게 판단해요.</p>
+    <p class="desc readable">조건을 하나씩 나눠서 입력하세요. 조건이 2개 이상이면 각 조건 사이의 관계(그리고/또는)를 직접 선택합니다 — 문장 하나에 다 적을 때보다 AI가 정확하게 판단해요.</p>
     <div id="conditionList">
       <div class="cond-row" data-idx="0">
         <span class="cond-label">조건1</span>
@@ -135,8 +156,10 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     <button class="secondary" onclick="useAllAsFallback()">필터링 없이 전체 참가자로 진행 (테스트용)</button>
     <div class="status" id="filterStatus"></div>
     <div class="warn-box" id="filterFallback"></div>
+    <div class="stale-note" id="staleNote">조건을 고쳤는데 아직 다시 필터링하지 않았어요 — 아래 후보 명단은 이전 조건의 결과예요.</div>
     <div class="tbl-wrap" id="candidateWrap" style="display:none;"></div>
     <div class="count-badge" id="candidateCount"></div>
+    <button class="secondary" onclick="undoCandidateDelete()" id="btnUndoDelete" style="display:none;margin-top:10px;">방금 삭제 취소</button>
     <button class="secondary" onclick="copyCandidatesToClipboard()" id="btnCopyCandidates" style="display:none;margin-top:10px;">후보 명단 클립보드로 복사</button>
     <button class="secondary" onclick="downloadCandidates()" id="btnDownloadCandidates" style="display:none;margin-top:10px;">후보 명단 다운로드 (엑셀)</button>
     <button class="secondary" onclick="toggleEmbeds()" id="btnToggleEmbeds" style="display:none;margin-top:10px;">필터링된 게시물 보기 (트위터/인스타)</button>
@@ -146,7 +169,7 @@ tbody tr.collapsed td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 
   <div class="step">
     <h2><span class="num">3</span>추첨</h2>
-    <p class="desc">위 후보 명단 중에서 코드가 실제 난수로 당첨자를 뽑습니다 (LLM은 관여하지 않음).</p>
+    <p class="desc readable">위 후보 명단 중에서 코드가 실제 난수로 당첨자를 뽑습니다 (LLM은 관여하지 않음).</p>
     <div class="field" style="max-width:140px;"><label>당첨 인원수</label><input type="number" id="inWinnerCount" min="1" value="1"/></div>
     <button onclick="drawWinners()">추첨하기</button>
     <div id="winnerResult"></div>
@@ -219,6 +242,11 @@ function deleteSlot(i) {
 }
 function snapshotState() {
   if (!participants.length) return null;
+  // 후보는 참가자의 부분집합이므로 명단을 통째로 복사하지 않고 "몇 번째 사람인지"만 남긴다
+  const idxOf = new Map(participants.map((row, i) => [row, i]));
+  const candidateRefs = candidates
+    .map(c => ({ i: idxOf.has(c.row) ? idxOf.get(c.row) : -1, reason: c.reason }))
+    .filter(x => x.i >= 0);
   return {
     ts: Date.now(),
     fileName: lastFileName,
@@ -227,6 +255,10 @@ function snapshotState() {
     nicknameColumn,
     postLinkColumn,
     viewCountColumn,
+    candidateRefs,
+    withReason: lastWithReason,
+    condition: lastCombinedCondition,
+    filterStatus: $('#filterStatus').textContent,
   };
 }
 function slotLabel(s) {
@@ -259,6 +291,15 @@ function applySlot(s) {
   }
   renderTable('#previewWrap', participants.slice(0, 5), getMeaningfulColumns(participants, allColumns), { onDeleteColumn: removeParticipantColumn });
   resetDownstream();
+  // 예전에 저장된 캐시에는 이 필드들이 아예 없으므로 기본값을 깔고 읽는다 (없으면 그냥 복원 안 함)
+  const refs = s.candidateRefs ?? [];
+  const restored = refs.map(r => ({ row: participants[r.i], reason: r.reason })).filter(c => c.row);
+  if (restored.length) {
+    candidates = restored;
+    lastCombinedCondition = s.condition ?? '';
+    applyCandidates(s.withReason ?? true);
+    $('#filterStatus').textContent = s.filterStatus || `이전에 만든 후보 ${candidates.length}명을 이 PC 캐시에서 복원했어요.`;
+  }
 }
 function renderSlots() {
   const list = loadSlots();
@@ -326,6 +367,7 @@ $('#inFile').addEventListener('change', async (e) => {
     $('#uploadStatus').textContent = `파일을 읽지 못했어요: ${err.message}`;
   }
 });
+
 
 // 스크래퍼 원본에는 참가자 댓글과 무관한 표(랭킹 집계 등)가 옆에 같이 섞여 있어서,
 // 대부분의 행에서 빈 값인 컬럼(전체의 1% 이하만 값이 있음)이 많다. 이런 컬럼은
@@ -535,6 +577,10 @@ function isRepeatSpam(text, n) {
 function resetDownstream() {
   candidates = []; lastWinners = [];
   candidateSortField = null; candidateSortDir = null;
+  deletedCandidates = [];
+  resetTableState('#candidateWrap');
+  $('#staleNote').style.display = 'none';
+  $('#btnUndoDelete').style.display = 'none';
   $('#candidateWrap').style.display = 'none';
   $('#candidateWrap').innerHTML = '';
   $('#candidateCount').textContent = '';
@@ -554,32 +600,60 @@ function resetDownstream() {
   $('#saveStatus').textContent = '';
 }
 
+/* 표를 다시 그릴 때(후보 하나 삭제, 정렬 등) 어떤 줄을 접어놨는지가 화면 요소에만
+   남아 있어서 전부 날아갔다 — 값 하나 바꿨을 뿐인데 방금 접은 줄이 도로 펴지는 식.
+   접힌 줄 번호와 "전체 접기/펼치기" 상태를 표 바깥에 따로 기억해두고 복원한다. */
+const tableViewState = {};
+function tableState(wrapSel) {
+  return tableViewState[wrapSel] || (tableViewState[wrapSel] = { collapsed: new Set(), allCollapsed: false });
+}
+function resetTableState(wrapSel) {
+  tableViewState[wrapSel] = { collapsed: new Set(), allCollapsed: false };
+}
+// 행을 지우면 그 아래 줄 번호가 한 칸씩 당겨지므로, 기억해둔 접힘 번호도 같이 당긴다
+function shiftCollapsedAfterRemove(wrapSel, removedIdx) {
+  const st = tableState(wrapSel);
+  const next = new Set();
+  st.collapsed.forEach(i => { if (i < removedIdx) next.add(i); else if (i > removedIdx) next.add(i - 1); });
+  st.collapsed = next;
+}
+function shiftCollapsedAfterInsert(wrapSel, insertedIdx) {
+  const st = tableState(wrapSel);
+  const next = new Set();
+  st.collapsed.forEach(i => next.add(i >= insertedIdx ? i + 1 : i));
+  st.collapsed = next;
+}
+
 function renderTable(wrapSel, rows, columns, opts = {}) {
   const wrap = $(wrapSel);
   if (!rows.length) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  const st = tableState(wrapSel);
   const cols = columns.length ? columns : ['reason'];
   const head = '<tr>' + cols.map(c =>
     `<th${c === contentColumn ? ' style="min-width:260px;"' : ''}>${escapeHtml(c)}${
       opts.onDeleteColumn ? ` <button type="button" class="secondary col-delete" data-col="${escapeHtml(c)}" title="이 컬럼 삭제">✕</button>` : ''
     }</th>`
   ).join('') + (opts.onDelete ? '<th></th>' : '') + '</tr>';
-  const body = rows.map((r, i) => '<tr>' + cols.map(c => `<td>${renderCellValue(r[c])}</td>`).join('')
+  const body = rows.map((r, i) => `<tr${st.collapsed.has(i) ? ' class="collapsed"' : ''}>` + cols.map(c => `<td>${renderCellValue(r[c])}</td>`).join('')
     + (opts.onDelete ? `<td><button type="button" class="secondary row-delete" data-i="${i}">삭제</button></td>` : '')
     + '</tr>').join('');
   const sortToggles = opts.sortToggles || [];
   wrap.innerHTML = `
     <div class="tbl-toolbar">
-      <button type="button" class="secondary tbl-toggle-all">전체 접기</button>
+      <button type="button" class="secondary tbl-toggle-all">${st.allCollapsed ? '전체 펼치기' : '전체 접기'}</button>
       ${sortToggles.map((s, i) => `<button type="button" class="secondary tbl-sort-toggle" data-sort-i="${i}">${escapeHtml(s.label)}</button>`).join('')}
     </div>
-    <table><thead>${head}</thead><tbody>${body}</tbody></table>
+    <div class="tbl-scroll"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>
     <div class="tbl-hint">기본은 전체 펼침 상태예요. 행을 클릭하면 그 줄만 접혔다 펴져요.${opts.onDelete ? ' "삭제" 버튼으로 후보에서 개별 제외할 수 있어요.' : ''}${opts.onDeleteColumn ? ' 컬럼 제목 옆 ✕로 필요 없는 컬럼을 통째로 지울 수 있어요.' : ''}</div>`;
   wrap.style.display = '';
   const tbody = wrap.querySelector('tbody');
   tbody.addEventListener('click', (e) => {
     if (e.target.closest('.row-delete') || e.target.closest('a')) return;
     const tr = e.target.closest('tr');
-    if (tr) tr.classList.toggle('collapsed');
+    if (!tr) return;
+    const collapsed = tr.classList.toggle('collapsed');
+    const i = [...tbody.children].indexOf(tr);
+    if (collapsed) st.collapsed.add(i); else st.collapsed.delete(i);
   });
   if (opts.onDelete) {
     tbody.querySelectorAll('.row-delete').forEach((btn) => {
@@ -606,6 +680,8 @@ function renderTable(wrapSel, rows, columns, opts = {}) {
     const shouldCollapse = trs.some(tr => !tr.classList.contains('collapsed'));
     trs.forEach(tr => tr.classList.toggle('collapsed', shouldCollapse));
     toggleAllBtn.textContent = shouldCollapse ? '전체 펼치기' : '전체 접기';
+    st.allCollapsed = shouldCollapse;
+    st.collapsed = shouldCollapse ? new Set(trs.map((_, i) => i)) : new Set();
   });
 }
 function escapeHtml(s) {
@@ -657,6 +733,7 @@ function addConditionRow() {
     <button type="button" class="secondary cond-remove">✕</button>`;
   row.querySelector('.cond-remove').addEventListener('click', () => { row.remove(); renumberConditionRows(); });
   list.appendChild(row);
+  updateStaleNote();
 }
 // "정성스럽게" 같은 조건을 AI가 알아서 글자 수 기준을 추측하게 두지 않고, 위
 // 글자 수 분포 통계를 보고 사용자가 직접 기준을 입력하는 조건 칸(코드로만 판단,
@@ -682,6 +759,7 @@ function addLengthConditionRow() {
     <button type="button" class="secondary cond-remove">✕</button>`;
   row.querySelector('.cond-remove').addEventListener('click', () => { row.remove(); renumberConditionRows(); });
   list.appendChild(row);
+  updateStaleNote();
 }
 // 같은 단어/문장을 붙여서(띄어쓰기·구두점 유무 상관없이) N번 이상 반복하는
 // "도배" 댓글을 잡는 조건 칸 — 이것도 정규식 역참조로 100% 코드 판단, AI 호출 없음.
@@ -706,13 +784,18 @@ function addRepeatConditionRow() {
     <button type="button" class="secondary cond-remove">✕</button>`;
   row.querySelector('.cond-remove').addEventListener('click', () => { row.remove(); renumberConditionRows(); });
   list.appendChild(row);
+  updateStaleNote();
 }
 function renumberConditionRows() {
   [...$('#conditionList').children].forEach((row, i) => {
     row.dataset.idx = String(i);
     row.querySelector('.cond-label').textContent = `조건${i + 1}`;
   });
+  updateStaleNote();
 }
+// 조건 칸을 고치거나(타이핑) 그리고/또는을 바꾸면 곧바로 "아래 후보는 예전 조건 결과"임을 알린다
+$('#conditionList').addEventListener('input', updateStaleNote);
+$('#conditionList').addEventListener('change', updateStaleNote);
 function buildCombinedCondition() {
   const parts = [...$('#conditionList').children].map(row => {
     const negate = row.querySelector('.cond-negate')?.checked || false;
@@ -749,6 +832,8 @@ async function runFilter() {
   lastCombinedCondition = condition;
   candidateSortDir = null;
   candidateSortField = null;
+  deletedCandidates = [];
+  resetTableState('#candidateWrap');
 
   const btn = $('#btnRunFilter');
   btn.disabled = true;
@@ -844,6 +929,9 @@ function useAllAsFallback() {
   if (!participants.length) { alert('먼저 참가자 파일을 업로드해주세요.'); return; }
   candidateSortDir = null;
   candidateSortField = null;
+  deletedCandidates = [];
+  resetTableState('#candidateWrap');
+  lastCombinedCondition = '(필터링 없이 전체 명단)';
   candidates = participants.map(row => ({ row, reason: '(필터링 없이 전체 명단)' }));
   applyCandidates(false);
   $('#filterStatus').textContent = `필터링 없이 전체 ${candidates.length}명을 후보로 사용 중`;
@@ -866,11 +954,35 @@ function toggleCandidateSort(field, keyFn) {
   }
   const dir = candidateSortDir === 'asc' ? 1 : -1;
   candidates.sort((a, b) => dir * (keyFn(a) - keyFn(b)));
+  // 순서가 바뀌면 "몇 번째 줄을 접어놨는지"는 다른 사람을 가리키게 되므로 다시 잡는다
+  const st = tableState('#candidateWrap');
+  st.collapsed = st.allCollapsed ? new Set(candidates.map((_, i) => i)) : new Set();
   applyCandidates(lastWithReason);
 }
 function sortToggleLabel(field, name) {
   if (candidateSortField !== field) return `${name}로 정렬`;
   return candidateSortDir === 'asc' ? `${name} ▲ (오름차순, 클릭 시 내림차순)` : `${name} ▼ (내림차순, 클릭 시 오름차순)`;
+}
+
+/* 조건을 고쳐놓고 "필터링 실행"을 다시 안 누르면, 아래 후보표는 예전 조건의 결과인데
+   최신처럼 보인다. "확정하고 다음" 같은 관문으로 순서를 강제하는 대신, 지금 입력된
+   조건이 마지막으로 실행한 조건과 다르면 화면이 스스로 알리게 한다. */
+function updateStaleNote() {
+  const note = $('#staleNote');
+  if (!note) return;
+  if (!candidates.length || !lastCombinedCondition) { note.style.display = 'none'; return; }
+  const now = buildCombinedCondition();
+  note.style.display = (now && now !== lastCombinedCondition) ? 'block' : 'none';
+}
+
+/* 필터 결과(후보 명단)를 이 브라우저 캐시에 같이 남긴다 — 예전에는 새로고침 한 번에
+   AI 비용까지 들여 만든 후보가 통째로 날아가고 참가자 원본만 복원됐다. 후보는 참가자
+   배열의 부분집합이라 통째로 저장하지 않고 "몇 번째 사람인지 + 판단근거"만 남긴다.
+   삭제·정렬할 때마다 저장하면 무거우니 잠깐 모았다가 한 번만 저장한다. */
+let slotSaveTimer = null;
+function scheduleSlotSave() {
+  clearTimeout(slotSaveTimer);
+  slotSaveTimer = setTimeout(() => pushSlot(snapshotState(), true), 800);
 }
 
 function applyCandidates(withReason) {
@@ -887,6 +999,11 @@ function applyCandidates(withReason) {
   }
   renderTable('#candidateWrap', rowsForTable, cols, { onDelete: removeCandidate, sortToggles });
   $('#candidateCount').textContent = `후보 ${candidates.length}명`;
+  $('#btnUndoDelete').style.display = deletedCandidates.length ? '' : 'none';
+  $('#btnUndoDelete').textContent = deletedCandidates.length > 1
+    ? `방금 삭제 취소 (${deletedCandidates.length}건 되돌릴 수 있음)` : '방금 삭제 취소';
+  updateStaleNote();
+  scheduleSlotSave();
   $('#btnDownloadCandidates').style.display = candidates.length ? '' : 'none';
   $('#btnCopyCandidates').style.display = candidates.length ? '' : 'none';
   $('#copyStatus').textContent = '';
@@ -904,8 +1021,21 @@ function applyCandidates(withReason) {
 
 // 후보 표에서 "삭제" 버튼을 눌러 특정 후보를 명단에서 직접 제외한다 (예: AI가
 // 잘못 포함시킨 사람, 이미 다른 이벤트로 당첨된 사람 등을 사람이 최종 조정).
+// 지울 때마다 확인창을 띄우면 여러 명 지울 때 너무 번거로우므로, 대신 되돌릴 수 있게
+// 지운 사람을 순서대로 쌓아둔다 (잘못 눌러도 원래 자리로 되살아남).
+let deletedCandidates = [];
 function removeCandidate(i) {
-  candidates.splice(i, 1);
+  const removed = candidates.splice(i, 1)[0];
+  if (removed) deletedCandidates.push({ index: i, item: removed });
+  shiftCollapsedAfterRemove('#candidateWrap', i);
+  applyCandidates(lastWithReason);
+}
+function undoCandidateDelete() {
+  const last = deletedCandidates.pop();
+  if (!last) return;
+  const at = Math.min(last.index, candidates.length);
+  candidates.splice(at, 0, last.item);
+  shiftCollapsedAfterInsert('#candidateWrap', at);
   applyCandidates(lastWithReason);
 }
 
@@ -1096,10 +1226,10 @@ async function saveResultToRepo() {
 
 /* ── 페이지를 다시 열었을 때 이 PC에 캐시된 가장 최근 파일을 자동으로 불러온다 ──
    이 두 줄은 반드시 스크립트 맨 끝에 있어야 한다. 예전에는 파일 위쪽(선언들 사이)에서
-   바로 실행했는데, 여기서 부르는 함수가 아래쪽에서 선언되는 값(정렬 상태 등)을 건드리는
-   순간 "선언 전에 접근했다"는 오류가 나면서 그 아래 남은 코드가 통째로 실행되지 않았다 —
-   그 결과 캐시가 있는 상태로 페이지를 열면(=두 번째 방문부터) 컬럼 선택 드롭다운의
-   변경 감지 같은 기능이 조용히 등록되지 않은 채로 떠 있었다. */
+   바로 실행했는데, 여기서 부르는 함수들이 아래쪽에서 선언되는 값(정렬 상태 등)을
+   건드리는 순간 "선언 전에 접근했다"는 오류가 나면서 그 아래 남은 코드가 통째로
+   실행되지 않았다 — 그 결과 캐시가 있는 상태로 페이지를 열면(=두 번째 방문부터)
+   컬럼 선택 드롭다운의 변경 감지 같은 기능이 조용히 등록되지 않은 채로 떠 있었다. */
 renderSlots();
 {
   const cachedSlots = loadSlots();
