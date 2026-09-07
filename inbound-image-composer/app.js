@@ -1648,7 +1648,7 @@ function updateCopyrightPreview() {
   const preview = document.getElementById('copyrightPreview');
   if (!preview) return;
   const formatted = formatCopyright(state.copyrightText);
-  preview.textContent = formatted || '입력 전 (모든 페이지 좌하단에 고정으로 들어감)';
+  preview.textContent = formatted || '비워두면 페이지에 아무것도 안 찍힘 (빈칸)';
   preview.title = formatted;
   preview.classList.toggle('empty', !formatted);
 }
