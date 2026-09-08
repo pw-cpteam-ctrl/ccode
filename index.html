@@ -22,20 +22,33 @@ p.sub{font-size:13px;color:#7d7568;margin:0 0 27px;}
 
 .card{
   display:flex;
-  align-items:center;
-  gap:12px;
+  flex-direction:column;
+  gap:8px;
   background:#fff;
   border:1px solid #ddd8ce;
   border-radius:14px;
-  padding:8px;
+  padding:8px 8px 10px;
   text-decoration:none;
   color:inherit;
   transition:box-shadow .15s, transform .15s;
   min-width:0;
-  position:relative;
 }
 .card:hover{box-shadow:0 6px 20px rgba(0,0,0,.1);transform:translateY(-2px);}
-
+/* 제목은 카드 전체 폭을 혼자 쓴다 — 썸네일 옆에 두면 자리가 170px밖에 안 나와
+   "메가하우스 마토메 메이커" 같은 이름이 두 줄로 접혔다. 전체 폭이면 352px이라 다 들어간다. */
+.head{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:2px 3px 0;
+  min-width:0;
+}
+/* 썸네일과 설명은 제목 아래에서 좌우로 나눠 앉는다 */
+.row{
+  display:flex;
+  gap:12px;
+  min-width:0;
+}
 /* 썸네일은 카드 왼쪽에 고정 크기로 둔다 — 카드 폭만큼 키우면(세로형 카드) 한 줄이
    300px을 넘어가서, 1920×1080 화면에 3줄이 다 안 들어오고 아래 줄이 잘린다.
    옆에 두면 한 줄이 186px로 줄어 9칸이 한 화면에 들어온다. */
@@ -57,44 +70,30 @@ p.sub{font-size:13px;color:#7d7568;margin:0 0 27px;}
    위로 올린다(세로형 카드) — PC와 배치가 달라지는 건 폭 때문에 불가피하다. */
 @media (max-width:900px){
   .columns{ grid-template-columns:repeat(2,1fr); gap:11px; max-width:620px; }
-  .card{ flex-direction:column; align-items:stretch; gap:9px; }
+  .row{ flex-direction:column; gap:8px; }
   .thumb{ flex:none; width:100%; height:auto; aspect-ratio:1/1; }
-}
-
-.body{
-  min-width:0;
-  flex:1 1 auto;
-  display:flex;
-  flex-direction:column;
-  gap:4px;
-  padding:0 3px 4px;
+  .name{ white-space:normal; }   /* 2열에선 폭이 170px뿐이라 접히는 걸 허용 */
 }
 .name{
   font-size:16px;
   font-weight:700;
-  line-height:1.3;
-  display:-webkit-box;
-  -webkit-line-clamp:2;
-  -webkit-box-orient:vertical;
+  line-height:1.35;
+  min-width:0;
+  white-space:nowrap;      /* 두 줄로 접히지 않게 — 폭이 모자라면 접는 대신 말줄임 */
   overflow:hidden;
+  text-overflow:ellipsis;
 }
 .desc{
+  flex:1 1 auto;
+  min-width:0;
+  padding-right:3px;
   font-size:12px;
   color:#8a8272;
   line-height:1.4;
   display:-webkit-box;
-  -webkit-line-clamp:4;
+  -webkit-line-clamp:8;
   -webkit-box-orient:vertical;
   overflow:hidden;
-}
-
-/* 새로 추가된 도구 표시 — 지울 땐 이 규칙과 카드의 <span class="new"> 한 줄만 삭제 */
-.new{
-  position:absolute;
-  top:14px;left:14px;
-  background:#c9463c;color:#fff;
-  font-size:10px;font-weight:800;letter-spacing:.3px;
-  padding:3px 7px;border-radius:6px;
 }
 </style>
 </head>
@@ -103,66 +102,83 @@ p.sub{font-size:13px;color:#7d7568;margin:0 0 27px;}
 <p class="sub">내부 제작 도구 모음</p>
 <div class="columns">
     <a class="card" href="https://ccode-vbvi.vercel.app/">
-      <div class="thumb"><img src="assets/thumbs/product-sns-formatter.jpg"/></div>
-      <div class="body">
+      <div class="head">
         <div class="name">상품 원고 작성기</div>
+      </div>
+      <div class="row">
+        <div class="thumb"><img src="assets/thumbs/product-sns-formatter.jpg"/></div>
         <div class="desc">상품 정보 텍스트를 회사 SNS 포맷으로 자동 변환 (Claude API)</div>
       </div>
     </a>
     <a class="card" href="https://inbound-image-composer.vercel.app/">
-      <div class="thumb"><img src="assets/thumbs/inbound-image-composer.jpg"/></div>
-      <div class="body">
+      <div class="head">
         <div class="name">입고안내 이미지 자동 제작</div>
+      </div>
+      <div class="row">
+        <div class="thumb"><img src="assets/thumbs/inbound-image-composer.jpg"/></div>
         <div class="desc">입고안내 스크린샷 → 텍스트 정규화 카드 이미지 생성 (Claude Vision)</div>
       </div>
     </a>
     <a class="card" id="link-insta-gen" href="https://ccode-omega.vercel.app/">
-      <div class="thumb"><img src="assets/thumbs/insta-gen.jpg"/></div>
-      <div class="body">
+      <div class="head">
         <div class="name">인스타 카드 생성기</div>
+      </div>
+      <div class="row">
+        <div class="thumb"><img src="assets/thumbs/insta-gen.jpg"/></div>
         <div class="desc">사진 1장 → 인스타용 카드 이미지 제작</div>
       </div>
     </a>
     <a class="card" href="https://pw-creator-guide.vercel.app/reward-view-admin">
-      <span class="new">NEW</span>
-      <div class="thumb"><img src="assets/thumbs/creator-admin.png"/></div>
-      <div class="body">
+      <div class="head">
         <div class="name">인플루언서 관리</div>
+      </div>
+      <div class="row">
+        <div class="thumb"><img src="assets/thumbs/creator-admin.png"/></div>
         <div class="desc">크리에이터 제출 정보(초안일·보상 방식·희망 상품) 확인 → 담당자 확정 처리 (관리자 코드 필요)</div>
       </div>
     </a>
     <a class="card" href="megahouse-matome/index.html">
-      <div class="thumb"><img src="assets/thumbs/megahouse-matome.png"/></div>
-      <div class="body">
+      <div class="head">
         <div class="name">메가하우스 마토메 메이커</div>
+      </div>
+      <div class="row">
+        <div class="thumb"><img src="assets/thumbs/megahouse-matome.png"/></div>
         <div class="desc">월별 신제품 예고 포스터 이미지를 만드는 도구 (1080×1350px)</div>
       </div>
     </a>
     <a class="card" href="text-gradient/index.html">
-      <div class="thumb"><img src="assets/thumbs/text-gradient.png"/></div>
-      <div class="body">
+      <div class="head">
         <div class="name">텍스트 투명 이미지 생성기</div>
+      </div>
+      <div class="row">
+        <div class="thumb"><img src="assets/thumbs/text-gradient.png"/></div>
         <div class="desc">배지·타이틀·불릿 텍스트 + 검정 그라데이션 투명 PNG 제작 (1080×1350)</div>
       </div>
     </a>
     <a class="card" href="sns-report-download.html">
-      <div class="thumb"><img src="assets/thumbs/report.png"/></div>
-      <div class="body">
+      <div class="head">
         <div class="name">SNS 성과 리포트 대시보드</div>
+      </div>
+      <div class="row">
+        <div class="thumb"><img src="assets/thumbs/report.png"/></div>
         <div class="desc">자사·경쟁사 SNS 실적 수집/비교 도구</div>
       </div>
     </a>
     <a class="card" href="mh-preview-maker/">
-      <div class="thumb"><img src="assets/thumbs/collage-maker.jpg"/></div>
-      <div class="body">
+      <div class="head">
         <div class="name">프리뷰 메이커</div>
+      </div>
+      <div class="row">
+        <div class="thumb"><img src="assets/thumbs/collage-maker.jpg"/></div>
         <div class="desc">멀티보드 · 캔버스 3종 · 블러/재판/흰배경 토글 · PW 로고 자유 배치</div>
       </div>
     </a>
     <a class="card" href="https://ccode-delta.vercel.app/">
-      <div class="thumb"><img src="assets/thumbs/raffle.png"/></div>
-      <div class="body">
+      <div class="head">
         <div class="name">이벤트 추첨기</div>
+      </div>
+      <div class="row">
+        <div class="thumb"><img src="assets/thumbs/raffle.png"/></div>
         <div class="desc">참가자 명단 업로드 → 조건 자유텍스트 필터링(Claude API) → 실제 난수로 당첨자 추첨</div>
       </div>
     </a>
