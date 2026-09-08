@@ -9,6 +9,8 @@
  * 그래서 이 모듈엔 날짜 범위 개념이 아예 없음. "언제 올라온 글이냐"는 결과에 담아서
  * 리포트가 경과일을 계산하는 데만 씀(맞대결은 양쪽 게시일이 다른 게 정상이라 거르면 안 됨).
  */
+const fs = require('fs');
+const path = require('path');
 const { chromium } = require('playwright');
 const { applyStealth, STEALTH_LAUNCH_ARGS, STEALTH_CONTEXT_OPTIONS } = require('./browser-stealth');
 
@@ -182,12 +184,102 @@ function readTwitterInPage(postId) {
     };
 }
 
+/**
+ * X가 자기 서버에서 받아오는 원본 응답(GraphQL JSON)에서 이 글의 지표를 찾아낸다.
+ *
+ * 왜 이걸 주 경로로 쓰나: 화면(DOM)을 긁는 방식은 X가 마크업을 조금만 바꿔도 깨지고,
+ * 특히 인용 수는 액션 버튼이 아니라 늦게 채워지는 통계 줄에 있어서 읽기가 계속 실패했음.
+ * 반면 이 JSON에는 quote_count/retweet_count/favorite_count/reply_count가 **정확한 숫자로**
+ * 들어있음(화면에 "1.2만"으로 축약돼 보이는 것도 여기선 12345처럼 그대로). 화면이 어떻게
+ * 그려지든 무관하므로 훨씬 안정적임.
+ *
+ * 응답 구조(어느 키 밑에 있는지)는 X가 자주 바꾸므로 경로를 고정하지 않고, 객체 전체를
+ * 훑어서 "rest_id가 이 글 id이고 legacy에 quote_count가 있는" 객체를 찾는다.
+ */
+function findTweetCountsInJson(root, postId) {
+  const stack = [root];
+  let steps = 0;
+  while (stack.length && steps < 200000) {
+    const node = stack.pop();
+    steps++;
+    if (!node || typeof node !== 'object') continue;
+    if (Array.isArray(node)) { for (const v of node) stack.push(v); continue; }
+
+    const legacy = node.legacy;
+    const idMatches = String(node.rest_id || (legacy && legacy.id_str) || '') === String(postId);
+    if (idMatches && legacy && typeof legacy === 'object' && legacy.quote_count !== undefined) {
+      return {
+        quotes: legacy.quote_count,
+        retweets: legacy.retweet_count,
+        likes: legacy.favorite_count,
+        comments: legacy.reply_count,
+      };
+    }
+    for (const k of Object.keys(node)) stack.push(node[k]);
+  }
+  return null;
+}
+
 async function readTwitterPost(page, target) {
-  await page.goto(target.url, { waitUntil: 'domcontentloaded' });
-  // 게시물 상세 페이지엔 답글도 같은 article로 렌더링됨 — 본문 글이 그려질 때까지만 기다림.
-  await page.waitForSelector('article[data-testid="tweet"]', { timeout: 20000 });
-  await page.waitForTimeout(1500);
-  return page.evaluate(readTwitterInPage, target.postId);
+  // ⚠️ 응답 가로채기는 goto **전에** 붙여야 함 — 페이지를 열고 나서 붙이면 이미 지나간
+  // 응답을 놓침.
+  const seen = { counts: null, graphqlUrls: [] };
+  const onResponse = async (res) => {
+    const url = res.url();
+    if (!/\/(graphql|i\/api)\//.test(url)) return;
+    seen.graphqlUrls.push(url.split('?')[0]);
+    try {
+      if (!/json/.test(res.headers()['content-type'] || '')) return;
+      const json = await res.json();
+      const found = findTweetCountsInJson(json, target.postId);
+      if (found) seen.counts = found;
+    } catch (e) { /* 응답 하나 못 읽는 건 무시 — 다른 응답에 또 들어옴 */ }
+  };
+  page.on('response', onResponse);
+
+  try {
+    await page.goto(target.url, { waitUntil: 'domcontentloaded' });
+    // 게시물 상세 페이지엔 답글도 같은 article로 렌더링됨 — 본문 글이 그려질 때까지만 기다림.
+    await page.waitForSelector('article[data-testid="tweet"]', { timeout: 20000 });
+
+    // 통계 줄("N 리포스트 · N 인용 · N 마음에 들어요")은 본문·버튼보다 늦게 채워짐.
+    // 예전엔 1.5초 고정으로 기다리고 바로 읽어서, 좋아요·리트윗은 읽히는데 인용만 계속
+    // 비어 있었음(인스타에서 겪은 것과 같은 레이스 컨디션). 이제 원본 응답이 오거나
+    // 화면에 그 줄이 나타날 때까지 기다린다 — 안 나타나도 죽지 않고 그대로 진행.
+    // 화면 밖 요소는 아예 안 그려질 수 있어서(가상 렌더링) 살짝 스크롤해 렌더링을 유도.
+    await page.evaluate(() => window.scrollBy(0, 220)).catch(() => {});
+    await page.waitForFunction((postId) => {
+      if (document.querySelector(`a[href$="/${postId}/quotes"]`)) return true;
+      if (document.querySelector(`a[href$="/${postId}/retweets"]`)) return true;
+      return [...document.querySelectorAll('a, span, div')].some(el => {
+        const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        return t.length <= 24 && /(인용|Quotes?|引用)/i.test(t) && /[\d,.]/.test(t);
+      });
+    }, target.postId, { timeout: 10000 }).catch(() => {});
+    // 응답이 살짝 늦게 오는 경우가 있어 조금 더 기다림
+    for (let i = 0; i < 10 && !seen.counts; i++) await page.waitForTimeout(400);
+
+    const parsed = await page.evaluate(readTwitterInPage, target.postId);
+    if (!parsed) return null;
+
+    // 원본 응답에서 찾았으면 그 값이 화면 글자보다 정확함(축약 없음) — 우선 적용.
+    // 화면에서 못 읽은 칸도 여기서 채워짐.
+    if (seen.counts) {
+      const pick = (v, fallback) => (typeof v === 'number' ? String(v) : fallback);
+      parsed.quotes = pick(seen.counts.quotes, parsed.quotes);
+      parsed.retweets = pick(seen.counts.retweets, parsed.retweets);
+      parsed.likes = pick(seen.counts.likes, parsed.likes);
+      parsed.comments = pick(seen.counts.comments, parsed.comments);
+      parsed.countsFrom = 'api';
+    } else {
+      parsed.countsFrom = 'dom';
+    }
+    parsed.graphqlUrls = seen.graphqlUrls.slice(0, 20);
+    parsed.pageHtml = parsed.quotes === null ? await page.content() : null;
+    return parsed;
+  } finally {
+    page.off('response', onResponse);
+  }
 }
 
 async function readInstagramPost(page, target) {
@@ -265,7 +357,7 @@ async function readInstagramPost(page, target) {
  * @param {boolean} [opts.headless=true] 링크 몇 개만 여는 작업이라 기본은 창 없이
  * @returns {Promise<Array<{url,platform,ok,error?,datetime?,likes?,retweets?,comments?,text?,account?}>>}
  */
-async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESSION, igSessionFile = IG_SESSION } = {}) {
+async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESSION, igSessionFile = IG_SESSION, debugDir = null } = {}) {
   const targets = (urls || []).map(u => ({ raw: u, ...classifyUrl(u) }));
   const results = targets.map(t => ({
     url: t.ok ? t.url : t.raw,   // 못 알아본 주소는 사람이 넣은 원문 그대로 보여줘야 고칠 수 있음
@@ -291,7 +383,16 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
         let parsed;
         if (t.platform === 'twitter') {
           if (!twitterPage) {
-            const ctx = await browser.newContext({ storageState: xSessionFile });
+            // 화면을 크게 잡음 — X는 화면 밖 요소를 아예 안 그리는 경우가 있어서(가상 렌더링)
+            // 창이 작으면 게시물 아래 통계 줄(인용 수가 있는 곳)이 렌더링되지 않을 수 있음.
+            // stealth도 같이 적용 — 인스타에만 쓰고 있었는데, X도 자동화 브라우저로 보이면
+            // 마크업을 줄여서 주는 경우가 있어 원인 후보를 하나 없앰.
+            const ctx = await browser.newContext({
+              storageState: xSessionFile,
+              ...STEALTH_CONTEXT_OPTIONS,
+              viewport: { width: 1400, height: 1800 },
+            });
+            await applyStealth(ctx);
             twitterPage = await ctx.newPage();
           }
           parsed = await readTwitterPost(twitterPage, t);
@@ -308,15 +409,31 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
           results[i].error = '페이지는 열렸는데 게시물 내용을 못 읽음 (삭제됐거나 비공개일 수 있음)';
           continue;
         }
+        const pageHtml = parsed.pageHtml; // 결과에 담아 리포트로 흘려보내지 않게 여기서 빼둠
+        delete parsed.pageHtml;
         Object.assign(results[i], parsed, { ok: true, error: null });
         if (parsed.exactMatch === false) {
           results[i].warning = '주소의 글을 정확히 못 집어서 페이지 첫 번째 글을 읽었음 — 숫자가 맞는지 확인 필요';
         }
-        console.log(`[link] ✅ ${t.platform} ${t.url} — 좋아요 ${parsed.likes ?? '-'} · 리트윗 ${parsed.retweets ?? '-'} · 인용 ${parsed.quotes ?? '-'} · 댓글 ${parsed.comments ?? '-'}`);
-        // 인용을 못 읽었을 때만 계측 로그 — 어떤 통계 링크가 실제로 있었는지 보고
-        // 셀렉터를 고치기 위함(정상일 때는 로그를 어지럽히지 않게 안 찍음)
+        console.log(`[link] ✅ ${t.platform} ${t.url} — 좋아요 ${parsed.likes ?? '-'} · 리트윗 ${parsed.retweets ?? '-'} · 인용 ${parsed.quotes ?? '-'} · 댓글 ${parsed.comments ?? '-'}${parsed.countsFrom ? ` (출처: ${parsed.countsFrom === 'api' ? 'X 원본 응답' : '화면'})` : ''}`);
+
+        // 인용을 못 읽었으면 **추측을 반복하지 않기 위해** 그 페이지를 파일로 남긴다.
+        // 그 파일만 있으면 실제 구조를 보고 한 번에 고칠 수 있음(지금까지 실제 X 화면을
+        // 볼 수 없어서 셀렉터를 추측으로 짰고 그래서 두 번 틀렸음).
         if (t.platform === 'twitter' && parsed.quotes === null) {
-          console.log(`[link] ⓘ 인용 수를 못 읽었음 — 페이지의 통계 링크: ${JSON.stringify(parsed.statHrefs || [])} / 통계 문구: ${JSON.stringify(parsed.statTexts || [])}`);
+          console.log(`[link] ⓘ 인용 수를 못 읽었음 — 통계 링크: ${JSON.stringify(parsed.statHrefs || [])} / 통계 문구: ${JSON.stringify(parsed.statTexts || [])}`);
+          console.log(`[link] ⓘ 받아온 X 응답 주소: ${JSON.stringify(parsed.graphqlUrls || [])}`);
+          if (debugDir && pageHtml) {
+            try {
+              fs.mkdirSync(debugDir, { recursive: true });
+              const dumpPath = path.join(debugDir, `_debug-x-${t.postId}.html`);
+              fs.writeFileSync(dumpPath, pageHtml);
+              console.log(`[link] ⓘ 원인을 정확히 짚을 수 있게 이 페이지를 파일로 남겼습니다: ${dumpPath}`);
+              console.log('[link] ⓘ 인용 수가 계속 안 나오면 이 파일을 개발자에게 보내주세요.');
+            } catch (e) {
+              console.warn(`[link] 페이지 저장 실패: ${e.message}`);
+            }
+          }
         }
       } catch (e) {
         results[i].error = `읽기 실패: ${e.message}`;
@@ -330,4 +447,4 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
   return results;
 }
 
-module.exports = { collectPostsByLink, classifyUrl, readTwitterInPage };
+module.exports = { collectPostsByLink, classifyUrl, readTwitterInPage, findTweetCountsInJson, readTwitterPost };

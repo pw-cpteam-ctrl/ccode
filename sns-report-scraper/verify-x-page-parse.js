@@ -9,8 +9,9 @@
  * 실행: node verify-x-page-parse.js  (브라우저를 띄우므로 verify-mock.js와 분리)
  */
 const assert = require('assert');
+const http = require('http');
 const { chromium } = require('playwright');
-const { readTwitterInPage } = require('./collect-by-link');
+const { readTwitterInPage, findTweetCountsInJson, readTwitterPost } = require('./collect-by-link');
 
 const POST_ID = '2092115657756475773';
 const ACCOUNT = 'GoodsmileP';
@@ -187,6 +188,87 @@ const CASES = [
       failed++;
       console.error(`❌ ${c.name}\n   ${e.message}`);
     }
+  }
+
+  // ── X 원본 응답(GraphQL JSON) 경로 검증 ──
+  // 화면 긁기가 실패해도 이 경로로 인용 수가 나와야 함. 화면 구조 추측에 의존하지 않는
+  // 유일한 경로라, 여기가 이 기능의 실질적인 보루임.
+  const JSON_CASES = [
+    {
+      name: '응답 JSON에서 지표 찾기 — 깊이 중첩 + 다른 글이 섞인 경우',
+      json: { data: { instructions: [{ entries: [
+        { content: { itemContent: { tweet_results: { result: { __typename: 'Tweet', rest_id: '999', legacy: { quote_count: 1, retweet_count: 2, favorite_count: 3, reply_count: 4 } } } } } },
+        { content: { itemContent: { tweet_results: { result: { __typename: 'Tweet', rest_id: POST_ID, legacy: { quote_count: 37, retweet_count: 612, favorite_count: 324, reply_count: 2 } } } } } },
+      ] }] } },
+      expect: { quotes: 37, retweets: 612, likes: 324, comments: 2 },
+    },
+    {
+      name: '응답 JSON — X가 한 겹 더 감싼 경우(TweetWithVisibilityResults)',
+      json: { a: { result: { __typename: 'TweetWithVisibilityResults', tweet: { rest_id: POST_ID, legacy: { quote_count: 9, retweet_count: 8, favorite_count: 7, reply_count: 6 } } } } },
+      expect: { quotes: 9, retweets: 8, likes: 7, comments: 6 },
+    },
+    {
+      name: '응답 JSON — id_str만 있는 경우',
+      json: { x: { legacy: { id_str: POST_ID, quote_count: 5, retweet_count: 4, favorite_count: 3, reply_count: 2 } } },
+      expect: { quotes: 5, retweets: 4, likes: 3, comments: 2 },
+    },
+  ];
+  for (const c of JSON_CASES) {
+    try {
+      assert.deepStrictEqual(findTweetCountsInJson(c.json, POST_ID), c.expect);
+      console.log(`✅ ${c.name}`);
+    } catch (e) {
+      failed++;
+      console.error(`❌ ${c.name}\n   ${e.message}`);
+    }
+  }
+  try {
+    assert.strictEqual(findTweetCountsInJson({ a: { rest_id: '123', legacy: { quote_count: 1 } } }, POST_ID), null);
+    console.log('✅ 응답 JSON — 다른 글의 지표를 이 글 것으로 착각하지 않음');
+  } catch (e) {
+    failed++;
+    console.error(`❌ 응답 JSON — 다른 글의 지표를 이 글 것으로 착각하지 않음\n   ${e.message}`);
+  }
+
+  // 실제 흐름 그대로: 페이지를 열고 → 페이지가 응답을 받아오고 → 그 응답을 가로채서 읽는지.
+  // 화면에는 통계 줄을 **일부러 안 그려서**(지금 실제로 겪고 있는 상황) 응답 경로만으로
+  // 인용 수가 채워지는지 확인한다.
+  const server = http.createServer((req, res) => {
+    if (req.url.startsWith('/graphql/')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ data: { entries: [{ tweet_results: { result: {
+        rest_id: POST_ID, legacy: { quote_count: 37, retweet_count: 612, favorite_count: 324, reply_count: 2 },
+      } } }] } }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`<!doctype html><meta charset="utf-8"><body>
+      <article data-testid="tweet">
+        <a href="/${ACCOUNT}/status/${POST_ID}"><time datetime="2026-08-25T05:03:00.000Z">8월 25일</time></a>
+        <div data-testid="tweetText">RT 이벤트</div>
+        ${actionBar({ reply: 2, retweet: 612, like: 324 })}
+      </article>
+      <script>fetch('/graphql/TweetDetail');</script>
+    </body>`);
+  });
+  await new Promise(resolve => server.listen(0, resolve));
+  const port = server.address().port;
+
+  try {
+    const page2 = await browser.newPage({ viewport: { width: 1400, height: 1800 } });
+    const got = await readTwitterPost(page2, { url: `http://127.0.0.1:${port}/${ACCOUNT}/status/${POST_ID}`, postId: POST_ID });
+    assert.ok(got, '게시물을 못 읽음');
+    assert.strictEqual(got.quotes, '37', `화면에 통계 줄이 없어도 응답에서 인용 수를 읽어야 함 (실제: ${got.quotes})`);
+    assert.strictEqual(got.countsFrom, 'api', '지표 출처가 X 원본 응답으로 표시돼야 함');
+    assert.strictEqual(got.retweets, '612');
+    assert.strictEqual(got.likes, '324');
+    console.log('✅ 화면에 통계 줄이 없어도 X 원본 응답에서 인용 수를 읽어옴 (실제 흐름)');
+    await page2.close();
+  } catch (e) {
+    failed++;
+    console.error(`❌ 화면에 통계 줄이 없어도 X 원본 응답에서 인용 수를 읽어옴 (실제 흐름)\n   ${e.message}`);
+  } finally {
+    server.close();
   }
 
   await browser.close();

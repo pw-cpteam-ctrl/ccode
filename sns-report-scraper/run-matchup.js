@@ -60,8 +60,13 @@ async function main() {
     return slot;
   });
 
+  const outDir = path.join(brand.paths.htmlDir, 'matchup');
+  fs.mkdirSync(outDir, { recursive: true });
+
   console.log(`🔗 게시물 ${flat.length}건 읽는 중… (프로필 스크롤 없이 주소만 직접 여는 방식)`);
-  const results = await collectPostsByLink({ urls: flat, headless });
+  // debugDir: 인용 수처럼 못 읽은 항목이 생기면 그 페이지를 여기에 파일로 남겨서,
+  // 다음에 추측이 아니라 실제 구조를 보고 고칠 수 있게 함.
+  const results = await collectPostsByLink({ urls: flat, headless, debugDir: outDir });
 
   const okCount = results.filter(r => r.ok).length;
   console.log(`✅ 읽기 완료: 성공 ${okCount}건 / 실패 ${results.length - okCount}건`);
@@ -73,8 +78,6 @@ async function main() {
     bh: s.bhIndex >= 0 ? results[s.bhIndex] : null,
   }));
 
-  const outDir = path.join(brand.paths.htmlDir, 'matchup');
-  fs.mkdirSync(outDir, { recursive: true });
   const outPath = archiveAndGetPath(outDir, 'matchup', 'html');
   saveMatchupReport({ title, brandLabel: brand.label, collectedAt: new Date().toISOString(), pairs }, outPath);
   console.log(`✅ HTML 저장 완료: ${outPath}`);
