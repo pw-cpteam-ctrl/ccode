@@ -1364,6 +1364,67 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
   assert.ok(kw.includes('프리렌'), '실제 상품명 키워드는 남아야 함');
 });
 
+  check('맞대결: 링크 종류 판별 — X/인스타 게시물 주소만 통과하고, 추적 파라미터는 걷어내야 함', () => {
+    const { classifyUrl } = require('./collect-by-link');
+
+    const x = classifyUrl('https://x.com/megahouse/status/1234567890?t=abc&s=20');
+    assert.strictEqual(x.ok, true);
+    assert.strictEqual(x.platform, 'twitter');
+    assert.strictEqual(x.url, 'https://x.com/megahouse/status/1234567890', '공유용 ?t=…&s=20이 붙어 있어도 정규화돼야 함');
+
+    assert.strictEqual(classifyUrl('https://twitter.com/a/status/99').platform, 'twitter', '옛 twitter.com 주소도 받아야 함');
+    assert.strictEqual(classifyUrl('https://www.instagram.com/p/CxYz123/').platform, 'instagram');
+    assert.strictEqual(classifyUrl('https://www.instagram.com/reel/CxYz123/').platform, 'instagram', '릴스도 게시물로 취급');
+
+    // 실패는 조용히 빠지지 않고 "왜 안 되는지"가 붙어 나와야 함 — 링크를 잘못 넣은 건지
+    // 도구가 실패한 건지 사람이 구분할 수 있어야 하므로.
+    for (const bad of ['', 'megahouse', 'https://x.com/megahouse', 'https://youtube.com/watch?v=1']) {
+      const r = classifyUrl(bad);
+      assert.strictEqual(r.ok, false, `${bad || '(빈 값)'}은 게시물 주소가 아님`);
+      assert.ok(r.error && r.error.length > 0, '왜 못 읽는지 이유가 있어야 함');
+    }
+  });
+
+  check('맞대결 리포트: 게시일이 벌어지면 경고가 뜨고, 경과일·하루 평균이 같이 나와야 함', () => {
+    const { buildMatchupReportHtml } = require('./matchup-report');
+    const collectedAt = '2026-09-08T00:00:00.000Z';
+    const html = buildMatchupReportHtml({
+      title: '토모에 넨도로이드 이벤트',
+      brandLabel: '굿스마일',
+      collectedAt,
+      pairs: [{
+        label: '토모에 이벤트',
+        // 당사 8/25, 경쟁사 8/20 — 실제 상황 그대로(경쟁사가 5일 먼저)
+        pw: { ok: true, platform: 'twitter', url: 'https://x.com/pw/status/1', account: 'pw', datetime: '2026-08-25T05:00:00.000Z', likes: '1,200', retweets: '300', comments: '40' },
+        bh: { ok: true, platform: 'twitter', url: 'https://x.com/bh/status/2', account: 'bh', datetime: '2026-08-20T02:00:00.000Z', likes: '1,500', retweets: '350', comments: '55' },
+      }],
+    });
+
+    assert.ok(/게시일이 <b>5\.1일<\/b> 차이납니다/.test(html), '게시일 차이가 크면 그대로 승패로 읽지 말라고 경고해야 함');
+    assert.ok(html.includes('13.8일 전') && html.includes('18.9일 전'), '양쪽 경과일이 각각 표시돼야 함');
+    assert.ok(html.includes('하루 평균'), '노출 기간 차이를 감안할 참고치(하루 평균)가 있어야 함');
+    assert.ok(html.includes('1,200') && html.includes('1,500'), '원본 숫자가 주인공으로 남아야 함');
+    assert.ok(html.includes('twitter-tweet'), '게시물 미리보기(임베드)가 나란히 들어가야 함');
+  });
+
+  check('맞대결 리포트: 못 읽은 글은 0으로 채우지 않고 이유를 보여줘야 함', () => {
+    const { buildMatchupReportHtml } = require('./matchup-report');
+    const html = buildMatchupReportHtml({
+      title: '테스트', collectedAt: '2026-09-08T00:00:00.000Z',
+      pairs: [{
+        pw: { ok: true, platform: 'instagram', url: 'https://www.instagram.com/p/A/', datetime: '2026-09-06T00:00:00.000Z', likes: null, comments: '12', retweets: null },
+        bh: { ok: false, platform: 'twitter', url: 'https://x.com/bh/status/9', error: '읽기 실패: 비공개 계정' },
+      }],
+    });
+    assert.ok(html.includes('읽기 실패: 비공개 계정'), '실패한 링크는 왜 실패했는지 리포트에 남아야 함');
+    // 좋아요를 숨긴 인스타 글 + 실패한 X 글 → 좋아요는 양쪽 다 값이 없음
+    assert.ok(html.includes('읽을 수 없었음'), '숫자를 못 읽은 지표는 0이 아니라 "읽을 수 없었음"으로 나와야 함');
+    assert.ok(html.includes('>12<'), '읽힌 지표(댓글 12)는 정상적으로 나와야 함');
+    // 한쪽만 읽힌 지표를 막대로 그리면 그쪽이 100%를 채워서 "압승"으로 오해됨
+    assert.ok(html.includes('한쪽 숫자를 못 읽어서 비교는 못 합니다'), '한쪽만 읽힌 지표는 비교 불가라고 명시해야 함');
+    assert.ok(!/<div class="pw" style="width:100%">/.test(html), '한쪽만 읽혔는데 막대를 꽉 채우면 안 됨');
+  });
+
   console.log(`\n(생성된 검증용 엑셀 파일: ${outPath} — 직접 열어서 표 형태도 확인 가능)`);
   if (process.exitCode) {
     console.error('\n일부 검증 실패');

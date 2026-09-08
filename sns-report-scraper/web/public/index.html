@@ -46,6 +46,12 @@ button.secondary:hover{background:#eef2ff}
 .brand-tab .tag{display:block;font-size:10px;font-weight:400;opacity:.8;margin-top:2px}
 .brand-note{font-size:12px;color:#6b7280;margin-top:8px;line-height:1.6}
 .brand-note.warn{color:#c0504d}
+/* ⚔️ 맞대결 입력 한 쌍: 번호 + 당사/경쟁사 링크 두 칸을 한 줄에. 링크는 길어서
+   좁은 칸에 넣으면 앞부분만 보이므로 남는 폭을 반씩 다 쓰게 함 */
+.matchup-pair{display:grid;grid-template-columns:26px 1fr 1fr;gap:10px;align-items:end;margin-bottom:8px}
+.matchup-pair .mp-num{font-size:12px;color:#9099a6;font-weight:700;padding-bottom:9px;text-align:center}
+.matchup-pair label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#374151}
+.matchup-pair input{border:1px solid #d0d5e0;border-radius:8px;padding:7px 9px;font-size:13px;width:100%}
 .opt-row{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:12px;color:#374151;margin-bottom:10px}
 .opt-row label{display:flex;align-items:center;gap:5px}
 .opt-row input[type=checkbox]{width:auto;min-width:auto}
@@ -116,6 +122,30 @@ details.advanced summary{cursor:pointer;font-size:12px;color:#6b7280}
       눌러주세요.
     </p>
     <button id="confirmLoginBtn" style="display:none" onclick="confirmLogin()">로그인 완료했어요</button>
+  </div>
+
+  <div class="panel">
+    <h2>⚔️ 게시글 맞대결</h2>
+    <p class="desc">
+      링크 넣은 글끼리만 1:1로 비교해요. <b>양쪽 게시일이 서로 달라도 됩니다.</b>
+      기간 수집과 달리 넣어준 주소만 바로 열기 때문에 몇 주 전 글이어도 금방 끝나요.<br>
+      예) 우리 이벤트 글 vs 경쟁사 이벤트 글 — 좋아요·리트윗·댓글이 나란히, 게시물 미리보기도 나란히 나옵니다.
+    </p>
+    <div class="row">
+      <label style="flex:1">이 맞대결의 이름
+        <input type="text" id="matchupTitle" placeholder="예: 토모에 넨도로이드 이벤트" style="min-width:280px">
+      </label>
+    </div>
+    <div id="matchupPairs"></div>
+    <div class="row">
+      <button class="secondary" onclick="addMatchupPair()">＋ 한 쌍 더</button>
+    </div>
+    <button class="big" onclick="runMatchup()">⚔️ 맞대결 리포트 만들기</button>
+    <p class="desc" style="margin-top:10px">
+      X(트위터)·인스타그램 링크 둘 다 됩니다(섞어도 돼요). 한쪽만 넣어도 만들어져요.<br>
+      ※ 게시일이 다르면 먼저 올린 쪽이 더 오래 노출된 상태라, 리포트에 <b>경과일</b>이 같이 표시됩니다.<br>
+      ※ 인스타그램은 좋아요를 숨긴 게시물이면 좋아요 수를 못 읽어요(댓글 수만 나옴).
+    </p>
   </div>
 
   <div class="panel">
@@ -604,6 +634,34 @@ function collectAccount() {
   runOrAlert(() => fetch('/api/collect-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle, startDate, endDate, plaintext }) }));
 }
 
+// ⚔️ 게시글 맞대결 — 이벤트 하나를 비교하는 게 보통이라 기본은 한 쌍만 보여주고,
+// 더 필요하면 늘림. 빈 쌍은 서버가 알아서 건너뛰므로 지우는 버튼까지는 두지 않음.
+function addMatchupPair() {
+  const box = document.getElementById('matchupPairs');
+  const n = box.children.length + 1;
+  const row = document.createElement('div');
+  row.className = 'matchup-pair';
+  row.innerHTML =
+    '<div class="mp-num">' + n + '</div>' +
+    '<label>당사 글 링크<input type="text" class="mp-pw" placeholder="https://x.com/... 또는 https://www.instagram.com/p/..."></label>' +
+    '<label>경쟁사 글 링크<input type="text" class="mp-bh" placeholder="https://x.com/... 또는 https://www.instagram.com/p/..."></label>';
+  box.appendChild(row);
+}
+
+function runMatchup() {
+  const title = document.getElementById('matchupTitle').value.trim();
+  if (!title) { alert('이 맞대결의 이름을 적어주세요 (예: 토모에 넨도로이드 이벤트).'); return; }
+  const pairs = [...document.querySelectorAll('#matchupPairs .matchup-pair')].map(el => ({
+    pw: el.querySelector('.mp-pw').value.trim(),
+    bh: el.querySelector('.mp-bh').value.trim(),
+  })).filter(p => p.pw || p.bh);
+  if (pairs.length === 0) { alert('비교할 글 링크를 최소 한 개는 넣어주세요.'); return; }
+  runOrAlert(() => fetch('/api/matchup', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(withBrand({ title, pairs })),
+  }));
+}
+
 function startLogin(platform) {
   document.getElementById('loginHelp').style.display = '';
   document.getElementById('confirmLoginBtn').style.display = '';
@@ -641,6 +699,7 @@ async function refreshReports() {
 }
 
 loadBrands();
+addMatchupPair(); // 맞대결은 보통 1:1이라 한 쌍은 미리 펼쳐둠 (빈 칸을 보면 뭘 넣을지 바로 알 수 있게)
 </script>
 </body>
 </html>

@@ -18,6 +18,7 @@ const ROOT = path.join(__dirname, '..'); // sns-report-scraper 폴더 (스크립
 const REPORTS_DIR = path.join(ROOT, 'reports');
 const PORT = 4848;
 const { listBrands, loadBrand, prepareBrand, readLastRun, DEFAULT_BRAND } = require(path.join(ROOT, 'brand-config'));
+const { classifyUrl } = require(path.join(ROOT, 'collect-by-link'));
 
 // 브랜드(메가하우스/굿스마일…)는 화면에서 고르고, 그 값이 모든 버튼에 같이 넘어옴.
 // 아무 브랜드나 문자열로 들어오면 안 되니 brands/*.json에 실제로 있는 키만 통과시킴.
@@ -132,7 +133,12 @@ app.get('/api/reports', (req, res) => {
   // 브랜드 폴더(reports/<브랜드>/) 안의 리포트를 보여줌. 추가로 기본 브랜드일 때는 예전
   // 위치(reports/ 바로 아래)에 있던 파일도 같이 보여줌 — 브랜드 폴더 도입 전에 만든
   // 리포트가 목록에서 갑자기 사라진 것처럼 보이면 안 되므로(데이터 유실 오해 방지).
-  const dirs = [{ rel: brandKey, abs: path.join(REPORTS_DIR, brandKey) }];
+  const dirs = [
+    { rel: brandKey, abs: path.join(REPORTS_DIR, brandKey) },
+    // 맞대결 리포트는 기간 리포트와 섞이면 헷갈려서 하위 폴더에 따로 저장됨 —
+    // 목록에서는 같이 보여야 함(만든 사람 입장에선 둘 다 "방금 만든 리포트")
+    { rel: `${brandKey}/matchup`, abs: path.join(REPORTS_DIR, brandKey, 'matchup') },
+  ];
   if (brandKey === DEFAULT_BRAND) dirs.push({ rel: '', abs: REPORTS_DIR });
 
   const files = [];
@@ -236,6 +242,51 @@ app.post('/api/rebuild', (req, res) => {
   }
   try {
     const id = startJob(`캐시로 리포트 재생성 (${brandKey})`, 'rebuild-report.js', args);
+    res.json({ jobId: id });
+  } catch (e) {
+    badRequest(res, e.message);
+  }
+});
+
+// ── ⚔️ 게시글 맞대결 (run-matchup.js) ──
+// 기간 수집과 달리 링크만 받음. 링크 형식 검사는 서버에서 먼저 해서, 잘못된 주소 때문에
+// 브라우저를 띄웠다가 실패하는 헛수고를 막고 어디가 틀렸는지 바로 알려줌.
+app.post('/api/matchup', (req, res) => {
+  const body = req.body || {};
+  let brandKey;
+  try {
+    brandKey = resolveBrandKey(body.brand);
+  } catch (e) {
+    return badRequest(res, e.message);
+  }
+
+  const title = String(body.title || '').trim();
+  if (!title) return badRequest(res, '이 맞대결의 이름을 적어주세요 (예: 토모에 넨도로이드 이벤트).');
+  if (title.length > 100) return badRequest(res, '이름이 너무 깁니다(100자 이내).');
+
+  const rawPairs = Array.isArray(body.pairs) ? body.pairs : [];
+  const pairs = [];
+  for (let i = 0; i < rawPairs.length; i++) {
+    const p = rawPairs[i] || {};
+    const pw = String(p.pw || '').trim();
+    const bh = String(p.bh || '').trim();
+    if (!pw && !bh) continue; // 빈 줄은 그냥 건너뜀 — "＋ 한 쌍 더"로 늘려놓고 안 채운 경우
+    for (const [side, url] of [['당사', pw], ['경쟁사', bh]]) {
+      if (!url) continue;
+      const c = classifyUrl(url);
+      if (!c.ok) return badRequest(res, `${i + 1}번째 ${side} 링크를 못 알아봤어요 — ${c.error}`);
+    }
+    pairs.push({ label: String(p.label || '').trim() || undefined, pw: pw || undefined, bh: bh || undefined });
+  }
+  if (pairs.length === 0) return badRequest(res, '비교할 링크를 최소 한 개는 넣어주세요.');
+
+  const outDir = path.join(REPORTS_DIR, brandKey, 'matchup');
+  fs.mkdirSync(outDir, { recursive: true });
+  const inputPath = path.join(outDir, '_pending-input.json');
+  fs.writeFileSync(inputPath, JSON.stringify({ title, pairs }, null, 2));
+
+  try {
+    const id = startJob(`게시글 맞대결 (${brandKey})`, 'run-matchup.js', [`brand=${brandKey}`, `input=${inputPath}`]);
     res.json({ jobId: id });
   } catch (e) {
     badRequest(res, e.message);
