@@ -110,6 +110,9 @@
                    "Malgun Gothic", sans-serif;
       -webkit-font-smoothing: antialiased;
     }
+    /* 한글은 기본값이면 아무 글자에서나 줄이 끊겨서 "쓰입니 / 다."처럼 단어
+       중간이 잘린다. 폭이 좁은 카드라 특히 자주 생기므로 단어 단위로 끊게 한다. */
+    .cg-gate, .cg-gate * { word-break: keep-all; overflow-wrap: break-word; }
     .cg-card {
       width: 100%; max-width: 340px; background: #fff;
       border-radius: 18px; padding: 36px 26px 30px;
