@@ -65,10 +65,19 @@ async function readTwitterPost(page, target) {
     if (!article) article = articles[0];
     if (!article) return null;
 
+    // ⚠️ X는 **내가 이미 누른** 버튼의 이름을 바꿔 달음: retweet→unretweet, like→unlike.
+    // 우리는 자사 계정으로 로그인한 채 보기 때문에, 자사가 자기 이벤트 글을 리포스트해두면
+    // retweet 버튼이 아예 없어서 리트윗 수가 '-'로 빠짐(실제로 겪음 — RT 이벤트인데
+    // 리트윗이 안 나오면 리포트의 핵심이 빠지는 것). 두 이름을 다 보게 함.
+    //
     // 숫자는 두 군데서 읽을 수 있음: 버튼 안 텍스트(app-text-transition-container)와
     // aria-label("좋아요 1,234개"). 텍스트 쪽이 비어 있는 경우가 있어서 aria-label로 보강.
-    const countOf = (testid) => {
-      const btn = article.querySelector(`[data-testid="${testid}"]`);
+    const countOf = (...testids) => {
+      let btn = null;
+      for (const id of testids) {
+        btn = article.querySelector(`[data-testid="${id}"]`);
+        if (btn) break;
+      }
       if (!btn) return null;
       const span = btn.querySelector('span[data-testid="app-text-transition-container"]');
       const text = span ? span.innerText.trim() : '';
@@ -88,8 +97,8 @@ async function readTwitterPost(page, target) {
       account,
       datetime: timeEl ? timeEl.getAttribute('datetime') : null,
       text: textEl ? textEl.innerText : '',
-      likes: countOf('like'),
-      retweets: countOf('retweet'),
+      likes: countOf('like', 'unlike'),
+      retweets: countOf('retweet', 'unretweet'),
       comments: countOf('reply'),
     };
   }, target.postId);
@@ -129,8 +138,22 @@ async function readInstagramPost(page, target) {
     }
 
     // 링크만 받았을 땐 계정 핸들을 주소에서 알 수 없어서(…/p/코드 형태) 페이지에서 읽어냄.
+    // header 안에 못 찾는 레이아웃이 있어서(실제로 계정명이 빈칸으로 나옴) 대체 경로를 둠:
+    // 시각 링크(/계정/p/코드)의 첫 칸, 그다음 og:title("… on Instagram" 앞부분).
+    let account = '';
     const headerLink = document.querySelector('header a[href^="/"]');
-    const account = headerLink ? headerLink.getAttribute('href').replace(/\//g, '') : '';
+    if (headerLink) account = headerLink.getAttribute('href').replace(/\//g, '');
+    if (!account) {
+      const permalink = [...document.querySelectorAll('a[href*="/p/"]')]
+        .map(a => (a.getAttribute('href').match(/^\/([^/]+)\/p\//) || [])[1])
+        .find(Boolean);
+      if (permalink) account = permalink;
+    }
+    if (!account) {
+      const og = document.querySelector('meta[property="og:title"]');
+      const m = og && (og.getAttribute('content') || '').match(/^([^\s(•|]+)/);
+      if (m) account = m[1].replace(/^@/, '');
+    }
 
     const spans = [...document.querySelectorAll('span[dir="auto"]')].sort((a, b) => b.innerText.length - a.innerText.length);
     let caption = '';

@@ -1385,7 +1385,7 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
     }
   });
 
-  check('맞대결 리포트: 게시일이 벌어지면 경고가 뜨고, 경과일·하루 평균이 같이 나와야 함', () => {
+  check('맞대결 리포트: 게시일이 벌어져도 훈계 없이 경과일·하루 평균이라는 사실만 보여줘야 함', () => {
     const { buildMatchupReportHtml } = require('./matchup-report');
     const collectedAt = '2026-09-08T00:00:00.000Z';
     const html = buildMatchupReportHtml({
@@ -1400,11 +1400,61 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
       }],
     });
 
-    assert.ok(/게시일이 <b>5\.1일<\/b> 차이납니다/.test(html), '게시일 차이가 크면 그대로 승패로 읽지 말라고 경고해야 함');
     assert.ok(html.includes('13.8일 전') && html.includes('18.9일 전'), '양쪽 경과일이 각각 표시돼야 함');
     assert.ok(html.includes('하루 평균'), '노출 기간 차이를 감안할 참고치(하루 평균)가 있어야 함');
     assert.ok(html.includes('1,200') && html.includes('1,500'), '원본 숫자가 주인공으로 남아야 함');
     assert.ok(html.includes('twitter-tweet'), '게시물 미리보기(임베드)가 나란히 들어가야 함');
+    // 예전엔 "그대로 승패로 읽으면 안 됩니다" 경고 박스를 띄웠는데, 변명처럼 읽힌다는
+    // 피드백으로 뺐음. 날짜·경과일이라는 사실만 두고 판단은 사람 몫(2026-09-08).
+    assert.ok(!html.includes('그대로 승패로 읽으면'), '훈계하는 경고 박스는 없어야 함');
+  });
+
+  check('맞대결 리포트: 맨 위 전체 합산에 X+인스타가 더해져 나와야 함 (플랫폼별 소계까지)', () => {
+    const { buildMatchupReportHtml } = require('./matchup-report');
+    const html = buildMatchupReportHtml({
+      title: '토모에 넨도 이벤트', collectedAt: '2026-09-08T05:54:00.000Z',
+      pairs: [
+        { label: '토모에', pw: { ok: true, platform: 'instagram', url: 'https://www.instagram.com/p/A/', datetime: '2026-08-25T05:43:00.000Z', likes: '786', comments: '461', retweets: null },
+          bh: { ok: true, platform: 'instagram', url: 'https://www.instagram.com/p/B/', datetime: '2026-08-20T08:37:00.000Z', likes: '1,400', comments: '668', retweets: null } },
+        { label: '토모에', pw: { ok: true, platform: 'twitter', url: 'https://x.com/a/status/1', datetime: '2026-08-25T05:03:00.000Z', likes: '324', retweets: '612', comments: '2' },
+          bh: { ok: true, platform: 'twitter', url: 'https://x.com/b/status/2', datetime: '2026-08-20T08:36:00.000Z', likes: '325', retweets: '544', comments: '1' } },
+      ],
+    });
+
+    assert.ok(html.includes('전체 합산'), '맨 위에 통합 요약이 있어야 함');
+    assert.ok(html.includes('1,110') && html.includes('1,725'), '좋아요 합계 786+324 / 1400+325');
+    assert.ok(html.includes('2,185') && html.includes('2,938'), '총 반응(좋아요+리트윗+댓글) 합계');
+    assert.ok(html.indexOf('전체 합산') < html.indexOf('1. 토모에'), '요약이 개별 쌍보다 위에 있어야 함');
+    assert.ok(html.includes('인스타그램</b>') && html.includes('X(트위터)</b>'), '플랫폼별 소계도 있어야 함');
+
+    // 같은 제목이 두 번 나오므로 어느 플랫폼 얘기인지 제목에서 구분돼야 함
+    assert.ok(/1\. 토모에 <span class="ptag">인스타그램/.test(html), '섹션 제목에 플랫폼이 붙어야 함');
+
+    // 리트윗은 X에만 있는 지표 — 인스타에 값이 없는 걸 "못 읽음"으로 세면
+    // 있지도 않은 문제가 합계 밑에 표시됨
+    assert.ok(!html.includes('못 읽어서 합계에서 빠짐'), '인스타에 리트윗이 없는 걸 누락으로 세면 안 됨');
+    assert.ok(!html.includes('읽을 수 없었음'), '인스타 섹션에서 리트윗 줄은 아예 빠져야 함');
+  });
+
+  check('맞대결 리포트: 우세/경합/약세 판정 — X에만 있는 리트윗은 인스타 판정에서 빠져야 함', () => {
+    const { verdictOf } = require('./matchup-report');
+    const ig = p => Object.assign({ platform: 'instagram' }, p);
+    const tw = p => Object.assign({ platform: 'twitter' }, p);
+
+    assert.strictEqual(verdictOf(ig({ likes: '100', comments: '10', retweets: null }), ig({ likes: '50', comments: '5', retweets: null })).text, '우세');
+    assert.strictEqual(verdictOf(ig({ likes: '10', comments: '1', retweets: null }), ig({ likes: '50', comments: '5', retweets: null })).text, '약세');
+    assert.strictEqual(verdictOf(tw({ likes: '100', retweets: '1', comments: '5' }), tw({ likes: '50', retweets: '9', comments: '5' })).text, '경합');
+    assert.strictEqual(verdictOf(null, null), null, '읽힌 지표가 하나도 없으면 판정하지 않음');
+  });
+
+  check('맞대결 리포트: 임베드가 안 뜨는 환경을 대비해 본문 앞부분이 파일에 들어가야 함', () => {
+    const { buildMatchupReportHtml } = require('./matchup-report');
+    const html = buildMatchupReportHtml({
+      title: 't', collectedAt: '2026-09-08T00:00:00.000Z',
+      pairs: [{ pw: { ok: true, platform: 'twitter', url: 'https://x.com/a/status/1', datetime: '2026-09-06T00:00:00.000Z', likes: '1', retweets: '1', comments: '1', text: '토모에 넨도로이드 발매 기념 RT 이벤트!' }, bh: null }],
+    });
+    assert.ok(html.includes('토모에 넨도로이드 발매 기념 RT 이벤트!'), '사내 차단·오프라인이면 임베드가 안 떠서 링크만 남음 — 본문이 있어야 함');
+    assert.ok(html.includes('capturePair'), '보고용 스크린샷 버튼이 있어야 함');
   });
 
   check('맞대결 리포트: 못 읽은 글은 0으로 채우지 않고 이유를 보여줘야 함', () => {

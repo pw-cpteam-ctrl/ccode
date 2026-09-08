@@ -7,17 +7,31 @@
  *    양쪽 게시일이 며칠씩 벌어지면 애초에 짝이 안 지어져서 둘 다 "매칭 안 됨"으로 빠짐.
  *  - 맞대결은 사람이 "이 글과 이 글"이라고 지목하므로 매칭도, 날짜 범위도 필요 없음.
  *
- * ⚠️ 대신 이 리포트에는 기간 리포트에 없는 함정이 하나 있음: 게시일이 다르면 먼저 올린 쪽이
- * 그만큼 더 오래 노출돼서 누적 반응이 유리해짐. 숫자만 나란히 놓으면 "경쟁사가 더 잘했다"로
- * 잘못 읽히므로, 경과일을 항상 같이 표시하고 차이가 크면 상단에 경고를 띄움.
+ * 게시일이 다르면 먼저 올린 쪽이 그만큼 더 오래 노출된 상태이므로 경과일을 항상 같이 표시함.
+ * (예전엔 여기에 "그대로 승패로 읽으면 안 된다"는 경고 박스도 띄웠는데, 변명처럼 읽히고
+ * 실제로 도움이 안 된다는 피드백을 받아서 뺌 — 날짜·경과일이라는 사실만 두고 판단은 사람 몫.)
  */
 const fs = require('fs');
+const path = require('path');
 const { parseCount } = require('./aggregate');
 
 const PLATFORM_LABEL = { twitter: 'X(트위터)', instagram: '인스타그램' };
-// 게시일 차이가 이 정도를 넘으면 "그냥 비교하면 안 된다"고 상단에 경고를 띄움.
-// 하루 이틀은 SNS 반응 특성상 큰 영향이 없어서 매번 경고하면 오히려 무뎌짐.
-const GAP_WARN_DAYS = 2;
+const METRICS = [
+  { key: 'likes', label: '좋아요', icon: '❤️' },
+  { key: 'retweets', label: '리트윗', icon: '🔁' },
+  { key: 'comments', label: '댓글', icon: '💬' },
+];
+
+/** 리트윗은 X에만 있는 지표 — 인스타에서 값이 없는 걸 "못 읽음"으로 세면 합계 밑에
+ *  "못 읽어서 빠짐"이라는 있지도 않은 문제가 표시됨. 그래서 아예 해당 없음으로 처리. */
+function metricApplies(key, platform) {
+  if (key !== 'retweets') return true;
+  return platform !== 'instagram';
+}
+
+function platformOf(pair) {
+  return (pair.pw && pair.pw.platform) || (pair.bh && pair.bh.platform) || null;
+}
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -113,11 +127,105 @@ function sideHead(sideLabel, cls, post, collectedAt) {
   </div>`;
 }
 
+/** 본문 미리보기 — 임베드가 막히거나(사내 차단·오프라인) 위젯이 실패하면 링크만 남고
+ *  아무것도 안 보임. 그때도 "무슨 글이었는지"는 알 수 있게 본문 앞부분을 같이 심어둠. */
+function bodyPreview(post) {
+  const text = (post && post.text ? String(post.text) : '').trim();
+  if (!text) return '';
+  const short = text.length > 220 ? text.slice(0, 220) + '…' : text;
+  return `<div class="body-preview">${escapeHtml(short).replace(/\n/g, '<br>')}</div>`;
+}
+
+/** 표시된 지표 중 PW가 몇 개나 앞섰는지로 우세/경합/약세 — 기간 리포트와 같은 말을 씀 */
+function verdictOf(pw, bh) {
+  let win = 0; let lose = 0; let counted = 0;
+  const platform = (pw && pw.platform) || (bh && bh.platform) || null;
+  for (const m of METRICS) {
+    if (!metricApplies(m.key, platform)) continue;
+    const a = pw ? parseCount(pw[m.key]) : null;
+    const b = bh ? parseCount(bh[m.key]) : null;
+    if (a === null || b === null) continue;
+    counted++;
+    if (a > b) win++; else if (a < b) lose++;
+  }
+  if (counted === 0) return null;
+  if (win > 0 && lose === 0) return { text: '우세', cls: 'v-win' };
+  if (lose > 0 && win === 0) return { text: '약세', cls: 'v-lose' };
+  return { text: '경합', cls: 'v-mid' };
+}
+
+/**
+ * 맨 위 통합 요약. 같은 이벤트를 X와 인스타에 나눠 올리는 게 보통이라, 섹션만 있으면
+ * 두 플랫폼 숫자를 사람이 머리로 더해야 함 — 그걸 대신 해줌.
+ * 못 읽은 값은 0으로 치지 않고 합계에서 빼되, 몇 건이 빠졌는지 옆에 적어둠
+ * (0으로 더하면 합계가 조용히 작아져서 그쪽이 진 것처럼 보임).
+ */
+function renderSummary(pairs, collectedAt) {
+  if (pairs.length === 0) return '';
+
+  const sums = {};
+  for (const m of METRICS) {
+    const acc = { pw: null, bh: null, pwMissing: 0, bhMissing: 0 };
+    for (const p of pairs) {
+      if (!metricApplies(m.key, platformOf(p))) continue;
+      for (const side of ['pw', 'bh']) {
+        const post = p[side];
+        if (!post) continue;
+        const v = parseCount(post[m.key]);
+        if (v === null) { acc[`${side}Missing`]++; continue; }
+        acc[side] = (acc[side] || 0) + v;
+      }
+    }
+    sums[m.key] = acc;
+  }
+
+  // 한쪽 지표를 하나도 못 읽었으면 합계를 0으로 내놓으면 안 됨 — 0은 "반응이 없었다"는
+  // 뜻이 돼서 상대가 100%를 채운 막대로 그려지고, 못 읽은 게 압패한 것처럼 보임.
+  const totalOf = side => (METRICS.every(m => sums[m.key][side] === null)
+    ? null
+    : METRICS.reduce((n, m) => (sums[m.key][side] === null ? n : n + sums[m.key][side]), 0));
+  const anyTotal = METRICS.some(m => sums[m.key].pw !== null || sums[m.key].bh !== null);
+  const missingNote = acc => {
+    const parts = [];
+    if (acc.pwMissing) parts.push(`당사 ${acc.pwMissing}건`);
+    if (acc.bhMissing) parts.push(`경쟁사 ${acc.bhMissing}건`);
+    return parts.length ? `못 읽어서 합계에서 빠짐 — ${parts.join(' · ')}` : '';
+  };
+
+  // 플랫폼별 소계 — 어느 채널에서 갈렸는지가 합계만 보면 안 보임
+  const platforms = [...new Set(pairs.map(p => (p.pw && p.pw.platform) || (p.bh && p.bh.platform)).filter(Boolean))];
+  const byPlatform = platforms.map(plat => {
+    const inPlat = pairs.filter(p => ((p.pw && p.pw.platform) || (p.bh && p.bh.platform)) === plat);
+    const cells = METRICS.filter(m => metricApplies(m.key, plat)).map(m => {
+      const pick = side => inPlat.reduce((n, p) => {
+        const v = p[side] ? parseCount(p[side][m.key]) : null;
+        return v === null ? n : (n || 0) + v;
+      }, null);
+      const a = pick('pw'); const b = pick('bh');
+      if (a === null && b === null) return '';
+      return `${m.icon} ${a === null ? '-' : a.toLocaleString()} : ${b === null ? '-' : b.toLocaleString()}`;
+    }).filter(Boolean);
+    return `<div class="plat-line"><b>${escapeHtml(PLATFORM_LABEL[plat] || plat)}</b> ${escapeHtml(cells.join('  ·  '))}</div>`;
+  }).join('');
+
+  return `
+  <section class="pair summary" id="summary">
+    <div class="pair-head">
+      <h2>📊 전체 합산 <span class="ptag">${pairs.length}쌍</span></h2>
+      <div class="pair-tools"><button class="cap-btn" onclick="capturePair('summary','전체 합산')">📷 스크린샷</button></div>
+    </div>
+    <table class="metrics">
+      ${anyTotal ? metricRow('총 반응', '🔥', totalOf('pw'), totalOf('bh'), '좋아요 + 리트윗 + 댓글') : ''}
+      ${METRICS.map(m => metricRow(m.label, m.icon, sums[m.key].pw, sums[m.key].bh, missingNote(sums[m.key]))).join('\n      ')}
+    </table>
+    ${byPlatform ? `<div class="by-platform">${byPlatform}</div>` : ''}
+  </section>`;
+}
+
 function renderPair(pair, index, collectedAt) {
   const { pw, bh, label } = pair;
   const pwDays = pw ? elapsedDays(pw.datetime, collectedAt) : null;
   const bhDays = bh ? elapsedDays(bh.datetime, collectedAt) : null;
-  const gap = pwDays !== null && bhDays !== null ? Math.abs(pwDays - bhDays) : null;
 
   // 하루 평균은 "노출 기간이 다르다"는 걸 보정해보려는 참고치일 뿐 정답이 아님 —
   // SNS 반응은 올린 직후 1~2일에 대부분 몰려서, 오래 걸어둔 글일수록 하루 평균이 낮게 나옴.
@@ -135,26 +243,31 @@ function renderPair(pair, index, collectedAt) {
     return `하루 평균 — 당사 ${f(a)} · 경쟁사 ${f(b)}`;
   };
 
-  const gapNote = gap !== null && gap >= GAP_WARN_DAYS
-    ? `<div class="gapnote">⚠️ 두 글의 게시일이 <b>${gap.toFixed(1)}일</b> 차이납니다 — 먼저 올라온 쪽이 그만큼 더 오래 노출됐습니다. 아래 숫자는 <b>지금까지 쌓인 누적</b>이라 그대로 승패로 읽으면 안 됩니다.</div>`
-    : '';
+  // 한 리포트에 X 한 쌍, 인스타 한 쌍을 같이 넣는 게 흔해서(같은 이벤트를 양쪽에 올림)
+  // 제목이 똑같이 두 번 나옴 — 어느 쪽 얘기인지 제목에서 바로 알게 플랫폼을 붙여줌.
+  const platform = (pw && pw.platform) || (bh && bh.platform) || null;
+  const platformTag = platform ? ` <span class="ptag">${escapeHtml(PLATFORM_LABEL[platform] || platform)}</span>` : '';
+  const verdict = verdictOf(pw, bh);
 
   return `
-  <section class="pair">
-    <h2>${index + 1}. ${escapeHtml(label || '맞대결')}</h2>
-    ${gapNote}
+  <section class="pair" id="pair-${index}">
+    <div class="pair-head">
+      <h2>${index + 1}. ${escapeHtml(label || '맞대결')}${platformTag}</h2>
+      <div class="pair-tools">
+        ${verdict ? `<span class="verdict ${verdict.cls}">${verdict.text}</span>` : ''}
+        <button class="cap-btn" onclick="capturePair(${index}, '${escapeHtml((label || '맞대결').replace(/'/g, ''))}')">📷 스크린샷</button>
+      </div>
+    </div>
     <div class="sides">
       ${sideHead('당사 (PW)', 'pw', pw, collectedAt)}
       ${sideHead('경쟁사 (BH)', 'bh', bh, collectedAt)}
     </div>
     <table class="metrics">
-      ${metricRow('좋아요', '❤️', pw && pw.likes, bh && bh.likes, avgText(pw && pw.likes, bh && bh.likes))}
-      ${metricRow('리트윗', '🔁', pw && pw.retweets, bh && bh.retweets, avgText(pw && pw.retweets, bh && bh.retweets))}
-      ${metricRow('댓글', '💬', pw && pw.comments, bh && bh.comments, avgText(pw && pw.comments, bh && bh.comments))}
+      ${METRICS.filter(m => metricApplies(m.key, platform)).map(m => metricRow(m.label, m.icon, pw && pw[m.key], bh && bh[m.key], avgText(pw && pw[m.key], bh && bh[m.key]))).join('\n      ')}
     </table>
     <div class="embeds">
-      <div class="embed-col"><h4 class="pw">당사 (PW)</h4>${embedBlock(pw)}</div>
-      <div class="embed-col"><h4 class="bh">경쟁사 (BH)</h4>${embedBlock(bh)}</div>
+      <div class="embed-col"><h4 class="pw">당사 (PW)</h4>${bodyPreview(pw)}${embedBlock(pw)}</div>
+      <div class="embed-col"><h4 class="bh">경쟁사 (BH)</h4>${bodyPreview(bh)}${embedBlock(bh)}</div>
     </div>
   </section>`;
 }
@@ -178,8 +291,19 @@ function buildMatchupReportHtml({ title, brandLabel = '', collectedAt, pairs }) 
 h1{font-size:22px;margin:0 0 6px}
 .sub{color:#6b7280;font-size:13px;margin-bottom:18px}
 .pair{background:#fff;border-radius:12px;padding:18px 20px;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
-.pair h2{font-size:17px;margin:0 0 12px}
-.gapnote{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:12px;line-height:1.6;border-radius:8px;padding:10px 12px;margin-bottom:14px}
+.pair h2{font-size:17px;margin:0}
+.pair-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.pair-tools{margin-left:auto;display:flex;align-items:center;gap:8px}
+.ptag{font-size:12px;font-weight:400;color:#9099a6}
+.verdict{font-size:12px;font-weight:700;border-radius:999px;padding:3px 12px}
+.verdict.v-win{background:#e7f5ed;color:#1b7f4a}
+.verdict.v-mid{background:#fff4e0;color:#a8620a}
+.verdict.v-lose{background:#fdecec;color:#c0392b}
+.cap-btn{border:1px solid #d0d5e0;background:#fff;color:#374151;font-size:12px;padding:5px 12px;border-radius:8px;cursor:pointer}
+.cap-btn:hover{background:#f2f5fb}
+.summary{border:2px solid #3b5bdb}
+.by-platform{border-top:1px solid #eef1f6;padding-top:10px;font-size:12px;color:#4b5563;line-height:1.9}
+.body-preview{font-size:12px;color:#4b5563;line-height:1.6;background:#f7f9fc;border:1px solid #eef1f6;border-radius:8px;padding:8px 10px;margin-bottom:8px;white-space:normal}
 .sides{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
 .side{border:1px solid #e3e8f0;border-radius:10px;padding:10px 12px}
 .side h4{margin:0 0 6px;font-size:13px}
@@ -209,15 +333,40 @@ table.metrics td{padding:8px 6px;border-top:1px solid #eef1f6}
 </style></head><body><div class="wrap">
 <h1>${escapeHtml(heading)}</h1>
 <div class="sub">${escapeHtml(title || '')} · 수집: ${escapeHtml(kstText(collectedAt))} (KST) · <b>PW=자사, BH=경쟁사</b></div>
+${renderSummary(pairs, collectedAt)}
 ${pairs.map((p, i) => renderPair(p, i, collectedAt)).join('\n')}
 <div class="foot">
 ※ 이 리포트는 <b>사람이 지목한 게시물</b>만 비교합니다 — 기간이나 상품명 매칭과 무관합니다.<br>
-※ 숫자는 <b>수집 시각까지 쌓인 누적</b>입니다. 게시일이 다르면 먼저 올린 쪽이 더 오래 노출됐다는 뜻이라, 경과일을 같이 보고 판단해주세요.<br>
-※ 하루 평균은 참고용입니다 — SNS 반응은 올린 직후 1~2일에 몰리는 편이라, 오래 걸어둔 글일수록 평균이 낮게 나옵니다.<br>
+※ 숫자는 수집 시각 기준 누적입니다. 게시일과 경과일은 각 글 위에 그대로 적어뒀습니다.<br>
+※ 결과(우세/경합/약세)는 양쪽 다 읽힌 지표만 세서, 전부 앞서면 우세, 전부 뒤지면 약세, 엇갈리면 경합입니다.<br>
 ※ 인스타그램은 <b>좋아요 수를 숨긴 게시물</b>이면 좋아요를 읽을 수 없습니다(댓글 수만 나옴). 리트윗은 X에만 있는 지표라 인스타는 항상 '-'입니다.<br>
-※ 게시물 미리보기는 인터넷이 연결된 브라우저에서 열어야 카드로 보입니다.
+※ 게시물 미리보기는 인터넷이 연결된 브라우저에서 열어야 카드로 보입니다 — 안 보일 때를 위해 본문 앞부분을 같이 넣어뒀습니다.
 </div>
 </div>
+<script>
+${fs.readFileSync(path.join(__dirname, 'node_modules/html2canvas/dist/html2canvas.min.js'), 'utf-8')}
+</script>
+<script>
+// 보고용으로 한 쌍(또는 전체 합산)만 잘라서 PNG로 저장. 리포트 파일 하나로 끝나게
+// html2canvas를 그대로 심어둠(인터넷 연결 불필요) — 기간 리포트와 같은 방식.
+// 임베드(트위터/인스타 위젯 iframe)는 다른 사이트 콘텐츠라 캡처에 빈 칸으로 나올 수 있음.
+function capturePair(id, name) {
+  var el = document.getElementById(typeof id === 'number' ? 'pair-' + id : id);
+  if (!el) return;
+  var btns = el.querySelectorAll('.cap-btn');
+  btns.forEach(function (b) { b.style.visibility = 'hidden'; });
+  html2canvas(el, { backgroundColor: '#ffffff', scale: 2, useCORS: true }).then(function (canvas) {
+    btns.forEach(function (b) { b.style.visibility = ''; });
+    var a = document.createElement('a');
+    a.download = '맞대결-' + name + '.png';
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  }).catch(function (e) {
+    btns.forEach(function (b) { b.style.visibility = ''; });
+    alert('스크린샷 저장에 실패했어요: ' + e.message);
+  });
+}
+</script>
 ${needTwitter ? '<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>' : ''}
 ${needInstagram ? '<script async src="https://www.instagram.com/embed.js"></script>' : ''}
 </body></html>`;
@@ -228,4 +377,4 @@ function saveMatchupReport(opts, outputPath) {
   return outputPath;
 }
 
-module.exports = { buildMatchupReportHtml, saveMatchupReport, elapsedDays, GAP_WARN_DAYS };
+module.exports = { buildMatchupReportHtml, saveMatchupReport, elapsedDays, verdictOf };
