@@ -87,6 +87,17 @@ async function readTwitterPost(page, target) {
       return m ? m[0] : '0';
     };
 
+    // 인용(quote) 수는 버튼이 아니라 상세 페이지의 "…/status/<id>/quotes" 링크에 붙어 있음.
+    // ⚠️ 인용이 0이면 이 링크가 아예 안 생김 — 그래서 링크가 없으면 0으로 읽는다.
+    // (0인 것과 구조가 바뀌어 못 읽은 것이 구분되지 않는 한계는 감수. 리포트에서
+    //  '-'로 두면 매번 "왜 안 나오지"가 되는데, 실제로는 대부분 진짜 0이라서.)
+    const quoteOf = () => {
+      const link = article.querySelector('a[href*="/quotes"]');
+      if (!link) return '0';
+      const m = link.innerText.match(/[\d,.]+[만천KM]?/);
+      return m ? m[0] : '0';
+    };
+
     const timeEl = article.querySelector('time[datetime]');
     const textEl = article.querySelector('[data-testid="tweetText"]');
     const authorLink = article.querySelector('a[href*="/status/"]');
@@ -99,6 +110,7 @@ async function readTwitterPost(page, target) {
       text: textEl ? textEl.innerText : '',
       likes: countOf('like', 'unlike'),
       retweets: countOf('retweet', 'unretweet'),
+      quotes: quoteOf(),
       comments: countOf('reply'),
     };
   }, target.postId);
@@ -226,7 +238,7 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
         if (parsed.exactMatch === false) {
           results[i].warning = '주소의 글을 정확히 못 집어서 페이지 첫 번째 글을 읽었음 — 숫자가 맞는지 확인 필요';
         }
-        console.log(`[link] ✅ ${t.platform} ${t.url} — 좋아요 ${parsed.likes ?? '-'} · 리트윗 ${parsed.retweets ?? '-'} · 댓글 ${parsed.comments ?? '-'}`);
+        console.log(`[link] ✅ ${t.platform} ${t.url} — 좋아요 ${parsed.likes ?? '-'} · 리트윗 ${parsed.retweets ?? '-'} · 인용 ${parsed.quotes ?? '-'} · 댓글 ${parsed.comments ?? '-'}`);
       } catch (e) {
         results[i].error = `읽기 실패: ${e.message}`;
         console.warn(`[link] ❌ ${t.url} — ${e.message}`);

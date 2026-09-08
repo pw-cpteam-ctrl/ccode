@@ -19,13 +19,15 @@ const PLATFORM_LABEL = { twitter: 'X(트위터)', instagram: '인스타그램' }
 const METRICS = [
   { key: 'likes', label: '좋아요', icon: '❤️' },
   { key: 'retweets', label: '리트윗', icon: '🔁' },
+  { key: 'quotes', label: '인용', icon: '🗨️' },
   { key: 'comments', label: '댓글', icon: '💬' },
 ];
+// 리트윗·인용은 X에만 있는 개념 — 인스타에서 값이 없는 걸 "못 읽음"으로 세면 합계 밑에
+// "못 읽어서 빠짐"이라는 있지도 않은 문제가 표시됨. 그래서 아예 해당 없음으로 처리.
+const X_ONLY_METRICS = new Set(['retweets', 'quotes']);
 
-/** 리트윗은 X에만 있는 지표 — 인스타에서 값이 없는 걸 "못 읽음"으로 세면 합계 밑에
- *  "못 읽어서 빠짐"이라는 있지도 않은 문제가 표시됨. 그래서 아예 해당 없음으로 처리. */
 function metricApplies(key, platform) {
-  if (key !== 'retweets') return true;
+  if (!X_ONLY_METRICS.has(key)) return true;
   return platform !== 'instagram';
 }
 
@@ -104,6 +106,36 @@ function metricRow(label, icon, pwRaw, bhRaw, extra) {
   </tr>`;
 }
 
+/**
+ * 쌍별 지표를 세로 나열(행)에서 가로 나열(열)로 바꾼 셀. 지표가 3~4개인데 행으로 깔면
+ * 쌍 하나가 화면 한 장을 잡아먹어서, 같은 이벤트의 X/인스타를 나란히 훑을 수 없었음.
+ * 좁은 열에서는 숫자를 막대 좌우에 두면 자리가 안 나와서 막대 위에 올림.
+ */
+function metricCell(m, pwRaw, bhRaw, extra) {
+  const pw = pwRaw === null || pwRaw === undefined || pwRaw === '' ? null : parseCount(pwRaw);
+  const bh = bhRaw === null || bhRaw === undefined || bhRaw === '' ? null : parseCount(bhRaw);
+  const head = `<div class="mhead">${m.icon} ${escapeHtml(m.label)}</div>`;
+
+  if (pw === null && bh === null) {
+    return `<div class="mcol">${head}<div class="mna">읽을 수 없었음</div></div>`;
+  }
+  const fmt = v => (v === null ? '-' : v.toLocaleString());
+  // 한쪽만 읽혔을 때 막대를 그리면 그쪽이 100%를 채워 "압승"으로 오해됨 — 빗금 처리
+  const oneSided = pw === null || bh === null;
+  const total = oneSided ? 0 : pw + bh;
+  const pwPct = total > 0 ? Math.round((pw / total) * 100) : 50;
+  const track = oneSided
+    ? '<div class="track empty"></div>'
+    : `<div class="track"><div class="pw" style="width:${pwPct}%"></div><div class="bh" style="width:${100 - pwPct}%"></div></div>`;
+
+  return `<div class="mcol">
+    ${head}
+    <div class="mvals"><span class="v pw">${fmt(pw)}</span><span class="v bh">${fmt(bh)}</span></div>
+    ${track}
+    <div class="mnote">${oneSided ? '한쪽만 읽혀서 비교 불가' : escapeHtml(extra || '')}</div>
+  </div>`;
+}
+
 function embedBlock(post) {
   if (!post || !post.url) return '<p class="na">링크 없음</p>';
   const url = escapeHtml(post.url);
@@ -129,11 +161,15 @@ function sideHead(sideLabel, cls, post, collectedAt) {
 
 /** 본문 미리보기 — 임베드가 막히거나(사내 차단·오프라인) 위젯이 실패하면 링크만 남고
  *  아무것도 안 보임. 그때도 "무슨 글이었는지"는 알 수 있게 본문 앞부분을 같이 심어둠. */
-function bodyPreview(post) {
+function bodyPreview(post, sideLabel) {
   const text = (post && post.text ? String(post.text) : '').trim();
   if (!text) return '';
-  const short = text.length > 220 ? text.slice(0, 220) + '…' : text;
-  return `<div class="body-preview">${escapeHtml(short).replace(/\n/g, '<br>')}</div>`;
+  const short = text.length > 400 ? text.slice(0, 400) + '…' : text;
+  // 임베드가 막힌 특수한 상황에만 필요한 내용이라 기본은 접어둠 — 펼쳐두면 스크롤만 늘어남
+  return `<details class="body-details">
+    <summary>본문 그대로 보기 (${escapeHtml(sideLabel)})</summary>
+    <div class="body-preview">${escapeHtml(short).replace(/\n/g, '<br>')}</div>
+  </details>`;
 }
 
 /** 표시된 지표 중 PW가 몇 개나 앞섰는지로 우세/경합/약세 — 기간 리포트와 같은 말을 씀 */
@@ -163,8 +199,12 @@ function verdictOf(pw, bh) {
 function renderSummary(pairs, collectedAt) {
   if (pairs.length === 0) return '';
 
+  // 인스타만 넣은 리포트에서 리트윗·인용 줄이 "읽을 수 없었음"으로 남으면 있지도 않은
+  // 문제처럼 보임 — 어느 쌍에도 해당되지 않는 지표는 요약에서도 줄 자체를 안 만듦
+  const shown = METRICS.filter(m => pairs.some(p => metricApplies(m.key, platformOf(p))));
+
   const sums = {};
-  for (const m of METRICS) {
+  for (const m of shown) {
     const acc = { pw: null, bh: null, pwMissing: 0, bhMissing: 0 };
     for (const p of pairs) {
       if (!metricApplies(m.key, platformOf(p))) continue;
@@ -181,10 +221,15 @@ function renderSummary(pairs, collectedAt) {
 
   // 한쪽 지표를 하나도 못 읽었으면 합계를 0으로 내놓으면 안 됨 — 0은 "반응이 없었다"는
   // 뜻이 돼서 상대가 100%를 채운 막대로 그려지고, 못 읽은 게 압패한 것처럼 보임.
-  const totalOf = side => (METRICS.every(m => sums[m.key][side] === null)
+  const totalOf = side => (shown.every(m => sums[m.key][side] === null)
     ? null
-    : METRICS.reduce((n, m) => (sums[m.key][side] === null ? n : n + sums[m.key][side]), 0));
-  const anyTotal = METRICS.some(m => sums[m.key].pw !== null || sums[m.key].bh !== null);
+    : shown.reduce((n, m) => (sums[m.key][side] === null ? n : n + sums[m.key][side]), 0));
+  const anyTotal = shown.some(m => sums[m.key].pw !== null || sums[m.key].bh !== null);
+  // 무엇을 더한 값인지는 실제로 합계에 들어간 지표로 적음 — 인스타만 넣은 리포트에서
+  // "좋아요 + 리트윗 + 인용 + 댓글"이라고 써두면 있지도 않은 지표를 더한 것처럼 보임
+  const totalCaption = shown
+    .filter(m => sums[m.key].pw !== null || sums[m.key].bh !== null)
+    .map(m => m.label).join(' + ');
   const missingNote = acc => {
     const parts = [];
     if (acc.pwMissing) parts.push(`당사 ${acc.pwMissing}건`);
@@ -215,8 +260,8 @@ function renderSummary(pairs, collectedAt) {
       <div class="pair-tools"><button class="cap-btn" onclick="capturePair('summary','전체 합산')">📷 스크린샷</button></div>
     </div>
     <table class="metrics">
-      ${anyTotal ? metricRow('총 반응', '🔥', totalOf('pw'), totalOf('bh'), '좋아요 + 리트윗 + 댓글') : ''}
-      ${METRICS.map(m => metricRow(m.label, m.icon, sums[m.key].pw, sums[m.key].bh, missingNote(sums[m.key]))).join('\n      ')}
+      ${anyTotal ? metricRow('총 반응', '🔥', totalOf('pw'), totalOf('bh'), totalCaption) : ''}
+      ${shown.map(m => metricRow(m.label, m.icon, sums[m.key].pw, sums[m.key].bh, missingNote(sums[m.key]))).join('\n      ')}
     </table>
     ${byPlatform ? `<div class="by-platform">${byPlatform}</div>` : ''}
   </section>`;
@@ -262,12 +307,12 @@ function renderPair(pair, index, collectedAt) {
       ${sideHead('당사 (PW)', 'pw', pw, collectedAt)}
       ${sideHead('경쟁사 (BH)', 'bh', bh, collectedAt)}
     </div>
-    <table class="metrics">
-      ${METRICS.filter(m => metricApplies(m.key, platform)).map(m => metricRow(m.label, m.icon, pw && pw[m.key], bh && bh[m.key], avgText(pw && pw[m.key], bh && bh[m.key]))).join('\n      ')}
-    </table>
+    <div class="metric-cols">
+      ${METRICS.filter(m => metricApplies(m.key, platform)).map(m => metricCell(m, pw && pw[m.key], bh && bh[m.key], avgText(pw && pw[m.key], bh && bh[m.key]))).join('\n      ')}
+    </div>
     <div class="embeds">
-      <div class="embed-col"><h4 class="pw">당사 (PW)</h4>${bodyPreview(pw)}${embedBlock(pw)}</div>
-      <div class="embed-col"><h4 class="bh">경쟁사 (BH)</h4>${bodyPreview(bh)}${embedBlock(bh)}</div>
+      <div class="embed-col"><h4 class="pw">당사 (PW)</h4>${bodyPreview(pw, '당사')}<div class="embed-shrink">${embedBlock(pw)}</div></div>
+      <div class="embed-col"><h4 class="bh">경쟁사 (BH)</h4>${bodyPreview(bh, '경쟁사')}<div class="embed-shrink">${embedBlock(bh)}</div></div>
     </div>
   </section>`;
 }
@@ -303,7 +348,29 @@ h1{font-size:22px;margin:0 0 6px}
 .cap-btn:hover{background:#f2f5fb}
 .summary{border:2px solid #3b5bdb}
 .by-platform{border-top:1px solid #eef1f6;padding-top:10px;font-size:12px;color:#4b5563;line-height:1.9}
-.body-preview{font-size:12px;color:#4b5563;line-height:1.6;background:#f7f9fc;border:1px solid #eef1f6;border-radius:8px;padding:8px 10px;margin-bottom:8px;white-space:normal}
+.body-details{margin-bottom:8px}
+.body-details summary{cursor:pointer;font-size:11px;color:#9099a6}
+.body-details summary:hover{color:#4b5563}
+.body-preview{font-size:12px;color:#4b5563;line-height:1.6;background:#f7f9fc;border:1px solid #eef1f6;border-radius:8px;padding:8px 10px;margin-top:6px;white-space:normal}
+/* 쌍별 지표를 가로 열로 — 행으로 깔면 쌍 하나가 화면 한 장을 잡아먹어서 X/인스타를
+   나란히 훑을 수 없었음. 좁은 열이라 숫자는 막대 위에 좌우로 붙임 */
+.metric-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:14px}
+.mcol{border:1px solid #eef1f6;border-radius:10px;padding:10px 12px}
+.mhead{font-size:12px;color:#6b7280;font-weight:600;margin-bottom:6px}
+.mvals{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.mvals .v{font-size:15px;font-weight:700}
+.mvals .v.pw{color:#2563eb}
+.mvals .v.bh{color:#dc2626}
+.mcol .track{display:flex;height:10px;border-radius:5px;overflow:hidden;background:#eef1f6}
+.mcol .track .pw{background:#3b82f6}
+.mcol .track .bh{background:#ef4444}
+.mcol .track.empty{background:repeating-linear-gradient(45deg,#eef1f6,#eef1f6 4px,#e3e8f0 4px,#e3e8f0 8px)}
+.mnote{font-size:10px;color:#9099a6;margin-top:5px;min-height:13px;line-height:1.3}
+.mna{font-size:12px;color:#9099a6;padding:6px 0}
+/* 미리보기 임베드가 화면을 너무 잡아먹어서 70%로 축소. zoom은 레이아웃 박스까지
+   같이 줄어서(transform과 달리) 밑에 빈 공간이 남지 않음 */
+.embed-shrink{zoom:.7}
+.embed-shrink blockquote{max-width:100%}
 .sides{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
 .side{border:1px solid #e3e8f0;border-radius:10px;padding:10px 12px}
 .side h4{margin:0 0 6px;font-size:13px}
@@ -339,8 +406,9 @@ ${pairs.map((p, i) => renderPair(p, i, collectedAt)).join('\n')}
 ※ 이 리포트는 <b>사람이 지목한 게시물</b>만 비교합니다 — 기간이나 상품명 매칭과 무관합니다.<br>
 ※ 숫자는 수집 시각 기준 누적입니다. 게시일과 경과일은 각 글 위에 그대로 적어뒀습니다.<br>
 ※ 결과(우세/경합/약세)는 양쪽 다 읽힌 지표만 세서, 전부 앞서면 우세, 전부 뒤지면 약세, 엇갈리면 경합입니다.<br>
-※ 인스타그램은 <b>좋아요 수를 숨긴 게시물</b>이면 좋아요를 읽을 수 없습니다(댓글 수만 나옴). 리트윗은 X에만 있는 지표라 인스타는 항상 '-'입니다.<br>
-※ 게시물 미리보기는 인터넷이 연결된 브라우저에서 열어야 카드로 보입니다 — 안 보일 때를 위해 본문 앞부분을 같이 넣어뒀습니다.
+※ 인스타그램은 <b>좋아요 수를 숨긴 게시물</b>이면 좋아요를 읽을 수 없습니다. 리트윗·인용은 X에만 있는 지표라 인스타 쪽에는 칸 자체가 없습니다.<br>
+※ 🗨️ 인용은 X 상세 페이지의 인용 목록에서 읽습니다 — 인용이 하나도 없으면 X가 그 링크를 아예 안 만들기 때문에 <b>0으로 표시</b>됩니다.<br>
+※ 게시물 미리보기는 인터넷이 연결된 브라우저에서 열어야 카드로 보입니다 — 안 보일 때는 각 글의 <b>"본문 그대로 보기"</b>를 펼치면 내용이 있습니다.
 </div>
 </div>
 <script>

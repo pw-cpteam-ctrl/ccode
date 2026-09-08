@@ -1416,14 +1416,15 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
       pairs: [
         { label: '토모에', pw: { ok: true, platform: 'instagram', url: 'https://www.instagram.com/p/A/', datetime: '2026-08-25T05:43:00.000Z', likes: '786', comments: '461', retweets: null },
           bh: { ok: true, platform: 'instagram', url: 'https://www.instagram.com/p/B/', datetime: '2026-08-20T08:37:00.000Z', likes: '1,400', comments: '668', retweets: null } },
-        { label: '토모에', pw: { ok: true, platform: 'twitter', url: 'https://x.com/a/status/1', datetime: '2026-08-25T05:03:00.000Z', likes: '324', retweets: '612', comments: '2' },
-          bh: { ok: true, platform: 'twitter', url: 'https://x.com/b/status/2', datetime: '2026-08-20T08:36:00.000Z', likes: '325', retweets: '544', comments: '1' } },
+        { label: '토모에', pw: { ok: true, platform: 'twitter', url: 'https://x.com/a/status/1', datetime: '2026-08-25T05:03:00.000Z', likes: '324', retweets: '612', quotes: '37', comments: '2' },
+          bh: { ok: true, platform: 'twitter', url: 'https://x.com/b/status/2', datetime: '2026-08-20T08:36:00.000Z', likes: '325', retweets: '544', quotes: '21', comments: '1' } },
       ],
     });
 
     assert.ok(html.includes('전체 합산'), '맨 위에 통합 요약이 있어야 함');
     assert.ok(html.includes('1,110') && html.includes('1,725'), '좋아요 합계 786+324 / 1400+325');
-    assert.ok(html.includes('2,185') && html.includes('2,938'), '총 반응(좋아요+리트윗+댓글) 합계');
+    assert.ok(html.includes('2,222') && html.includes('2,959'), '총 반응(좋아요+리트윗+인용+댓글) 합계');
+    assert.ok(html.includes('좋아요 + 리트윗 + 인용 + 댓글'), '무엇을 더한 값인지 실제 들어간 지표로 적어야 함');
     assert.ok(html.indexOf('전체 합산') < html.indexOf('1. 토모에'), '요약이 개별 쌍보다 위에 있어야 함');
     assert.ok(html.includes('인스타그램</b>') && html.includes('X(트위터)</b>'), '플랫폼별 소계도 있어야 함');
 
@@ -1434,6 +1435,46 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
     // 있지도 않은 문제가 합계 밑에 표시됨
     assert.ok(!html.includes('못 읽어서 합계에서 빠짐'), '인스타에 리트윗이 없는 걸 누락으로 세면 안 됨');
     assert.ok(!html.includes('읽을 수 없었음'), '인스타 섹션에서 리트윗 줄은 아예 빠져야 함');
+  });
+
+  check('맞대결 리포트: 인용(X 전용) 지표 + 쌍별 지표는 가로 열로, 인스타에는 칸 자체가 없어야 함', () => {
+    const { buildMatchupReportHtml } = require('./matchup-report');
+    const heads = html => [...html.matchAll(/<div class="mhead">([^<]+)</g)].map(m => m[1]);
+
+    const x = buildMatchupReportHtml({
+      title: 't', collectedAt: '2026-09-08T00:00:00.000Z',
+      pairs: [{ pw: { ok: true, platform: 'twitter', url: 'https://x.com/a/status/1', datetime: '2026-08-25T05:03:00.000Z', likes: '324', retweets: '612', quotes: '37', comments: '2' },
+                bh: { ok: true, platform: 'twitter', url: 'https://x.com/b/status/2', datetime: '2026-08-20T08:36:00.000Z', likes: '325', retweets: '544', quotes: '21', comments: '1' } }],
+    });
+    assert.deepStrictEqual(heads(x), ['❤️ 좋아요', '🔁 리트윗', '🗨️ 인용', '💬 댓글'], 'X는 인용까지 4칸이 가로로 놓여야 함');
+    assert.ok(x.includes('>37<') && x.includes('>21<'), '인용 수가 표시돼야 함');
+    assert.ok(x.includes('.metric-cols{display:grid'), '지표는 행이 아니라 가로 열로 배치돼야 함(스크롤 절약)');
+
+    // 인스타는 리트윗·인용이라는 개념 자체가 없음 — 칸을 만들어놓고 '-'로 두면
+    // "왜 안 읽혔지"로 헤매게 되므로 칸 자체가 없어야 함
+    const ig = buildMatchupReportHtml({
+      title: 't', collectedAt: '2026-09-08T00:00:00.000Z',
+      pairs: [{ pw: { ok: true, platform: 'instagram', url: 'https://www.instagram.com/p/A/', datetime: '2026-09-01T00:00:00.000Z', likes: '10', comments: '2' },
+                bh: { ok: true, platform: 'instagram', url: 'https://www.instagram.com/p/B/', datetime: '2026-09-01T00:00:00.000Z', likes: '5', comments: '1' } }],
+    });
+    assert.deepStrictEqual(heads(ig), ['❤️ 좋아요', '💬 댓글'], '인스타는 좋아요·댓글 2칸만');
+    assert.deepStrictEqual(
+      [...ig.matchAll(/<th>([^<]+)<\/th>/g)].map(m => m[1]),
+      ['🔥 총 반응', '❤️ 좋아요', '💬 댓글'],
+      '인스타만 넣은 리포트의 전체 합산에도 리트윗·인용 줄이 없어야 함');
+    assert.ok(ig.includes('좋아요 + 댓글') && !ig.includes('좋아요 + 리트윗'), '합산 설명도 실제 지표만 적어야 함');
+  });
+
+  check('맞대결 리포트: 본문 원문은 기본 접힘 + 임베드는 70%로 축소 (스크롤 절약)', () => {
+    const { buildMatchupReportHtml } = require('./matchup-report');
+    const html = buildMatchupReportHtml({
+      title: 't', collectedAt: '2026-09-08T00:00:00.000Z',
+      pairs: [{ pw: { ok: true, platform: 'twitter', url: 'https://x.com/a/status/1', datetime: '2026-09-06T00:00:00.000Z', likes: '1', retweets: '1', quotes: '0', comments: '1', text: '토모에 넨도로이드 RT 이벤트!' }, bh: null }],
+    });
+    assert.ok(html.includes('<details class="body-details">'), '본문은 <details>로 감싸 접혀 있어야 함');
+    assert.ok(!/<details class="body-details" open/.test(html), '기본이 펼침이면 안 됨(특수 상황용)');
+    assert.ok(html.includes('토모에 넨도로이드 RT 이벤트!'), '접혀 있어도 내용은 파일 안에 있어야 함');
+    assert.ok(html.includes('.embed-shrink{zoom:.7}'), '임베드는 70%로 축소돼야 함');
   });
 
   check('맞대결 리포트: 우세/경합/약세 판정 — X에만 있는 리트윗은 인스타 판정에서 빠져야 함', () => {
