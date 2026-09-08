@@ -161,10 +161,10 @@ details.advanced summary{cursor:pointer;font-size:12px;color:#6b7280}
         <div class="adv-group-title">리포트에 넣을 때</div>
         <div class="adv-grid">
           <div class="adv-field">
-            <label for="stockMode">재고 표시</label>
+            <label for="stockMode" title="넣어도 첫 화면은 SNS만 보입니다 — 재고는 리포트 맨 위 [📦 재고 비교] 탭 안에 들어갑니다.">재고 표시</label>
             <select id="stockMode" onchange="updateCollectSummary()">
-              <option value="none">넣지 않음 (SNS만)</option>
-              <option value="ratio">점유율·추이만 (개수 비공개)</option>
+              <option value="ratio" selected>📦 재고 탭 함께 넣기 (개수 비공개)</option>
+              <option value="none">아예 빼기 (SNS만, 외부 공유용)</option>
             </select>
           </div>
         </div>
@@ -185,8 +185,8 @@ details.advanced summary{cursor:pointer;font-size:12px;color:#6b7280}
       </label>
       <label>재고 표시
         <select id="rebuildStockMode">
-          <option value="none">넣지 않음 (SNS만)</option>
-          <option value="ratio">점유율·추이만 (개수 비공개)</option>
+          <option value="ratio" selected>📦 재고 탭 함께 넣기 (개수 비공개)</option>
+          <option value="none">아예 빼기 (SNS만, 외부 공유용)</option>
         </select>
       </label>
     </div>
@@ -406,7 +406,7 @@ function updateCollectSummary() {
   const platform = platformSel === 'twitter' ? '트위터만' : platformSel === 'instagram' ? '인스타만' : '트위터+인스타';
   const kw = (document.getElementById('collectKeyword').value || '').trim();
   const stock = document.getElementById('withStock').checked ? '재고 함께 기록' : '재고 기록 안 함';
-  const stockShow = document.getElementById('stockMode').value === 'ratio' ? '리포트에 재고 점유율 포함' : '리포트는 SNS만';
+  const stockShow = document.getElementById('stockMode').value === 'ratio' ? '리포트에 재고 탭 포함' : '리포트는 SNS만';
   el.textContent = [period, platform, stock, stockShow, kw ? ('키워드 "' + kw + '"') : '키워드 없음'].join(' · ');
 }
 

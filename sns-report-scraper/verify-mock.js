@@ -665,7 +665,38 @@ check('html-report: SNS 표 우측 매출 칸(PW vs BH 분할 바) + 하단 재�
     '재고 히스토리가 아예 없으면(null) 하단 섹션도 안 나와야 함');
 });
 
-check('html-report: 기본값은 SNS 전용 — 재고 데이터가 있어도 리포트에 재고가 하나도 안 들어가야 함 (2026-09-07 팀 피드백)', () => {
+check('html-report: 재고는 한 파일 안에서 탭으로 분리 — 첫 화면은 SNS만, 표 안 📦 칸은 기본 접힘 (2026-09-08)', () => {
+  // "리포트 한 장에 정보가 너무 많다"는 피드백을 리포트를 두 번 만드는 걸로 풀면 일이 늘어나므로,
+  // 수집 한 번 = 파일 한 개로 두고 보는 화면만 나눔. 회귀 시 재고가 첫 화면에 다시 깔림.
+  const stockComparison = {
+    latestTakenAt: '2026-07-08T00:00:00.000Z',
+    previousTakenAt: '2026-07-06T00:00:00.000Z',
+    snapshotCount: 2,
+    stores: {
+      PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9486, totalSold: 513, totalSoldIsEstimated: false }],
+      BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 470, totalSold: 30, totalSoldIsEstimated: false }],
+    },
+    storeComparable: { PW: true, BH: true },
+  };
+  const html = buildHtmlReport(report, stockComparison, { stockMode: 'ratio' });
+
+  assert.ok(html.includes("switchView('stock')") && html.includes("switchView('sns')"), '상단에 SNS/재고 전환 탭이 있어야 함');
+  assert.ok(/<body class="[^"]*view-sns/.test(html), '파일을 열면 SNS 화면부터 보여야 함');
+  assert.ok(html.includes('body.view-sns .stock-section{display:none}'), 'SNS 화면에서는 재고 섹션이 가려져야 함');
+  assert.ok(html.includes('body.view-stock .platform:not(.stock-section){display:none}'), '재고 화면에서는 SNS 섹션이 가려져야 함');
+  assert.ok(html.includes("location.hash.slice(1) === 'stock'"), '주소 끝 #stock으로 재고 화면에 바로 들어갈 수 있어야 함');
+
+  // 표 안 📦 칸: 마크업은 있되(체크박스로 켤 수 있게) 기본은 접혀 있어야 함
+  assert.ok(html.includes('body:not(.show-stockcol) .stock-col{display:none}'), '표 안 📦 칸은 기본으로 접혀 있어야 함');
+  assert.ok(html.includes('<th class="stock-col">📦 매출 (PW vs BH)</th>'), '📦 헤더 칸에 접기용 클래스가 붙어 있어야 함');
+  assert.ok(html.includes('<td class="metric stock-col"'), '📦 데이터 칸에도 접기용 클래스가 붙어 있어야 함');
+  assert.ok(html.includes('id="stockColToggle"'), '표 안 📦 칸을 켜는 체크박스가 있어야 함');
+
+  // 탭으로 나눴다고 해서 대외비 방침이 느슨해지면 안 됨 — 개수는 여전히 파일에 없어야 함
+  assert.ok(!html.includes('513') && !html.includes('9486'), '탭 뒤에 숨긴 게 아니라, 판매 개수·재고 수량은 여전히 파일에 없어야 함');
+});
+
+check('html-report: stock=none(외부 공유용)이면 재고 데이터가 있어도 리포트에 재고가 하나도 안 들어가야 함', () => {
   const stockComparison = {
     latestTakenAt: '2026-07-08T00:00:00.000Z',
     previousTakenAt: '2026-07-06T00:00:00.000Z',

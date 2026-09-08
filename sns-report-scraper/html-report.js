@@ -138,7 +138,7 @@ function embedBlockquote(platformKey, post) {
 function salesBar(pwMatch, bhMatch, stockMode = 'ratio') {
   const pwVal = pwMatch && typeof pwMatch.totalSold === 'number' ? pwMatch.totalSold : null;
   const bhVal = bhMatch && typeof bhMatch.totalSold === 'number' ? bhMatch.totalSold : null;
-  if (pwVal === null && bhVal === null) return '<td class="metric sm-none">-</td>';
+  if (pwVal === null && bhVal === null) return '<td class="metric stock-col sm-none">-</td>';
 
   // 'ratio' 모드에서는 판매 개수를 아예 안 내보내고 점유율(막대 + "77:23")만 넣음 —
   // 재고 수량이 대외비라 리포트 파일에 남기지 않기 위함(가리는 게 아니라 미포함).
@@ -146,10 +146,10 @@ function salesBar(pwMatch, bhMatch, stockMode = 'ratio') {
     const pwR = Math.max(pwVal ?? 0, 0);
     const bhR = Math.max(bhVal ?? 0, 0);
     const sum = pwR + bhR;
-    if (sum <= 0) return '<td class="metric sm-none">-</td>';
+    if (sum <= 0) return '<td class="metric stock-col sm-none">-</td>';
     const pwPct = Math.round((pwR / sum) * 100);
     const title = `PW: ${pwMatch ? (pwMatch.name || '매칭 안 됨') : '매칭 안 됨'} · BH: ${bhMatch ? (bhMatch.name || '매칭 안 됨') : '매칭 안 됨'} (개수는 대외비로 미포함)`;
-    return `<td class="metric" title="${escapeHtml(title)}">
+    return `<td class="metric stock-col" title="${escapeHtml(title)}">
       <div class="metriccell">
         <div class="metricbar">
           <span class="metricbar-val pw">${pwPct}%</span>
@@ -182,7 +182,7 @@ function salesBar(pwMatch, bhMatch, stockMode = 'ratio') {
   const pwShare = Math.round(pwPct);
   const shareCaption = total > 0 ? `<div class="metric-diff">${pwShare}:${100 - pwShare}</div>` : '';
 
-  return `<td class="metric" title="${escapeHtml(title)}">
+  return `<td class="metric stock-col" title="${escapeHtml(title)}">
     <div class="metriccell">
       <div class="metricbar">
         <span class="metricbar-val pw">${label(pwMatch, pwVal)}</span>
@@ -325,7 +325,7 @@ function renderPlatformSection(platformKey, data, stockComparison, stockMode = '
         <button class="toggle-all-btn" onclick="captureSection('${platformKey}','${title}')">📷 스크린샷</button>
       </div>
     </div>
-    ${hasStock ? `<div class="sub">📦 재고 매칭 기준 스냅샷: ${escapeHtml(formatTakenAt(stockComparison.latestTakenAt))} (KST) · 표 우측 끝(가로 스크롤)에 PW:BH 점유율만 표시 — 판매 개수는 대외비로 이 파일에 넣지 않음</div>` : ''}
+    ${hasStock ? `<div class="sub">📦 재고 매칭 기준 스냅샷: ${escapeHtml(formatTakenAt(stockComparison.latestTakenAt))} (KST) · 재고는 위 <b>📦 재고 비교</b> 탭에 따로 있고, 이 표 안에서 상품별로 같이 보려면 위 <b>"표 안에 📦 재고 칸 같이 보기"</b>를 켜세요 — PW:BH 점유율만 표시(판매 개수는 대외비로 이 파일에 없음)</div>` : ''}
     ${cards}
     <div class="rowsearch">
       🔎 <input type="text" id="rowsearch-${platformKey}" placeholder="이 표에서 찾기 (예: 카구라)" oninput="filterRows('${platformKey}')">
@@ -335,7 +335,7 @@ function renderPlatformSection(platformKey, data, stockComparison, stockMode = '
     <div class="table-wrap">
       <table>
         <colgroup>${headerCells.map((_, i) => i === 1 ? '<col style="width:130px">' : '<col>').join('')}</colgroup>
-        <thead><tr>${headerCells.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
+        <thead><tr>${headerCells.map((h, i) => `<th${hasStock && i === headerCells.length - 1 ? ' class="stock-col"' : ''}>${escapeHtml(h)}</th>`).join('')}</tr></thead>
         <tbody id="tbody-${platformKey}" data-cols="${headerCells.length}" data-fields="${displayFields.join(',')}" data-has-stock="${hasStock ? '1' : '0'}">${rows || `<tr><td colspan="${headerCells.length}" class="empty">매칭된 상품 없음</td></tr>`}</tbody>
       </table>
     </div>
@@ -399,9 +399,11 @@ function renderPlatformSection(platformKey, data, stockComparison, stockMode = '
  * @param {string} [options.brandLabel] 리포트 상단에 표시할 브랜드 이름(메가하우스/굿스마일) —
  *   브랜드가 여러 개라서 파일만 보고 어느 브랜드 리포트인지 알 수 있어야 함
  * @param {'none'|'ratio'} [options.stockMode='none'] 재고를 리포트에 어떻게 넣을지.
- *   'none'(기본)이면 재고 관련 내용을 아예 안 넣어서 SNS 전용 리포트가 됨("한 장에 정보가
- *   너무 많다"는 팀 피드백 반영). 'ratio'면 점유율·증감률·추이 지수만 넣고 판매 개수·재고
- *   수량 같은 절대 수치는 **파일에 심지 않음**(대외비 — 가리는 게 아니라 미포함).
+ *   'ratio'면 점유율·증감률·추이 지수만 넣고 판매 개수·재고 수량 같은 절대 수치는 **파일에
+ *   심지 않음**(대외비 — 가리는 게 아니라 미포함). 이때도 재고는 첫 화면에 안 깔리고 상단
+ *   [📦 재고 비교] 탭 뒤로 들어감 — "한 장에 정보가 너무 많다"는 팀 피드백을, 리포트를 두 번
+ *   만드는 대신 파일 하나 안에서 화면을 나누는 방식으로 푼 것.
+ *   'none'이면 재고 관련 내용이 파일에 아예 안 들어가서 SNS 전용 리포트가 됨(외부 공유용).
  * @returns {string} HTML 문서 전체
  */
 function buildHtmlReport(report, stockComparison = null, options = {}) {
@@ -525,6 +527,21 @@ tr.manual-row td.name{position:relative}
 .export-box p{font-size:12px;color:#6b7280;margin:0 0 8px}
 .export-box textarea{width:100%;min-height:120px;font-family:monospace;font-size:11px;border:1px solid #d0d5e0;border-radius:8px;padding:8px}
 .foot{margin-top:16px;color:#6b7280;font-size:12px;line-height:1.6;background:#fff;border-radius:10px;padding:14px 16px}
+/* 화면 전환(탭) — 한 번 수집해서 만든 파일 하나 안에서 SNS/재고를 오가게 하기 위한 것.
+   "리포트 한 장에 정보가 너무 많다"는 피드백을 리포트를 두 번 만드는 걸로 풀면 일이 늘어나서,
+   파일은 하나로 두고 보는 화면만 나누는 방식으로 함(주소 끝 #stock / #sns 로도 바로 진입). */
+.viewtabs{display:flex;align-items:center;gap:8px;margin:16px 0 14px;padding-bottom:12px;border-bottom:1px solid #e3e8f0;flex-wrap:wrap}
+.viewtab{border:1px solid #d0d5e0;background:#fff;color:#374151;border-radius:999px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer}
+.viewtab:hover{border-color:#93a3bf}
+.viewtab.active{background:#2563eb;border-color:#2563eb;color:#fff}
+.stockcol-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;margin-left:auto;cursor:pointer}
+body.view-stock .platform:not(.stock-section){display:none}
+body.view-stock .foot{display:none}
+body.view-stock .filter-banner{display:none}
+body.view-stock .export-box{display:none!important}
+body.view-stock .stockcol-toggle{display:none} /* SNS 표에만 해당하는 설정이라 재고 화면에선 숨김 */
+body.view-sns .stock-section{display:none}
+body:not(.show-stockcol) .stock-col{display:none}
 @media (max-width:860px){
   .wrap{padding:20px 12px}
   .cards{flex-direction:column}
@@ -532,9 +549,14 @@ tr.manual-row td.name{position:relative}
   .card-groups{width:100%}
 }
 ${STOCK_SECTION_STYLE}
-</style></head><body><div class="wrap">
+</style></head><body class="view-sns"><div class="wrap">
 <h1>📊 ${escapeHtml(titleText)}</h1>
 <div class="sub">${brandLabel ? `브랜드: <b>${escapeHtml(brandLabel)}</b> · ` : ''}수집 기간: ${escapeHtml(report.startDate)} ~ ${escapeHtml(report.endDate)} · 생성: ${escapeHtml(report.generatedAt)} · <b>PW=자사, BH=경쟁사</b> · 랭킹: PW+BH 지표 합산순${showStock ? '' : ' · SNS 전용(재고 미포함)'}</div>
+${showStock ? `<div class="viewtabs">
+  <button class="viewtab active" data-view="sns" onclick="switchView('sns')">📊 SNS 반응</button>
+  <button class="viewtab" data-view="stock" onclick="switchView('stock')">📦 재고 비교 (비율만)</button>
+  <label class="stockcol-toggle" title="SNS 표의 맨 오른쪽에 상품별 PW:BH 재고 점유율 칸을 붙입니다."><input type="checkbox" id="stockColToggle" onchange="toggleStockCol(this.checked)"> 표 안에 📦 재고 칸 같이 보기</label>
+</div>` : ''}
 ${keyword ? `<div class="filter-banner">🔍 키워드 <b>'${escapeHtml(keyword)}'</b> 필터가 적용된 리포트입니다${keywordExcluded ? ` — 이 조건에 안 맞아서 빠진 게시물 PW ${keywordExcluded.pw}건 · BH ${keywordExcluded.bh}건` : ''}<br><span class="filter-banner-sub">한쪽에만 걸린 상품은 짝이 없어 "매칭 안 됨"으로 빠집니다. 전체를 보려면 키워드를 비우고 다시 만들면 됩니다.</span></div>` : ''}
 ${sections}
 <div class="foot">
@@ -542,7 +564,7 @@ ${sections}
 ※ 표현이 서로 다르거나 상품명을 못 뽑은 게시물은 "매칭 안 됨" 목록에 별도로 있습니다 — 조용히 빠진 게 아닙니다.<br>
 ※ 결과(우세/경합/약세)는 표에 표시된 지표(리트윗+좋아요 또는 좋아요+댓글)가 둘 다 PW가 크면 우세, 둘 다 작으면 약세, 엇갈리면 경합입니다.<br>
 ※ "게시물 보기"는 인터넷 연결된 브라우저에서 열어야 실제 카드로 보입니다 — 오프라인/차단 상태면 링크만 보임.<br>
-※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).${showStock ? '<br>※ 📦 매출 칸(표 우측 끝, 가로 스크롤): 상품명으로 네이버 재고 데이터와 근사 매칭한 결과를 PW:BH 점유율(%)로만 표시합니다 — 판매 개수·재고 수량은 대외비라 이 파일에 포함하지 않았습니다(정확한 개수는 공유하지 않는 엑셀에서 확인). "-"는 이름이 비슷한 재고 상품을 못 찾은 경우입니다. 마우스를 올리면 실제로 매칭된 상품명이 보이니 매칭이 맞는지 확인해보세요.' : ''}
+※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).${showStock ? '<br>※ 📦 재고는 맨 위 <b>[📦 재고 비교]</b> 탭에 따로 담겨 있습니다(주소 끝에 <code>#stock</code>을 붙여도 바로 열립니다). 상품별로 SNS 표와 나란히 보고 싶으면 맨 위 <b>"표 안에 📦 재고 칸 같이 보기"</b>를 켜면 표 우측 끝(가로 스크롤)에 칸이 생깁니다.<br>※ 📦 매출 칸: 상품명으로 네이버 재고 데이터와 근사 매칭한 결과를 PW:BH 점유율(%)로만 표시합니다 — 판매 개수·재고 수량은 대외비라 이 파일에 포함하지 않았습니다(정확한 개수는 공유하지 않는 엑셀에서 확인). "-"는 이름이 비슷한 재고 상품을 못 찾은 경우입니다. 마우스를 올리면 실제로 매칭된 상품명이 보이니 매칭이 맞는지 확인해보세요.' : ''}
 </div>
 ${showStock ? renderStockRatioSectionHtml(stockComparison) : ''}
 <div class="export-box" id="export-box" style="display:none">
@@ -1083,6 +1105,28 @@ function toggleAllStockTrends(forceOpen) {
     toggleStockTrend(row.id, btn);
   });
 }
+
+// SNS 화면 <-> 재고 화면 전환. 리포트를 두 번 만들지 않고 파일 하나로 끝내기 위한 것이라,
+// 어느 화면을 보고 있는지는 주소 끝(#sns / #stock)에 남긴다 — 그 상태 그대로 링크로 넘길 수 있게.
+function switchView(view) {
+  var v = view === 'stock' ? 'stock' : 'sns';
+  if (v === 'stock' && !document.querySelector('.stock-section')) v = 'sns';
+  document.body.classList.toggle('view-stock', v === 'stock');
+  document.body.classList.toggle('view-sns', v !== 'stock');
+  document.querySelectorAll('.viewtab').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.view === v);
+  });
+  if (location.hash.slice(1) !== v) location.hash = v;
+  window.scrollTo(0, 0);
+}
+// 표 안 📦 칸은 기본으로 접어둠 — 켜져 있으면 표가 가로로 넘쳐서 "정신없다"는 그 문제로 돌아감.
+function toggleStockCol(on) {
+  document.body.classList.toggle('show-stockcol', !!on);
+}
+window.addEventListener('hashchange', function () {
+  switchView(location.hash.slice(1));
+});
+if (location.hash.slice(1) === 'stock') switchView('stock');
 </script>
 ${needsTwitterWidget ? '<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>' : ''}
 ${needsInstagramWidget ? '<script async src="https://www.instagram.com/embed.js"></script>' : ''}

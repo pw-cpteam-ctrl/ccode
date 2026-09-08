@@ -124,7 +124,7 @@ function loadBrand(key = DEFAULT_BRAND) {
     defaultDateMode: raw.defaultDateMode || 'custom',
     // 리포트에 재고를 어떻게 넣을지 기본값 — 'none'(안 넣음) 또는 'ratio'(비율·지수만).
     // 절대 수량은 대외비로 취급해서 리포트 파일에 아예 안 심는 것이 방침(html-report.js 참고).
-    defaultStockMode: raw.defaultStockMode || 'none',
+    defaultStockMode: raw.defaultStockMode || 'ratio',
     paths: {
       dataDir,
       configDir,

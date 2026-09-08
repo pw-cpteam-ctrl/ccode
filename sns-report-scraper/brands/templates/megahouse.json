@@ -14,7 +14,7 @@
     { "id": "2weeks", "label": "최근 2주", "days": 14 }
   ],
   "defaultDateMode": "today",
-  "defaultStockMode": "none",
+  "defaultStockMode": "ratio",
   "stockStores": [
     {
       "label": "PW",
