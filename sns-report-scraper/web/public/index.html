@@ -7,7 +7,7 @@
 <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:'Malgun Gothic',system-ui,sans-serif;background:#f4f6fb;color:#1f2937}
-.wrap{max-width:900px;margin:0 auto;padding:28px 18px 60px}
+.wrap{max-width:1000px;margin:0 auto;padding:28px 18px 60px}
 h1{font-size:22px;margin:0 0 4px}
 .sub{color:#6b7280;font-size:13px;margin-bottom:6px}
 .notice{background:#fff9db;border:1px solid #ffe066;border-radius:10px;padding:10px 14px;font-size:12px;color:#665500;margin-bottom:20px;line-height:1.6}
@@ -25,7 +25,10 @@ button.secondary:hover{background:#eef2ff}
 .status-line{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px}
 .dot{width:9px;height:9px;border-radius:50%;background:#c9ced8;flex:none}
 .dot.ok{background:#2f9e44}.dot.warn{background:#e8590c}
-.session-check{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.session-check{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.session-card{display:flex;align-items:center;gap:8px;font-size:13px;border:1px solid #e4e8f0;border-radius:10px;padding:10px 12px;flex-wrap:wrap}
+.session-card .who{font-weight:700}
+.session-card button{margin-left:auto}
 #log{background:#0f1117;color:#d5f5e3;font-family:monospace;font-size:12px;white-space:pre-wrap;border-radius:10px;padding:12px 14px;max-height:320px;overflow-y:auto;margin-top:10px;display:none}
 #jobStatus{font-size:13px;margin-top:6px}
 .report-list{list-style:none;margin:0;padding:0;font-size:13px}
@@ -48,19 +51,28 @@ button.secondary:hover{background:#eef2ff}
 .opt-row input[type=checkbox]{width:auto;min-width:auto}
 .preset-btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .step-label{font-size:13px;font-weight:700;color:#374151;margin:0 0 8px}
-.period-choices{display:flex;flex-direction:column;gap:6px}
+.period-choices{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .period-choices label{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;padding:7px 10px;border:1px solid #e4e8f0;border-radius:8px;cursor:pointer}
 .period-choices label:hover{background:#f7f9ff}
 .period-choices label.picked{border-color:#3b5bdb;background:#eef2ff}
 .period-choices input[type=radio]{margin-top:2px;width:auto;min-width:auto}
 .period-choices .hint{display:block;color:#9099a6;font-size:11px;margin-top:2px}
 .period-choices label.disabled{opacity:.5;cursor:not-allowed}
-button.big{font-size:15px;padding:12px 28px;font-weight:700}
-.summary-line{font-size:12px;color:#9099a6;margin-top:8px;line-height:1.6}
+button.big{font-size:15px;padding:13px 30px;font-weight:700;white-space:nowrap}
+.start-row{display:flex;align-items:center;gap:14px;margin-top:16px;flex-wrap:wrap}
+.summary-line{font-size:12px;color:#6b7280;line-height:1.6;background:#f7f9ff;border:1px solid #e4e8f0;border-radius:8px;padding:8px 12px;flex:1;min-width:280px}
 details.advanced{margin-top:16px;border-top:1px solid #eef0f4;padding-top:10px}
 details.advanced summary{cursor:pointer;font-size:12px;color:#6b7280}
 .advanced-body{margin-top:10px}
-.adv-group-title{font-size:12px;font-weight:700;color:#6b7280;margin:8px 0 4px}
+.adv-group-title{font-size:12px;font-weight:700;color:#6b7280;margin:10px 0 6px}
+.adv-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+.adv-field{display:flex;flex-direction:column;gap:4px}
+.adv-field>label{font-size:12px;color:#374151}
+.adv-field select,.adv-field input[type=text]{border:1px solid #d0d5e0;border-radius:8px;padding:7px 9px;font-size:13px;width:100%}
+.adv-field.adv-span{grid-column:1 / -1}
+.adv-field label.checkline{display:flex;align-items:center;gap:6px;font-size:12px}
+.adv-field label.checkline input{width:auto}
+.muted{color:#9099a6}
 </style>
 </head>
 <body>
@@ -87,10 +99,16 @@ details.advanced summary{cursor:pointer;font-size:12px;color:#6b7280}
       그럴 때 여기서 다시 로그인하면 돼요.
     </p>
     <div class="session-check">
-      <div class="status-line"><span class="dot" id="dot-twitter"></span> 트위터: <span id="text-twitter">확인 중...</span>
-        <button class="secondary" onclick="startLogin('twitter')">트위터 로그인하기</button></div>
-      <div class="status-line"><span class="dot" id="dot-instagram"></span> 인스타그램: <span id="text-instagram">확인 중...</span>
-        <button class="secondary" onclick="startLogin('instagram')">인스타그램 로그인하기</button></div>
+      <div class="session-card">
+        <span class="dot" id="dot-twitter"></span><span class="who">트위터</span>
+        <span id="text-twitter">확인 중...</span>
+        <button class="secondary" onclick="startLogin('twitter')">로그인하기</button>
+      </div>
+      <div class="session-card">
+        <span class="dot" id="dot-instagram"></span><span class="who">인스타그램</span>
+        <span id="text-instagram">확인 중...</span>
+        <button class="secondary" onclick="startLogin('instagram')">로그인하기</button>
+      </div>
     </div>
     <p class="desc" id="loginHelp" style="display:none">
       버튼을 누르면 이 컴퓨터에 실제 브라우저 창이 새로 뜰 거예요. 그 창에서 평소처럼 직접
@@ -114,36 +132,41 @@ details.advanced summary{cursor:pointer;font-size:12px;color:#6b7280}
       <label>종료일(이 날짜도 포함돼요) <input type="date" id="rangeEnd" onchange="updateCollectSummary()"></label>
     </div>
 
-    <div class="step-label" style="margin-top:16px">② 시작</div>
-    <button class="big" onclick="collectFromChoice()">수집 시작</button>
-    <div class="summary-line" id="collectSummary"></div>
+    <div class="start-row">
+      <button class="big" onclick="collectFromChoice()">② 수집 시작</button>
+      <div class="summary-line" id="collectSummary"></div>
+    </div>
 
-    <details class="advanced">
+    <details class="advanced" open>
       <summary>세부 설정 (안 건드려도 됩니다)</summary>
       <div class="advanced-body">
         <div class="adv-group-title">수집할 때</div>
-        <div class="opt-row">
-          <label>플랫폼
+        <div class="adv-grid">
+          <div class="adv-field">
+            <label for="collectPlatform">플랫폼</label>
             <select id="collectPlatform" onchange="updateCollectSummary()"><option value="">둘 다</option><option value="twitter">트위터만</option><option value="instagram">인스타그램만</option></select>
-          </label>
-          <label title="넣으면 그 단어가 들어간 게시물만 리포트에 담깁니다. 비워두면 전부 나와요.">🔍 키워드 1단어(선택)
-            <input type="text" id="collectKeyword" placeholder="예: 은혼" oninput="updateCollectSummary()">
-          </label>
+          </div>
+          <div class="adv-field">
+            <label for="collectKeyword">🔍 키워드 1단어 (선택)</label>
+            <input type="text" id="collectKeyword" placeholder="비워두면 전체 · 예: 은혼" oninput="updateCollectSummary()">
+          </div>
+          <div class="adv-field adv-span">
+            <label class="checkline" title="재고는 지금 시점만 조회할 수 있어서, 안 찍고 지나간 날은 나중에 되돌릴 수 없어요.">
+              <input type="checkbox" id="withStock" checked onchange="updateCollectSummary()">
+              재고도 같이 기록 <span class="muted">(권장 — 안 찍으면 그날 재고는 되살릴 수 없어요)</span>
+            </label>
+          </div>
         </div>
-        <div class="opt-row">
-          <label title="재고는 지금 시점만 조회할 수 있어서, 안 찍고 지나간 날은 나중에 되돌릴 수 없어요.">
-            <input type="checkbox" id="withStock" checked onchange="updateCollectSummary()"> 재고도 같이 기록
-            <span style="color:#9099a6">(권장 — 안 찍으면 그날 재고는 되살릴 수 없어요)</span>
-          </label>
-        </div>
+
         <div class="adv-group-title">리포트에 넣을 때</div>
-        <div class="opt-row">
-          <label>재고 표시
+        <div class="adv-grid">
+          <div class="adv-field">
+            <label for="stockMode">재고 표시</label>
             <select id="stockMode" onchange="updateCollectSummary()">
               <option value="none">넣지 않음 (SNS만)</option>
               <option value="ratio">점유율·추이만 (개수 비공개)</option>
             </select>
-          </label>
+          </div>
         </div>
       </div>
     </details>
