@@ -40,11 +40,13 @@ p.sub{font-size:13px;color:#7d7568;margin:0 0 27px;}
   align-items:center;
   gap:6px;
   padding:10px 13px;
-  /* 제목을 진한 띠로 깔아 내용(흰 바탕)과 구분한다. 옅은 색으로 했더니 페이지 배경
-     (#f0ede7)과 거의 같은 색이라 띠가 배경에 묻혀 구분이 안 됐다.
-     중간 밝기(#9a8f7c 부근)는 흰 글자·검정 글자 모두 대비가 떨어져 제목이 흐려지므로
-     피하고, 흰 글자가 5.7:1로 선명하게 읽히는 어두운 쪽으로 잡았다. */
-  background:#6f6555;
+  /* 이벤트 추첨기(event-raffle)의 카드 머리말과 같은 방식 — 옅은 색이 위에서 아래로
+     투명하게 사라지는 그라데이션. 진한 띠를 두르면 옛날 표 헤더처럼 보이는데, 이 방식은
+     띠의 경계가 없어 훨씬 가볍고 깨끗하게 읽힌다.
+     (원본: background:linear-gradient(180deg,var(--step-soft),transparent) + 아래 경계선)
+     카드가 흰 바탕이라 아래쪽 transparent가 그대로 흰색으로 이어진다. */
+  background:linear-gradient(180deg,#eef0fe 0%,transparent 100%);
+  border-bottom:1px solid #e7e9ee;
   min-width:0;
 }
 /* 썸네일과 설명은 제목 아래에서 좌우로 나눠 앉는다 */
@@ -81,7 +83,7 @@ p.sub{font-size:13px;color:#7d7568;margin:0 0 27px;}
   .name{ white-space:normal; }   /* 2열에선 폭이 170px뿐이라 접히는 걸 허용 */
 }
 .name{
-  color:#fff;              /* 제목 띠가 진한 색이라 흰 글자 */
+  color:#221d16;           /* 머리말이 옅은 그라데이션이라 검정 글자 */
   font-size:16px;
   font-weight:700;
   line-height:1.35;
