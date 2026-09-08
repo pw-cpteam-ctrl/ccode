@@ -209,6 +209,32 @@ function canonicalKeyword(token) {
 // 상용구/라인명 제거는 토큰을 통째로 버리지 않고 **문자열에서 부분 제거**하는 방식 —
 // "배리어블액션"처럼 붙여 쓴 단어에서 "액션"만 지우고 "배리어블"은 남기기 위함.
 // 토큰은 한글/영문 글자만 인정(숫자 제외) — "26년", "7월" 같은 날짜가 자동으로 안 걸림.
+/**
+ * 게시물 본문이 검색어 한 단어에 걸리는지 판단(리포트 키워드 필터용).
+ *
+ * 표기가 달라도 걸리게 함 — "은혼"으로 검색하면 본문에 `銀魂`만 있는 게시물도 잡힘
+ * (KEYWORD_ALIASES 재사용). 대소문자·자모분리(NFD)도 무시.
+ * 상용구(GENERIC_KEYWORDS)로 등록된 말(예: "재판")로도 검색이 되게, 키워드 토큰뿐 아니라
+ * 원문 문자열 자체도 같이 확인함.
+ */
+function textMatchesKeyword(text, keyword) {
+  const raw = (keyword || '').normalize('NFC').trim().toLowerCase();
+  if (!raw) return true; // 검색어가 없으면 전부 통과(기본 동작과 동일)
+  const body = (text || '').normalize('NFC').toLowerCase();
+  if (body.includes(raw)) return true;
+
+  // 검색어를 대표 표기로 접어서도 확인(예: 銀魂 → 은혼, 카이타닉스 → KAITANICS)
+  const canonical = canonicalKeyword((keyword || '').normalize('NFC').trim()).toLowerCase();
+  if (canonical !== raw && body.includes(canonical)) return true;
+
+  // 본문에서 뽑은 키워드는 이미 대표 표기로 접혀 있으므로, 반대 방향(본문이 銀魂, 검색어가
+  // 은혼)도 여기서 걸림.
+  return extractKeywords(text).some(tok => {
+    const t = tok.toLowerCase();
+    return t.includes(raw) || t.includes(canonical);
+  });
+}
+
 function extractKeywords(text) {
   if (!text) return [];
   // ⚠️ 인스타그램 자사 계정 캡션 일부가 자모 분리형(NFD, 예: "구매" → ㄱ+ㅜ+ㅁ+ㅐ 낱자
@@ -349,5 +375,6 @@ if (typeof module !== 'undefined' && module.exports) {
     LINE_ALIASES,
     KEYWORD_ALIASES,
     canonicalKeyword,
+    textMatchesKeyword,
   };
 }

@@ -283,7 +283,16 @@ function renderPlatformSection(platformKey, data, stockComparison, stockMode = '
       </div>
     </td></tr>`;
 
-    return `<tr class="${verdictRowClass}">${cells}</tr>${embedRow}`;
+    // 리포트 안 실시간 검색(아래 filterRows)이 상품명뿐 아니라 **게시물 본문**까지 훑도록
+    // 검색용 문자열을 행에 심어둠. 본문에서 뽑은 키워드(표기 통일 적용)도 같이 넣어서,
+    // "은혼"으로 쳐도 본문에 銀魂만 있는 행이 걸리게 함.
+    const searchSource = [
+      p.ip || '', p.line || '',
+      ...[...p.ownPosts, ...p.competitorPosts].map(post => post[stockTextField] || ''),
+      ...[...p.ownPosts, ...p.competitorPosts].flatMap(post => extractKeywords(post[stockTextField] || '')),
+    ].join(' ').replace(/\s+/g, ' ').toLowerCase();
+
+    return `<tr class="${verdictRowClass}" data-search="${escapeHtml(searchSource)}">${cells}</tr>${embedRow}`;
   }).join('');
 
   // 번호(PW #1, BH #1...)를 붙여둠 — 수동 매칭 지시할 때 "PW 3번 BH 1번 매칭해줘"처럼
@@ -318,6 +327,11 @@ function renderPlatformSection(platformKey, data, stockComparison, stockMode = '
     </div>
     ${hasStock ? `<div class="sub">📦 재고 매칭 기준 스냅샷: ${escapeHtml(formatTakenAt(stockComparison.latestTakenAt))} (KST) · 표 우측 끝(가로 스크롤)에 PW:BH 점유율만 표시 — 판매 개수는 대외비로 이 파일에 넣지 않음</div>` : ''}
     ${cards}
+    <div class="rowsearch">
+      🔎 <input type="text" id="rowsearch-${platformKey}" placeholder="이 표에서 찾기 (예: 카구라)" oninput="filterRows('${platformKey}')">
+      <button class="toggle-all-btn" onclick="clearRowSearch('${platformKey}')">지우기</button>
+      <span class="count" id="rowsearch-count-${platformKey}"></span>
+    </div>
     <div class="table-wrap">
       <table>
         <colgroup>${headerCells.map((_, i) => i === 1 ? '<col style="width:130px">' : '<col>').join('')}</colgroup>
@@ -391,7 +405,7 @@ function renderPlatformSection(platformKey, data, stockComparison, stockMode = '
  * @returns {string} HTML 문서 전체
  */
 function buildHtmlReport(report, stockComparison = null, options = {}) {
-  const { brandLabel = '' } = options;
+  const { brandLabel = '', keyword = '', keywordExcluded = null } = options;
   const stockMode = options.stockMode === 'ratio' ? 'ratio' : 'none';
   const showStock = Boolean(stockComparison) && stockMode !== 'none';
   const platformKeys = Object.keys(report.platforms);
@@ -501,6 +515,11 @@ details.manual-add-fallback summary{cursor:pointer;color:#9099a6;font-size:12px}
 tr.manual-row{background:#f2fbf4}
 tr.manual-row td.name{position:relative}
 .manual-tag{display:inline-block;font-size:10px;font-weight:700;color:#2f9e44;background:#ebfbee;border-radius:999px;padding:1px 6px;margin-right:4px}
+.filter-banner{background:#fff9db;border:1px solid #ffe066;border-radius:10px;padding:10px 14px;font-size:13px;color:#665500;margin-bottom:18px;line-height:1.6}
+.filter-banner-sub{color:#8a7500;font-size:12px}
+.rowsearch{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:12px;color:#6b7280;flex-wrap:wrap}
+.rowsearch input{border:1px solid #d0d5e0;border-radius:8px;padding:6px 10px;font-size:12px;min-width:180px}
+.rowsearch .count{color:#9099a6}
 .export-box{margin-top:16px;background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .export-box h3{font-size:14px;margin:0 0 6px}
 .export-box p{font-size:12px;color:#6b7280;margin:0 0 8px}
@@ -516,6 +535,7 @@ ${STOCK_SECTION_STYLE}
 </style></head><body><div class="wrap">
 <h1>📊 ${escapeHtml(titleText)}</h1>
 <div class="sub">${brandLabel ? `브랜드: <b>${escapeHtml(brandLabel)}</b> · ` : ''}수집 기간: ${escapeHtml(report.startDate)} ~ ${escapeHtml(report.endDate)} · 생성: ${escapeHtml(report.generatedAt)} · <b>PW=자사, BH=경쟁사</b> · 랭킹: PW+BH 지표 합산순${showStock ? '' : ' · SNS 전용(재고 미포함)'}</div>
+${keyword ? `<div class="filter-banner">🔍 키워드 <b>'${escapeHtml(keyword)}'</b> 필터가 적용된 리포트입니다${keywordExcluded ? ` — 이 조건에 안 맞아서 빠진 게시물 PW ${keywordExcluded.pw}건 · BH ${keywordExcluded.bh}건` : ''}<br><span class="filter-banner-sub">한쪽에만 걸린 상품은 짝이 없어 "매칭 안 됨"으로 빠집니다. 전체를 보려면 키워드를 비우고 다시 만들면 됩니다.</span></div>` : ''}
 ${sections}
 <div class="foot">
 ※ 상품명은 게시물 본문에서 자동 추출(당사: 첫 줄 / 경쟁사: 링크 줄 위) 후, 키워드 2개 이상 겹치는 게시물끼리 그룹화한 결과입니다.<br>
@@ -1013,6 +1033,42 @@ function toggleAllEmbeds(platform, forceOpen) {
     toggleEmbeds(row.id, platform, btn);
   });
 }
+// 리포트 안 실시간 필터 — 도구(대시보드)를 안 켜도, 팀원에게 파일만 보내도 그대로 동작함.
+// 행에 심어둔 data-search(상품명 + 게시물 본문 + 표기 통일된 키워드)를 훑어서 즉시 걸러냄.
+function filterRows(platform) {
+  var input = document.getElementById('rowsearch-' + platform);
+  var raw = (input.value || '').trim().toLowerCase();
+  // 검색어도 대표 표기로 접어줌 — "銀魂"로 쳐도 본문이 "은혼"인 행이 걸리게(그 반대도 됨)
+  var canonical = raw ? String(canonicalKeyword(input.value.trim())).toLowerCase() : '';
+  var tbody = document.getElementById('tbody-' + platform);
+  var rows = tbody.querySelectorAll('tr');
+  var total = 0;
+  var shown = 0;
+  rows.forEach(function (tr) {
+    if (tr.classList.contains('embed-row')) return; // 게시물 임베드 줄은 아래에서 같이 처리
+    var hay = tr.dataset.search;
+    if (hay === undefined) { total++; shown++; return; } // 수동 추가/합친 행은 항상 보이게
+    total++;
+    var hit = !raw || hay.indexOf(raw) !== -1 || (canonical && hay.indexOf(canonical) !== -1);
+    tr.style.display = hit ? '' : 'none';
+    if (hit) shown++;
+    // 바로 뒤에 붙는 임베드 줄도 같이 숨김(펼쳐져 있던 경우 포함)
+    var next = tr.nextElementSibling;
+    if (next && next.classList.contains('embed-row')) {
+      next.dataset.hiddenByFilter = hit ? '' : '1';
+      if (!hit) next.style.display = 'none';
+      else next.style.display = next.classList.contains('open') ? 'table-row' : '';
+    }
+  });
+  var countEl = document.getElementById('rowsearch-count-' + platform);
+  countEl.textContent = raw ? (total + '개 중 ' + shown + '개 표시 중') : '';
+}
+
+function clearRowSearch(platform) {
+  document.getElementById('rowsearch-' + platform).value = '';
+  filterRows(platform);
+}
+
 function toggleStockTrend(rowId, btn) {
   var row = document.getElementById(rowId);
   var opening = !row.classList.contains('open');

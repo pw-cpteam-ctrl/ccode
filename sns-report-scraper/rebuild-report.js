@@ -12,7 +12,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { buildComparisonReport, applyManualPosts } = require('./aggregate');
+const { buildComparisonReport, applyManualPosts, filterCollectionsByKeyword } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
 const { saveHtmlReport } = require('./html-report');
 const { buildStockComparison } = require('./stock-report');
@@ -24,6 +24,9 @@ async function main() {
   const brand = prepareBrand(brandKey);
   const stockArg = rest.find(a => /^--?stock=(none|ratio)$/.test(a) || /^stock=(none|ratio)$/.test(a));
   const stockMode = stockArg ? stockArg.split('=')[1] : brand.defaultStockMode;
+  // 같은 캐시로 키워드만 바꿔가며 몇 초 만에 다시 볼 수 있게 하는 것이 이 스크립트의 요점
+  const keywordArg = rest.find(a => /^--?keyword=/.test(a) || /^keyword=/.test(a));
+  const keyword = keywordArg ? keywordArg.slice(keywordArg.indexOf('=') + 1).trim() : '';
   console.log(`🏷️  브랜드: ${brand.label} (${brand.key})`);
 
   const CACHE_PATH = brand.paths.cache;
@@ -45,12 +48,17 @@ async function main() {
     ? JSON.parse(fs.readFileSync(brand.paths.manualPosts, 'utf-8'))
     : {};
   const { own, competitors } = applyManualPosts(cached.own, cached.competitors, manualPosts);
+  const ownFiltered = filterCollectionsByKeyword(own, keyword);
+  const bhFiltered = filterCollectionsByKeyword(competitors, keyword);
+  if (keyword) {
+    console.log(`🔍 키워드 필터 '${keyword}' 적용 — 리포트에 넣을 게시물 PW ${ownFiltered.kept}건 / BH ${bhFiltered.kept}건 (제외 PW ${ownFiltered.excluded}건 · BH ${bhFiltered.excluded}건)`);
+  }
 
   const report = buildComparisonReport({
     startDate: cached.startDate,
     endDate: cached.endDate,
-    own,
-    competitors,
+    own: ownFiltered.collections,
+    competitors: bhFiltered.collections,
     manualMatches,
     ignorePosts,
   });
@@ -66,7 +74,10 @@ async function main() {
   const stockComparison = stockHistory ? buildStockComparison(stockHistory) : null;
 
   const htmlOutputPath = archiveAndGetPath(brand.paths.htmlDir, brand.paths.htmlBaseName, 'html');
-  saveHtmlReport(report, htmlOutputPath, stockComparison, { brandLabel: brand.label, stockMode });
+  saveHtmlReport(report, htmlOutputPath, stockComparison, {
+    brandLabel: brand.label, stockMode,
+    keyword, keywordExcluded: { pw: ownFiltered.excluded, bh: bhFiltered.excluded },
+  });
   console.log(`✅ HTML 저장 완료: ${htmlOutputPath} (브라우저로 열어서 확인, 이전 파일은 ${path.relative(__dirname, brand.paths.htmlDir)}/old/로 이동됨)`);
 }
 

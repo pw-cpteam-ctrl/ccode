@@ -47,6 +47,20 @@ button.secondary:hover{background:#eef2ff}
 .opt-row label{display:flex;align-items:center;gap:5px}
 .opt-row input[type=checkbox]{width:auto;min-width:auto}
 .preset-btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.step-label{font-size:13px;font-weight:700;color:#374151;margin:0 0 8px}
+.period-choices{display:flex;flex-direction:column;gap:6px}
+.period-choices label{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;padding:7px 10px;border:1px solid #e4e8f0;border-radius:8px;cursor:pointer}
+.period-choices label:hover{background:#f7f9ff}
+.period-choices label.picked{border-color:#3b5bdb;background:#eef2ff}
+.period-choices input[type=radio]{margin-top:2px;width:auto;min-width:auto}
+.period-choices .hint{display:block;color:#9099a6;font-size:11px;margin-top:2px}
+.period-choices label.disabled{opacity:.5;cursor:not-allowed}
+button.big{font-size:15px;padding:12px 28px;font-weight:700}
+.summary-line{font-size:12px;color:#9099a6;margin-top:8px;line-height:1.6}
+details.advanced{margin-top:16px;border-top:1px solid #eef0f4;padding-top:10px}
+details.advanced summary{cursor:pointer;font-size:12px;color:#6b7280}
+.advanced-body{margin-top:10px}
+.adv-group-title{font-size:12px;font-weight:700;color:#6b7280;margin:8px 0 4px}
 </style>
 </head>
 <body>
@@ -87,49 +101,73 @@ button.secondary:hover{background:#eef2ff}
   </div>
 
   <div class="panel">
-    <h2>2. 오늘 실적 수집</h2>
+    <h2>2. 실적 수집하기</h2>
     <p class="desc">
-      자사(PW)·경쟁사(BH)의 오늘 하루 트위터·인스타그램 게시물을 모아서 비교 리포트를
-      만들어요. 실제로 인터넷을 오가며 게시물을 읽어오는 거라 보통 몇 분 정도 걸려요.
+      자사(PW)와 경쟁사(BH)의 게시물을 모아서 비교 리포트를 만들어요. 인터넷을 오가며 실제로
+      읽어오는 거라 보통 <b>몇 분</b> 걸립니다.
     </p>
-    <div class="opt-row">
-      <label>플랫폼
-        <select id="collectPlatform"><option value="">둘 다</option><option value="twitter">트위터만</option><option value="instagram">인스타그램만</option></select>
-      </label>
-      <label title="재고는 지금 시점만 조회할 수 있어서, 안 찍고 지나간 날은 나중에 되돌릴 수 없어요. 특별한 이유가 없으면 켜두는 게 좋아요.">
-        <input type="checkbox" id="withStock" checked> 재고도 같이 기록 <span style="color:#9099a6">(권장 — 나중에 소급 불가)</span>
-      </label>
-      <label>리포트에 재고 표시
-        <select id="stockMode">
-          <option value="none">넣지 않음 (SNS만)</option>
-          <option value="ratio">점유율·추이만 (개수 비공개)</option>
-        </select>
-      </label>
+
+    <div class="step-label">① 어느 기간을 볼까요?</div>
+    <div class="period-choices" id="periodChoices"></div>
+    <div class="row" id="customRange" style="display:none;margin-top:6px">
+      <label>시작일 <input type="date" id="rangeStart" onchange="document.getElementById('rangeEnd').value = this.value; updateCollectSummary()"></label>
+      <label>종료일(이 날짜도 포함돼요) <input type="date" id="rangeEnd" onchange="updateCollectSummary()"></label>
     </div>
-    <div class="preset-btns" id="datePresetBtns"></div>
-    <div class="sub" style="margin-top:12px">특정 기간을 직접 지정하고 싶다면</div>
-    <div class="row" style="margin-top:8px">
-      <label>시작일 <input type="date" id="rangeStart" onchange="document.getElementById('rangeEnd').value = this.value"></label>
-      <label>종료일(이 날짜도 포함돼요) <input type="date" id="rangeEnd"></label>
-      <button onclick="collect('range')">이 기간으로 수집</button>
-    </div>
+
+    <div class="step-label" style="margin-top:16px">② 시작</div>
+    <button class="big" onclick="collectFromChoice()">수집 시작</button>
+    <div class="summary-line" id="collectSummary"></div>
+
+    <details class="advanced">
+      <summary>세부 설정 (안 건드려도 됩니다)</summary>
+      <div class="advanced-body">
+        <div class="adv-group-title">수집할 때</div>
+        <div class="opt-row">
+          <label>플랫폼
+            <select id="collectPlatform" onchange="updateCollectSummary()"><option value="">둘 다</option><option value="twitter">트위터만</option><option value="instagram">인스타그램만</option></select>
+          </label>
+          <label title="넣으면 그 단어가 들어간 게시물만 리포트에 담깁니다. 비워두면 전부 나와요.">🔍 키워드 1단어(선택)
+            <input type="text" id="collectKeyword" placeholder="예: 은혼" oninput="updateCollectSummary()">
+          </label>
+        </div>
+        <div class="opt-row">
+          <label title="재고는 지금 시점만 조회할 수 있어서, 안 찍고 지나간 날은 나중에 되돌릴 수 없어요.">
+            <input type="checkbox" id="withStock" checked onchange="updateCollectSummary()"> 재고도 같이 기록
+            <span style="color:#9099a6">(권장 — 안 찍으면 그날 재고는 되살릴 수 없어요)</span>
+          </label>
+        </div>
+        <div class="adv-group-title">리포트에 넣을 때</div>
+        <div class="opt-row">
+          <label>재고 표시
+            <select id="stockMode" onchange="updateCollectSummary()">
+              <option value="none">넣지 않음 (SNS만)</option>
+              <option value="ratio">점유율·추이만 (개수 비공개)</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </details>
   </div>
 
   <div class="panel">
-    <h2>3. 방금 수집한 데이터로 리포트만 다시 만들기</h2>
+    <h2>3. 다시 수집하지 않고 리포트만 다시 만들기</h2>
     <p class="desc">
-      재수집(몇 분) 없이, 방금 수집해둔 원본 데이터로 엑셀·화면 리포트만 몇 초 안에 다시
-      만들어요. 수동으로 매칭을 조정했거나 리포트 형식만 다시 보고 싶을 때 사용해요.
+      방금 모아둔 데이터로 몇 초 만에 다시 만들어요(인터넷 접속 없음).
+      <b>키워드만 바꿔서 다시 볼 때</b> 쓰면 좋아요 — 수집은 통째로 해두고 볼 때만 거르는 구조라
+      몇 분짜리 재수집이 필요 없습니다.
     </p>
     <div class="opt-row">
-      <label>리포트에 재고 표시
+      <label>🔍 키워드 1단어(선택)
+        <input type="text" id="rebuildKeyword" placeholder="비워두면 전체">
+      </label>
+      <label>재고 표시
         <select id="rebuildStockMode">
           <option value="none">넣지 않음 (SNS만)</option>
           <option value="ratio">점유율·추이만 (개수 비공개)</option>
         </select>
       </label>
     </div>
-    <button onclick="rebuild()">캐시로 다시 만들기</button>
+    <button onclick="rebuild()">리포트 다시 만들기</button>
   </div>
 
   <div class="panel">
@@ -211,6 +249,10 @@ let jobRunning = false;
 // 선택된 브랜드는 화면을 새로 열어도 유지되게 브라우저에 저장해둠(값 변경 → 화면 반영 → 저장).
 let brands = [];
 let currentBrand = localStorage.getItem('snsReportBrand') || '';
+// 브랜드를 빠르게 바꾸면 먼저 보낸 요청의 응답이 나중에 도착해서 **이전 브랜드 화면이
+// 최신 화면을 덮어쓰는** 문제가 있었음(굿스마일을 골랐는데 메가하우스 기간 목록이 남음).
+// 요청마다 번호를 매겨서, 응답이 왔을 때 그 사이 다른 브랜드를 골랐으면 그 응답은 버림.
+let brandRequestSeq = 0;
 
 function brandQuery() {
   return currentBrand ? ('?brand=' + encodeURIComponent(currentBrand)) : '';
@@ -262,31 +304,93 @@ async function selectBrand(key) {
 }
 
 function renderDatePresets(brandInfo) {
-  const box = document.getElementById('datePresetBtns');
+  const box = document.getElementById('periodChoices');
   if (!box) return;
-  box.innerHTML = '';
   const presets = (brandInfo && brandInfo.datePresets) || [];
-  presets.forEach(preset => {
-    const btn = document.createElement('button');
-    btn.textContent = preset.label + ' 수집';
-    btn.onclick = () => collectPreset(preset);
-    box.appendChild(btn);
-  });
-  // "마지막 수집 이후 전부" — 게시가 뜨문한 브랜드(굿스마일 등)에서 빠뜨리는 기간이 없게.
-  const sinceBtn = document.createElement('button');
-  sinceBtn.className = 'secondary';
   const last = brandInfo && brandInfo.lastRun;
-  sinceBtn.textContent = last ? ('마지막 수집(' + last.endDate + ') 이후 전부') : '마지막 수집 이후 전부';
-  sinceBtn.disabled = !last;
-  sinceBtn.title = last ? '' : '아직 이 브랜드로 수집한 기록이 없어서 쓸 수 없어요 — 먼저 한 번 기간을 지정해 수집해주세요.';
-  sinceBtn.onclick = () => collect('since-last');
-  box.appendChild(sinceBtn);
+
+  // 기간을 "버튼 여러 개"가 아니라 "고르는 목록"으로 바꿈 — 실행 버튼은 아래 [수집 시작]
+  // 하나뿐이라, 처음 보는 사람도 "고른다 → 시작한다" 두 단계로만 읽힘.
+  const choices = presets.map(pr => ({
+    id: pr.id,
+    label: pr.label + (pr.id === 'today' ? ' 하루' : ''),
+    hint: pr.days ? ('오늘부터 ' + pr.days + '일 전까지') : '오늘 하루만',
+    days: pr.days,
+  }));
+  choices.push({
+    id: 'since-last',
+    label: '지난번 수집 이후 새로 올라온 것 전부',
+    hint: last ? ('마지막 수집(' + last.endDate + ') 다음날부터 오늘까지') : '아직 이 브랜드로 수집한 적이 없어서 쓸 수 없어요',
+    disabled: !last,
+  });
+  choices.push({ id: 'custom', label: '날짜를 직접 고를래요', hint: '아래에 시작일·종료일을 입력해요' });
+
+  box.innerHTML = choices.map((c, i) => (
+    '<label class="' + (c.disabled ? 'disabled' : '') + '">' +
+    '<input type="radio" name="periodChoice" value="' + c.id + '"' +
+    (c.days ? ' data-days="' + c.days + '"' : '') +
+    (c.disabled ? ' disabled' : '') + '>' +
+    '<span>' + c.label + '<span class="hint">' + c.hint + '</span></span></label>'
+  )).join('');
+
+  box.querySelectorAll('input[name=periodChoice]').forEach(r => {
+    r.addEventListener('change', onPeriodChoiceChange);
+  });
+  // 브랜드 기본값을 미리 골라둠(메가=오늘, 굿스마=직접 지정)
+  const preferred = (brandInfo && brandInfo.defaultDateMode === 'today') ? 'today' : (choices[0] && choices[0].id);
+  const target = box.querySelector('input[value="' + preferred + '"]:not([disabled])') || box.querySelector('input:not([disabled])');
+  if (target) { target.checked = true; }
+  onPeriodChoiceChange();
 }
 
-// 한국어 조사 처리 — 받침이 있으면 "은/이", 없으면 "는/가" (예: 굿스마일'은', 메가하우스'는')
+function selectedPeriod() {
+  const el = document.querySelector('input[name=periodChoice]:checked');
+  return el ? { id: el.value, days: el.dataset.days ? parseInt(el.dataset.days, 10) : null } : null;
+}
+
+function onPeriodChoiceChange() {
+  document.querySelectorAll('.period-choices label').forEach(l => {
+    l.classList.toggle('picked', !!l.querySelector('input:checked'));
+  });
+  const sel = selectedPeriod();
+  // 날짜 입력칸은 "직접 고르기"를 골랐을 때만 보여줌 — 평소 화면을 짧게 유지
+  document.getElementById('customRange').style.display = (sel && sel.id === 'custom') ? '' : 'none';
+  updateCollectSummary();
+}
+
+// 누르기 전에 "무엇이 실행되는지" 한 줄로 보여줌 — 몇 분짜리 작업을 잘못 눌러 날리는 것 방지
+function updateCollectSummary() {
+  const el = document.getElementById('collectSummary');
+  if (!el) return;
+  const sel = selectedPeriod();
+  if (!sel) { el.textContent = ''; return; }
+
+  let period = '';
+  if (sel.id === 'today') period = '오늘 하루';
+  else if (sel.id === 'since-last') period = '지난번 수집 이후 전부';
+  else if (sel.id === 'custom') {
+    const a = document.getElementById('rangeStart').value;
+    const b = document.getElementById('rangeEnd').value;
+    period = (a && b) ? (a + ' ~ ' + b) : '날짜를 입력해주세요';
+  } else if (sel.days) {
+    const end = new Date();
+    const start = new Date(end.getTime() - (sel.days - 1) * 86400000);
+    const fmt = d => d.toISOString().slice(0, 10);
+    period = fmt(start) + ' ~ ' + fmt(end);
+  }
+
+  const platformSel = document.getElementById('collectPlatform').value;
+  const platform = platformSel === 'twitter' ? '트위터만' : platformSel === 'instagram' ? '인스타만' : '트위터+인스타';
+  const kw = (document.getElementById('collectKeyword').value || '').trim();
+  const stock = document.getElementById('withStock').checked ? '재고 함께 기록' : '재고 기록 안 함';
+  const stockShow = document.getElementById('stockMode').value === 'ratio' ? '리포트에 재고 점유율 포함' : '리포트는 SNS만';
+  el.textContent = [period, platform, stock, stockShow, kw ? ('키워드 "' + kw + '"') : '키워드 없음'].join(' · ');
+}
+
+// 한국어 조사 처리 — 받침이 있으면 "은", 없으면 "는" (예: 굿스마일'은', 메가하우스'는')
 function withParticle(word, withFinal, withoutFinal) {
   const last = (word || '').trim().slice(-1);
-  const code = last.charCodeAt(0);
+  const code = last ? last.charCodeAt(0) : 0;
   const isHangul = code >= 0xac00 && code <= 0xd7a3;
   const hasFinal = isHangul && (code - 0xac00) % 28 !== 0;
   return word + (hasFinal ? withFinal : withoutFinal);
@@ -315,8 +419,10 @@ function setButtonsDisabled(disabled) {
 }
 
 async function refreshStatus() {
+  const seq = ++brandRequestSeq;
   const res = await fetch('/api/status' + brandQuery());
   const data = await res.json();
+  if (seq !== brandRequestSeq) return; // 그 사이 다른 브랜드를 고름 → 이 응답은 버림
   setSession('twitter', data.hasTwitterSession);
   setSession('instagram', data.hasInstagramSession);
   renderBrandNote(data.brand);
@@ -401,7 +507,24 @@ function collectOptions() {
     platform: document.getElementById('collectPlatform').value || undefined,
     withStock: chk ? chk.checked : true,
     stockMode: document.getElementById('stockMode').value,
+    keyword: (document.getElementById('collectKeyword').value || '').trim() || undefined,
   };
+}
+
+// [수집 시작] 하나로 모든 기간 선택지를 처리
+function collectFromChoice() {
+  const sel = selectedPeriod();
+  if (!sel) { alert('기간을 먼저 골라주세요.'); return; }
+  if (sel.id === 'today') return collect('today');
+  if (sel.id === 'since-last') return collect('since-last');
+  if (sel.id === 'custom') return collect('range');
+  // 기간 프리셋(최근 2주/2개월 등) — 오늘 기준으로 날짜를 계산해서 기간 수집으로 보냄
+  const end = new Date();
+  const start = new Date(end.getTime() - (sel.days - 1) * 86400000);
+  const fmt = d => d.toISOString().slice(0, 10);
+  document.getElementById('rangeStart').value = fmt(start);
+  document.getElementById('rangeEnd').value = fmt(end);
+  collect('range');
 }
 
 function collect(mode) {
@@ -414,19 +537,11 @@ function collect(mode) {
   runOrAlert(() => fetch('/api/collect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
 }
 
-// 브랜드 설정의 기간 프리셋([오늘], [최근 2주] 등) — days가 있으면 오늘부터 그만큼 거슬러 올라감.
-function collectPreset(preset) {
-  if (preset.id === 'today' || !preset.days) { collect('today'); return; }
-  const end = new Date();
-  const start = new Date(end.getTime() - (preset.days - 1) * 86400000);
-  const fmt = d => d.toISOString().slice(0, 10);
-  document.getElementById('rangeStart').value = fmt(start);
-  document.getElementById('rangeEnd').value = fmt(end);
-  collect('range');
-}
-
 function rebuild() {
-  const body = withBrand({ stockMode: document.getElementById('rebuildStockMode').value });
+  const body = withBrand({
+    stockMode: document.getElementById('rebuildStockMode').value,
+    keyword: (document.getElementById('rebuildKeyword').value || '').trim() || undefined,
+  });
   runOrAlert(() => fetch('/api/rebuild', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
 }
 
@@ -481,8 +596,10 @@ function cancelJob() {
 }
 
 async function refreshReports() {
+  const seq = brandRequestSeq;
   const res = await fetch('/api/reports' + brandQuery());
   const files = await res.json();
+  if (seq !== brandRequestSeq) return; // 위와 같은 이유(늦게 온 이전 브랜드 응답 무시)
   const ul = document.getElementById('reportList');
   ul.innerHTML = files.length === 0 ? '<li>아직 만들어진 리포트가 없어요.</li>' : '';
   files.forEach(f => {

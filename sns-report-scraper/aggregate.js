@@ -13,6 +13,7 @@ const {
   extractKeywords,
   detectProductLine,
   splitIpAndLine,
+  textMatchesKeyword,
   KNOWN_PRODUCT_LINES,
 } = require('./matching-core');
 
@@ -575,8 +576,42 @@ function buildComparisonReport({ startDate, endDate, own, competitors, manualMat
   return { startDate, endDate, generatedAt: new Date().toISOString(), platforms };
 }
 
+/**
+ * 수집해둔 게시물 중 검색어 한 단어가 들어간 것만 남김(리포트 생성 단계 필터).
+ *
+ * ⚠️ 수집 캐시 자체는 절대 건드리지 않음 — 캐시엔 항상 전체를 남겨두고 리포트를 만들 때만
+ * 걸러야, 나중에 다른 키워드로 다시 볼 때 몇 분짜리 재수집 없이 "리포트만 다시 만들기"로
+ * 몇 초 만에 볼 수 있음(수집 단계에서 걸러버리면 그 기회가 사라짐).
+ *
+ * @param {object[]} collections [{ platform, account, posts }, ...]
+ * @param {string} keyword 한 단어(비어 있으면 전체 통과)
+ * @returns {{ collections: object[], kept: number, excluded: number }}
+ */
+function filterCollectionsByKeyword(collections, keyword) {
+  const word = (keyword || '').trim();
+  if (!word) return { collections, kept: countPosts(collections), excluded: 0 };
+
+  let kept = 0;
+  let excluded = 0;
+  const filtered = (collections || []).map(c => {
+    const textField = PLATFORM_TEXT_FIELD[c.platform] || 'text';
+    const posts = (c.posts || []).filter(post => {
+      const hit = textMatchesKeyword(post[textField], word);
+      if (hit) kept++; else excluded++;
+      return hit;
+    });
+    return { ...c, posts };
+  });
+  return { collections: filtered, kept, excluded };
+}
+
+function countPosts(collections) {
+  return (collections || []).reduce((n, c) => n + (c.posts || []).length, 0);
+}
+
 module.exports = {
   parseCount,
+  filterCollectionsByKeyword,
   summarizeAccount,
   compareMetric,
   extractOwnProductName,

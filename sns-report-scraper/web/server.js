@@ -175,7 +175,7 @@ function badRequest(res, message) {
 
 // ── 오늘/기간 지정 수집 (run-megahouse.js) ──
 app.post('/api/collect', (req, res) => {
-  const { mode, startDate, endDate, platform, withStock, stockMode } = req.body || {};
+  const { mode, startDate, endDate, platform, withStock, stockMode, keyword } = req.body || {};
   let brandKey;
   try {
     brandKey = resolveBrandKey((req.body || {}).brand);
@@ -202,6 +202,13 @@ app.post('/api/collect', (req, res) => {
   // 화면에서 체크를 끄면 nostock으로 넘어와서 SNS만 수집.
   if (withStock === false) args.push('nostock');
   if (stockMode === 'ratio' || stockMode === 'none') args.push(`stock=${stockMode}`);
+  // 키워드는 한 단어만 받음 — 공백이 들어오면 스크립트 인자가 쪼개져 엉뚱하게 해석되므로 막음
+  if (keyword) {
+    const word = String(keyword).trim();
+    if (/\s/.test(word)) return badRequest(res, '키워드는 띄어쓰기 없이 한 단어만 넣어주세요.');
+    if (word.length > 30) return badRequest(res, '키워드가 너무 깁니다(30자 이내).');
+    args.push(`keyword=${word}`);
+  }
   try {
     const id = startJob(`SNS 실적 수집 (${brandKey})`, 'run-megahouse.js', args);
     res.json({ jobId: id });
@@ -212,7 +219,7 @@ app.post('/api/collect', (req, res) => {
 
 // ── 캐시로만 재생성 (rebuild-report.js) ──
 app.post('/api/rebuild', (req, res) => {
-  const { stockMode } = req.body || {};
+  const { stockMode, keyword } = req.body || {};
   let brandKey;
   try {
     brandKey = resolveBrandKey((req.body || {}).brand);
@@ -221,6 +228,12 @@ app.post('/api/rebuild', (req, res) => {
   }
   const args = [`brand=${brandKey}`];
   if (stockMode === 'ratio' || stockMode === 'none') args.push(`stock=${stockMode}`);
+  if (keyword) {
+    const word = String(keyword).trim();
+    if (/\s/.test(word)) return badRequest(res, '키워드는 띄어쓰기 없이 한 단어만 넣어주세요.');
+    if (word.length > 30) return badRequest(res, '키워드가 너무 깁니다(30자 이내).');
+    args.push(`keyword=${word}`);
+  }
   try {
     const id = startJob(`캐시로 리포트 재생성 (${brandKey})`, 'rebuild-report.js', args);
     res.json({ jobId: id });

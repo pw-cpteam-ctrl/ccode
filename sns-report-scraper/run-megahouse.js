@@ -46,7 +46,7 @@ const fs = require('fs');
 const path = require('path');
 const { collectTwitter } = require('./twitter');
 const { collectInstagram } = require('./instagram');
-const { buildComparisonReport, applyManualPosts } = require('./aggregate');
+const { buildComparisonReport, applyManualPosts, filterCollectionsByKeyword } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
 const { saveHtmlReport } = require('./html-report');
 const { buildStockComparison } = require('./stock-report');
@@ -134,12 +134,17 @@ async function main() {
   // 리포트에 재고를 어떻게 넣을지: none(안 넣음, 기본) / ratio(비율·지수만).
   // 절대 수량은 대외비로 취급해서 리포트 파일에 아예 안 심는 방침 — html-report.js 참고.
   let stockMode = brand.defaultStockMode;
+  // 리포트에 넣을 게시물을 한 단어로 걸러냄(선택) — 수집 캐시엔 항상 전체를 남기고
+  // 리포트 만들 때만 거르므로, 나중에 다른 단어로 다시 보려면 rebuild-report.js만 돌리면 됨.
+  let keyword = '';
   const cliDates = [];
   for (const arg of args) {
     if (arg === 'twitter' || arg === 'instagram') platformFilter = arg;
     else if (arg === 'nostock' || arg === '--no-stock') withStock = false;
     else if (/^--?stock=(none|ratio)$/.test(arg) || /^stock=(none|ratio)$/.test(arg)) {
       stockMode = arg.split('=')[1];
+    } else if (/^--?keyword=/.test(arg) || /^keyword=/.test(arg)) {
+      keyword = arg.slice(arg.indexOf('=') + 1).trim();
     } else if (arg === 'since-last' || arg === '--since-last') {
       // "마지막 수집 이후 전부" — 굿스마일처럼 게시 주기가 뜨문한 브랜드에서 빠뜨리는 기간이
       // 없게 하려고, 지난번 수집 종료일 다음날부터 오늘까지를 자동으로 잡아줌.
@@ -248,11 +253,19 @@ async function main() {
     : {};
   const { own: ownWithManual, competitors: competitorsWithManual } = applyManualPosts(own, competitors, manualPosts);
 
+  // ⚠️ 키워드 필터는 캐시 저장이 끝난 뒤에 적용 — 캐시엔 항상 전체가 남아야 나중에 다른
+  // 단어로 다시 볼 때 재수집 없이 리포트만 다시 만들 수 있음.
+  const ownFiltered = filterCollectionsByKeyword(ownWithManual, keyword);
+  const bhFiltered = filterCollectionsByKeyword(competitorsWithManual, keyword);
+  if (keyword) {
+    console.log(`🔍 키워드 필터 '${keyword}' 적용 — 리포트에 넣을 게시물 PW ${ownFiltered.kept}건 / BH ${bhFiltered.kept}건 (제외 PW ${ownFiltered.excluded}건 · BH ${bhFiltered.excluded}건)`);
+  }
+
   const report = buildComparisonReport({
     startDate: CONFIG.startDate,
     endDate: CONFIG.endDate,
-    own: ownWithManual,
-    competitors: competitorsWithManual,
+    own: ownFiltered.collections,
+    competitors: bhFiltered.collections,
     manualMatches,
     ignorePosts,
   });
@@ -284,7 +297,10 @@ async function main() {
   const stockComparison = stockHistory ? buildStockComparison(stockHistory) : null;
 
   const htmlOutputPath = archiveAndGetPath(CONFIG.htmlOutputDir, CONFIG.htmlOutputBaseName, 'html');
-  saveHtmlReport(report, htmlOutputPath, stockComparison, { brandLabel: brand.label, stockMode });
+  saveHtmlReport(report, htmlOutputPath, stockComparison, {
+    brandLabel: brand.label, stockMode,
+    keyword, keywordExcluded: { pw: ownFiltered.excluded, bh: bhFiltered.excluded },
+  });
   console.log(`✅ HTML 저장 완료: ${htmlOutputPath} (브라우저로 열어서 확인, 이전 파일은 ${path.relative(__dirname, CONFIG.htmlOutputDir)}/old/로 이동됨)`);
 
   // 이번에 수집한 기간을 기록 — 다음에 "마지막 수집 이후 전부"를 누르면 여기서부터 이어받음
