@@ -325,7 +325,7 @@ function renderPlatformSection(platformKey, data, stockComparison, stockMode = '
         <button class="toggle-all-btn" onclick="captureSection('${platformKey}','${title}')">📷 스크린샷</button>
       </div>
     </div>
-    ${hasStock ? `<div class="sub">📦 재고 매칭 기준 스냅샷: ${escapeHtml(formatTakenAt(stockComparison.latestTakenAt))} (KST) · 재고는 위 <b>📦 재고 비교</b> 탭에 따로 있고, 이 표 안에서 상품별로 같이 보려면 위 <b>"표 안에 📦 재고 칸 같이 보기"</b>를 켜세요 — PW:BH 점유율만 표시(판매 개수는 대외비로 이 파일에 없음)</div>` : ''}
+    ${hasStock ? `<div class="sub stock-note">📦 재고 매칭 기준 스냅샷: ${escapeHtml(formatTakenAt(stockComparison.latestTakenAt))} (KST) · 재고는 위 <b>📦 재고 비교</b> 탭에 따로 있고, 이 표 안에서 상품별로 같이 보려면 위 <b>"표 안에 📦 재고 칸 같이 보기"</b>를 켜세요 — PW:BH 점유율만 표시(판매 개수는 대외비로 이 파일에 없음)</div>` : ''}
     ${cards}
     <div class="rowsearch">
       🔎 <input type="text" id="rowsearch-${platformKey}" placeholder="이 표에서 찾기 (예: 카구라)" oninput="filterRows('${platformKey}')">
@@ -529,8 +529,14 @@ tr.manual-row td.name{position:relative}
 .foot{margin-top:16px;color:#6b7280;font-size:12px;line-height:1.6;background:#fff;border-radius:10px;padding:14px 16px}
 /* 화면 전환(탭) — 한 번 수집해서 만든 파일 하나 안에서 SNS/재고를 오가게 하기 위한 것.
    "리포트 한 장에 정보가 너무 많다"는 피드백을 리포트를 두 번 만드는 걸로 풀면 일이 늘어나서,
-   파일은 하나로 두고 보는 화면만 나누는 방식으로 함(주소 끝 #stock / #sns 로도 바로 진입). */
-.viewtabs{display:flex;align-items:center;gap:8px;margin:16px 0 14px;padding-bottom:12px;border-bottom:1px solid #e3e8f0;flex-wrap:wrap}
+   파일은 하나로 두고 보는 화면만 나누는 방식으로 함.
+   ⚠️ 재고 쪽은 겉으로는 안 보이게 함 — 탭 버튼·안내 문구가 기본 숨김이고, 주소 끝에
+   #stock을 직접 붙여서 들어온 사람에게만(body.stock-unlocked) 드러남. 어디까지나 눈에
+   덜 띄게 하는 것이지 보안이 아님 — 소스 보기로는 보임. 그래서 애초에 판매 개수·재고
+   수량 같은 절대 수치는 파일에 안 심고 비율/지수만 넣는 방침을 그대로 유지함. */
+.viewtabs{display:none;align-items:center;gap:8px;margin:16px 0 14px;padding-bottom:12px;border-bottom:1px solid #e3e8f0;flex-wrap:wrap}
+body.stock-unlocked .viewtabs{display:flex}
+body:not(.stock-unlocked) .stock-note{display:none}
 .viewtab{border:1px solid #d0d5e0;background:#fff;color:#374151;border-radius:999px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer}
 .viewtab:hover{border-color:#93a3bf}
 .viewtab.active{background:#2563eb;border-color:#2563eb;color:#fff}
@@ -553,7 +559,7 @@ ${STOCK_SECTION_STYLE}
 <h1>📊 ${escapeHtml(titleText)}</h1>
 <div class="sub">${brandLabel ? `브랜드: <b>${escapeHtml(brandLabel)}</b> · ` : ''}수집 기간: ${escapeHtml(report.startDate)} ~ ${escapeHtml(report.endDate)} · 생성: ${escapeHtml(report.generatedAt)} · <b>PW=자사, BH=경쟁사</b> · 랭킹: PW+BH 지표 합산순${showStock ? '' : ' · SNS 전용(재고 미포함)'}</div>
 ${showStock ? `<div class="viewtabs">
-  <button class="viewtab active" data-view="sns" onclick="switchView('sns')">📊 SNS 반응</button>
+  <button class="viewtab" data-view="sns" onclick="switchView('sns')">📊 SNS 반응</button>
   <button class="viewtab" data-view="stock" onclick="switchView('stock')">📦 재고 비교 (비율만)</button>
   <label class="stockcol-toggle" title="SNS 표의 맨 오른쪽에 상품별 PW:BH 재고 점유율 칸을 붙입니다."><input type="checkbox" id="stockColToggle" onchange="toggleStockCol(this.checked)"> 표 안에 📦 재고 칸 같이 보기</label>
 </div>` : ''}
@@ -564,7 +570,7 @@ ${sections}
 ※ 표현이 서로 다르거나 상품명을 못 뽑은 게시물은 "매칭 안 됨" 목록에 별도로 있습니다 — 조용히 빠진 게 아닙니다.<br>
 ※ 결과(우세/경합/약세)는 표에 표시된 지표(리트윗+좋아요 또는 좋아요+댓글)가 둘 다 PW가 크면 우세, 둘 다 작으면 약세, 엇갈리면 경합입니다.<br>
 ※ "게시물 보기"는 인터넷 연결된 브라우저에서 열어야 실제 카드로 보입니다 — 오프라인/차단 상태면 링크만 보임.<br>
-※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).${showStock ? '<br>※ 📦 재고는 맨 위 <b>[📦 재고 비교]</b> 탭에 따로 담겨 있습니다(주소 끝에 <code>#stock</code>을 붙여도 바로 열립니다). 상품별로 SNS 표와 나란히 보고 싶으면 맨 위 <b>"표 안에 📦 재고 칸 같이 보기"</b>를 켜면 표 우측 끝(가로 스크롤)에 칸이 생깁니다.<br>※ 📦 매출 칸: 상품명으로 네이버 재고 데이터와 근사 매칭한 결과를 PW:BH 점유율(%)로만 표시합니다 — 판매 개수·재고 수량은 대외비라 이 파일에 포함하지 않았습니다(정확한 개수는 공유하지 않는 엑셀에서 확인). "-"는 이름이 비슷한 재고 상품을 못 찾은 경우입니다. 마우스를 올리면 실제로 매칭된 상품명이 보이니 매칭이 맞는지 확인해보세요.' : ''}
+※ ⏰ 칸: 파란 선(중앙)이 PW 게시 시각 기준선. 밑의 숫자는 PW 기준 시간차 — <b>파란 +분</b>은 PW가 먼저, <b>빨간 -분</b>은 BH가 먼저 올렸다는 뜻. 스케일은 10분 고정 — 이보다 큰 차이는 점이 커짐(실제 시:분은 마우스 올리면 보임).${showStock ? '<span class="stock-note"><br>※ 📦 재고는 맨 위 <b>[📦 재고 비교]</b> 탭에 따로 담겨 있습니다. 상품별로 SNS 표와 나란히 보고 싶으면 맨 위 <b>"표 안에 📦 재고 칸 같이 보기"</b>를 켜면 표 우측 끝(가로 스크롤)에 칸이 생깁니다.<br>※ 📦 매출 칸: 상품명으로 네이버 재고 데이터와 근사 매칭한 결과를 PW:BH 점유율(%)로만 표시합니다 — 판매 개수·재고 수량은 대외비라 이 파일에 포함하지 않았습니다(정확한 개수는 공유하지 않는 엑셀에서 확인). "-"는 이름이 비슷한 재고 상품을 못 찾은 경우입니다. 마우스를 올리면 실제로 매칭된 상품명이 보이니 매칭이 맞는지 확인해보세요.</span>' : ''}
 </div>
 ${showStock ? renderStockRatioSectionHtml(stockComparison) : ''}
 <div class="export-box" id="export-box" style="display:none">
@@ -1111,6 +1117,9 @@ function toggleAllStockTrends(forceOpen) {
 function switchView(view) {
   var v = view === 'stock' ? 'stock' : 'sns';
   if (v === 'stock' && !document.querySelector('.stock-section')) v = 'sns';
+  // 한 번 #stock으로 들어오면 그 뒤로는 탭이 계속 보임 — 안 그러면 SNS로 돌아간 순간
+  // 돌아올 길이 없어져서 주소를 매번 다시 쳐야 함(새로고침하면 다시 숨겨짐).
+  if (v === 'stock') document.body.classList.add('stock-unlocked');
   document.body.classList.toggle('view-stock', v === 'stock');
   document.body.classList.toggle('view-sns', v !== 'stock');
   document.querySelectorAll('.viewtab').forEach(function (b) {

@@ -682,6 +682,14 @@ check('html-report: 재고는 한 파일 안에서 탭으로 분리 — 첫 화�
 
   assert.ok(html.includes("switchView('stock')") && html.includes("switchView('sns')"), '상단에 SNS/재고 전환 탭이 있어야 함');
   assert.ok(/<body class="[^"]*view-sns/.test(html), '파일을 열면 SNS 화면부터 보여야 함');
+
+  // 재고 쪽은 겉으로 안 보이게 — 탭 버튼도, 재고를 언급하는 안내 문구도 기본 숨김.
+  // (#stock으로 들어온 사람에게만 열림. 보안이 아니라 "눈에 안 띄게"가 목적)
+  assert.ok(html.includes('.viewtabs{display:none'), '탭 버튼은 기본으로 안 보여야 함');
+  assert.ok(html.includes('body.stock-unlocked .viewtabs{display:flex}'), '#stock으로 들어왔을 때만 탭이 보여야 함');
+  assert.ok(html.includes('body:not(.stock-unlocked) .stock-note{display:none}'), '재고를 언급하는 안내 문구도 기본으로 안 보여야 함');
+  assert.ok(html.includes("if (v === 'stock') document.body.classList.add('stock-unlocked')"), '#stock 진입 시 잠금이 풀려야 함');
+  assert.ok(!/<button class="viewtab active"/.test(html), '기본 상태에서 활성 탭 표시가 미리 박혀 있으면 안 됨(진입 시 계산)');
   assert.ok(html.includes('body.view-sns .stock-section{display:none}'), 'SNS 화면에서는 재고 섹션이 가려져야 함');
   assert.ok(html.includes('body.view-stock .platform:not(.stock-section){display:none}'), '재고 화면에서는 SNS 섹션이 가려져야 함');
   assert.ok(html.includes("location.hash.slice(1) === 'stock'"), '주소 끝 #stock으로 재고 화면에 바로 들어갈 수 있어야 함');
