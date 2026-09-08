@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>대시보드 리뉴얼 시안 (클릭되는 목업)</title>
+<style>
+/* 색·폰트·둥근모서리는 실제 대시보드(web/public/index.html)와 같은 값으로 맞춤 —
+   그래야 "실물에서도 이럴까"를 판단할 수 있음 */
+*{box-sizing:border-box}
+body{margin:0;font-family:'Malgun Gothic',system-ui,sans-serif;background:#f4f6fb;color:#1f2937}
+button{border:1px solid #3b5bdb;background:#3b5bdb;color:#fff;font-size:13px;padding:8px 16px;border-radius:8px;cursor:pointer}
+button:hover{background:#2f4bc7}
+button.secondary{background:#fff;color:#3b5bdb}
+button.secondary:hover{background:#eef2ff}
+button.ghost{background:#fff;color:#374151;border-color:#d0d5e0}
+button.ghost:hover{background:#f2f5fb}
+button.big{font-size:15px;padding:13px 30px;font-weight:700}
+input,select,textarea{border:1px solid #d0d5e0;border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit}
+.muted{color:#9099a6}
+
+/* 진단: 1920에서 좌우 460px씩(화면 48%)이 빈 채로 남았음 → 폭을 넓혀 2열로 씀 */
+.wrap{max-width:1560px;margin:0 auto;padding:20px 24px 32px}
+
+/* ── 머리: 브랜드 + 로그인 상태를 한 줄로 ──
+   진단: 브랜드 패널은 가로 11%, 로그인 패널은 47%만 쓰면서 둘이 세로 305px을 먹었음 */
+.topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.topbar h1{font-size:18px;margin:0 14px 0 0;white-space:nowrap}
+.brand-tabs{display:flex;gap:6px}
+.brand-tab{border:1px solid #d0d5e0;background:#fff;color:#374151;font-size:13px;font-weight:700;padding:7px 16px;border-radius:8px;cursor:pointer}
+.brand-tab.active{background:#3b5bdb;border-color:#3b5bdb;color:#fff}
+.ready{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:12px;color:#4b5563}
+.ready .dot{width:8px;height:8px;border-radius:50%;background:#2f9e44;display:inline-block;margin-right:5px}
+.ready .dot.warn{background:#e8590c}
+.brandline{font-size:12px;color:#6b7280;margin:-6px 0 14px}
+
+/* ── 본문 2열: 왼쪽 작업 / 오른쪽 결과(화면에 붙음) ──
+   진단: 버튼→결과 거리가 1,349~1,872px이었음 → 결과를 항상 보이게 */
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:18px;align-items:start}
+
+.card-deck h2,.side h2{font-size:14px;margin:0 0 10px}
+.deck-title{font-size:13px;font-weight:700;color:#374151;margin:0 0 10px}
+
+/* 자주 쓰는 2개 = 큰 카드, 가끔 쓰는 3개 = 가로줄. 크기 차이가 곧 사용 빈도 */
+.big-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.bigcard{background:#fff;border:1px solid #e4e8f0;border-radius:12px;padding:16px 18px;cursor:pointer;text-align:left;color:inherit;font:inherit;box-shadow:0 1px 3px rgba(0,0,0,.06);display:block;width:100%}
+.bigcard:hover{border-color:#93a3bf;background:#fbfcff}
+.bigcard.on{border-color:#3b5bdb;border-width:2px;padding:15px 17px;background:#f7f9ff}
+.bigcard .ttl{font-size:15px;font-weight:700;margin-bottom:8px}
+.bigcard .body{font-size:12px;color:#6b7280;line-height:1.7}
+.bigcard .eg{display:block;margin-top:8px;color:#9099a6}
+
+.rowsep{display:flex;align-items:center;gap:10px;font-size:11px;color:#9099a6;margin:0 0 10px}
+.rowsep::after{content:"";flex:1;height:1px;background:#e4e8f0}
+.row-cards{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.rowcard{background:#fff;border:1px solid #e4e8f0;border-radius:10px;padding:11px 14px;cursor:pointer;text-align:left;color:inherit;font:inherit;display:flex;align-items:center;gap:12px;width:100%}
+.rowcard:hover{border-color:#93a3bf;background:#fbfcff}
+.rowcard.on{border-color:#3b5bdb;background:#f7f9ff}
+.rowcard .ttl{font-size:13px;font-weight:700;white-space:nowrap}
+.rowcard .body{font-size:12px;color:#6b7280;flex:1;min-width:0}
+.rowcard .arrow{color:#9099a6;font-size:14px}
+
+/* ── 작업 화면 ── */
+.work{background:#fff;border-radius:12px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.work h2{font-size:15px;margin:0 0 4px}
+.work .lead{font-size:12px;color:#6b7280;margin:0 0 14px;line-height:1.6}
+.pane{display:none}
+.pane.on{display:block}
+
+.step{font-size:13px;font-weight:700;color:#374151;margin:0 0 8px}
+.period-choices{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.period-choices label{display:flex;align-items:flex-start;gap:8px;font-size:13px;padding:8px 10px;border:1px solid #e4e8f0;border-radius:8px;cursor:pointer}
+.period-choices label:hover{background:#f7f9ff}
+.period-choices label.picked{border-color:#3b5bdb;background:#eef2ff}
+.period-choices .hint{display:block;color:#9099a6;font-size:11px;margin-top:2px}
+
+/* 진단: 폭 15%짜리 버튼이 혼자 한 줄을 먹는 게 7곳 → 버튼을 요약줄과 같은 줄에 */
+.actbar{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+.summary{font-size:12px;color:#6b7280;background:#f7f9ff;border:1px solid #e4e8f0;border-radius:8px;padding:8px 12px;flex:1;min-width:240px}
+
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:12px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field>span{font-size:12px;color:#374151}
+.field input,.field select{width:100%}
+.span2{grid-column:1 / -1}
+.checkline{display:flex;align-items:center;gap:6px;font-size:12px;color:#374151;white-space:nowrap}
+.field.inline{flex-direction:row;align-items:center;justify-content:flex-start;padding-top:18px}
+
+/* 설명은 지우지 않고 접되, 접은 상태를 기억한다(진단: 설명이 조작의 2.02배, 범인이 하나가
+   아니라 골고루라서 기본 펼침만으론 면적이 안 줄어듦) */
+details.more{margin-top:12px;border-top:1px solid #eef0f4;padding-top:10px}
+details.more summary{cursor:pointer;font-size:12px;color:#6b7280}
+details.more .in{font-size:12px;color:#6b7280;line-height:1.7;margin-top:8px}
+
+.pairrow{display:grid;grid-template-columns:24px 1fr 1fr;gap:10px;align-items:end;margin-bottom:8px}
+.pairrow .n{font-size:12px;color:#9099a6;font-weight:700;text-align:center;padding-bottom:9px}
+
+/* ── 오른쪽 결과 열: 화면에 붙되 화면보다 커지지 않게(내부 스크롤) ── */
+.side{position:sticky;top:20px;display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 40px)}
+.sidebox{background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column;min-height:0}
+.sidebox h2{display:flex;align-items:center;gap:8px}
+.pill{font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px;background:#eef1f6;color:#6b7280}
+.pill.run{background:#fff4e0;color:#a8620a}
+.pill.done{background:#e7f5ed;color:#1b7f4a}
+.joblog{background:#0f1117;color:#d5f5e3;font-family:monospace;font-size:11px;white-space:pre-wrap;border-radius:8px;padding:10px;margin-top:8px;overflow-y:auto;max-height:150px;line-height:1.5}
+.reports{list-style:none;margin:8px 0 0;padding:0;font-size:12px;overflow-y:auto;min-height:0}
+.reports li{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f4f6fb}
+.reports .kind{font-size:10px;font-weight:700;border-radius:5px;padding:2px 6px;background:#eef2ff;color:#3b5bdb;flex:none}
+.reports .kind.xls{background:#e7f5ed;color:#1b7f4a}
+.reports .kind.vs{background:#fdecec;color:#c0392b}
+.reports a{color:#3b5bdb;text-decoration:none;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reports a:hover{text-decoration:underline}
+.reports .when{color:#9099a6;font-size:11px;flex:none}
+.reports .go{opacity:0;flex:none}
+.reports li:hover .go{opacity:1}
+@media (hover:none){.reports .go{opacity:1}}
+
+.note{background:#fff9db;border:1px solid #ffe066;border-radius:8px;padding:8px 12px;font-size:11px;color:#665500;line-height:1.6}
+.mockbar{background:#1f2937;color:#fff;font-size:12px;padding:8px 16px;text-align:center}
+@media (max-width:1200px){.cols{grid-template-columns:1fr}.side{position:static;max-height:none}}
+</style>
+</head>
+<body>
+<div class="mockbar">
+  <b>화면 개편 시안</b> — 카드 선택·브랜드 전환·접힘은 실제로 동작하고, 수집·리포트 생성은 하지 않습니다 ·
+  <a href="/" style="color:#9ec5fe">지금 쓰는 화면으로 돌아가기</a>
+</div>
+<div class="wrap">
+
+  <div class="topbar">
+    <h1>📊 SNS 성과 리포트 대시보드</h1>
+    <div class="brand-tabs">
+      <button class="brand-tab active" onclick="pickBrand(this,'megahouse')">메가하우스</button>
+      <button class="brand-tab" onclick="pickBrand(this,'goodsmile')">굿스마일</button>
+    </div>
+    <div class="ready">
+      <span><span class="dot"></span>트위터 로그인 있음</span>
+      <span><span class="dot"></span>인스타그램 로그인 있음</span>
+      <button class="ghost" onclick="toggleLogin()">로그인 관리</button>
+    </div>
+  </div>
+  <div class="brandline" id="brandline">계정 4개 · 네이버 재고 연동 있음 · 마지막 수집 2026-09-01 ~ 2026-09-07</div>
+
+  <div id="loginBox" class="work" style="display:none;margin-bottom:14px">
+    <h2>로그인 관리</h2>
+    <p class="lead">한 번 로그인해두면 며칠~몇 주는 계속 쓸 수 있어요. 풀리면 수집할 때 로그인 화면이 계속 뜨는 식으로 알 수 있어요.</p>
+    <div class="actbar">
+      <button class="secondary">트위터 다시 로그인</button>
+      <button class="secondary">인스타그램 다시 로그인</button>
+      <span class="muted" style="font-size:12px">둘 다 로그인된 상태예요 — 지금은 누를 필요 없어요.</span>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <div class="card-deck">
+        <div class="deck-title">무엇을 하시겠어요?</div>
+        <div class="big-cards">
+          <button class="bigcard on" data-pane="period" onclick="pick(this)">
+            <div class="ttl">📊 기간 지정 SNS 비교</div>
+            <div class="body">날짜를 정하면 그 기간 우리 글·경쟁사 글을 전부 모아 나란히 놓습니다
+              <span class="eg">평소 쓰는 게 이거예요</span></div>
+          </button>
+          <button class="bigcard" data-pane="matchup" onclick="pick(this)">
+            <div class="ttl">⚔️ 게시글 맞대결</div>
+            <div class="body">링크 넣은 글끼리만 1:1로. 날짜가 서로 달라도 됩니다
+              <span class="eg">예) 우리 이벤트 글 vs 경쟁사 이벤트 글</span></div>
+          </button>
+        </div>
+
+        <div class="rowsep">가끔 쓰는 것</div>
+        <div class="row-cards">
+          <button class="rowcard" data-pane="account" onclick="pick(this)">
+            <span class="ttl">🔍 계정 하나 단독 보기</span>
+            <span class="body">비교 없이 계정 하나의 글과 반응만 뽑아봅니다 · 예) 새로 생긴 계정이 뭘 올리는지 볼 때</span>
+            <span class="arrow">›</span>
+          </button>
+          <button class="rowcard" data-pane="periods" onclick="pick(this)">
+            <span class="ttl">📅 기간끼리 증감 비교</span>
+            <span class="body">이미 수집해둔 기간을 나란히 놓고 늘었는지 줄었는지 봅니다 · 새로 수집 안 해요</span>
+            <span class="arrow">›</span>
+          </button>
+          <button class="rowcard" data-pane="notion" onclick="pick(this)">
+            <span class="ttl">📋 노션으로 보내기</span>
+            <span class="body">방금 만든 리포트의 표를 스크린샷이 아니라 진짜 노션 표로 만듭니다 · 검색·정렬·편집 가능</span>
+            <span class="arrow">›</span>
+          </button>
+          <button class="rowcard" id="stockCard" data-pane="stock" onclick="pick(this)">
+            <span class="ttl">📦 오늘 재고 기록</span>
+            <span class="body">재고는 "지금" 것만 볼 수 있어서, 오늘 안 찍으면 영영 못 봐요 · SNS 수집 땐 자동으로 같이 찍힘</span>
+            <span class="arrow">›</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="work">
+        <!-- ① 기간 지정 SNS 비교 -->
+        <div class="pane on" id="pane-period">
+          <h2>📊 기간 지정 SNS 비교</h2>
+          <p class="lead">자사(PW)와 경쟁사(BH)의 게시물을 모아서 비교 리포트를 만들어요. 보통 몇 분 걸립니다.</p>
+
+          <div class="step">① 어느 기간을 볼까요?</div>
+          <div class="period-choices" id="periods">
+            <label class="picked"><input type="radio" name="pd" data-label="오늘 하루" checked onchange="pd(this)"><span>오늘 하루<span class="hint">오늘 올라온 글만</span></span></label>
+            <label><input type="radio" name="pd" data-label="최근 2주" onchange="pd(this)"><span>최근 2주<span class="hint">오늘부터 14일 전까지</span></span></label>
+            <label><input type="radio" name="pd" data-label="지난번 수집 이후 전부" onchange="pd(this)"><span>지난번 수집 이후 전부<span class="hint">2026-09-07 다음날부터 오늘까지</span></span></label>
+            <label><input type="radio" name="pd" data-label="직접 고른 기간" onchange="pd(this)"><span>날짜를 직접 고를래요<span class="hint">아래에 시작일·종료일을 입력</span></span></label>
+          </div>
+
+          <div class="fields" id="customRange" style="display:none">
+            <label class="field"><span>시작일</span><input type="date"></label>
+            <label class="field"><span>종료일 (이 날짜도 포함)</span><input type="date"></label>
+          </div>
+
+          <div class="actbar">
+            <button class="big" onclick="fakeRun('기간 지정 수집')">② 수집 시작</button>
+            <span class="summary" id="periodSummary">오늘 하루 · 트위터+인스타 · 재고 함께 기록 · 리포트에 재고 탭 포함 · 키워드 없음</span>
+          </div>
+
+          <div class="fields" style="margin-top:14px">
+            <label class="field"><span>플랫폼</span>
+              <select id="fPlatform" onchange="sum()"><option>둘 다</option><option>트위터만</option><option>인스타그램만</option></select></label>
+            <label class="field"><span>🔍 키워드 1단어 (선택)</span>
+              <input type="text" id="fKeyword" placeholder="비워두면 전체" oninput="sum()"></label>
+            <label class="field"><span>재고 표시</span>
+              <select id="fStockMode" onchange="sum()"><option>📦 재고 탭 함께 넣기 (개수 비공개)</option><option>아예 빼기 (SNS만)</option></select></label>
+            <label class="field inline">
+              <span class="checkline"><input type="checkbox" id="fWithStock" checked onchange="sum()"> 재고도 같이 기록 <span class="muted">(권장)</span></span></label>
+          </div>
+
+          <div class="actbar" style="border-top:1px solid #eef0f4;padding-top:12px">
+            <button class="secondary" onclick="fakeRun('캐시로 리포트만 다시 만들기')">수집 없이 리포트만 다시 만들기</button>
+            <span class="muted" style="font-size:12px">방금 모아둔 데이터로 몇 초 만에 다시 만들어요. 위 설정(키워드·재고 표시)이 그대로 적용됩니다.</span>
+          </div>
+
+          <details class="more" data-key="period">
+            <summary>이 기능 설명 자세히 보기</summary>
+            <div class="in">
+              상품명은 게시물 본문에서 자동으로 뽑아 비슷한 것끼리 짝지어요. 표현이 다르거나 못 뽑은 글은 리포트의
+              "매칭 안 됨" 목록에 따로 남습니다 — 조용히 빠지지 않아요.<br>
+              재고를 "같이 기록"으로 두는 걸 권합니다. 재고는 지금 시점만 조회할 수 있어서, 안 찍고 지나간 날은
+              나중에 되돌릴 수 없어요.
+            </div>
+          </details>
+        </div>
+
+        <!-- ② 게시글 맞대결 -->
+        <div class="pane" id="pane-matchup">
+          <h2>⚔️ 게시글 맞대결</h2>
+          <p class="lead">비교하고 싶은 글 링크만 넣으세요. 양쪽 게시일이 서로 달라도 됩니다.</p>
+          <div class="fields"><label class="field span2"><span>이 맞대결의 이름</span><input type="text" placeholder="리포트에 표시될 이름"></label></div>
+          <div id="pairs" style="margin-top:12px">
+            <div class="pairrow"><span class="n">1</span>
+              <label class="field"><span>당사 글 링크</span><input type="text" placeholder="https://x.com/... 또는 https://www.instagram.com/p/..."></label>
+              <label class="field"><span>경쟁사 글 링크</span><input type="text" placeholder="https://x.com/... 또는 https://www.instagram.com/p/..."></label></div>
+          </div>
+          <div class="actbar">
+            <button class="big" onclick="fakeRun('게시글 맞대결')">⚔️ 맞대결 리포트 만들기</button>
+            <button class="secondary" onclick="addPair()">＋ 한 쌍 더</button>
+            <span class="summary">1쌍 · 입력한 내용은 이 브라우저에 저장돼요(새로고침해도 남아요)</span>
+          </div>
+          <details class="more" data-key="matchup">
+            <summary>이 기능 설명 자세히 보기 · 입력 지우기</summary>
+            <div class="in">
+              X(트위터)·인스타그램 링크 둘 다 되고 섞어도 돼요. 한쪽만 넣어도 만들어집니다.<br>
+              게시일이 다르면 먼저 올린 쪽이 더 오래 노출된 상태라, 리포트에 경과일이 같이 표시됩니다.<br>
+              인스타그램은 좋아요를 숨긴 게시물이면 좋아요 수를 못 읽어요(댓글 수만 나옴).
+              <div class="actbar"><button class="ghost" onclick="alert('목업이라 실제로 지우지 않습니다')">입력 전부 지우기(초기화)</button></div>
+            </div>
+          </details>
+        </div>
+
+        <!-- ③ 계정 하나 단독 보기 -->
+        <div class="pane" id="pane-account">
+          <h2>🔍 계정 하나 단독 보기</h2>
+          <p class="lead">비교하지 않고 계정 하나의 글과 반응만 순위표로 뽑아봅니다.</p>
+          <div class="fields">
+            <label class="field"><span>계정 핸들 (@ 없이)</span><input type="text" placeholder="예: 계정이름"></label>
+            <label class="field"><span>시작일</span><input type="date"></label>
+            <label class="field"><span>종료일</span><input type="date"></label>
+            <label class="field inline"><span class="checkline"><input type="checkbox"> 글 내용만 (지표 없이)</span></label>
+          </div>
+          <div class="actbar">
+            <button class="big" onclick="fakeRun('계정 단독 수집')">이 계정 수집</button>
+            <span class="summary">트위터 계정만 가능해요 · 기간이 길면 오래 걸립니다</span>
+          </div>
+        </div>
+
+        <!-- ④ 기간끼리 증감 비교 -->
+        <div class="pane" id="pane-periods">
+          <h2>📅 기간끼리 증감 비교</h2>
+          <p class="lead">이미 수집해둔 기간 두 개 이상을 나란히 놓고 늘었는지 줄었는지 봅니다. 새로 수집하지 않아요.</p>
+          <div class="fields"><label class="field span2"><span>비교할 기간 (한 줄에 하나, 2개 이상)</span>
+            <textarea rows="3" style="font-family:monospace;font-size:12px">2026-06-10_2026-06-13
+2026-06-18_2026-06-22</textarea></label></div>
+          <div class="actbar">
+            <button class="big" onclick="fakeRun('기간끼리 비교')">기간별로 비교하기</button>
+            <span class="summary">2개 기간 · 미리 "기간 지정 SNS 비교"로 모아둔 기간만 쓸 수 있어요</span>
+          </div>
+        </div>
+
+        <!-- ⑤ 노션으로 보내기 -->
+        <div class="pane" id="pane-notion">
+          <h2>📋 노션으로 보내기</h2>
+          <p class="lead">가장 최근에 만든 리포트의 표를 노션으로 옮깁니다.</p>
+          <div class="actbar">
+            <button class="big" onclick="alert('목업입니다')">📋 노션용 표 복사하기</button>
+            <button class="secondary" onclick="fakeRun('노션 자동 전송')">노션으로 자동 전송</button>
+          </div>
+          <details class="more" data-key="notion">
+            <summary>두 버튼의 차이 보기</summary>
+            <div class="in">
+              <b>복사하기</b>: 누르면 바로 클립보드에 복사돼요 — 노션 페이지에서 Ctrl+V만 누르면 끝(연동 설정 필요 없음).<br>
+              <b>자동 전송</b>: 노션 연동을 미리 설정해뒀다면 클릭 한 번으로 전송돼요. 처음 한 번은 새 페이지를 만들고,
+              그다음부턴 같은 페이지의 내용만 갱신해서 노션에서 손으로 맞춘 칸 너비가 유지됩니다.
+            </div>
+          </details>
+        </div>
+
+        <!-- ⑥ 오늘 재고 기록 -->
+        <div class="pane" id="pane-stock">
+          <h2>📦 오늘 재고 기록</h2>
+          <p class="lead">네이버 스토어의 지금 재고만 기록해요. 로그인 없이 수십 초면 끝납니다.</p>
+          <div class="actbar">
+            <button class="big" onclick="fakeRun('재고 스냅샷')">📦 오늘 재고 찍기</button>
+            <span class="summary">추이 그래프는 같은 상품이 2번 이상 기록돼야 나와요 · SNS 수집 때도 자동으로 같이 찍힙니다</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 오른쪽: 결과 (항상 보임) ── -->
+    <div class="side">
+      <div class="sidebox">
+        <h2>진행 상황 <span class="pill" id="jobPill">대기 중</span></h2>
+        <div class="muted" style="font-size:12px" id="jobLabel">아직 실행한 작업이 없어요.</div>
+        <div class="joblog" id="joblog" style="display:none"></div>
+        <div class="actbar" id="jobActions" style="display:none;margin-top:10px">
+          <button class="ghost" onclick="stopFake()">작업 취소</button>
+        </div>
+      </div>
+
+      <div class="sidebox" style="flex:1;min-height:0">
+        <h2>만들어진 리포트 <span class="pill" id="repCount">14</span></h2>
+        <div class="muted" style="font-size:11px">받아서 메일·메신저로 그대로 공유할 수 있어요(서버 공유 아님).</div>
+        <ul class="reports" id="reports"></ul>
+      </div>
+
+      <div class="note">
+        업데이트한 뒤에는 검은 창을 껐다 켜야 새 기능이 반영돼요. 화면만 새로 받고 도구를 재시작하지 않으면
+        버튼이 안 먹습니다.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 카드 선택 → 그 작업 화면만 보이기 ──
+function pick(btn) {
+  document.querySelectorAll('.bigcard,.rowcard').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  const key = btn.dataset.pane;
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'pane-' + key));
+  try { localStorage.setItem('mockPane', key); } catch (e) {}
+}
+
+// 굿스마일은 재고 스토어가 없어서 재고 카드를 아예 숨기고, 맞대결을 앞으로 올림
+function pickBrand(btn, key) {
+  document.querySelectorAll('.brand-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const gs = key === 'goodsmile';
+  document.getElementById('stockCard').style.display = gs ? 'none' : '';
+  document.getElementById('brandline').textContent = gs
+    ? '계정 4개 · 재고 연동 없음(상품이 너무 많아 수집하지 않음) · 마지막 수집 2026-08-25'
+    : '계정 4개 · 네이버 재고 연동 있음 · 마지막 수집 2026-09-01 ~ 2026-09-07';
+  const deck = document.querySelector('.big-cards');
+  const cards = [...deck.children];
+  const matchupFirst = cards[0].dataset.pane === 'matchup';
+  if (gs !== matchupFirst) deck.appendChild(cards[0]);
+}
+
+function toggleLogin() {
+  const b = document.getElementById('loginBox');
+  b.style.display = b.style.display === 'none' ? '' : 'none';
+}
+
+function pd(el) {
+  document.querySelectorAll('#periods label').forEach(l => l.classList.remove('picked'));
+  el.closest('label').classList.add('picked');
+  const isCustom = el.closest('label').textContent.includes('직접');
+  document.getElementById('customRange').style.display = isCustom ? '' : 'none';
+  sum();
+}
+function sum() {
+  // 라벨 전체 텍스트를 쓰면 밑의 힌트 문구까지 붙어버리므로 data-label 값만 씀
+  const r = document.querySelector('#periods input:checked');
+  const picked = r ? (r.dataset.label || '') : '';
+  // ⚠️ 순서(인덱스)로 집으면 숨겨진 날짜칸까지 세어져서 값이 어긋남 — id로 집는다
+  const g = id => document.getElementById(id);
+  const platform = g('fPlatform').value;
+  const kw = g('fKeyword').value.trim() ? '키워드 "' + g('fKeyword').value.trim() + '"' : '키워드 없음';
+  const stock = g('fStockMode').selectedIndex === 0 ? '리포트에 재고 탭 포함' : '리포트는 SNS만';
+  const rec = g('fWithStock').checked ? '재고 함께 기록' : '재고 기록 안 함';
+  document.getElementById('periodSummary').textContent = [picked, platform, rec, stock, kw].filter(Boolean).join(' · ');
+}
+
+let pairN = 1;
+function addPair() {
+  pairN++;
+  const d = document.createElement('div');
+  d.className = 'pairrow';
+  d.innerHTML = '<span class="n">' + pairN + '</span>' +
+    '<label class="field"><span>당사 글 링크</span><input type="text" placeholder="https://x.com/..."></label>' +
+    '<label class="field"><span>경쟁사 글 링크</span><input type="text" placeholder="https://x.com/..."></label>';
+  document.getElementById('pairs').appendChild(d);
+}
+
+// ── 결과 열: 가짜 진행 로그 ──
+let timer = null;
+const LINES = ['🏷️  브랜드: 메가하우스', '🔗 게시물 읽는 중…', '[link] ✅ 좋아요 324 · 리포스트 125 · 인용 427 · 댓글 2',
+  '✅ 읽기 완료: 성공 2건 / 실패 0건', '✅ HTML 저장 완료'];
+function fakeRun(label) {
+  stopFake();
+  document.getElementById('jobLabel').textContent = label;
+  document.getElementById('jobPill').textContent = '실행 중';
+  document.getElementById('jobPill').className = 'pill run';
+  const log = document.getElementById('joblog');
+  log.style.display = ''; log.textContent = '';
+  document.getElementById('jobActions').style.display = '';
+  let i = 0;
+  timer = setInterval(() => {
+    if (i >= LINES.length) {
+      clearInterval(timer); timer = null;
+      document.getElementById('jobPill').textContent = '완료';
+      document.getElementById('jobPill').className = 'pill done';
+      document.getElementById('jobActions').style.display = 'none';
+      return;
+    }
+    log.textContent += LINES[i++] + '\n';
+    log.scrollTop = log.scrollHeight;
+  }, 700);
+}
+function stopFake() {
+  if (timer) { clearInterval(timer); timer = null; }
+  document.getElementById('jobActions').style.display = 'none';
+}
+
+// ── 리포트 목록 (종류 배지 + 마우스 올릴 때만 버튼) ──
+const REPORTS = [
+  ['맞대결', 'vs', 'matchup_20260908_1454.html', '1시간 전'],
+  ['리포트', '', 'sns-report_20260908_1402.html', '2시간 전'],
+  ['엑셀', 'xls', 'sns-report.xlsx', '2시간 전'],
+  ['맞대결', 'vs', 'matchup_20260908_1130.html', '4시간 전'],
+  ['리포트', '', 'sns-report_20260907_1755.html', '어제'],
+  ['엑셀', 'xls', 'account-report.xlsx', '어제'],
+  ['리포트', '', 'sns-report_20260906_0930.html', '2일 전'],
+  ['기간비교', '', 'period-comparison_20260905.html', '3일 전'],
+  ['엑셀', 'xls', 'period-comparison.xlsx', '3일 전'],
+  ['리포트', '', 'sns-report_20260904_1810.html', '4일 전'],
+  ['리포트', '', 'sns-report_20260903_1002.html', '5일 전'],
+  ['맞대결', 'vs', 'matchup_20260902_1620.html', '6일 전'],
+  ['리포트', '', 'sns-report_20260901_0915.html', '7일 전'],
+  ['리포트', '', 'sns-report_20260829_1740.html', '10일 전'],
+];
+document.getElementById('reports').innerHTML = REPORTS.map(([kind, cls, name, when]) =>
+  `<li><span class="kind ${cls}">${kind}</span><a href="#" title="${name}" onclick="return false">${name}</a>
+   <span class="when">${when}</span><button class="ghost go" onclick="alert('목업입니다')">열기</button></li>`).join('');
+
+// 접힌 설명은 접은 상태를 기억(처음 쓰는 사람은 펼쳐서 보고, 아는 사람은 계속 접힌 채)
+document.querySelectorAll('details.more').forEach(d => {
+  const key = 'mockMore:' + d.dataset.key;
+  try { d.open = localStorage.getItem(key) === '1'; } catch (e) {}
+  d.addEventListener('toggle', () => { try { localStorage.setItem(key, d.open ? '1' : '0'); } catch (e) {} });
+});
+try {
+  const saved = localStorage.getItem('mockPane');
+  if (saved) { const b = document.querySelector(`[data-pane="${saved}"]`); if (b) pick(b); }
+} catch (e) {}
+sum();
+</script>
+</body>
+</html>
