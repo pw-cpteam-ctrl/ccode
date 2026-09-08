@@ -323,7 +323,7 @@ async function loadBrands() {
     // 화면은 새 버전인데 서버는 옛날 코드라 이 기능(/api/brands)이 아직 없어서 404가 남.
     // 원인을 모른 채 기다리게 두지 말고 무엇을 하면 되는지 화면에 바로 알려줌.
     if (!res.ok) throw new Error('서버 응답 ' + res.status);
-    brands = await res.json();
+    brands = await readJson(res);
     if (brands.length === 0) { box.textContent = '브랜드 설정 파일(brands/*.json)이 없어요.'; return; }
     if (!brands.some(b => b.key === currentBrand)) currentBrand = brands[0].key;
     renderBrandTabs();
@@ -474,7 +474,7 @@ function setButtonsDisabled(disabled) {
 async function refreshStatus() {
   const seq = ++brandRequestSeq;
   const res = await fetch('/api/status' + brandQuery());
-  const data = await res.json();
+  const data = await readJson(res);
   if (seq !== brandRequestSeq) return; // 그 사이 다른 브랜드를 고름 → 이 응답은 버림
   setSession('twitter', data.hasTwitterSession);
   setSession('instagram', data.hasInstagramSession);
@@ -540,17 +540,37 @@ function startEventStream() {
   });
 }
 
+// 화면 파일만 새로 받고 도구(검은 창)를 재시작하지 않으면, 새 화면이 부르는 주소가 옛날
+// 서버엔 아직 없어서 JSON 대신 "Cannot POST /api/…" HTML 오류 페이지가 돌아옴. 그걸 그대로
+// JSON으로 읽으면 "Unexpected token '<'"라는 정체불명 메시지만 떠서 원인을 알 수가 없음
+// (실제로 팀에서 이 메시지를 받고 막힘). 여기서 가로채 무엇을 하면 되는지 알려줌.
+async function readJson(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const err = new Error(
+      '도구(검은 창)가 옛날 버전으로 돌고 있어요.\n\n' +
+      '검은 창을 완전히 닫고 start-dashboard.bat을 다시 실행한 뒤,\n' +
+      '이 화면에서 Ctrl+Shift+R로 새로고침해주세요.\n\n' +
+      '(업데이트는 화면 파일만 바꿔주고 도구를 껐다 켜주지는 않아서 생기는 문제예요)'
+    );
+    err.friendly = true;
+    throw err;
+  }
+}
+
 async function runOrAlert(fn) {
   try {
     const res = await fn();
-    const data = await res.json();
+    const data = await readJson(res);
     if (!res.ok) { alert(data.error || '요청이 실패했어요.'); return; }
     jobRunning = true;
     setButtonsDisabled(true);
     document.getElementById('jobStatus').textContent = '⏳ 실행 중...';
     startEventStream();
   } catch (e) {
-    alert('요청 중 오류: ' + e.message);
+    alert(e.friendly ? e.message : '요청 중 오류: ' + e.message);
   }
 }
 
@@ -609,7 +629,7 @@ function exportNotion() {
 async function copyMarkdownForNotion() {
   try {
     const res = await fetch('/api/export-markdown' + brandQuery());
-    const data = await res.json();
+    const data = await readJson(res);
     if (!res.ok) { alert('실패: ' + (data.error || '알 수 없는 오류')); return; }
     await navigator.clipboard.writeText(data.markdown);
     alert('복사됐어요! 노션 페이지로 가서 Ctrl+V로 붙여넣으세요.');
@@ -679,7 +699,7 @@ function cancelJob() {
 async function refreshReports() {
   const seq = brandRequestSeq;
   const res = await fetch('/api/reports' + brandQuery());
-  const files = await res.json();
+  const files = await readJson(res);
   if (seq !== brandRequestSeq) return; // 위와 같은 이유(늦게 온 이전 브랜드 응답 무시)
   const ul = document.getElementById('reportList');
   ul.innerHTML = files.length === 0 ? '<li>아직 만들어진 리포트가 없어요.</li>' : '';
