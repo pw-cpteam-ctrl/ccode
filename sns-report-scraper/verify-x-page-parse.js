@@ -28,10 +28,13 @@ function actionBar({ reply, retweet, like, liked = false, retweeted = false }) {
   </div>`;
 }
 
-// 통계 줄 — "N 리포스트 · N 인용 · N 마음에 들어요"처럼 목록 링크로 그려짐
+// 통계 줄 — "N 리포스트 · N 인용 · N 마음에 들어요"처럼 목록 링크로 그려짐.
+// ⚠️ 중요: X는 숫자와 단어를 **서로 다른 span**에 나눠 그린다. 예전 픽스처는 이걸
+// 한 덩어리(<span>37 인용</span>)로 만들어놨는데, 그게 내 잘못된 가정을 그대로 통과시켜서
+// 실제 X에서는 인용이 안 읽히는 걸 못 잡았음. 그래서 실제 구조대로 나눠서 만든다.
 function statsRow({ retweets, quotes, likes, withQuotes = true }) {
   const link = (suffix, n, word) =>
-    `<a href="/${ACCOUNT}/status/${POST_ID}/${suffix}"><span><span>${n}</span></span> <span>${word}</span></a>`;
+    `<a href="/${ACCOUNT}/status/${POST_ID}/${suffix}"><span><span>${n}</span></span><span>${word}</span></a>`;
   return `<div>
     ${link('retweets', retweets, '리포스트')}
     ${withQuotes ? link('quotes', quotes, '인용') : ''}
@@ -71,7 +74,17 @@ const CASES = [
     expect: { retweets: '612', likes: '324', quotes: '37' },
   },
   {
-    name: '목록 링크가 없고 "37 인용" 글자만 있는 형태 (텍스트 경로)',
+    name: 'href가 안 잡히고 글자만 있는 형태 — 숫자와 "인용"이 다른 span (실제 X 구조)',
+    html: `<article data-testid="tweet">
+      <a href="/${ACCOUNT}/status/${POST_ID}"><time datetime="2026-08-25T05:03:00.000Z">8월 25일</time></a>
+      <div data-testid="tweetText">RT 이벤트</div>
+      ${actionBar({ reply: 2, retweet: 612, like: 324 })}
+    </article>
+    <section><div><div><span><span>37</span></span><span>인용</span></div></div></section>`,
+    expect: { quotes: '37' },
+  },
+  {
+    name: 'href가 안 잡히고 한 덩어리로 된 형태("37 인용")',
     html: `<article data-testid="tweet">
       <a href="/${ACCOUNT}/status/${POST_ID}"><time datetime="2026-08-25T05:03:00.000Z">8월 25일</time></a>
       <div data-testid="tweetText">RT 이벤트</div>
@@ -81,14 +94,34 @@ const CASES = [
     expect: { quotes: '37' },
   },
   {
-    name: '영문 UI("37 Quotes")',
+    name: '순서가 뒤집힌 형태("인용 37")',
+    html: `<article data-testid="tweet">
+      <a href="/${ACCOUNT}/status/${POST_ID}"><time datetime="2026-08-25T05:03:00.000Z">8월 25일</time></a>
+      <div data-testid="tweetText">RT 이벤트</div>
+      ${actionBar({ reply: 2, retweet: 612, like: 324 })}
+    </article>
+    <section><div><span>인용</span><span>37</span></div></section>`,
+    expect: { quotes: '37' },
+  },
+  {
+    name: '영문 UI("37 Quotes", 숫자/단어 분리)',
     html: `<article data-testid="tweet">
       <a href="/${ACCOUNT}/status/${POST_ID}"><time datetime="2026-08-25T05:03:00.000Z">Aug 25</time></a>
       <div data-testid="tweetText">RT event</div>
       ${actionBar({ reply: 2, retweet: 612, like: 324 })}
     </article>
-    <section><div><span>37 Quotes</span></div></section>`,
+    <section><div><span><span>37</span></span><span>Quotes</span></div></section>`,
     expect: { quotes: '37' },
+  },
+  {
+    name: '인용이 1개일 때 단수 표기("1 Quote")',
+    html: `<article data-testid="tweet">
+      <a href="/${ACCOUNT}/status/${POST_ID}"><time datetime="2026-08-25T05:03:00.000Z">Aug 25</time></a>
+      <div data-testid="tweetText">RT event</div>
+      ${actionBar({ reply: 2, retweet: 612, like: 324 })}
+    </article>
+    <section><div><span><span>1</span></span><span>Quote</span></div></section>`,
+    expect: { quotes: '1' },
   },
   {
     name: '1.2만 같은 축약 표기',

@@ -114,14 +114,28 @@ function readTwitterInPage(postId) {
       }
 
       // ② 화면에 보이는 글자를 그대로 찾는다 — 구조(어느 div 안에 있는지)에 의존하지
-      //    않으므로 X가 레이아웃을 바꿔도 안 깨짐. "37 인용" / "37 Quotes" / "37 引用".
-      //    자식 텍스트까지 합쳐진 상위 요소가 걸리지 않게 "글자 노드만 가진 요소"로 제한.
-      const QUOTE_WORD = /^([\d,.]+\s*[만천KM]?)\s*(인용|Quotes?|引用)$/i;
+      //    않으므로 X가 레이아웃을 바꿔도 안 깨짐. "37 인용" / "37 Quotes" / "인용 37".
+      //
+      //    ⚠️ 예전엔 "글자 노드만 가진 요소(children.length === 0)"로 제한했는데, X는
+      //    숫자와 단어를 서로 다른 span에 나눠 그림
+      //    (<a><span><span>37</span></span><span>인용</span></a>) — 그래서 한 덩어리로
+      //    된 요소가 아예 없어서 못 찾았음. 지금은 자식이 있어도 되고, 대신 "합친 글자가
+      //    짧은 것"만 후보로 봐서 페이지를 통째로 감싼 상위 요소가 걸리지 않게 한다.
+      //    (여러 개가 걸리면 가장 짧은 = 가장 안쪽 것을 택함)
+      const QUOTE_RES = [
+        /^([\d,.]+\s*[만천KM]?)\s*(?:인용|Quotes?|引用)$/i,
+        /^(?:인용|Quotes?|引用)\s*([\d,.]+\s*[만천KM]?)(?:개)?$/i,
+      ];
+      let best = null;
       for (const el of document.querySelectorAll('a, span, div')) {
-        if (el.children.length > 0) continue;
-        const m = (el.textContent || '').trim().match(QUOTE_WORD);
-        if (m) return m[1].replace(/\s+/g, '');
+        const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!t || t.length > 24) continue; // 상위 컨테이너 배제(숫자+단어면 넉넉히 24자 이내)
+        for (const re of QUOTE_RES) {
+          const m = t.match(re);
+          if (m && (!best || t.length < best.len)) best = { n: m[1], len: t.length };
+        }
       }
+      if (best) return best.n.replace(/\s+/g, '');
 
       // ③ 액션바 aria-label에 들어오는 경우("… 인용 37개 …")
       const group = article.querySelector('[role="group"]');
