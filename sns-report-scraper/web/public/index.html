@@ -220,12 +220,25 @@ function withBrand(body) {
 }
 
 async function loadBrands() {
-  const res = await fetch('/api/brands');
-  brands = await res.json();
-  if (brands.length === 0) { document.getElementById('brandTabs').textContent = '브랜드 설정 파일(brands/*.json)이 없어요.'; return; }
-  if (!brands.some(b => b.key === currentBrand)) currentBrand = brands[0].key;
-  renderBrandTabs();
-  await selectBrand(currentBrand);
+  const box = document.getElementById('brandTabs');
+  try {
+    const res = await fetch('/api/brands');
+    // ⚠️ 여기서 실패하면 화면이 "불러오는 중..."에서 영영 멈춰 보였음(실제로 겪음).
+    // 가장 흔한 원인은 update.bat으로 화면 파일만 새로 받고 도구(검은 창)를 재시작하지 않은 것 —
+    // 화면은 새 버전인데 서버는 옛날 코드라 이 기능(/api/brands)이 아직 없어서 404가 남.
+    // 원인을 모른 채 기다리게 두지 말고 무엇을 하면 되는지 화면에 바로 알려줌.
+    if (!res.ok) throw new Error('서버 응답 ' + res.status);
+    brands = await res.json();
+    if (brands.length === 0) { box.textContent = '브랜드 설정 파일(brands/*.json)이 없어요.'; return; }
+    if (!brands.some(b => b.key === currentBrand)) currentBrand = brands[0].key;
+    renderBrandTabs();
+    await selectBrand(currentBrand);
+  } catch (e) {
+    box.innerHTML = '⚠️ 브랜드 목록을 불러오지 못했어요.<br>' +
+      '<b>도구를 껐다 켜면 대부분 해결돼요</b> — 검은 창을 닫고 <code>start-dashboard.bat</code>을 다시 실행한 뒤, ' +
+      '이 화면에서 <b>Ctrl+Shift+R</b>로 새로고침해주세요.<br>' +
+      '<span class="meta">(업데이트로 화면 파일만 새로 받고 도구를 재시작하지 않으면 이 상태가 됩니다 · 오류: ' + e.message + ')</span>';
+  }
 }
 
 function renderBrandTabs() {
