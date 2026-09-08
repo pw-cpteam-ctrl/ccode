@@ -9,8 +9,8 @@
  *
  * input JSON 형식:
  *   {
- *     "title": "토모에 넨도로이드 이벤트",
- *     "pairs": [ { "label": "토모에 이벤트", "pw": "https://x.com/…", "bh": "https://x.com/…" } ]
+ *     "title": "이 맞대결의 이름",
+ *     "pairs": [ { "label": "쌍마다 다른 이름(생략 가능)", "pw": "https://x.com/…", "bh": "https://x.com/…" } ]
  *   }
  *   label은 없어도 됨(없으면 title을 씀). 한쪽만 있어도 되고(경쟁사 글이 아직 없을 때),
  *   pairs를 여러 개 넣으면 한 리포트에 여러 맞대결이 순서대로 들어감.

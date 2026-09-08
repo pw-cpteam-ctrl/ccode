@@ -1477,6 +1477,22 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
     assert.ok(html.includes('.embed-shrink{zoom:.7}'), '임베드는 70%로 축소돼야 함');
   });
 
+  check('맞대결 리포트: 전체 스크린샷 버튼 — 여백 제외 + 파일명은 ASCII (한글이면 확장자까지 날아감)', () => {
+    const { buildMatchupReportHtml } = require('./matchup-report');
+    const html = buildMatchupReportHtml({
+      title: 't', collectedAt: '2026-09-08T00:00:00.000Z',
+      pairs: [{ pw: { ok: true, platform: 'twitter', url: 'https://x.com/a/status/1', datetime: '2026-09-06T00:00:00.000Z', likes: '1', retweets: '1', quotes: '0', comments: '1' }, bh: null }],
+    });
+    assert.ok(html.includes('captureAll()'), '리포트 전체를 찍는 버튼이 있어야 함');
+    assert.ok(html.includes(".capturing{padding:0!important}"), '전체 캡처 때 .wrap 여백이 사진에 흰 띠로 남지 않아야 함');
+    assert.ok(html.includes("el.classList.add('capturing')") && html.includes("el.classList.remove('capturing')"),
+      '여백은 찍는 동안만 없애고 되돌려야 함');
+    // Chromium은 file:// 페이지의 다운로드 파일명이 ASCII가 아니면 이름을 버리고
+    // 확장자도 없는 "download"로 저장함(브라우저로 실측) — 한글 파일명을 쓰면 안 됨
+    assert.ok(html.includes("'matchup-' + (ascii || 'report')"), '파일명은 ASCII로 만들어야 함');
+    assert.ok(!/a\.download = '[^']*[가-힣]/.test(html), '다운로드 파일명에 한글을 넣으면 안 됨');
+  });
+
   check('맞대결 리포트: 우세/경합/약세 판정 — X에만 있는 리트윗은 인스타 판정에서 빠져야 함', () => {
     const { verdictOf } = require('./matchup-report');
     const ig = p => Object.assign({ platform: 'instagram' }, p);

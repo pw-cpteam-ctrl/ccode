@@ -48,14 +48,15 @@ function classifyUrl(rawUrl) {
   return { ok: false, error: 'X(트위터)/인스타그램 링크만 읽을 수 있음' };
 }
 
-/** "1.2만", "3,456", "12K" 같은 표기를 그대로 문자열로 넘김 — 숫자 변환은 aggregate.parseCount가 담당 */
-async function readTwitterPost(page, target) {
-  await page.goto(target.url, { waitUntil: 'domcontentloaded' });
-  // 게시물 상세 페이지엔 답글도 같은 article로 렌더링됨 — 본문 글이 그려질 때까지만 기다림.
-  await page.waitForSelector('article[data-testid="tweet"]', { timeout: 20000 });
-  await page.waitForTimeout(1500);
-
-  return page.evaluate((postId) => {
+/**
+ * X 게시물 페이지 **안에서** 실행되는 추출 함수(page.evaluate로 넘겨짐).
+ * 별도 함수로 빼둔 이유: X 화면 구조를 흉내 낸 페이지에 이 함수를 그대로 돌려서
+ * 검증할 수 있게 하려는 것 — 실제 X에 접속하지 않고도 셀렉터를 검증하기 위함
+ * (인용 수를 감으로 짠 셀렉터로 두 번 틀렸어서 이렇게 바꿈).
+ *
+ * "1.2만", "3,456", "12K" 같은 표기를 그대로 문자열로 넘김 — 숫자 변환은 aggregate.parseCount가 담당.
+ */
+function readTwitterInPage(postId) {
     // 답글이 아니라 "이 주소의 글"을 집어야 함 — 글 안에 자기 자신의 status 링크(시각 링크)가
     // 들어 있다는 점을 이용해서 id가 일치하는 article만 고름. 못 찾으면 첫 번째 article로
     // 넘어가되(구조가 바뀐 경우 대비) 그 사실을 결과에 남김.
@@ -87,16 +88,67 @@ async function readTwitterPost(page, target) {
       return m ? m[0] : '0';
     };
 
-    // 인용(quote) 수는 버튼이 아니라 상세 페이지의 "…/status/<id>/quotes" 링크에 붙어 있음.
-    // ⚠️ 인용이 0이면 이 링크가 아예 안 생김 — 그래서 링크가 없으면 0으로 읽는다.
-    // (0인 것과 구조가 바뀌어 못 읽은 것이 구분되지 않는 한계는 감수. 리포트에서
-    //  '-'로 두면 매번 "왜 안 나오지"가 되는데, 실제로는 대부분 진짜 0이라서.)
-    const quoteOf = () => {
-      const link = article.querySelector('a[href*="/quotes"]');
-      if (!link) return '0';
-      const m = link.innerText.match(/[\d,.]+[만천KM]?/);
-      return m ? m[0] : '0';
+    // 인용(quote) 수는 액션 버튼이 아니라 상세 페이지의 통계 줄
+    // ("리포스트 · 인용 · 마음에 들어요")에 있는 "…/status/<id>/quotes" 링크에 붙어 있음.
+    //
+    // ⚠️ 두 번 틀렸던 부분이라 방식을 바꿈:
+    //  (1) 이 통계 줄은 article **밖**에 그려지는 경우가 있어서 article 안에서만 찾으면
+    //      아예 안 걸림 → 문서 전체에서 이 글의 id로 찾는다.
+    //  (2) 예전엔 링크를 못 찾으면 무조건 '0'으로 읽었는데, 그 바람에 셀렉터가 틀린
+    //      상황이 전부 "정상적인 0"으로 위장돼서 버그가 안 보였음(실제로 겪음).
+    //      그래서 같은 줄의 형제 링크(리포스트/마음에 들어요 목록)가 있는지로
+    //      "줄은 찾았는데 인용 항목만 없다(= 진짜 0)"와 "줄 자체를 못 찾았다(= 못 읽음,
+    //      null → 리포트에 '-')"를 구분한다. 못 읽은 건 못 읽었다고 보여야 고칠 수 있음.
+    const statLink = suffix => document.querySelector(`a[href$="/${postId}/${suffix}"]`);
+    const numberIn = s => {
+      const m = String(s || '').match(/[\d,.]+\s*[만천KM]?/);
+      return m ? m[0].replace(/\s+/g, '') : null;
     };
+
+    const quoteOf = () => {
+      // ① 이 글의 인용 목록 링크. href가 정확히 잡히면 가장 확실함.
+      const q = statLink('quotes');
+      if (q) {
+        const n = numberIn(q.innerText) || numberIn(q.getAttribute('aria-label'));
+        if (n) return n;
+      }
+
+      // ② 화면에 보이는 글자를 그대로 찾는다 — 구조(어느 div 안에 있는지)에 의존하지
+      //    않으므로 X가 레이아웃을 바꿔도 안 깨짐. "37 인용" / "37 Quotes" / "37 引用".
+      //    자식 텍스트까지 합쳐진 상위 요소가 걸리지 않게 "글자 노드만 가진 요소"로 제한.
+      const QUOTE_WORD = /^([\d,.]+\s*[만천KM]?)\s*(인용|Quotes?|引用)$/i;
+      for (const el of document.querySelectorAll('a, span, div')) {
+        if (el.children.length > 0) continue;
+        const m = (el.textContent || '').trim().match(QUOTE_WORD);
+        if (m) return m[1].replace(/\s+/g, '');
+      }
+
+      // ③ 액션바 aria-label에 들어오는 경우("… 인용 37개 …")
+      const group = article.querySelector('[role="group"]');
+      const label = group ? (group.getAttribute('aria-label') || '') : '';
+      const fromGroup = label.match(/(?:인용|Quotes?)\s*([\d,.]+[만천KM]?)|([\d,.]+[만천KM]?)\s*(?:인용|Quotes?)/i);
+      if (fromGroup) return (fromGroup[1] || fromGroup[2]);
+
+      // 여기까지 못 찾았으면 0으로 단정하지 않는다 — 예전엔 '0'을 넣었다가, 셀렉터가
+      // 틀린 상황이 전부 "정상적인 0"으로 위장돼서 버그가 안 보였음(실제로 겪음).
+      // 통계 줄의 형제 링크가 있으면 "줄은 찾았는데 인용 항목만 없다 = 진짜 0"으로 본다.
+      const rowFound = Boolean(statLink('retweets') || statLink('likes'));
+      return rowFound ? '0' : null;
+    };
+
+    // 셀렉터를 실제 X 화면 없이 맞출 수 없어서 남기는 계측용 — 인용을 못 읽었을 때
+    // 어떤 통계 링크들이 실제로 있었는지 로그로 보고 셀렉터를 고치기 위함.
+    const statHrefs = [...document.querySelectorAll('a[href*="/status/"]')]
+      .map(a => a.getAttribute('href'))
+      .filter(h => h && /\/(quotes|retweets|likes|reposts)(\?|$)/.test(h))
+      .slice(0, 10);
+    // 텍스트 경로까지 실패했을 때 무엇이 있었는지 보기 위한 계측 — "숫자 + 단어" 꼴로
+    // 화면에 있던 짧은 문구들(리포스트/인용/마음에 들어요/북마크/조회 등)
+    const statTexts = [...document.querySelectorAll('a, span, div')]
+      .filter(el => el.children.length === 0)
+      .map(el => (el.textContent || '').trim())
+      .filter(t => /^[\d,.]+\s*[만천KM]?\s*\S{1,8}$/.test(t))
+      .slice(0, 12);
 
     const timeEl = article.querySelector('time[datetime]');
     const textEl = article.querySelector('[data-testid="tweetText"]');
@@ -111,9 +163,17 @@ async function readTwitterPost(page, target) {
       likes: countOf('like', 'unlike'),
       retweets: countOf('retweet', 'unretweet'),
       quotes: quoteOf(),
+      statHrefs, statTexts,
       comments: countOf('reply'),
     };
-  }, target.postId);
+}
+
+async function readTwitterPost(page, target) {
+  await page.goto(target.url, { waitUntil: 'domcontentloaded' });
+  // 게시물 상세 페이지엔 답글도 같은 article로 렌더링됨 — 본문 글이 그려질 때까지만 기다림.
+  await page.waitForSelector('article[data-testid="tweet"]', { timeout: 20000 });
+  await page.waitForTimeout(1500);
+  return page.evaluate(readTwitterInPage, target.postId);
 }
 
 async function readInstagramPost(page, target) {
@@ -239,6 +299,11 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
           results[i].warning = '주소의 글을 정확히 못 집어서 페이지 첫 번째 글을 읽었음 — 숫자가 맞는지 확인 필요';
         }
         console.log(`[link] ✅ ${t.platform} ${t.url} — 좋아요 ${parsed.likes ?? '-'} · 리트윗 ${parsed.retweets ?? '-'} · 인용 ${parsed.quotes ?? '-'} · 댓글 ${parsed.comments ?? '-'}`);
+        // 인용을 못 읽었을 때만 계측 로그 — 어떤 통계 링크가 실제로 있었는지 보고
+        // 셀렉터를 고치기 위함(정상일 때는 로그를 어지럽히지 않게 안 찍음)
+        if (t.platform === 'twitter' && parsed.quotes === null) {
+          console.log(`[link] ⓘ 인용 수를 못 읽었음 — 페이지의 통계 링크: ${JSON.stringify(parsed.statHrefs || [])} / 통계 문구: ${JSON.stringify(parsed.statTexts || [])}`);
+        }
       } catch (e) {
         results[i].error = `읽기 실패: ${e.message}`;
         console.warn(`[link] ❌ ${t.url} — ${e.message}`);
@@ -251,4 +316,4 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
   return results;
 }
 
-module.exports = { collectPostsByLink, classifyUrl };
+module.exports = { collectPostsByLink, classifyUrl, readTwitterInPage };

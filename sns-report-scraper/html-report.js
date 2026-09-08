@@ -617,7 +617,13 @@ function captureSection(platformKey, title) {
     canvas.toBlob(function (blob) {
       var url = URL.createObjectURL(blob);
       var link = document.createElement('a');
-      link.download = 'SNS리포트-' + title.replace(/[()]/g, '') + '.png';
+      // ⚠️ Chromium은 file:// 로 열린 페이지의 다운로드 파일명이 ASCII가 아니면 그 이름을
+      // 버리고 확장자도 없는 "download"로 저장함(실측 확인) — 한글 이름을 쓰면 저장된
+      // 파일이 뭔지 알 수 없게 됨. 그래서 ASCII 이름(플랫폼 키) + 날짜로 만든다.
+      var d = new Date();
+      var pad = function (n) { return String(n).padStart(2, '0'); };
+      var stamp = '' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+      link.download = 'sns-report-' + platformKey + '-' + stamp + '.png';
       link.href = url;
       link.click();
       URL.revokeObjectURL(url);

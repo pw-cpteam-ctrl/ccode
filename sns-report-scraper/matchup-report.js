@@ -257,7 +257,7 @@ function renderSummary(pairs, collectedAt) {
   <section class="pair summary" id="summary">
     <div class="pair-head">
       <h2>📊 전체 합산 <span class="ptag">${pairs.length}쌍</span></h2>
-      <div class="pair-tools"><button class="cap-btn" onclick="capturePair('summary','전체 합산')">📷 스크린샷</button></div>
+      <div class="pair-tools"><button class="cap-btn" onclick="capturePair('summary')">📷 스크린샷</button></div>
     </div>
     <table class="metrics">
       ${anyTotal ? metricRow('총 반응', '🔥', totalOf('pw'), totalOf('bh'), totalCaption) : ''}
@@ -300,7 +300,7 @@ function renderPair(pair, index, collectedAt) {
       <h2>${index + 1}. ${escapeHtml(label || '맞대결')}${platformTag}</h2>
       <div class="pair-tools">
         ${verdict ? `<span class="verdict ${verdict.cls}">${verdict.text}</span>` : ''}
-        <button class="cap-btn" onclick="capturePair(${index}, '${escapeHtml((label || '맞대결').replace(/'/g, ''))}')">📷 스크린샷</button>
+        <button class="cap-btn" onclick="capturePair(${index})">📷 스크린샷</button>
       </div>
     </div>
     <div class="sides">
@@ -334,7 +334,12 @@ function buildMatchupReportHtml({ title, brandLabel = '', collectedAt, pairs }) 
 *{box-sizing:border-box}body{margin:0;font-family:'Malgun Gothic',system-ui,sans-serif;background:#f4f6fb;color:#1f2937}
 .wrap{max-width:1100px;margin:0 auto;padding:28px 18px}
 h1{font-size:22px;margin:0 0 6px}
-.sub{color:#6b7280;font-size:13px;margin-bottom:18px}
+.sub{color:#6b7280;font-size:13px}
+.page-head{display:flex;align-items:flex-start;gap:14px;margin-bottom:18px}
+.page-head>div{flex:1}
+/* 전체 스크린샷을 찍는 순간에만 붙는 클래스 — .wrap의 여백(padding)이 사진에
+   흰 띠로 남지 않게 잠깐 0으로 만든다(찍고 바로 되돌림) */
+.capturing{padding:0!important}
 .pair{background:#fff;border-radius:12px;padding:18px 20px;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .pair h2{font-size:17px;margin:0}
 .pair-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
@@ -398,8 +403,13 @@ table.metrics td{padding:8px 6px;border-top:1px solid #eef1f6}
 .foot{color:#6b7280;font-size:12px;line-height:1.7;background:#fff;border-radius:10px;padding:14px 16px}
 @media (max-width:860px){.sides,.embeds{grid-template-columns:1fr}}
 </style></head><body><div class="wrap">
-<h1>${escapeHtml(heading)}</h1>
-<div class="sub">${escapeHtml(title || '')} · 수집: ${escapeHtml(kstText(collectedAt))} (KST) · <b>PW=자사, BH=경쟁사</b></div>
+<div class="page-head">
+  <div>
+    <h1>${escapeHtml(heading)}</h1>
+    <div class="sub">${escapeHtml(title || '')} · 수집: ${escapeHtml(kstText(collectedAt))} (KST) · <b>PW=자사, BH=경쟁사</b></div>
+  </div>
+  <button class="cap-btn" onclick="captureAll()">📷 전체 스크린샷</button>
+</div>
 ${renderSummary(pairs, collectedAt)}
 ${pairs.map((p, i) => renderPair(p, i, collectedAt)).join('\n')}
 <div class="foot">
@@ -418,21 +428,51 @@ ${fs.readFileSync(path.join(__dirname, 'node_modules/html2canvas/dist/html2canva
 // 보고용으로 한 쌍(또는 전체 합산)만 잘라서 PNG로 저장. 리포트 파일 하나로 끝나게
 // html2canvas를 그대로 심어둠(인터넷 연결 불필요) — 기간 리포트와 같은 방식.
 // 임베드(트위터/인스타 위젯 iframe)는 다른 사이트 콘텐츠라 캡처에 빈 칸으로 나올 수 있음.
-function capturePair(id, name) {
-  var el = document.getElementById(typeof id === 'number' ? 'pair-' + id : id);
-  if (!el) return;
+// ⚠️ Chromium은 file:// 로 열린 페이지가 만든 다운로드 링크의 파일명이 ASCII가 아니면
+// 그 이름을 버리고 확장자도 없는 "download"로 저장해버림(실측 확인). 그래서 한글 대신
+// ASCII 이름 + 날짜로 만든다 — 이름을 잃는 것보다 영문이라도 남는 게 나음.
+function shotFileName(base) {
+  var d = new Date();
+  var p = function (n) { return String(n).padStart(2, '0'); };
+  var stamp = '' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate());
+  var ascii = String(base).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+  return 'matchup-' + (ascii || 'report') + '-' + stamp + '.png';
+}
+
+function shoot(el, name, extraCleanup) {
+  // 캡처용 버튼 자체가 사진에 찍히면 안 되니 잠깐 숨김(자리는 유지 — display로 지우면
+  // 레이아웃이 흔들려서 사진이 원래 화면과 달라짐)
   var btns = el.querySelectorAll('.cap-btn');
-  btns.forEach(function (b) { b.style.visibility = 'hidden'; });
-  html2canvas(el, { backgroundColor: '#ffffff', scale: 2, useCORS: true }).then(function (canvas) {
+  var restore = function () {
     btns.forEach(function (b) { b.style.visibility = ''; });
+    if (extraCleanup) extraCleanup();
+  };
+  btns.forEach(function (b) { b.style.visibility = 'hidden'; });
+  return html2canvas(el, { backgroundColor: '#ffffff', scale: 2, useCORS: true }).then(function (canvas) {
+    restore();
     var a = document.createElement('a');
-    a.download = '맞대결-' + name + '.png';
+    a.download = shotFileName(name);
     a.href = canvas.toDataURL('image/png');
     a.click();
   }).catch(function (e) {
-    btns.forEach(function (b) { b.style.visibility = ''; });
+    restore();
     alert('스크린샷 저장에 실패했어요: ' + e.message);
   });
+}
+
+function capturePair(id) {
+  var isSummary = typeof id !== 'number';
+  var el = document.getElementById(isSummary ? id : 'pair-' + id);
+  if (el) shoot(el, isSummary ? 'summary' : 'pair' + (id + 1), null);
+}
+
+// 리포트 전체를 한 장으로. .wrap의 좌우·위아래 여백은 사진에 흰 띠로만 남으니
+// 찍는 동안만 0으로 줄였다가 되돌린다.
+function captureAll() {
+  var el = document.querySelector('.wrap');
+  if (!el) return;
+  el.classList.add('capturing');
+  shoot(el, 'all', function () { el.classList.remove('capturing'); });
 }
 </script>
 ${needTwitter ? '<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>' : ''}

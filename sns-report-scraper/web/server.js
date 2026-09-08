@@ -261,7 +261,7 @@ app.post('/api/matchup', (req, res) => {
   }
 
   const title = String(body.title || '').trim();
-  if (!title) return badRequest(res, '이 맞대결의 이름을 적어주세요 (예: 토모에 넨도로이드 이벤트).');
+  if (!title) return badRequest(res, '이 맞대결의 이름을 적어주세요.');
   if (title.length > 100) return badRequest(res, '이름이 너무 깁니다(100자 이내).');
 
   const rawPairs = Array.isArray(body.pairs) ? body.pairs : [];

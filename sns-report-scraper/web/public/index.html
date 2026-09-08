@@ -133,12 +133,14 @@ details.advanced summary{cursor:pointer;font-size:12px;color:#6b7280}
     </p>
     <div class="row">
       <label style="flex:1">이 맞대결의 이름
-        <input type="text" id="matchupTitle" placeholder="예: 토모에 넨도로이드 이벤트" style="min-width:280px">
+        <input type="text" id="matchupTitle" placeholder="리포트에 표시될 이름" style="min-width:280px">
       </label>
     </div>
     <div id="matchupPairs"></div>
     <div class="row">
       <button class="secondary" onclick="addMatchupPair()">＋ 한 쌍 더</button>
+      <button class="secondary" onclick="resetMatchup()" title="입력한 이름·링크와 쌍 개수를 모두 지우고 처음 상태로 되돌립니다.">초기화</button>
+      <span class="muted" id="matchupSaved" style="font-size:11px"></span>
     </div>
     <button class="big" onclick="runMatchup()">⚔️ 맞대결 리포트 만들기</button>
     <p class="desc" style="margin-top:10px">
@@ -656,7 +658,13 @@ function collectAccount() {
 
 // ⚔️ 게시글 맞대결 — 이벤트 하나를 비교하는 게 보통이라 기본은 한 쌍만 보여주고,
 // 더 필요하면 늘림. 빈 쌍은 서버가 알아서 건너뛰므로 지우는 버튼까지는 두지 않음.
-function addMatchupPair() {
+//
+// 입력한 이름·링크·쌍 개수는 이 브라우저에 저장해둔다(localStorage). 링크를 손으로
+// 붙여넣는 작업인데 새로고침 한 번에 다 날아가면 테스트를 반복할 수가 없어서.
+// 저장은 이 컴퓨터의 브라우저 안에만 있고 어디로도 전송되지 않음. [초기화]로 지움.
+const MATCHUP_DRAFT_KEY = 'snsMatchupDraft';
+
+function addMatchupPair(pw, bh) {
   const box = document.getElementById('matchupPairs');
   const n = box.children.length + 1;
   const row = document.createElement('div');
@@ -666,15 +674,56 @@ function addMatchupPair() {
     '<label>당사 글 링크<input type="text" class="mp-pw" placeholder="https://x.com/... 또는 https://www.instagram.com/p/..."></label>' +
     '<label>경쟁사 글 링크<input type="text" class="mp-bh" placeholder="https://x.com/... 또는 https://www.instagram.com/p/..."></label>';
   box.appendChild(row);
+  if (pw) row.querySelector('.mp-pw').value = pw;
+  if (bh) row.querySelector('.mp-bh').value = bh;
+  saveMatchupDraft();
+}
+
+function readMatchupInputs() {
+  return {
+    title: document.getElementById('matchupTitle').value,
+    pairs: [...document.querySelectorAll('#matchupPairs .matchup-pair')].map(el => ({
+      pw: el.querySelector('.mp-pw').value,
+      bh: el.querySelector('.mp-bh').value,
+    })),
+  };
+}
+
+function saveMatchupDraft() {
+  try {
+    const draft = readMatchupInputs();
+    localStorage.setItem(MATCHUP_DRAFT_KEY, JSON.stringify(draft));
+    const filled = draft.pairs.filter(p => p.pw.trim() || p.bh.trim()).length;
+    document.getElementById('matchupSaved').textContent =
+      (draft.title.trim() || filled) ? '입력한 내용은 이 브라우저에 저장돼요 (새로고침해도 남아요)' : '';
+  } catch (e) { /* 시크릿 창 등에서 저장이 막혀 있으면 그냥 저장만 안 됨 */ }
+}
+
+function restoreMatchupDraft() {
+  let draft = null;
+  try {
+    draft = JSON.parse(localStorage.getItem(MATCHUP_DRAFT_KEY) || 'null');
+  } catch (e) { draft = null; }
+  const pairs = draft && Array.isArray(draft.pairs) && draft.pairs.length ? draft.pairs : [{ pw: '', bh: '' }];
+  if (draft && draft.title) document.getElementById('matchupTitle').value = draft.title;
+  pairs.forEach(p => addMatchupPair(p.pw, p.bh));
+}
+
+function resetMatchup() {
+  try { localStorage.removeItem(MATCHUP_DRAFT_KEY); } catch (e) { /* 무시 */ }
+  document.getElementById('matchupTitle').value = '';
+  document.getElementById('matchupPairs').innerHTML = '';
+  addMatchupPair();
+  document.getElementById('matchupSaved').textContent = '';
 }
 
 function runMatchup() {
-  const title = document.getElementById('matchupTitle').value.trim();
-  if (!title) { alert('이 맞대결의 이름을 적어주세요 (예: 토모에 넨도로이드 이벤트).'); return; }
-  const pairs = [...document.querySelectorAll('#matchupPairs .matchup-pair')].map(el => ({
-    pw: el.querySelector('.mp-pw').value.trim(),
-    bh: el.querySelector('.mp-bh').value.trim(),
-  })).filter(p => p.pw || p.bh);
+  const raw = readMatchupInputs();
+  const title = raw.title.trim();
+  if (!title) { alert('이 맞대결의 이름을 적어주세요.'); return; }
+  const pairs = raw.pairs
+    .map(p => ({ pw: p.pw.trim(), bh: p.bh.trim() }))
+    .filter(p => p.pw || p.bh);
   if (pairs.length === 0) { alert('비교할 글 링크를 최소 한 개는 넣어주세요.'); return; }
   runOrAlert(() => fetch('/api/matchup', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -719,7 +768,10 @@ async function refreshReports() {
 }
 
 loadBrands();
-addMatchupPair(); // 맞대결은 보통 1:1이라 한 쌍은 미리 펼쳐둠 (빈 칸을 보면 뭘 넣을지 바로 알 수 있게)
+restoreMatchupDraft(); // 저장해둔 이름·링크·쌍 개수를 되살림(없으면 빈 한 쌍)
+// 입력할 때마다 저장 — 칸이 나중에 늘어나도 걸리게 컨테이너에 한 번만 붙임
+document.getElementById('matchupPairs').addEventListener('input', saveMatchupDraft);
+document.getElementById('matchupTitle').addEventListener('input', saveMatchupDraft);
 </script>
 </body>
 </html>
