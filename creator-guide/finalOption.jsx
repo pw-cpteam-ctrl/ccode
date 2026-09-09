@@ -378,6 +378,10 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, wi
           마지막이에요. 아래만 적어주시면 됩니다.
         </p>
 
+        {/* 이 장은 '적는 칸 → 제출 전 안내 → 제출' 순서로 둔다. 예전엔 안내가
+            입력칸 사이와 버튼 위아래에 흩어져 있어 어디까지가 적는 부분인지
+            구분이 안 됐다. 칸에 딸린 주의만 그 칸 밑에 남기고, 나머지 안내는
+            버튼 바로 위에 모은다. */}
         <div className="reply-field">
           <label className="reply-wish-label" htmlFor="naver-input">쿠폰 받으실 네이버 아이디</label>
           <input
@@ -396,7 +400,12 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, wi
           {/* 성함을 따로 받지 않기로 해서 이 아이디가 유일한 신원 확인 수단이다.
               오타 하나가 곧 다른 사람에게 쿠폰이 나가는 일이라, 왜 필요한지와
               틀렸을 때 어떻게 되는지를 입력칸 바로 밑에서 알린다. */}
-          <div className="reply-hint">쿠폰 발급을 위해 필요해요. 아이디 오기재로 인한 쿠폰 재발급은 도와드리기 어려우니 한 번 더 꼼꼼하게 확인 부탁드려요.</div>
+          {/* 회색 힌트로 두니 다른 안내와 섞여 그냥 넘어가게 됐다. 이 칸의 오타는
+              되돌릴 수 없는 유일한 항목이라, 옅은 붉은 바탕으로 따로 세운다. */}
+          <div className="reply-caution">
+            쿠폰 발급을 위해 필요해요.<br />
+            <strong>아이디 오기재로 인한 쿠폰 재발급은 도와드리기 어려우니</strong> 한 번 더 꼼꼼하게 확인 부탁드려요.
+          </div>
         </div>
 
         {/* 상품 쿠폰은 '어느 룩업인지'가 있어야 준비가 된다. 고른 사람에게만
@@ -419,25 +428,28 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, wi
           </div>
         )}
 
-        {/* 접수는 덮어쓰지 않고 계속 쌓이고 마지막 것이 유효하다. 앞 장에서
-            '수정이 어렵다'고 알린 뒤라, 다시 낼 수 있다는 사실을 여기서 알려주지
-            않으면 한 번 잘못 낸 사람이 막혔다고 오해한다. */}
-        <div className="reply-restate">여러 번 제출하시면 마지막에 보내주신 내용으로 진행돼요.</div>
+        {/* 보내기 직전에 알아야 할 두 가지를 버튼 바로 위에 모은다.
+            ① 어디로 가는지 — 아이디를 적은 직후라 '이게 어디로 가나'가 자연스럽게
+               생긴다. 보관 방식까지 설명하면 묻지도 않은 걸 답하는 인상이 되므로
+               용도와 열람 범위만 적는다. 버튼 아래에 두었더니 정작 누르기 전에
+               읽히지 않아 위로 올렸다.
+            ② 다시 낼 수 있는지 — 접수는 덮어쓰지 않고 쌓이며 마지막 것이 유효하다.
+               앞 장에서 '수정이 어렵다'고 알린 뒤라, 이 말이 없으면 한 번 잘못 낸
+               사람이 막혔다고 오해한다. */}
+        <div className="reply-notes">
+          <p>보내주신 내용은 쿠폰 발급 외의 용도로 사용하지 않으며, 담당자만 열람 가능하게끔 비공개로 안전하게 보관됩니다.</p>
+          <p>여러 번 제출하시면 마지막에 보내주신 내용으로 진행돼요.</p>
+        </div>
 
         <button type="button" className="reply-copy"
           disabled={!canCopy || sending} onClick={onSubmit}>
           {sending ? '보내는 중…' : '제출하기'}
         </button>
-        <div className="reply-guide">
-          {canCopy ? '담당자에게 바로 전달됩니다' : '위 칸을 채우시면 제출할 수 있어요'}
-        </div>
+        {/* 채워야 넘어간다는 안내는 잠겼을 때만 필요하다. 눌러도 되는 상태에서
+            '담당자에게 바로 전달됩니다'까지 띄우니 버튼 밑이 불필요하게 붐볐다. */}
+        {!canCopy && <div className="reply-guide">위 칸을 채우시면 제출할 수 있어요</div>}
         {sendErr && <div className="sent-err">{sendErr}</div>}
         <button type="button" className="sum-edit" onClick={() => setStep(1)}>‹ 이전</button>
-
-        {/* 아이디를 적는 화면이라 '이게 어디로 가나'가 자연스럽게 생긴다.
-            보관 방식까지 설명하면 묻지도 않은 걸 답하는 인상이 되므로,
-            용도와 열람 범위 두 가지만 짧게 적는다. */}
-        <div className="reply-privacy">보내주신 내용은 쿠폰 발급 외의 용도로 사용하지 않으며, 담당자만 열람 가능하게끔 비공개로 안전하게 보관됩니다.</div>
       </div>
     );
   }
