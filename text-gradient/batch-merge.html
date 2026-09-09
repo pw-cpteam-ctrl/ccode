@@ -77,7 +77,8 @@ button:disabled{opacity:.4;cursor:default;}
 #gridPanel .previewToolbar{padding:8px 14px;border-bottom:1px solid #ddd8ce;flex-wrap:wrap;row-gap:6px;}
 #gridPanel #selBar{border-radius:0;border-left:none;border-right:none;border-top:none;}
 #gridPanel .helpBox{margin:10px 14px 0;}
-#gridScroll{flex:1;overflow-y:auto;padding:14px;min-height:0;}
+/* position:relative — 드래그 선택 사각형(#marquee)이 이 안으로 들어와 내용과 같이 스크롤되게 */
+#gridScroll{flex:1;overflow-y:auto;padding:14px;min-height:0;position:relative;}
 #grid{display:flex;flex-wrap:wrap;gap:20px;user-select:none;}
 /* 빈 곳에서 마우스를 끌어 여러 칸을 한꺼번에 고르는 사각형 */
 #marquee{position:absolute;z-index:60;display:none;border:1px solid #4a7cff;background:rgba(74,124,255,.18);pointer-events:none;border-radius:2px;}
@@ -1778,13 +1779,26 @@ let _suppressThumbClick = false;
 let _autoScrollRaf = null, _autoScrollDir = 0;
 
 function marqueeEl(){ return $('#marquee'); }
+// 좌표 기준을 "페이지"에서 "#gridScroll 안쪽 내용"으로 바꿨다.
+// 화면 배치를 2열로 바꾸면서 페이지 자체는 스크롤되지 않고 미리보기 칸 영역만 스크롤되는데,
+// 예전 코드는 페이지 기준(pageX/pageY, window.scrollBy)이라 드래그 중 스크롤이 아예 안 되고
+// 사각형도 내용과 어긋나 끊긴 것처럼 보였다
+function gridScrollEl(){ return $('#gridScroll'); }
+function gridPoint(e){
+  const sc = gridScrollEl();
+  const r = sc.getBoundingClientRect();
+  return { x: e.clientX - r.left + sc.scrollLeft, y: e.clientY - r.top + sc.scrollTop };
+}
 function thumbPageRects(){
+  const sc = gridScrollEl();
+  const b = sc.getBoundingClientRect();
+  const ox = -b.left + sc.scrollLeft, oy = -b.top + sc.scrollTop;
   return Array.from(document.querySelectorAll('.thumb')).map(w => {
     const r = w.getBoundingClientRect();
     return {
       idx: Number(w.dataset.idx),
-      left: r.left + window.scrollX, right: r.right + window.scrollX,
-      top: r.top + window.scrollY, bottom: r.bottom + window.scrollY,
+      left: r.left + ox, right: r.right + ox,
+      top: r.top + oy, bottom: r.bottom + oy,
     };
   });
 }
@@ -1803,10 +1817,29 @@ function startAutoScroll(){
   if (_autoScrollRaf) return;
   const step = () => {
     if (!_marquee || !_autoScrollDir) { _autoScrollRaf = null; return; }
-    window.scrollBy(0, _autoScrollDir * 14);
+    const sc = gridScrollEl();
+    const before = sc.scrollTop;
+    sc.scrollTop = before + _autoScrollDir * 14;
+    // 스크롤된 만큼 사각형을 늘려준다 — 마우스를 멈춰 둔 채 화면이 내려가도 선택이 따라 커지게
+    if (sc.scrollTop !== before && _marquee.lastY != null) {
+      _marquee.lastY += (sc.scrollTop - before);
+      drawMarquee(_marquee.lastX, _marquee.lastY);
+      applyMarqueeSelection(_marquee.x0, _marquee.y0, _marquee.lastX, _marquee.lastY);
+    }
     _autoScrollRaf = requestAnimationFrame(step);
   };
   _autoScrollRaf = requestAnimationFrame(step);
+}
+// 사각형을 #gridScroll 안쪽 좌표로 그린다.
+// 마퀴 div를 #gridScroll 안으로 옮겨야 스크롤될 때 내용과 같이 움직인다
+function drawMarquee(x, y){
+  const el = marqueeEl();
+  if (el.parentElement !== gridScrollEl()) gridScrollEl().appendChild(el);
+  el.style.display = 'block';
+  el.style.left = Math.min(_marquee.x0, x) + 'px';
+  el.style.top = Math.min(_marquee.y0, y) + 'px';
+  el.style.width = Math.abs(x - _marquee.x0) + 'px';
+  el.style.height = Math.abs(y - _marquee.y0) + 'px';
 }
 
 // 리스너를 #grid에만 걸면 칸 사이·아래 여백에서 시작한 드래그가 안 먹히므로 미리보기 패널 전체에 건다
@@ -1816,8 +1849,10 @@ $('#gridPanel').addEventListener('mousedown', (e) => {
   // 사진(.thumbCv) 위에서 시작한 드래그는 "사진 위치 조정"이므로 여기서 제외 — 여백에서 시작할 때만 선택
   if (e.target.closest('button, input, select, label, a, .previewToolbar, #selBar, .thumbCv, .folderHead, .helpBox')) return;
   const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+  const pt = gridPoint(e);
   _marquee = {
-    x0: e.pageX, y0: e.pageY,
+    x0: pt.x, y0: pt.y,
+    lastX: pt.x, lastY: pt.y,
     baseSet: additive ? new Set(selectedIdx) : new Set(),
     moved: false,
   };
@@ -1825,21 +1860,19 @@ $('#gridPanel').addEventListener('mousedown', (e) => {
 });
 document.addEventListener('mousemove', (e) => {
   if (!_marquee) return;
-  const dx = e.pageX - _marquee.x0, dy = e.pageY - _marquee.y0;
+  const pt = gridPoint(e);
+  const dx = pt.x - _marquee.x0, dy = pt.y - _marquee.y0;
   if (!_marquee.moved && Math.hypot(dx, dy) < MARQUEE_MIN_MOVE) return;
   _marquee.moved = true;
+  _marquee.lastX = pt.x; _marquee.lastY = pt.y;
 
-  const el = marqueeEl();
-  el.style.display = 'block';
-  el.style.left = Math.min(_marquee.x0, e.pageX) + 'px';
-  el.style.top = Math.min(_marquee.y0, e.pageY) + 'px';
-  el.style.width = Math.abs(e.pageX - _marquee.x0) + 'px';
-  el.style.height = Math.abs(e.pageY - _marquee.y0) + 'px';
+  drawMarquee(pt.x, pt.y);
+  applyMarqueeSelection(_marquee.x0, _marquee.y0, pt.x, pt.y);
 
-  applyMarqueeSelection(_marquee.x0, _marquee.y0, e.pageX, e.pageY);
-
+  // 스크롤되는 영역은 창 전체가 아니라 미리보기 칸 영역이므로, 그 영역의 위/아래 끝을 기준으로 본다
+  const r = gridScrollEl().getBoundingClientRect();
   const margin = 60;
-  _autoScrollDir = e.clientY < margin ? -1 : (e.clientY > window.innerHeight - margin ? 1 : 0);
+  _autoScrollDir = e.clientY < r.top + margin ? -1 : (e.clientY > r.bottom - margin ? 1 : 0);
   if (_autoScrollDir) startAutoScroll();
 });
 document.addEventListener('mouseup', () => {
