@@ -86,7 +86,8 @@ button:disabled{opacity:.4;cursor:default;}
 .thumb .thumbCv{position:relative;line-height:0;}
 /* 폴더 머리 — 폴더(상품)마다 한 줄. 여기서 그 폴더 전체에 제목을 한꺼번에 배정한다.
    예전에는 칸마다 폴더 이름표가 붙어 있어서 같은 이름이 수십 번 반복됐다 */
-.folderHead{flex:0 0 100%;display:flex;align-items:center;gap:8px;padding:6px 0 7px;
+/* 버튼이 늘어나 한 줄에 안 들어가면 겹쳐 보이므로 줄바꿈을 허용한다 */
+.folderHead{flex:0 0 100%;display:flex;align-items:center;gap:6px;flex-wrap:wrap;row-gap:5px;padding:6px 0 7px;
   position:sticky;top:-14px;z-index:6;background:#fff;box-shadow:0 6px 7px -6px rgba(37,32,24,.10);}
 .folderHead .fdot{width:10px;height:10px;border-radius:50%;flex:none;}
 .folderHead .fname{font-size:13px;font-weight:800;}
@@ -99,7 +100,8 @@ button:disabled{opacity:.4;cursor:default;}
   border:1.5px solid #ccc4b4;background:#fff;font-family:inherit;color:#252018;max-width:240px;}
 .folderHead select.none{background:#ffe9e9;border-color:#e05d5d!important;color:#b33;}
 .folderHead select.mixed{font-style:italic;}
-.folderHead button{font-size:11px;padding:4px 9px;}
+.folderHead button{font-size:11px;padding:4px 8px;white-space:nowrap;flex:none;}
+.folderHead .fname{max-width:34%;}
 /* 폴더 통째로 지우기 — 되돌릴 수 있지만 영향 범위가 크므로 색으로 구분해둔다 */
 /* 이 폴더에만 사진을 보태는 + — 폴더 이름 바로 옆에 붙는 작은 정사각 버튼 */
 .folderHead button.addBtn{padding:0;width:20px;height:20px;line-height:1;font-size:14px;font-weight:800;
@@ -118,6 +120,39 @@ button:disabled{opacity:.4;cursor:default;}
 .storeColorBtn:first-of-type{border-radius:6px 0 0 6px;}
 .storeColorBtn:last-of-type{border-radius:0 6px 6px 0;border-left:none;}
 .storeColorBtn.on{background:#252018;color:#fff;border-color:#252018;}
+/* ── 폴더 목록 (좌측) — 다른 프로젝트에서 쓰던 "목록으로 세우고 골라서 상세를 보는" 구조.
+   높이 상한을 고정 px로 박으면 화면이 남는데도 거기서 잘리므로 화면 높이 기준으로 잡는다 */
+.list-wrap{display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 320px);}
+.item-list{background:#faf8f4;border:1px solid #ddd8ce;border-radius:12px;padding:6px;
+  min-height:60px;flex:1 1 auto;overflow-y:auto;}
+@media(max-width:960px){ .list-wrap{max-height:none;} .item-list{max-height:60vh;} }
+.frow{display:flex;align-items:center;gap:8px;padding:8px 6px;border-radius:8px;cursor:pointer;font-size:13px;}
+.frow:hover{background:rgba(74,124,255,.08);}
+.frow.sel{background:#1452c0;color:#fff;}
+.frow .r-main{flex:1;min-width:0;font-weight:700;font-size:11px;word-break:break-all;line-height:1.35;}
+.frow .r-sub{font-size:10.5px;color:#7d7568;font-weight:600;margin-top:4px;
+  display:flex;flex-wrap:wrap;gap:4px;align-items:center;}
+.frow.sel .r-sub{color:rgba(255,255,255,.82);}
+.fpill{display:inline-flex;padding:1px 7px;border-radius:999px;font-size:9.5px;font-weight:700;
+  background:#fbf1e4;color:#b3661a;white-space:nowrap;}
+.fpill.on{background:#e6f6ea;color:#1e7e34;}
+.fpill.over{background:#fdeaea;color:#b33;}
+.frow.sel .fpill{background:rgba(255,255,255,.18);color:rgba(255,255,255,.75);}
+.frow.sel .fpill.on{background:rgba(255,255,255,.9);color:#1e7e34;}
+/* 썸네일 — 사람·제품 사진은 위쪽이 중요해서 가운데가 아니라 위에서 25% 지점을 기준으로 확대 */
+.frow .r-thumb-wrap{width:52px;height:65px;flex-shrink:0;border-radius:5px;overflow:hidden;
+  background:#fff;border:1px solid #ddd8ce;}
+.frow .r-thumb{width:100%;height:100%;object-fit:cover;object-position:center 25%;}
+.frow .r-side{display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+  gap:6px;flex-shrink:0;width:14px;align-self:stretch;}
+.frow .fdot2{width:9px;height:9px;border-radius:50%;background:#b3661a;flex:none;}
+.frow .fdot2.done{background:#1e7e34;}
+.frow.sel .fdot2{outline:2px solid rgba(255,255,255,.6);}
+.frow .r-del{color:#7d7568;font-weight:800;line-height:1;font-size:12px;}
+.frow .r-del:hover{color:#b33;}
+.frow.sel .r-del{color:rgba(255,255,255,.85);}
+.list-empty{color:#7d7568;font-size:12px;padding:6px;}
+#tableBox #matchListTable{margin-top:6px;}
 .thumb{border-radius:6px;padding:5px;}
 /* 인스타 캐러셀 권장 장수(10장) 안에 드는 사진에 옅은 배경을 깔아, 폴더마다 어디까지가
    한 번에 올라가는 분량인지 눈으로 바로 세지 않고도 알 수 있게 한다 */
@@ -306,16 +341,26 @@ button:disabled{opacity:.4;cursor:default;}
   <!-- 폴더 머리의 + 버튼이 쓰는 파일 선택창 (그 폴더에만 사진을 끼워 넣는다) -->
   <input type="file" id="inAddToFolder" accept="image/*" multiple style="display:none;"/>
   <div id="listWrap" style="display:none;margin-top:14px;">
-    <div style="font-size:11.5px;color:#7d7568;margin-bottom:6px;line-height:1.6;">
-      사진 칸을 누르면 그 <b>폴더 전체 선택 + 오른쪽 미리보기의 그 칸으로 이동</b>.
-      투명파일명·스토어명은 셀 오른쪽 아래 손잡이를 끌어내려 <b>쭉 채우기</b> 가능.
+    <!-- 폴더(상품) 목록 — 수백 장을 다룰 때 표를 끝없이 내리는 대신 여기서 골라 이동한다 -->
+    <div class="list-wrap">
+      <div style="font-size:11.5px;color:#7d7568;line-height:1.5;">
+        <b>폴더 목록</b> — 누르면 오른쪽 미리보기의 그 폴더로 이동합니다.
+      </div>
+      <div class="item-list" id="folderList"></div>
     </div>
-    <table id="matchListTable"><thead><tr><th>사진</th><th>사진파일명</th><th>투명파일명</th><th>스토어명</th></tr></thead><tbody></tbody></table>
-    <div style="margin-top:10px;">
+    <div style="margin:10px 0;">
       <span id="listProgress" style="font-size:12px;color:#7d7568;margin-right:10px;"></span>
       <button id="btnAutoMatchFolder">폴더명으로 투명 자동 매칭</button>
       <button class="primary" id="btnApplyList">적용 (아트보드에 반영)</button>
     </div>
+    <!-- 표는 없애지 않고 접어둔다 — 셀 손잡이로 쭉 채우기는 표에만 있는 기능이다 -->
+    <details id="tableBox" class="helpBox" style="margin-top:4px;">
+      <summary>표로 보기 (투명파일명·스토어명 쭉 채우기)</summary>
+      <div class="helpBody">
+        <div>셀 오른쪽 아래 손잡이를 끌어내리면 <b>아래로 쭉 채우기</b>가 됩니다. 사진 칸을 누르면 그 폴더가 전체 선택됩니다.</div>
+        <table id="matchListTable"><thead><tr><th>사진</th><th>사진파일명</th><th>투명파일명</th><th>스토어명</th></tr></thead><tbody></tbody></table>
+      </div>
+    </details>
   </div>
   <div id="log"></div>
 </div>
@@ -1703,6 +1748,7 @@ async function assignOverlayMany(list, name){
   updateListProgress();
   refreshFolderHeads();   // 폴더 머리의 배정 현황·드롭다운도 같이 맞춤
   updateSortButton();     // 제목이 배정되면 그 폴더의 작품이 확정되므로 정렬 대상 수도 달라진다
+  renderFolderList();     // 좌측 목록의 "제목 n/n" 배지도 같이 갱신
   saveMetaSoon();
   saveFilesSoon();
 }
@@ -2595,6 +2641,78 @@ function refreshFolderHeads(){
   });
 }
 
+// ---------- 좌측 폴더 목록 ----------
+// 사진이 수백 장이면 표는 세로로 수천 px이 되어 결국 안 쓰게 된다. 그래서 폴더를 목록으로
+// 세우고 눌러서 오른쪽 미리보기의 그 자리로 이동하는 구조를 둔다.
+// 상태 계산(배지·완료 여부)은 렌더와 분리한다 — 목록·폴더 머리·상단 요약이 같은 판단을
+// 써야 하는데 각자 계산하면 화면마다 다른 답이 나온다
+let _selFolder = null;
+function folderStatus(folder){
+  const group = items.filter(x => (x.folder || '') === (folder || ''));
+  const done = group.filter(x => x.overlayName).length;
+  const badges = [
+    { label: `제목 ${done}/${group.length}`, on: group.length > 0 && done === group.length },
+    { label: `${group.length}장`, on: true, plain: true },
+  ];
+  if (group.length > CAROUSEL_MAX) badges.push({ label: `10장 초과 +${group.length - CAROUSEL_MAX}`, over: true });
+  return { group, done, badges, complete: group.length > 0 && done === group.length };
+}
+function renderFolderList(){
+  const box = $('#folderList');
+  if (!box) return;
+  const folders = foldersInOrder();
+  if (!folders.length) { box.innerHTML = '<div class="list-empty">아직 불러온 폴더가 없어요.</div>'; return; }
+  box.innerHTML = folders.map(f => {
+    const st = folderStatus(f);
+    // 일본어 폴더명은 읽기 어려우므로, 사전이나 배정된 제목으로 찾은 작품명을 앞에 세운다.
+    // 폴더 이름이 비어 있어도 알아볼 수 있게 대체 라벨까지 준비한다
+    const work = workKeyOf(f);
+    const label = (work && work !== f) ? work : (f || '(폴더 없음)');
+    const sub = (work && work !== f) ? f : '';
+    // 사진은 이미 메모리에 올라와 있으므로 그 주소를 그대로 쓴다 (새로 만드는 것이 없어 공짜)
+    const cover = st.group.find(x => x.isMain) || st.group[0];
+    const src = cover && cover.photoImg ? cover.photoImg.src : '';
+    return `<div class="frow${f === _selFolder ? ' sel' : ''}" data-folder="${escapeAttr(f)}">
+      ${src ? `<span class="r-thumb-wrap"><img class="r-thumb" src="${escapeAttr(src)}" alt=""/></span>` : ''}
+      <span class="r-main">${escapeHtmlText(label)}
+        <div class="r-sub">
+          ${st.badges.map(b => `<span class="fpill${b.on && !b.plain ? ' on' : ''}${b.over ? ' over' : ''}">${escapeHtmlText(b.label)}</span>`).join('')}
+        </div>
+        ${sub ? `<div class="r-sub" style="opacity:.75;">${escapeHtmlText(sub)}</div>` : ''}
+      </span>
+      <span class="r-side">
+        <span class="fdot2 ${st.complete ? 'done' : ''}"></span>
+        <span class="r-del" data-del="1" title="이 폴더를 목록에서 빼기">✕</span>
+      </span>
+    </div>`;
+  }).join('');
+}
+function escapeHtmlText(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+function escapeAttr(s){ return escapeHtmlText(s); }
+// 리스너는 행마다 달지 않고 목록 하나에만 단다 — 다시 그릴 때마다 행 수만큼 쌓이는 것을 막는다
+$('#folderList').addEventListener('click', (e) => {
+  const row = e.target.closest('.frow');
+  if (!row) return;
+  const folder = row.dataset.folder || '';
+  if (e.target.closest('[data-del]')) {
+    const group = items.filter(x => (x.folder || '') === folder);
+    if (!group.length) return;
+    // 폴더 머리의 삭제와 규칙을 통일한다 — 한 곳만 즉시 삭제면 그게 사고 지점이 된다
+    if (!confirm(`"${folder || '(폴더 없음)'}" 폴더의 사진 ${group.length}장을 리스트에서 뺄까요?\n\n원본 파일은 그대로 있고, 잘못 누르셨으면 Ctrl+Z로 되돌릴 수 있습니다.`)) return;
+    deleteItems(group);
+    log(`"${folder || '(폴더 없음)'}" 폴더 ${group.length}장을 삭제했습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
+    return;
+  }
+  _selFolder = folder;
+  renderFolderList();
+  // 오른쪽 미리보기에서 그 폴더 첫 장으로 이동 (마우스를 올린 것만으로는 움직이지 않게 클릭에만)
+  const idx = items.findIndex(x => (x.folder || '') === folder);
+  if (idx >= 0) jumpToThumb(idx);
+});
+
 function renderGrid(){
   ensureUids();   // 되돌리기가 사진을 번호로 찾으므로, 어느 경로로 불러왔든 번호를 보장한다
   const grid = $('#grid');
@@ -2756,6 +2874,7 @@ function renderGrid(){
   });
   updateSelUi(); // 미리보기 크기 변경 등으로 다시 그릴 때도 선택 상태가 유지되게
   updateSortButton(); // 흩어진 폴더가 몇 개인지 버튼 이름에 항상 최신으로 보이게
+  renderFolderList(); // 좌측 폴더 목록도 같은 자료로 다시 그린다
 }
 // ---------- 표 ↔ 미리보기 서로 짚어주기 ----------
 // 마우스를 올리면 표시만(스크롤 없음), 누르면 그때 그쪽으로 이동한다
