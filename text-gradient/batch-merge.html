@@ -122,13 +122,15 @@ button:disabled{opacity:.4;cursor:default;}
 .storeColorBtn.on{background:#252018;color:#fff;border-color:#252018;}
 /* ── 폴더 목록 (좌측) — 다른 프로젝트에서 쓰던 "목록으로 세우고 골라서 상세를 보는" 구조.
    높이 상한을 고정 px로 박으면 화면이 남는데도 거기서 잘리므로 화면 높이 기준으로 잡는다 */
-.list-wrap{display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 320px);}
+.list-wrap{display:flex;flex-direction:column;gap:8px;}
 /* 세로줄로 세우면 오른쪽 미리보기의 축소판이 되어 볼 이유가 없어진다.
    그래서 표지 썸네일만 바둑판으로 깔아, 한 화면에 폴더를 최대한 많이 담는다 */
+/* 한 화면에 4줄 정도는 보이게 높이를 잡는다 — 화면 높이에서 남는 만큼만 쓰던 예전 방식은
+   좌측 위 패널들이 자리를 먹어 1~2줄만 남았다. 폴더가 적으면 그만큼만 차지하게 min으로 묶는다 */
 .item-list{background:#faf8f4;border:1px solid #ddd8ce;border-radius:12px;padding:8px;
-  min-height:60px;flex:1 1 auto;overflow-y:auto;
+  height:min(72vh, 620px);min-height:150px;overflow-y:auto;
   display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:9px;align-content:start;}
-@media(max-width:960px){ .list-wrap{max-height:none;} .item-list{max-height:60vh;} }
+@media(max-width:960px){ .item-list{height:auto;max-height:60vh;} }
 .frow{cursor:pointer;border-radius:8px;padding:3px;position:relative;}
 .frow:hover{background:rgba(74,124,255,.10);}
 .frow.sel{background:#1452c0;}
@@ -138,7 +140,7 @@ button:disabled{opacity:.4;cursor:default;}
 .frow .r-thumb{width:100%;height:100%;object-fit:cover;object-position:center 25%;display:block;}
 .frow .r-main{display:block;font-weight:700;font-size:10px;line-height:1.25;margin-top:3px;
   color:#252018;word-break:break-all;
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;}
 .frow.sel .r-main{color:#fff;}
 .frow .r-sub{display:block;font-size:9.5px;font-weight:700;color:#b3661a;margin-top:1px;}
 .frow .r-sub.on{color:#1e7e34;}
@@ -2313,6 +2315,15 @@ function clampFocus(it){
 // 사진이 아트보드보다 작아진 경우(많이 축소한 경우)엔 여백이 불가피하므로, 그 안에서 자리만 옮긴다.
 const KEEP_COVER = 0.7;                       // 사진이 아트보드 세로의 최소 70%는 덮게
 const MAX_BOTTOM_GAP = CH * (1 - KEEP_COVER); // 그래서 아래 여백은 최대 30%
+// 사진을 위로 올릴 때 아래에 허용하는 여백의 양.
+// 기본은 아트보드의 30%(405px)인데, 그보다 제목 PNG가 아래를 더 많이 가려주면 그 높이까지 허용한다.
+// 원래 요청이 "하단이 글자로 피규어를 가려서 상단만 이동"이었으므로, 제목이 실제로 덮어 눈에
+// 안 보이는 만큼은 여백으로 쳐도 결과물에 드러나지 않는다. 30%로만 묶어두니 칸에서 마우스를
+// 45px만 움직여도 끝에 닿아 "잠긴 것처럼" 느껴졌다
+function bottomRoomOf(it){
+  const covered = overlaySafeBands(it).bottom || 0;   // 제목이 없거나 빼둔 칸은 0
+  return Math.max(MAX_BOTTOM_GAP, covered);
+}
 function panRange(it){
   const base = coverCropRect(it.photoImg.naturalWidth, it.photoImg.naturalHeight, CW, CH, it.focusX, it.focusY, it.zoom);
   const { dw, dh } = base;
@@ -2320,13 +2331,13 @@ function panRange(it){
     base,
     // 좌우: 사진이 크면 [CW-dw, 0](덮는 범위 안), 작으면 [0, CW-dw](아트보드 안쪽)
     x: { lo: Math.min(0, CW - dw), hi: Math.max(0, CW - dw) },
-    // 세로: 어떤 비율의 사진이든 "덮은 위치에서 위로 30%(405px)까지 더" 올릴 수 있게 한다.
+    // 세로: 어떤 비율의 사진이든 "덮은 위치에서 위로 (기본 30% 또는 제목이 가려주는 높이)까지 더".
     //   Math.min(0, CH - dh) = 사진이 아트보드를 다 덮는 위치(큰 사진은 음수, 작은 사진은 0),
     //   여기서 MAX_BOTTOM_GAP만큼 더 위로 허용 → 큰 사진·4:5 사진의 한계는 예전과 완전히 같고,
     //   막혀 있던 "가로로 넓어서 아트보드보다 작아진 사진"만 위로 열린다.
     //   예전에는 작은 사진의 lo가 0이라, 자동 배율로 축소된 가로 사진은 위쪽 여백이 사라지는
     //   지점에서 멈춰 "잠긴 것처럼" 보였다 (사진 비율에 따라 동작이 달라지는 원인)
-    y: { lo: Math.min(0, CH - dh) - MAX_BOTTOM_GAP, hi: Math.max(0, CH - dh) },
+    y: { lo: Math.min(0, CH - dh) - bottomRoomOf(it), hi: Math.max(0, CH - dh) },
   };
 }
 // 배율이 바뀌면 허용 범위도 달라지므로 지금 위치를 다시 범위 안으로 넣는다
