@@ -12,7 +12,7 @@
 //
 // 환경변수:
 //   ADMIN_PASSWORD  — 담당자용 접속 코드 (가이드 접속 코드와 다른 값이어야 한다)
-//   GITHUB_TOKEN / GITHUB_OWNER / GITHUB_REPO / GITHUB_LOG_BRANCH(기본 chatbot-logs)
+//   GITHUB_TOKEN / GITHUB_OWNER / GITHUB_REPO / GITHUB_LOG_BRANCH(비공개 저장소의 main)
 
 import { readGithubFile, writeGithubFile } from '../lib/github.js';
 
