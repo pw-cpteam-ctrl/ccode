@@ -707,13 +707,25 @@ function setupDrop(dropId, inputId, onFiles){
 let overlayFiles = [];
 
 setupDrop('#dropOverlays', '#inOverlays', files => {
-  overlayFiles = files;
+  // 예전에는 여기서 목록을 통째로 갈아치웠다. 그래서 제목 파일을 몇 개 더 올리면 앞서 올린
+  // 것들이 사라지고, 이미 배정해둔 제목까지 끊겼다. 이제 이름이 겹치지 않는 것만 뒤에 더한다
+  const before = overlayFiles.length;
+  const have = new Set(overlayFiles.map(f => f.name));
+  const added = files.filter(f => !have.has(f.name));
+  overlayFiles = overlayFiles.concat(added);
   overlayPoolVersion++; // 후보가 바뀌었으니 칸마다 달린 드롭다운도 다음에 펼칠 때 새로 채워지게
   overlaySafeCache.clear(); // 제목이 덮어주는 높이 측정값도 다시 재도록 버림
-  $('#overlayCount').textContent = files.length + '개 선택됨';
+  $('#overlayCount').textContent = overlayFiles.length + '개 선택됨';
   updateHeaderStats();
   saveOverlayPoolToCache();
-  if ($('#listWrap').style.display !== 'none') renderMatchListTable(); // 리스트가 이미 떠 있으면 후보 목록 갱신
+  // 폴더 머리의 드롭다운은 만들 때 후보를 한 번 박아두는 구조라, 다시 그리지 않으면 새로 올린
+  // 제목이 새로고침해야 보였다 → 여기서 그리드까지 다시 그려 바로 반영한다
+  if (items.length) renderGrid();
+  if ($('#listWrap').style.display !== 'none') renderMatchListTable();
+  const skipped = files.length - added.length;
+  log(`투명 제목 ${added.length}개 추가 (전체 ${overlayFiles.length}개)`
+    + (skipped ? ` — 이름이 같아서 건너뜀 ${skipped}개` : '')
+    + (before ? '' : ''));
 });
 
 function loadImage(file){
@@ -2350,7 +2362,21 @@ function drawItemThumb(ctx, it){
 function computeGeom(it){ return geomOf(it); }
 
 // ---------- 사진 1장만 다운로드 (전체 ZIP 안 받고 테스트/개별 확인용) ----------
-async function downloadSingleItem(it){
+// 저장할 때 쓸 폴더 이름.
+// 본사 zip 폴더는 이름이 일본어라 내려받은 뒤 읽기가 어렵다. 그 폴더에 배정된 제목 PNG는
+// 한국어(작품명_상품명)이므로 그 이름을 쓴다. 배정된 제목이 없으면 어쩔 수 없이 폴더명 그대로
+function exportFolderName(folder){
+  const group = items.filter(x => (x.folder || '') === (folder || ''));
+  const cnt = new Map();
+  for (const x of group) {
+    if (!x.overlayName) continue;
+    const base = x.overlayName.replace(/\.[^.]+$/, '');
+    cnt.set(base, (cnt.get(base) || 0) + 1);
+  }
+  if (cnt.size) return [...cnt.entries()].sort((a, b) => b[1] - a[1] || naturalCompare(a[0], b[0]))[0][0];
+  return folder || '';
+}
+async function downloadSingleItem(it, nameOverride){
   const canvas = document.createElement('canvas');
   canvas.width = CW; canvas.height = CH;
   const ctx = canvas.getContext('2d');
@@ -2358,12 +2384,33 @@ async function downloadSingleItem(it){
   const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  // ZIP과 같은 규칙으로 폴더명을 앞에 붙인다 — 폴더마다 같은 파일명이 있어도 구분되게
-  const base = it.photoName.replace(/\.[^.]+$/, '');
-  const dir = (it.folder || '').replace(/[\\/:*?"<>|]/g, '_');
-  a.download = (dir ? dir + '_' : '') + base + '.png';
+  if (nameOverride) {
+    a.download = nameOverride.replace(/[\\/:*?"<>|]/g, '_') + '.png';
+  } else {
+    // ZIP과 같은 규칙 — 폴더마다 같은 파일명이 있어도 구분되게 앞에 폴더 이름을 붙인다
+    const base = it.photoName.replace(/\.[^.]+$/, '');
+    const dir = exportFolderName(it.folder).replace(/[\\/:*?"<>|]/g, '_');
+    a.download = (dir ? dir + '_' : '') + base + '.png';
+  }
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+// 한 폴더만 개별 PNG로 내려받기 (ZIP이 아니라 아트보드 개수만큼 파일이 떨어진다).
+// 브라우저가 연달아 내려받기를 막을 수 있어 사이에 텀을 둔다
+async function downloadFolderItems(folder){
+  const group = items.filter(x => (x.folder || '') === (folder || ''));
+  if (!group.length) return;
+  if (!confirm(`"${folder || '(폴더 없음)'}" 폴더 ${group.length}장을 한 장씩 내려받을까요?\n\n압축 파일이 아니라 PNG ${group.length}개가 따로 떨어집니다.`)) return;
+  const name = exportFolderName(folder);
+  const seqMap = pageSeqMap();
+  log(`"${name}" ${group.length}장 내려받는 중...`);
+  const ordered = [...group.filter(x => x.isMain), ...group.filter(x => !x.isMain)];
+  for (const it of ordered) {
+    const seq = String(seqMap.get(it) || 0).padStart(2, '0');
+    await downloadSingleItem(it, `${seq}_${name}`);
+    await new Promise(r => setTimeout(r, 320));
+  }
+  log(`"${name}" ${group.length}장 내려받기 완료`);
 }
 
 // ---------- 그리드(썸네일) ----------
@@ -2485,6 +2532,15 @@ function makeFolderHead(folder){
     log(`"${folder || '(폴더 없음)'}" 폴더에서 대표 1장만 제목을 남기고 ${changed}장을 바꿨습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
   });
   head.appendChild(strip);
+
+  // 이 폴더만 개별 PNG로 내려받기 (전체 ZIP과 별개)
+  const dl = document.createElement('button');
+  dl.type = 'button';
+  dl.textContent = '⬇ 폴더 다운로드';
+  dl.title = `"${folder || '(폴더 없음)'}" 폴더 ${list.length}장을 개별 PNG로 내려받습니다 (압축 아님)`;
+  dl.addEventListener('mousedown', e => e.stopPropagation());
+  dl.addEventListener('click', (e) => { e.stopPropagation(); downloadFolderItems(folder); });
+  head.appendChild(dl);
 
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -3054,7 +3110,9 @@ function updateEditorBadge(){
 function openEditor(idx){
   curItem = items[idx];
   editPhoto.src = curItem.photoImg.src;
-  if (curItem.overlayImg) {
+  // noFrame(제목 빼기)을 확인하지 않아서, 제목을 뺀 장을 눌러 크게 보면 뺀 제목이 다시 얹혀
+  // 보였다. 미리보기·저장은 noFrame을 보는데 편집기만 안 봐서 화면끼리 어긋난 것
+  if (curItem.overlayImg && !curItem.noFrame) {
     editOverlayImg.src = curItem.overlayImg.src;
     editOverlayImg.style.display = '';
   } else {
@@ -3177,7 +3235,8 @@ $('#btnExportAll').addEventListener('click', async () => {
     drawItem(ctx, it);
 
     const base = it.photoName.replace(/\.[^.]+$/, '');
-    const dir = zipSafe(folder);
+    // 일본어 폴더명 대신 그 폴더에 배정된 한국어 제목 PNG 이름으로 폴더를 만든다
+    const dir = zipSafe(exportFolderName(folder));
     let path = (dir ? dir + '/' : '') + String(seq).padStart(2, '0') + '_' + zipSafe(base) + '.png';
     if (usedPaths.has(path)) {           // 같은 폴더에 같은 이름이 또 있는 예외 상황만 번호 추가
       const n = usedPaths.get(path) + 1;
