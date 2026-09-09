@@ -123,34 +123,37 @@ button:disabled{opacity:.4;cursor:default;}
 /* ── 폴더 목록 (좌측) — 다른 프로젝트에서 쓰던 "목록으로 세우고 골라서 상세를 보는" 구조.
    높이 상한을 고정 px로 박으면 화면이 남는데도 거기서 잘리므로 화면 높이 기준으로 잡는다 */
 .list-wrap{display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 320px);}
-.item-list{background:#faf8f4;border:1px solid #ddd8ce;border-radius:12px;padding:6px;
-  min-height:60px;flex:1 1 auto;overflow-y:auto;}
+/* 세로줄로 세우면 오른쪽 미리보기의 축소판이 되어 볼 이유가 없어진다.
+   그래서 표지 썸네일만 바둑판으로 깔아, 한 화면에 폴더를 최대한 많이 담는다 */
+.item-list{background:#faf8f4;border:1px solid #ddd8ce;border-radius:12px;padding:8px;
+  min-height:60px;flex:1 1 auto;overflow-y:auto;
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:9px;align-content:start;}
 @media(max-width:960px){ .list-wrap{max-height:none;} .item-list{max-height:60vh;} }
-.frow{display:flex;align-items:center;gap:8px;padding:8px 6px;border-radius:8px;cursor:pointer;font-size:13px;}
-.frow:hover{background:rgba(74,124,255,.08);}
-.frow.sel{background:#1452c0;color:#fff;}
-.frow .r-main{flex:1;min-width:0;font-weight:700;font-size:11px;word-break:break-all;line-height:1.35;}
-.frow .r-sub{font-size:10.5px;color:#7d7568;font-weight:600;margin-top:4px;
-  display:flex;flex-wrap:wrap;gap:4px;align-items:center;}
-.frow.sel .r-sub{color:rgba(255,255,255,.82);}
-.fpill{display:inline-flex;padding:1px 7px;border-radius:999px;font-size:9.5px;font-weight:700;
-  background:#fbf1e4;color:#b3661a;white-space:nowrap;}
-.fpill.on{background:#e6f6ea;color:#1e7e34;}
-.fpill.over{background:#fdeaea;color:#b33;}
-.frow.sel .fpill{background:rgba(255,255,255,.18);color:rgba(255,255,255,.75);}
-.frow.sel .fpill.on{background:rgba(255,255,255,.9);color:#1e7e34;}
-/* 썸네일 — 사람·제품 사진은 위쪽이 중요해서 가운데가 아니라 위에서 25% 지점을 기준으로 확대 */
-.frow .r-thumb-wrap{width:52px;height:65px;flex-shrink:0;border-radius:5px;overflow:hidden;
-  background:#fff;border:1px solid #ddd8ce;}
-.frow .r-thumb{width:100%;height:100%;object-fit:cover;object-position:center 25%;}
-.frow .r-side{display:flex;flex-direction:column;align-items:center;justify-content:space-between;
-  gap:6px;flex-shrink:0;width:14px;align-self:stretch;}
-.frow .fdot2{width:9px;height:9px;border-radius:50%;background:#b3661a;flex:none;}
+.frow{cursor:pointer;border-radius:8px;padding:3px;position:relative;}
+.frow:hover{background:rgba(74,124,255,.10);}
+.frow.sel{background:#1452c0;}
+/* 썸네일 — 사람·제품 사진은 위쪽이 중요해서 가운데가 아니라 위에서 25% 지점을 기준으로 잡는다 */
+.frow .r-thumb-wrap{width:100%;aspect-ratio:4/5;border-radius:5px;overflow:hidden;
+  background:#fff;border:1px solid #ddd8ce;display:block;}
+.frow .r-thumb{width:100%;height:100%;object-fit:cover;object-position:center 25%;display:block;}
+.frow .r-main{display:block;font-weight:700;font-size:10px;line-height:1.25;margin-top:3px;
+  color:#252018;word-break:break-all;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.frow.sel .r-main{color:#fff;}
+.frow .r-sub{display:block;font-size:9.5px;font-weight:700;color:#b3661a;margin-top:1px;}
+.frow .r-sub.on{color:#1e7e34;}
+.frow.sel .r-sub{color:rgba(255,255,255,.9);}
+/* 진행 표시·초과 경고·삭제는 썸네일 위 귀퉁이에 얹어 칸 높이를 늘리지 않는다 */
+.frow .fdot2{position:absolute;top:7px;left:7px;width:9px;height:9px;border-radius:50%;
+  background:#b3661a;box-shadow:0 0 0 2px #fff;}
 .frow .fdot2.done{background:#1e7e34;}
-.frow.sel .fdot2{outline:2px solid rgba(255,255,255,.6);}
-.frow .r-del{color:#7d7568;font-weight:800;line-height:1;font-size:12px;}
-.frow .r-del:hover{color:#b33;}
-.frow.sel .r-del{color:rgba(255,255,255,.85);}
+.frow .fover{position:absolute;top:5px;right:5px;background:#b33;color:#fff;font-size:8.5px;
+  font-weight:800;border-radius:999px;padding:1px 5px;}
+.frow .r-del{position:absolute;bottom:24px;right:5px;width:17px;height:17px;border-radius:50%;
+  background:rgba(255,255,255,.92);color:#b33;font-weight:800;font-size:11px;line-height:17px;
+  text-align:center;display:none;box-shadow:0 1px 3px rgba(0,0,0,.2);}
+.frow:hover .r-del{display:block;}
+.frow .r-del:hover{background:#b33;color:#fff;}
 .list-empty{color:#7d7568;font-size:12px;padding:6px;}
 #tableBox #matchListTable{margin-top:6px;}
 .thumb{border-radius:6px;padding:5px;}
@@ -2571,7 +2574,7 @@ function makeFolderHead(folder){
   // 이 폴더만 대표 한 장만 제목을 남긴다 — 전체 일괄만 있으면 폴더별로 다르게 갈 수가 없다
   const strip = document.createElement('button');
   strip.type = 'button';
-  strip.textContent = '★만 제목';
+  strip.textContent = '★만';
   strip.title = `"${folder || '(폴더 없음)'}" 폴더만 대표 한 장에 제목을 남기고 나머지는 뺍니다 (배정값은 남아 있어 Ctrl+Z로 되돌리기 가능)`;
   strip.addEventListener('mousedown', e => e.stopPropagation());
   strip.addEventListener('click', (e) => {
@@ -2585,7 +2588,7 @@ function makeFolderHead(folder){
   // 이 폴더만 개별 PNG로 내려받기 (전체 ZIP과 별개)
   const dl = document.createElement('button');
   dl.type = 'button';
-  dl.textContent = '⬇ 폴더 다운로드';
+  dl.textContent = '⬇';
   dl.title = `"${folder || '(폴더 없음)'}" 폴더 ${list.length}장을 개별 PNG로 내려받습니다 (압축 아님)`;
   dl.addEventListener('mousedown', e => e.stopPropagation());
   dl.addEventListener('click', (e) => { e.stopPropagation(); downloadFolderItems(folder); });
@@ -2593,7 +2596,7 @@ function makeFolderHead(folder){
 
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.textContent = '폴더 전체 선택';
+  btn.textContent = '전체선택';
   btn.title = '이 폴더 사진을 전부 선택합니다 (Ctrl을 누른 채 누르면 지금 선택에 더해집니다 — 폴더 합치기에 사용)';
   btn.addEventListener('click', (e) => { e.stopPropagation(); selectFolderGroup(folder, e.ctrlKey || e.metaKey); });
   head.appendChild(btn);
@@ -2603,7 +2606,7 @@ function makeFolderHead(folder){
   const del = document.createElement('button');
   del.type = 'button';
   del.className = 'del';
-  del.textContent = '폴더 삭제';
+  del.textContent = '삭제';
   del.title = `"${folder || '(폴더 없음)'}" 폴더 ${list.length}장을 리스트에서 통째로 뺍니다 (Ctrl+Z로 되돌리기 가능)`;
   del.addEventListener('mousedown', e => e.stopPropagation());
   del.addEventListener('click', (e) => {
@@ -2672,18 +2675,17 @@ function renderFolderList(){
     // 사진은 이미 메모리에 올라와 있으므로 그 주소를 그대로 쓴다 (새로 만드는 것이 없어 공짜)
     const cover = st.group.find(x => x.isMain) || st.group[0];
     const src = cover && cover.photoImg ? cover.photoImg.src : '';
-    return `<div class="frow${f === _selFolder ? ' sel' : ''}" data-folder="${escapeAttr(f)}">
-      ${src ? `<span class="r-thumb-wrap"><img class="r-thumb" src="${escapeAttr(src)}" alt=""/></span>` : ''}
-      <span class="r-main">${escapeHtmlText(label)}
-        <div class="r-sub">
-          ${st.badges.map(b => `<span class="fpill${b.on && !b.plain ? ' on' : ''}${b.over ? ' over' : ''}">${escapeHtmlText(b.label)}</span>`).join('')}
-        </div>
-        ${sub ? `<div class="r-sub" style="opacity:.75;">${escapeHtmlText(sub)}</div>` : ''}
-      </span>
-      <span class="r-side">
-        <span class="fdot2 ${st.complete ? 'done' : ''}"></span>
-        <span class="r-del" data-del="1" title="이 폴더를 목록에서 빼기">✕</span>
-      </span>
+    const over = st.group.length - CAROUSEL_MAX;
+    // 제목(작품명) 아래 줄에는 "배정 현황 · 장수"만 짧게 — 칸이 작으므로 배지를 늘어놓지 않는다
+    return `<div class="frow${f === _selFolder ? ' sel' : ''}" data-folder="${escapeAttr(f)}"
+        title="${escapeAttr(label + (sub ? ' — ' + sub : '') + `\n제목 ${st.done}/${st.group.length} · 사진 ${st.group.length}장`)}">
+      ${src ? `<span class="r-thumb-wrap"><img class="r-thumb" src="${escapeAttr(src)}" alt=""/></span>`
+            : `<span class="r-thumb-wrap"></span>`}
+      <span class="fdot2 ${st.complete ? 'done' : ''}"></span>
+      ${over > 0 ? `<span class="fover">+${over}</span>` : ''}
+      <span class="r-del" data-del="1" title="이 폴더를 목록에서 빼기">✕</span>
+      <span class="r-main">${escapeHtmlText(label)}</span>
+      <span class="r-sub${st.complete ? ' on' : ''}">${st.done}/${st.group.length} · ${st.group.length}장</span>
     </div>`;
   }).join('');
 }
