@@ -100,6 +100,10 @@ button:disabled{opacity:.4;cursor:default;}
 .folderHead select.mixed{font-style:italic;}
 .folderHead button{font-size:11px;padding:4px 9px;}
 /* 폴더 통째로 지우기 — 되돌릴 수 있지만 영향 범위가 크므로 색으로 구분해둔다 */
+/* 이 폴더에만 사진을 보태는 + — 폴더 이름 바로 옆에 붙는 작은 정사각 버튼 */
+.folderHead button.addBtn{padding:0;width:20px;height:20px;line-height:1;font-size:14px;font-weight:800;
+  border-radius:5px;flex:none;color:#1a3d8f;}
+.folderHead button.addBtn:hover{background:#eef3ff;border-color:#4a7cff;}
 .folderHead button.del{color:#b33;border-color:#e0a9a9;}
 .folderHead button.del:hover{background:#ffe9e9;border-color:#e05d5d;}
 /* 대표 사진 표시(★) — 누르면 그 폴더의 대표가 됨. 대표엔 투명 제목이 항상 들어간다 */
@@ -298,6 +302,8 @@ button:disabled{opacity:.4;cursor:default;}
   <button id="btnPickFolder">사진 폴더 선택 (기존 리스트 비우고 새로)</button>
   <button id="btnPickFolderAppend">폴더 추가 (기존 리스트 유지, 뒤에 이어붙이기)</button>
   <input type="file" id="inPhotoFolder" webkitdirectory multiple style="display:none;"/>
+  <!-- 폴더 머리의 + 버튼이 쓰는 파일 선택창 (그 폴더에만 사진을 끼워 넣는다) -->
+  <input type="file" id="inAddToFolder" accept="image/*" multiple style="display:none;"/>
   <div id="listWrap" style="display:none;margin-top:14px;">
     <div style="font-size:11.5px;color:#7d7568;margin-bottom:6px;line-height:1.6;">
       사진 칸을 누르면 그 <b>폴더 전체 선택 + 오른쪽 미리보기의 그 칸으로 이동</b>.
@@ -1354,6 +1360,71 @@ $('#inPhotoFolder').addEventListener('change', async (e) => {
   await saveMetaToCache();
 });
 
+// ---------- 폴더 머리의 + : 그 폴더에만 사진을 끼워 넣기 ----------
+// 폴더를 통째로 다시 불러오지 않고 한두 장만 보태고 싶을 때 쓴다
+let _addTargetFolder = null;
+function openAddToFolderPicker(folder){
+  _addTargetFolder = folder || '';
+  const inp = $('#inAddToFolder');
+  inp.value = '';        // 같은 파일을 연달아 골라도 change가 다시 뜨게
+  inp.click();
+}
+$('#inAddToFolder').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files).filter(looksLikeImageFile);
+  if (!files.length) { log('고른 파일 중에 이미지가 없습니다.'); return; }
+  const folder = _addTargetFolder || '';
+  files.sort((a, b) => naturalCompare(a.name, b.name));
+  const group = items.filter(x => (x.folder || '') === folder);
+  // 그 폴더가 이미 "대표만 제목" 상태면 새로 넣는 장도 제목을 빼고,
+  // 폴더에 배정된 제목이 있으면 그걸 그대로 물려준다 (같은 폴더면 제목이 같은 게 정상)
+  const stripped = group.some(x => x.noFrame);
+  const donor = group.find(x => x.overlayName) || null;
+  const used = new Set(group.map(x => x.photoName));
+  const added = [], failed = [];
+  for (const f of files) {
+    try {
+      const img = await loadImage(f);
+      // 같은 폴더에 이름이 겹치면 저장할 때 서로 덮어쓰므로 이름을 비켜준다
+      let name = f.name;
+      if (used.has(name)) {
+        const dot = name.lastIndexOf('.');
+        const base = dot > 0 ? name.slice(0, dot) : name, ext = dot > 0 ? name.slice(dot) : '';
+        let n = 2;
+        while (used.has(`${base} (${n})${ext}`)) n++;
+        name = `${base} (${n})${ext}`;
+      }
+      used.add(name);
+      added.push({
+        photoName: name, overlayName: donor ? donor.overlayName : null,
+        photoFile: f, overlayFile: donor ? donor.overlayFile : null,
+        photoImg: img, overlayImg: donor ? donor.overlayImg : null,
+        folder,
+        scaleMul: 1, ox: 0, oy: 0, bg: '#ffffff',
+        focusX: 0.5, focusY: 0.5, offX: 0, offY: 0,
+        zoom: defaultZoom(img.naturalWidth, img.naturalHeight, CW, CH),
+        storeName: DEFAULT_STORE_NAME, badgeSide: 'left',
+        isMain: false, noFrame: stripped || !donor
+      });
+    } catch (err) { failed.push(f.name); }
+  }
+  if (!added.length) { log('불러올 수 있는 사진이 없었습니다.'); return; }
+  pushUndo(`"${folder || '(폴더 없음)'}"에 ${added.length}장 추가`);
+  // 그 폴더의 마지막 장 바로 뒤에 끼워 넣는다 (폴더가 흩어지지 않게)
+  let lastIdx = -1;
+  items.forEach((x, i) => { if ((x.folder || '') === folder) lastIdx = i; });
+  if (lastIdx < 0) items.push(...added);
+  else items.splice(lastIdx + 1, 0, ...added);
+  clearSelection();
+  renderGrid();
+  renderMatchListTable();
+  await saveFilesToCache();
+  await saveMetaToCache();
+  log(`"${folder || '(폴더 없음)'}" 폴더에 ${added.length}장을 추가했습니다.`
+    + (donor ? ` 제목은 폴더에 배정된 "${donor.overlayName}"을 물려받았습니다.` : '')
+    + (failed.length ? ` (못 읽어서 건너뜀 ${failed.length}장)` : '')
+    + ' Ctrl+Z로 되돌릴 수 있습니다.');
+});
+
 function overlayCandidateNames(){
   return overlayFiles.map(f => f.name); // 불러온(업로드한) 순서 그대로
 }
@@ -2317,6 +2388,16 @@ function makeFolderHead(folder){
   head.querySelector('.fmeta').textContent = `${list.length}장 · 제목 ${done}/${list.length}`;
   // 일본어 폴더명이라 글자로는 못 맞히는 경우, 사전이 무엇을 찾았는지 보여준다
   applyWorkTag(head, folder);
+
+  // 이 폴더에만 사진을 보태는 + 버튼 — 폴더를 통째로 다시 불러오지 않아도 되게
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'addBtn';
+  add.textContent = '+';
+  add.title = `"${folder || '(폴더 없음)'}" 폴더에 사진을 골라 끼워 넣습니다 (이 폴더 맨 뒤에 붙습니다)`;
+  add.addEventListener('mousedown', e => e.stopPropagation());
+  add.addEventListener('click', (e) => { e.stopPropagation(); openAddToFolderPicker(folder); });
+  head.querySelector('.fmeta').after(add);
 
   // 폴더 안에서 쓰는 제목이 하나뿐이면 그 값을, 섞여 있으면 "(섞여 있음)"을 보여준다
   const kinds = [...new Set(list.map(x => x.overlayName || ''))];
