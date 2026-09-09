@@ -824,6 +824,7 @@ function normalizeMains(){
   }
 }
 function setMainPhoto(it){
+  pushUndo('대표 사진 변경');
   const folder = it.folder || '';
   const group = items.filter(o => (o.folder || '') === folder);
   // 이 폴더가 이미 "대표만 제목 남기기"를 거친 상태라면, 제목을 새 대표로 옮긴다
@@ -840,34 +841,143 @@ function setMainPhoto(it){
   saveMetaToCache(); // 대표 지정은 디바운스 없이 바로 저장 (직후 새로고침해도 안 날아가게)
   log(`"${folder || '(폴더 없음)'}" 대표 사진을 ${it.photoName} 으로 지정`);
 }
-// ---------- 되돌리기 (삭제·제목빼기 공용, 마지막 1회) ----------
-// 버튼을 기능마다 따로 두면 화면이 복잡해지므로 하나로 합치고, 무엇을 되돌리는지 버튼에 적어준다
-let _lastUndo = null;
-function setUndo(label, fn){
-  _lastUndo = fn;
+// ---------- 되돌리기 (Ctrl+Z, 최대 30단계) ----------
+// 예전에는 "마지막 동작 하나"만 함수로 기억해서, 삭제한 뒤 다른 작업을 여러 개 해도
+// 되돌리기 버튼은 그 오래된 삭제를 가리키고 있었다(직전 동작이 안 되돌려짐).
+// 이제는 조작 직전 상태를 통째로 찍어서 쌓아두고, Ctrl+Z로 하나씩 거슬러 올라간다.
+// 같은 방식이 megahouse-matome / mh-preview-maker에서 이미 쓰이고 있어 그 구조를 따랐다.
+//
+// 사진 파일(Blob)은 JSON으로 못 담으므로 스냅샷에는 "번호(uid)와 설정값"만 넣고,
+// 실제 사진 객체는 _itemPool이 계속 붙들고 있는다 — 지운 사진도 여기 남아 있어야 되살아난다.
+const UNDO_MAX = 30;
+const _undoStack = [];
+let _restoringUndo = false;   // 되돌리는 중에 또 스냅샷이 쌓이지 않게
+let _uidSeq = 0;
+const _itemPool = new Map();  // uid → 사진 객체 (삭제된 것도 보관)
+
+function ensureUids(){
+  for (const it of items) {
+    if (it.uid == null) it.uid = ++_uidSeq;
+    else if (it.uid > _uidSeq) _uidSeq = it.uid;
+    _itemPool.set(it.uid, it);
+  }
+}
+function undoSnapshot(){
+  ensureUids();
+  return {
+    order: items.map(it => it.uid),
+    meta: items.map(it => ({
+      uid: it.uid,
+      overlayName: it.overlayName, overlayFile: it.overlayFile, overlayImg: it.overlayImg,
+      focusX: it.focusX, focusY: it.focusY, zoom: it.zoom,
+      offX: it.offX || 0, offY: it.offY || 0,
+      bg: it.bg, storeName: it.storeName || '', badgeSide: it.badgeSide || 'left',
+      isMain: !!it.isMain, noFrame: !!it.noFrame, folder: it.folder || '',
+    })),
+    settings: { badgeMonth, badgeColor, badgeWeight, storeTextColor },
+  };
+}
+// 조작을 하기 "직전"에 부른다. label은 되돌리기 버튼에 그대로 보인다
+function pushUndo(label){
+  if (_restoringUndo || !items.length) return;
+  _undoStack.push({ label, state: undoSnapshot() });
+  if (_undoStack.length > UNDO_MAX) _undoStack.shift();
+  updateUndoButton();
+}
+// 드래그·휠처럼 연속으로 들어오는 조작은 한 덩어리로 묶는다
+// (마우스를 한 번 움직일 때마다 쌓으면 30칸이 1초 만에 가득 차서 되돌리기가 무용지물이 됨)
+let _undoGroupKey = null, _undoGroupAt = 0;
+function pushUndoGrouped(key, label, gapMs){
+  const now = Date.now();
+  if (_undoGroupKey === key && now - _undoGroupAt < (gapMs || 900)) { _undoGroupAt = now; return; }
+  _undoGroupKey = key; _undoGroupAt = now;
+  pushUndo(label);
+}
+function endUndoGroup(){ _undoGroupKey = null; }
+
+function undo(){
+  if (!_undoStack.length) { log('더 이상 되돌릴 게 없어'); return; }
+  const { label, state } = _undoStack.pop();
+  _restoringUndo = true;
+  try {
+    const next = [];
+    for (const uid of state.order) {
+      const it = _itemPool.get(uid);
+      if (it) next.push(it);          // 지웠던 사진도 보관소에 있으므로 그대로 되살아난다
+    }
+    const byUid = new Map(state.meta.map(m => [m.uid, m]));
+    for (const it of next) {
+      const m = byUid.get(it.uid);
+      if (!m) continue;
+      it.overlayName = m.overlayName; it.overlayFile = m.overlayFile; it.overlayImg = m.overlayImg;
+      it.focusX = m.focusX; it.focusY = m.focusY; it.zoom = m.zoom;
+      it.offX = m.offX; it.offY = m.offY;
+      it.bg = m.bg; it.storeName = m.storeName; it.badgeSide = m.badgeSide;
+      it.isMain = m.isMain; it.noFrame = m.noFrame; it.folder = m.folder;
+    }
+    items.length = 0;
+    items.push(...next);
+    if (state.settings) {
+      badgeMonth = state.settings.badgeMonth; badgeColor = state.settings.badgeColor;
+      badgeWeight = state.settings.badgeWeight; storeTextColor = state.settings.storeTextColor;
+      $('#badgeMonth').value = badgeMonth; $('#badgeColor').value = badgeColor;
+      $('#badgeWeight').value = String(badgeWeight);
+      for (const k of Object.keys(badgeShadowCache)) delete badgeShadowCache[k];
+      updateStoreColorButtons();
+      saveBadgeSettings();
+    }
+    clearSelection();
+    normalizeMains();
+    renderGrid();
+    renderMatchListTable();
+    saveMetaToCache();
+    saveFilesToCache();
+    reportAction(`되돌림: ${label}`);
+    log(`되돌렸어 — ${label} (남은 되돌리기 ${_undoStack.length}단계)`);
+  } finally {
+    _restoringUndo = false;
+    updateUndoButton();
+  }
+}
+function updateUndoButton(){
   const b = $('#btnUndoAction');
-  b.textContent = '↩ 되돌리기: ' + label;
+  if (!b) return;
+  if (!_undoStack.length) { b.style.display = 'none'; return; }
+  const top = _undoStack[_undoStack.length - 1];
+  b.textContent = `↩ 되돌리기: ${top.label} (${_undoStack.length})`;
+  b.title = `Ctrl+Z — ${_undoStack.length}단계까지 되돌릴 수 있어요`;
   b.style.display = '';
 }
-function clearUndo(){
-  _lastUndo = null;
-  const b = $('#btnUndoAction');
-  if (b) b.style.display = 'none';
+$('#btnUndoAction').addEventListener('click', undo);
+// Ctrl+Z. 글자를 치는 칸 안에서만 브라우저 기본 되돌리기에 양보한다(스토어명 오타 수정 등).
+// 체크박스·슬라이더·색상칸은 되돌릴 글자가 없는데도 INPUT이라, 여기까지 양보하면
+// 체크박스를 한 번 누른 뒤로는 Ctrl+Z가 통째로 먹통이 된다 (실제로 그렇게 됐었음)
+const TEXT_ENTRY_TYPES = new Set(['text','search','url','tel','email','password','number',
+  'date','month','week','time','datetime-local']);
+function isTextEntry(el){
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  if (el.tagName === 'TEXTAREA') return true;
+  if (el.tagName === 'INPUT') return TEXT_ENTRY_TYPES.has(String(el.type || 'text').toLowerCase());
+  return false;
 }
-$('#btnUndoAction').addEventListener('click', () => {
-  if (!_lastUndo) return;
-  const fn = _lastUndo;
-  clearUndo();
-  fn();
+document.addEventListener('keydown', (e) => {
+  if (!((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey)) return;
+  if (isTextEntry(document.activeElement)) return;
+  e.preventDefault();
+  undo();
 });
-// 사진 목록 자체가 바뀌면 예전 되돌리기는 다른 사진을 가리키게 되므로 버린다
-function invalidateStripUndo(){ clearUndo(); }
+// 사진 목록 자체를 갈아엎으면(새 폴더 불러오기 등) 예전 스냅샷은 다른 사진 세트를 가리키므로 버린다
+function invalidateStripUndo(){
+  _undoStack.length = 0;
+  _itemPool.clear();
+  updateUndoButton();
+}
 
 // 대표 외에서 투명 제목 빼기
 $('#btnStripFrames').addEventListener('click', () => {
   normalizeMains();
-  const before = items.map(it => !!it.noFrame);
-  const snapshot = items.slice();   // 되돌릴 때 사진 순서가 바뀌어 있어도 맞게 되돌리려고 목록도 기억
+  pushUndo('대표만 남기고 제목 빼기');
   let changed = 0;
   items.forEach(it => {
     const want = !it.isMain;
@@ -877,13 +987,6 @@ $('#btnStripFrames').addEventListener('click', () => {
   normalizeMains();
   renderGrid();
   saveMetaToCache();
-  if (changed) setUndo(`제목 ${changed}장 빼기`, () => {
-    snapshot.forEach((it, i) => { it.noFrame = before[i]; });
-    normalizeMains();
-    renderGrid();
-    saveMetaToCache();
-    log('되돌렸어');
-  }); else clearUndo();
   log(`대표 ${foldersInOrder().length}장만 제목을 남기고 ${changed}장 변경 — 투명 배정값은 그대로 있으니 되돌리기 가능`);
 });
 
@@ -891,6 +994,7 @@ $('#btnStripFrames').addEventListener('click', () => {
 // 지운 사진은 되돌리기로 되살릴 수 있게 원래 위치까지 기억해둔다 (사진 데이터는 메모리에 그대로 있음)
 function deleteItems(list){
   if (!list || !list.length) return;
+  pushUndo(`사진 ${list.length}장 삭제`);
   const del = new Set(list);
   const removed = list.map(it => ({ it, idx: items.indexOf(it) }))
                       .filter(x => x.idx >= 0)
@@ -914,18 +1018,7 @@ function deleteItems(list){
   saveMetaToCache();
   saveFilesToCache();
 
-  setUndo(`사진 ${removed.length}장 삭제`, () => {
-    // 작은 번호부터 되돌려 끼우면 원래 자리에 정확히 들어간다
-    for (const { it, idx } of removed) items.splice(Math.min(idx, items.length), 0, it);
-    clearSelection();
-    normalizeMains();
-    renderGrid();
-    renderMatchListTable();
-    saveMetaToCache();
-    saveFilesToCache();
-    log(`사진 ${removed.length}장 되살렸어`);
-  });
-  log(`사진 ${removed.length}장 삭제 (되돌리기 가능) — 남은 ${items.length}장`);
+  log(`사진 ${removed.length}장 삭제 (Ctrl+Z로 되살리기 가능) — 남은 ${items.length}장`);
 }
 $('#btnSelDelete').addEventListener('click', () => {
   const list = selectedItems();
@@ -1238,6 +1331,8 @@ function syncOverlayCell(it){
 // 아트보드 여러 개에 같은 투명 이미지를 배정 — 한 장이든 300장이든 이 함수 하나로 처리한다
 // (이미지는 몇 장에 배정하든 한 번만 읽어서 같이 씀). name이 비어있으면 배정 해제
 async function assignOverlayMany(list, name){
+  // 배정은 어느 경로로 오든 이 함수를 지나므로 여기 한 곳에서만 스냅샷을 찍으면 된다
+  pushUndo(`제목 배정 ${list.length}장${name ? ' → ' + name : ' 해제'}`);
   let img = null, file = null;
   if (name) {
     img = await getOverlayImg(name);
@@ -1423,6 +1518,7 @@ document.addEventListener('mouseup', () => {
 // 선택한 사진들의 배율을 슬라이더 값으로 맞춤 — 휠은 한 번에 조금씩만 변해서 작은 썸네일에선
 // 변화를 알아채기 어려웠고, 지금 몇 %인지도 알 수 없었다
 function setSelectionZoom(pct){
+  pushUndoGrouped('selZoom', `확대/축소 ${selectedIdx.size}장`, 900);
   const list = selectedItems();
   if (!list.length) return;
   for (const t of list) {
@@ -2012,6 +2108,7 @@ function refreshFolderHeads(){
 }
 
 function renderGrid(){
+  ensureUids();   // 되돌리기가 사진을 번호로 찾으므로, 어느 경로로 불러왔든 번호를 보장한다
   const grid = $('#grid');
   grid.innerHTML = '';
   rebuildFolderColors();
@@ -2055,6 +2152,7 @@ function renderGrid(){
     badgeToggle.title = '뱃지/스토어명 좌우 위치 전환';
     badgeToggle.addEventListener('click', (e) => {
       e.stopPropagation();
+      pushUndo('뱃지 좌우 전환');
       it.badgeSide = (it.badgeSide === 'right') ? 'left' : 'right';
       refreshThumb(it);
       saveMetaSoon();
@@ -2372,6 +2470,7 @@ $('#grid').addEventListener('wheel', e => {
   const it = items[idx];
   if (!it || !it.photoImg) return;
   const targets = targetsForBulk(it, idx);
+  pushUndoGrouped('wheel', `확대/축소 ${targets.length}장`, 900);
   const factor = e.deltaY < 0 ? 1.07 : 1 / 1.07; // 휠 한 칸당 7%
   for (const t of targets) {
     if (!t.photoImg) continue;
@@ -2434,6 +2533,7 @@ window.addEventListener('mouseup', () => {
   if (!moved || targetIdx === null) return;
   const target = items[targetIdx];
   if (!target || moving.includes(target)) return;              // 자기 자신 위에 놓으면 아무 일도 안 함
+  pushUndo(`순서 변경 ${moving.length}장`);
   const keepSel = selectedItems();                             // 순서가 바뀌면 번호도 바뀌므로 선택은 '아이템'으로 기억
   const movingSet = new Set(moving);
   const rest = items.filter(x => !movingSet.has(x));
@@ -2478,6 +2578,7 @@ window.addEventListener('mousemove', e => {
     const dist = Math.hypot(e.clientX - _panDrag.startX, e.clientY - _panDrag.startY);
     if (dist < DRAG_MIN_MOVE) return;
     _panDrag.moved = true;
+    pushUndo(`사진 위치 이동 ${_panDrag.targets.length}장`);   // 드래그 한 번을 한 단계로
     _panDrag.lastX = e.clientX; _panDrag.lastY = e.clientY; // 문턱을 넘는 순간 사진이 툭 튀지 않게 기준점 재설정
     return;
   }
