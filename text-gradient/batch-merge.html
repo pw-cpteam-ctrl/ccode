@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>사진 일괄 합성 (프로토타입)</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗂️</text></svg>"/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fonts-archive/S-CoreDream/S-CoreDream.css"/>
 <!-- 공용 작품 사전 (일본어 작품명 → 한국 정식명). 다른 도구와 같은 파일을 읽는다 -->
 <script src="../assets/dict-works.js"></script>
@@ -32,6 +33,17 @@ body{margin:0;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;backg
 .colPreview{display:flex;flex-direction:column;min-height:0;background:#fff;}
 #previewEmpty{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;
   font-size:13px;color:#7d7568;padding:24px;line-height:1.7;}
+/* 저장된 작업을 되살리는 동안의 화면 — 몇 장까지 왔는지 보이게 해서 멈춘 게 아님을 알린다 */
+#previewLoading{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:24px;gap:10px;}
+#previewLoading .spin{width:26px;height:26px;border-radius:50%;border:3px solid #e2ddd2;
+  border-top-color:#4a7cff;animation:spin 0.9s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+#previewLoading .ltitle{font-size:14px;font-weight:800;color:#252018;}
+#previewLoading .lbarWrap{width:260px;height:7px;border-radius:99px;background:#e9e5dd;overflow:hidden;}
+#previewLoading .lbar{height:100%;width:0;background:#4a7cff;border-radius:99px;transition:width .15s linear;}
+#previewLoading .lcount{font-size:12px;font-weight:700;color:#4a7cff;}
+#previewLoading .lnote{font-size:12px;color:#7d7568;line-height:1.7;margin-top:2px;}
 /* 결과물·상태는 화면 맨 아래 고정 — 예전에는 표에서 6,042px 아래에 있어서 끝까지 내려가야 했음 */
 .bottombar{flex:none;display:flex;align-items:center;gap:10px;padding:9px 16px;
   background:#f0ede7;border-top:1px solid #ddd8ce;}
@@ -294,6 +306,15 @@ button:disabled{opacity:.4;cursor:default;}
   <div id="previewEmpty">
     아직 불러온 사진이 없어요.<br/>왼쪽 <b>2. 폴더로 빠르게 시작</b>에서 사진 폴더를 고르면<br/>여기에 미리보기가 채워집니다.
   </div>
+  <!-- 저장된 작업을 되살리는 동안 보여주는 화면. 사진이 수백 장이면 30초~1분 걸리는데,
+       그동안 "아직 불러온 사진이 없어요"가 떠 있으면 없는 줄 알고 새로 불러오게 되므로 따로 뒀다 -->
+  <div id="previewLoading" style="display:none;">
+    <div class="spin"></div>
+    <div class="ltitle">저장된 작업을 불러오는 중…</div>
+    <div class="lbarWrap"><div class="lbar"></div></div>
+    <div class="lcount">확인하는 중</div>
+    <div class="lnote">사진이 많으면 <b>30초~1분</b> 정도 걸려.<br/>다 뜰 때까지 새로고침하거나 폴더를 다시 고르지 말고 기다려줘.</div>
+  </div>
 <div id="gridPanel" style="display:none;">
   <h2>미리보기 (클릭해서 조정)</h2>
   <div id="restoreNote" style="display:none;font-size:12px;color:#3a7d3a;margin-bottom:8px;">저장된 작업을 자동으로 불러왔어요.</div>
@@ -512,23 +533,56 @@ function loadImageFromBlob(blob){
   });
 }
 
+// 불러오는 동안의 화면 — 켜고, 진행 상황을 갱신하고, 끄는 세 가지만 한다
+function showLoadingScreen(on){
+  const box = $('#previewLoading'), empty = $('#previewEmpty');
+  if (box) box.style.display = on ? 'flex' : 'none';
+  if (empty && on) empty.style.display = 'none';
+  if (empty && !on && $('#gridPanel').style.display === 'none') empty.style.display = 'flex';
+}
+function setLoadingProgress(done, total){
+  const cnt = $('#previewLoading .lcount'), bar = $('#previewLoading .lbar');
+  if (cnt) cnt.textContent = total ? `${done} / ${total}장 불러옴` : '확인하는 중';
+  if (bar) bar.style.width = total ? Math.round(done / total * 100) + '%' : '0%';
+}
+
 async function restoreFromCache(){
-  const filesData = await idbGet('files').catch(() => null);
-  let itemsMeta = await idbGet('items_meta').catch(() => null);
+  // 저장된 사진이 수백 장이면 아래 idbGet 한 줄에서만 수십 초가 걸린다.
+  // 그동안 "아직 불러온 사진이 없어요"가 떠 있으면 없는 줄 알고 폴더를 다시 고르게 되므로,
+  // 확인을 시작하기 전에 먼저 불러오는 중 화면을 띄운다
+  showLoadingScreen(true);
+  setLoadingProgress(0, 0);
+  await new Promise(r => requestAnimationFrame(r)); // 화면에 실제로 그려지고 나서 무거운 작업 시작
+  // 사진 뭉치·설정값·투명 목록은 서로 상관이 없는데 예전에는 하나씩 차례로 기다렸다.
+  // 한꺼번에 요청하면 셋 중 가장 오래 걸리는 시간만큼만 기다리면 된다 (체감 대기 시간이 크게 줄어듦)
+  const [filesData, metaFromIdb, overlayPool] = await Promise.all([
+    idbGet('files').catch(() => null),
+    idbGet('items_meta').catch(() => null),
+    idbGet('overlay_pool').catch(() => null),
+  ]);
+  let itemsMeta = metaFromIdb;
   if (!itemsMeta) {
     const backup = localStorage.getItem('batch_merge_meta_backup');
     if (backup) itemsMeta = JSON.parse(backup);
   }
-  if (!filesData || !itemsMeta || !itemsMeta.length) return false;
+  if (!filesData || !itemsMeta || !itemsMeta.length) { showLoadingScreen(false); return false; }
 
   log('저장된 작업 불러오는 중...');
+  const total = itemsMeta.length;
+  setLoadingProgress(0, total);
   items = [];
+  let done = 0, broken = 0;
   for (const m of itemsMeta) {
+    setLoadingProgress(done++, total);
     const photoBlob = filesData.photoBlobs[m.photoName];
     if (!photoBlob) continue;
     const overlayBlob = m.overlayName ? filesData.overlayBlobs[m.overlayName] : null;
-    const photoImg = await loadImageFromBlob(photoBlob);
-    const overlayImg = overlayBlob ? await loadImageFromBlob(overlayBlob) : null;
+    // 한 장이 깨져 있어도 여기서 통째로 멈추면 나머지 작업물까지 못 불러온다 → 그 장만 건너뛴다
+    let photoImg, overlayImg = null;
+    try {
+      photoImg = await loadImageFromBlob(photoBlob);
+      if (overlayBlob) overlayImg = await loadImageFromBlob(overlayBlob);
+    } catch (err) { broken++; continue; }
     items.push({
       photoName: m.photoName, overlayName: overlayBlob ? m.overlayName : null,
       photoFile: photoBlob, overlayFile: overlayBlob, photoImg, overlayImg,
@@ -541,11 +595,10 @@ async function restoreFromCache(){
     });
     migrateGeom(items[items.length - 1]); // 예전에 저장된 것이면 새 방식으로 옮김 (이미 새 방식이면 그대로 둠)
   }
-  if (!items.length) return false;
+  if (!items.length) { showLoadingScreen(false); return false; }
 
   invalidateStripUndo();
   clearSelection();
-  const overlayPool = await idbGet('overlay_pool').catch(() => null);
   if (overlayPool && overlayPool.length) {
     overlayFiles = overlayPool;
     overlayPoolVersion++;
@@ -554,6 +607,8 @@ async function restoreFromCache(){
     updateHeaderStats();
   }
 
+  setLoadingProgress(total, total);
+  showLoadingScreen(false);
   showPreviewColumn(true);
   $('#restoreNote').style.display = '';
   const filled = fillStoreDefaultOnce();
@@ -562,6 +617,7 @@ async function restoreFromCache(){
   renderMatchListTable();
   $('#listWrap').style.display = '';
   log(`캐시에서 ${items.length}장 복원함`);
+  if (broken) log(`※ ${broken}장은 저장된 사진이 깨져 있어서 건너뜀 — 그 폴더만 다시 불러오면 됨`);
   return true;
 }
 
@@ -1148,6 +1204,7 @@ function updateListProgress(){
 function showPreviewColumn(on){
   $('#gridPanel').style.display = on ? 'flex' : 'none';
   $('#previewEmpty').style.display = on ? 'none' : 'flex';
+  $('#previewLoading').style.display = 'none'; // 미리보기가 뜨는 순간 불러오는 중 화면은 역할이 끝남
   updateHeaderStats();
 }
 function updateHeaderStats(){
@@ -2832,7 +2889,11 @@ $('#btnExportAll').addEventListener('click', async () => {
 });
 
 // ---------- 부팅: 저장된 작업 있으면 자동 복원 ----------
-restoreFromCache();
+// 실패해도 불러오는 중 화면이 그대로 남아 영원히 도는 것처럼 보이면 안 되므로 반드시 꺼준다
+restoreFromCache().catch(err => {
+  showLoadingScreen(false);
+  log('저장된 작업을 불러오다 실패함: ' + ((err && err.message) || err) + ' — 폴더를 다시 골라서 시작하면 됨');
+});
 </script>
 </body>
 </html>
