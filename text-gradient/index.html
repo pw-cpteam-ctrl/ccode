@@ -74,6 +74,14 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 .canvas-clip{
   position:relative; overflow:hidden; flex-shrink:0;
   width:calc(var(--poster-w) * var(--preview-scale)); height:calc(var(--poster-h) * var(--preview-scale));
+  /* 저장되는 PNG는 배경이 투명해서 화면에서는 이미지가 어디서 끝나는지(크기가 얼마나 되는지)
+     가늠하기 어렵다. 그래서 경계선을 넣되, 실제로 캡처되는 .canvas가 아니라 그 바깥 상자인
+     여기에 그린다 — 내보내기는 .canvas만 캡처하므로 이 선은 저장 파일에 절대 들어가지 않는다.
+     레이아웃을 밀지 않도록 border가 아니라 outline/box-shadow를 쓴다.
+     점선으로 둔 이유: 실선이면 이미지에 원래 있는 테두리처럼 보이는데, 이 선은 화면 안내용일
+     뿐 저장물에는 없기 때문이다. 지금 고른 슬롯은 아래 파란 테두리가 이 선을 대신한다 */
+  outline:1px dashed rgba(37,32,24,.45);
+  box-shadow:inset 0 0 0 1px rgba(37,32,24,.10);
 }
 .canvas{
   width:var(--poster-w); height:var(--poster-h);
@@ -679,12 +687,17 @@ function firstBulletText(bullets) {
   const m = lines[0].match(/^[-*•]\s*(.*)$/);
   return m ? m[1] : lines[0];
 }
-// 슬롯의 "타이틀(좌) + 불릿 첫 줄"로 구분 가능한 파일명을 만들고, 둘 다 비어있으면 slotN으로 대체
+// 슬롯의 "타이틀(좌) + 좌열 첫 줄 + 우열 첫 줄"로 구분 가능한 파일명을 만들고,
+// 전부 비어있으면 slotN으로 대체.
+// 2열로 나눠 쓸 때 예전에는 좌열만 파일명에 넣어서, 우열만 다른 슬롯끼리 파일명이 똑같아
+// 어느 게 어느 것인지 구분이 안 됐다. 그래서 우열 첫 줄까지 넣는다 (이름이 길어지는 건 감수)
 function slotFileNameBase(pg) {
   const s = slots[pg - 1];
   if (!s) return `slot${pg}`;
-  const parts = [s.titleL, firstBulletText(s.bullets)].map(safeFileName).filter(Boolean);
-  return parts.length ? parts.join('_') : `slot${pg}`;
+  const parts = [s.titleL, firstBulletText(s.bullets)];
+  if (s.bulletsTwoCol) parts.push(firstBulletText(s.bulletsR));
+  const clean = parts.map(safeFileName).filter(Boolean);
+  return clean.length ? clean.join('_') : `slot${pg}`;
 }
 async function downloadPng(pg) {
   pg = pg || curSlot; // 슬롯 카드의 개별 다운로드 버튼은 pg를 넘기고, 패널 버튼은 현재 슬롯을 그대로 다운로드
