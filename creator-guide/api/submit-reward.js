@@ -26,13 +26,16 @@
 // 환경변수(없으면 접수를 건너뛰고 화면은 복사 안내로 되돌아간다):
 //   GITHUB_TOKEN / GITHUB_OWNER / GITHUB_REPO / GITHUB_LOG_BRANCH(비공개 저장소의 main)
 //
-// ⚠️ 개인정보: 활동명은 크리에이터가 직접 적은 값이라 연락처를 적을 수도 있다.
-//    지금은 공개 저장소에 쌓이므로 저장 직전에 scrub()으로 가린다.
+// ⚠️ 개인정보: 여기에는 크리에이터의 네이버 아이디가 그대로 들어간다. 쿠폰을
+//    그 계정으로 발급해야 해서 가릴 수가 없다. 그래서 이 기록은 반드시 비공개
+//    저장소에만 쌓아야 한다. 저장 위치를 옮길 일이 생기면 이 점을 먼저 확인할 것.
+//    활동명·희망 상품처럼 가려도 되는 값은 scrub()으로 연락처를 지운다.
 
 import { appendToGithubFile } from '../lib/github.js';
 
 const NICK_MAX = 20;
 const WISH_MAX = 60;
+const NAVER_MAX = 40;
 const MAX_LEN = 200;
 
 // 화면에서 고를 수 있는 값만 받는다. 여기 없는 값이 오면 접수하지 않는다 —
@@ -72,7 +75,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ ok: false }); return; }
   if (!isSameOrigin(req)) { res.status(403).json({ ok: false }); return; }
 
-  const { brand, nick, draftDate, trackId, rewardId, wish } = req.body || {};
+  const { brand, nick, draftDate, trackId, rewardId, wish, naver } = req.body || {};
 
   const name = scrub(nick).replace(/\s+/g, ' ').trim().slice(0, NICK_MAX);
   if (!name) { res.status(400).json({ ok: false, reason: 'nick' }); return; }
@@ -83,6 +86,12 @@ export default async function handler(req, res) {
   // 결국 따로 물어보게 되어, 폼으로 받는 의미가 사라진다.
   const want = scrub(wish).replace(/\s+/g, ' ').trim().slice(0, WISH_MAX);
   if (rewardId === 'goods' && !want) { res.status(400).json({ ok: false, reason: 'wish' }); return; }
+  // 쿠폰이 발급될 계정. 형태를 검사하지 않는다 — 아이디 대신 이메일을 적어도
+  // 담당자가 알아보므로, 형식을 강제해 되돌려보내는 쪽이 손해다.
+  // scrub()은 이메일을 가려버리므로 여기에는 적용하지 않는다. 이 값은 비공개
+  // 저장소에만 쌓이고, 가려버리면 정작 쿠폰을 못 보낸다.
+  const account = String(naver || '').replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, NAVER_MAX);
+  if (!account) { res.status(400).json({ ok: false, reason: 'naver' }); return; }
 
   const gh = {
     token: process.env.GITHUB_TOKEN,
@@ -108,6 +117,7 @@ export default async function handler(req, res) {
     track: trackId,
     reward: rewardId,
     wish: want,
+    naver: account,
   });
 
   try {

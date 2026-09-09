@@ -255,15 +255,16 @@ function loadReply() {
     // 예전에 저장된 값에 없는 항목이 있어도 깨지지 않도록 항상 기본값을 깔아둔다.
     // track은 나중에 추가된 항목이라, 그전에 저장된 값에는 아예 없다.
     // wish는 나중에 추가된 항목이라, 그전에 저장된 값에는 아예 없다.
-    return { date: saved.date ?? '', track: saved.track ?? '', reward: saved.reward ?? '', wish: saved.wish ?? '' };
+    return { date: saved.date ?? '', track: saved.track ?? '', reward: saved.reward ?? '',
+             wish: saved.wish ?? '', naver: saved.naver ?? '' };
   } catch {
     return {};   // 저장값이 망가져 있어도 화면은 정상 동작해야 한다
   }
 }
 
-function saveReply(date, track, reward, wish) {
+function saveReply(date, track, reward, wish, naver) {
   try {
-    localStorage.setItem(REPLY_KEY, JSON.stringify({ v: 3, date, track, reward, wish, savedAt: Date.now() }));
+    localStorage.setItem(REPLY_KEY, JSON.stringify({ v: 4, date, track, reward, wish, naver, savedAt: Date.now() }));
   } catch { /* 저장 실패해도 이번 이용엔 지장 없다 */ }
 }
 
@@ -278,7 +279,8 @@ function loadSent() {
   try {
     const v = JSON.parse(localStorage.getItem(SENT_KEY) || 'null');
     if (!v || !v.at) return null;
-    return { at: v.at, date: v.date ?? '', track: v.track ?? '', reward: v.reward ?? '', wish: v.wish ?? '', nick: v.nick ?? '' };
+    return { at: v.at, date: v.date ?? '', track: v.track ?? '', reward: v.reward ?? '',
+             wish: v.wish ?? '', naver: v.naver ?? '', nick: v.nick ?? '' };
   } catch {
     return null;
   }
@@ -318,6 +320,13 @@ function SentSummary({ sent, onEdit }) {
         <span className="sum-label"><span className="reply-num">③</span> 보상 형태</span>
         <span className="sum-value">{reward ? reward.label : '-'}</span>
       </div>
+      {sent.naver && (
+        <div className="sum-row">
+          <span className="sum-check">✅</span>
+          <span className="sum-label">네이버 아이디</span>
+          <span className="sum-value">{sent.naver}</span>
+        </div>
+      )}
       {sent.wish && (
         <div className="sum-row">
           <span className="sum-check">✅</span>
@@ -335,7 +344,8 @@ function SentSummary({ sent, onEdit }) {
 // 원래는 마지막 페이지에 있었는데, 다 읽고 "끝났다" 상태에서는 그냥 넘겨버려서
 // 회신율이 낮았다. 가이드 원문이 이미 이 자리에서 "수령 방식을 사전 공유해달라"고
 // 부탁하고 있으므로, 부탁하는 문장 바로 옆에 답하는 칸을 둔다.
-function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, wish, setWish, canCopy,
+function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, wish, setWish,
+                     naver, setNaver, step, setStep, canNext, canCopy,
                      sent, editing, sending, sendErr, onSubmit, onEdit }) {
   // 수령 방식은 이제 이 폼이 아니라 바로 위 '언제 받나' 카드에서 직접 고른다.
   // 아직 안 골랐으면 그 자리로 스크롤해 이동시켜 준다.
@@ -351,6 +361,68 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, wi
           <span className="done-card-title">담당자에게 전달된 내용</span>
         </div>
         <SentSummary sent={sent} onEdit={onEdit} />
+      </div>
+    );
+  }
+
+  // 두 번째 장 — 쿠폰이 나갈 곳. 첫 장에서 고른 내용은 그대로 들고 있으므로
+  // 이전으로 돌아갔다 와도 적어둔 값이 사라지지 않는다.
+  if (step === 2) {
+    return (
+      <div className="done-card">
+        <div className="done-card-head">
+          <span className="done-card-icon">📨</span>
+          <span className="done-card-title">쿠폰 받으실 곳</span>
+        </div>
+        <p className="done-card-text" style={{ marginBottom: 14 }}>
+          마지막이에요. 아래만 적어주시면 됩니다.
+        </p>
+
+        <div className="reply-field">
+          <label className="reply-wish-label" htmlFor="naver-input">쿠폰 받으실 네이버 아이디</label>
+          <input
+            id="naver-input"
+            className="reply-wish-input"
+            type="text"
+            maxLength={40}
+            value={naver}
+            onChange={(e) => setNaver(e.target.value)}
+            autoComplete="username"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="네이버 아이디"
+          />
+          <div className="reply-hint">쿠폰이 이 계정으로 발급돼요</div>
+        </div>
+
+        {/* 상품 쿠폰은 '어느 룩업인지'가 있어야 준비가 된다. 고른 사람에게만
+            보여주고, 금액 쿠폰을 고른 사람에게는 묻지 않는다. */}
+        {rewardId === 'goods' && (
+          <div className="reply-field">
+            <label className="reply-wish-label" htmlFor="wish-input">희망하시는 룩업 상품</label>
+            <input
+              id="wish-input"
+              className="reply-wish-input"
+              type="text"
+              maxLength={60}
+              value={wish}
+              onChange={(e) => setWish(e.target.value)}
+              placeholder="예: 9월 라인업 ○○ 룩업"
+            />
+            <div className="reply-hint">아직 정하지 못하셨다면 &lsquo;상담 후 결정&rsquo;이라고 적어주셔도 됩니다</div>
+          </div>
+        )}
+
+        <button type="button" className="reply-copy"
+          disabled={!canCopy || sending} onClick={onSubmit}>
+          {sending ? '보내는 중…' : '제출하기'}
+        </button>
+        <div className="reply-guide">
+          {canCopy ? '담당자에게 바로 전달됩니다' : '위 칸을 채우시면 제출할 수 있어요'}
+        </div>
+        {sendErr && <div className="sent-err">{sendErr}</div>}
+        <button type="button" className="sum-edit" onClick={() => setStep(1)}>‹ 이전</button>
       </div>
     );
   }
@@ -402,35 +474,17 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, wi
           ))}
         </div>
         <div className="reply-hint">금액·구성은 유입 수에 따라 정해져요</div>
-        {/* 상품 쿠폰은 '어느 룩업인지'가 있어야 준비가 된다. 고른 사람에게만
-            보여주고, 금액 쿠폰을 고른 사람에게는 묻지 않는다. */}
-        {rewardId === 'goods' && (
-          <div className="reply-wish">
-            <label className="reply-wish-label" htmlFor="wish-input">희망하시는 룩업 상품</label>
-            <input
-              id="wish-input"
-              className="reply-wish-input"
-              type="text"
-              maxLength={60}
-              value={wish}
-              onChange={(e) => setWish(e.target.value)}
-              placeholder="예: 9월 라인업 ○○ 룩업"
-            />
-            <div className="reply-hint">아직 정하지 못하셨다면 &lsquo;상담 후 결정&rsquo;이라고 적어주셔도 됩니다</div>
-          </div>
-        )}
       </div>
 
       <div className="reply-warn">제출하신 뒤에도 담당자 확인 전까지는 수정하실 수 있습니다. 확인된 뒤에는 변경·교환이 어렵습니다.</div>
 
       <button type="button" className="reply-copy"
-        disabled={!canCopy || sending} onClick={onSubmit}>
-        {sending ? '보내는 중…' : '제출하기'}
+        disabled={!canNext} onClick={() => setStep(2)}>
+        다음 ≫
       </button>
       <div className="reply-guide">
-        {canCopy ? '담당자에게 바로 전달됩니다' : '위 항목을 모두 고르시면 제출할 수 있어요'}
+        {canNext ? '거의 다 왔어요' : '위 두 가지를 고르시면 넘어갈 수 있어요'}
       </div>
-      {sendErr && <div className="sent-err">{sendErr}</div>}
     </div>
   );
 }
@@ -581,6 +635,11 @@ function FinalOption() {
   // 상품 쿠폰을 고르면 '어느 룩업인지'까지 받는다. 이게 없으면 담당자가 결국
   // 따로 물어보게 되어, 폼으로 받는 의미가 사라진다.
   const [wish, setWish] = React.useState(() => loadReply().wish ?? '');
+  // 쿠폰이 발급될 계정. 한 번 적으면 기억해 두었다가 다음에 다시 묻지 않는다.
+  const [naver, setNaver] = React.useState(() => loadReply().naver ?? '');
+  // 카드를 두 장으로 나눈다. 고르는 것과 적는 것을 한 카드에 다 담으면 고를 때마다
+  // 카드가 길어져서, 볼 때마다 할 일이 늘어나는 느낌을 준다.
+  const [step, setStep] = React.useState(1);
   const [copied, setCopied] = React.useState(false);
 
   // 접수 상태 — 냈으면 그 내용을 그대로 다시 보여주고, 수정하기를 누르면
@@ -591,12 +650,14 @@ function FinalOption() {
   const [sendErr, setSendErr] = React.useState('');
 
   // 고른 값이 바뀔 때마다 저장 — 중간에 새로고침해도 남아 있게
-  React.useEffect(() => { saveReply(draftDate, trackId, rewardId, wish); }, [draftDate, trackId, rewardId, wish]);
+  React.useEffect(() => { saveReply(draftDate, trackId, rewardId, wish, naver); }, [draftDate, trackId, rewardId, wish, naver]);
 
   const track = TRACK_CHOICES.find(t => t.id === trackId);
   const reward = REWARD_CHOICES.find(r => r.id === rewardId);
+  // 첫 장에서 고를 것을 다 골라야 다음 장으로 넘어간다
+  const canNext = Boolean(draftDate && track && reward);
   // 상품 쿠폰이면 희망 상품까지 적어야 낼 수 있다
-  const canCopy = Boolean(draftDate && track && reward && (rewardId !== 'goods' || wish.trim()));
+  const canCopy = Boolean(canNext && naver.trim() && (rewardId !== 'goods' || wish.trim()));
 
   // 사이트가 직접 접수한다. 실패하면 예전 방식(복사해서 전달)으로 안내를 되돌려,
   // "냈다고 생각했는데 안 간" 상태가 생기지 않게 한다.
@@ -615,14 +676,18 @@ function FinalOption() {
           trackId,
           rewardId,
           wish: wish.trim(),
+          naver: naver.trim(),
         }),
       });
       const data = await r.json().catch(() => ({}));
       if (r.ok && data.ok) {
-        const rec = { at: data.at || new Date().toISOString(), date: draftDate, track: trackId, reward: rewardId, wish: wish.trim(), nick: window.CG_NICK || '' };
+        const rec = { at: data.at || new Date().toISOString(), date: draftDate, track: trackId, reward: rewardId, wish: wish.trim(), naver: naver.trim(), nick: window.CG_NICK || '' };
         setSent(rec);
         saveSent(rec);
         setEditing(false);
+        setStep(1);
+      } else if (data.reason === 'naver') {
+        setSendErr('쿠폰 받으실 네이버 아이디를 적어 주세요.');
       } else if (data.reason === 'wish') {
         setSendErr('희망하시는 룩업 상품을 적어 주세요.');
       } else if (data.reason === 'nick') {
@@ -832,6 +897,13 @@ function FinalOption() {
                   <span className="sum-label"><span className="reply-num">③</span> 보상 형태</span>
                   <span className="sum-value">{reward.label}</span>
                 </div>
+                {naver.trim() && (
+                  <div className="sum-row">
+                    <span className="sum-check">✅</span>
+                    <span className="sum-label">네이버 아이디</span>
+                    <span className="sum-value">{naver.trim()}</span>
+                  </div>
+                )}
                 {rewardId === 'goods' && wish.trim() && (
                   <div className="sum-row">
                     <span className="sum-check">✅</span>
@@ -872,6 +944,11 @@ function FinalOption() {
                   <span className="sum-check">{reward ? '✅' : '⬜'}</span>
                   <span className="sum-label"><span className="reply-num">③</span> 보상 형태</span>
                   <span className="sum-value">{reward ? reward.label : '미선택'}</span>
+                </div>
+                <div className={`sum-row${naver.trim() ? '' : ' is-todo'}`}>
+                  <span className="sum-check">{naver.trim() ? '✅' : '⬜'}</span>
+                  <span className="sum-label">네이버 아이디</span>
+                  <span className="sum-value">{naver.trim() || '미입력'}</span>
                 </div>
                 {rewardId === 'goods' && (
                   <div className={`sum-row${wish.trim() ? '' : ' is-todo'}`}>
@@ -939,8 +1016,11 @@ function FinalOption() {
       {tab === 'rules'   && <Final_Rules />}
       {tab === 'reward'  && (
         <Final_Reward
-          reply={{ draftDate, setDraftDate, trackId, setTrackId, rewardId, setRewardId, wish, setWish, canCopy,
-                   sent, editing, sending, sendErr, onSubmit: submitReply, onEdit: () => setEditing(true) }}
+          reply={{ draftDate, setDraftDate, trackId, setTrackId, rewardId, setRewardId, wish, setWish,
+                   naver, setNaver, step, setStep, canNext, canCopy,
+                   sent, editing, sending, sendErr,
+                   onSubmit: submitReply,
+                   onEdit: () => { setEditing(true); setStep(1); } }}
         />
       )}
       {tab === 'faq'     && <Final_Faq openFaq={openFaq} setOpenFaq={setOpenFaq} onGoTab={(id) => {

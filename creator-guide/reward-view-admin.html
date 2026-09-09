@@ -94,8 +94,13 @@
   'use strict';
 
   // 이 페이지는 담당자만 쓴다. 관리자 코드는 서버에서 대조하며, 여기에는
-  // 정답이 들어 있지 않다. 코드는 이 브라우저에 저장하지 않는다 —
-  // 공용 PC에서 열어둔 채 자리를 비우는 상황을 만들지 않기 위해서다.
+  // 정답이 들어 있지 않다.
+  //
+  // 코드는 이 브라우저에 2일간 기억해 둔다. 매번 입력하게 하면 담당자가 하루에도
+  // 몇 번씩 코드를 찾아 넣어야 해서 실제로 안 쓰게 된다. 다만 무기한으로 두면
+  // 공용 PC에 열어둔 채 잊는 상황이 생기므로 기간을 짧게 잡는다.
+  var CODE_KEY = 'cg-admin';
+  var CODE_DAYS = 2;
   var TRACK = { split: '선지급', after: '후지급' };
   var REWARD = { coupon: '금액 쿠폰', goods: '상품 쿠폰' };
 
@@ -124,6 +129,25 @@
     if (isNaN(d.getTime())) return '-';
     var pad = function (n) { return String(n).padStart(2, '0'); };
     return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  function rememberCode(v) {
+    try {
+      localStorage.setItem(CODE_KEY, JSON.stringify({ code: v, until: Date.now() + CODE_DAYS * 864e5 }));
+    } catch (e) { /* 저장 못 해도 이번 이용엔 지장 없다 */ }
+  }
+
+  function recallCode() {
+    try {
+      var saved = JSON.parse(localStorage.getItem(CODE_KEY) || 'null');
+      if (saved && saved.code && saved.until > Date.now()) return saved.code;
+      localStorage.removeItem(CODE_KEY);
+    } catch (e) { /* 무시 */ }
+    return '';
+  }
+
+  function forgetCode() {
+    try { localStorage.removeItem(CODE_KEY); } catch (e) { /* 무시 */ }
   }
 
   function api(body) {
@@ -158,11 +182,13 @@
       api({ code: v, action: 'list' }).then(function (r) {
         if (r.status === 200 && r.data.ok) {
           code = v;
+          rememberCode(v);
           rows = r.data.rows || [];
           confirmed = r.data.confirmed || {};
           renderList();
         } else if (r.status === 401) {
           go.disabled = false;
+          forgetCode();   // 코드가 바뀐 경우 — 기억해 둔 값을 버린다
           renderGate('코드가 맞지 않습니다.');
         } else if (r.data.reason === 'unconfigured') {
           go.disabled = false;
@@ -205,11 +231,12 @@
   // 노션에 그대로 붙여넣을 수 있게 탭으로 구분한 표를 만든다.
   // 최신 제출만 담는다 — 지난 제출까지 넘어가면 중복 행이 생긴다.
   function tableText() {
-    var head = ['활동명', '초안 공유 예정일', '보상 수령 방식', '보상 형태', '희망 상품', '제출 시각', '확정'];
+    var head = ['활동명', '네이버 아이디', '초안 공유 예정일', '보상 수령 방식', '보상 형태', '희망 상품', '제출 시각', '확정'];
     var lines = [head.join('\t')];
     visibleRows().filter(function (r) { return r.latest; }).forEach(function (r) {
       lines.push([
         r.nick,
+        r.naver || '',
         fmtDate(r.draftDate),
         TRACK[r.track] || r.track,
         REWARD[r.reward] || r.reward,
@@ -272,6 +299,7 @@
       var isOn = !!confirmed[r.nick];
       return '<tr class="' + (r.latest ? '' : 'is-old') + '">' +
         '<td class="nick">' + esc(r.nick) + (r.latest ? '' : ' <span class="old-note">지난 제출</span>') + '</td>' +
+        '<td>' + esc(r.naver || '-') + '</td>' +
         '<td>' + esc(fmtDate(r.draftDate)) + '</td>' +
         '<td><span class="tag ' + esc(r.track) + '">' + esc(TRACK[r.track] || r.track) + '</span></td>' +
         '<td><span class="tag ' + esc(r.reward) + '">' + esc(REWARD[r.reward] || r.reward) + '</span></td>' +
@@ -293,13 +321,15 @@
       '<input class="search" id="q" type="search" placeholder="활동명으로 찾기" value="' + esc(keyword) + '" />' +
       '<button class="mini" id="copy">표 전체 복사</button>' +
       '<button class="mini" id="reload">새로고침</button>' +
+      '<button class="mini" id="lock">잠그기</button>' +
       '</div>' +
       (list.length
         ? '<div class="scroll"><table><thead><tr>' +
-          '<th>활동명</th><th>초안 공유 예정일</th><th>보상 수령 방식</th><th>보상 형태</th><th>희망 상품</th><th>제출 시각</th><th>확정</th>' +
+          '<th>활동명</th><th>네이버 아이디</th><th>초안 공유 예정일</th><th>보상 수령 방식</th><th>보상 형태</th><th>희망 상품</th><th>제출 시각</th><th>확정</th>' +
           '</tr></thead><tbody>' + body + '</tbody></table></div>'
         : '<div class="empty">아직 접수된 내용이 없습니다.</div>') +
       '<p class="foot">‘표 전체 복사’는 최신 제출만 담습니다. 노션 표에 그대로 붙여넣을 수 있어요.<br />' +
+      '이 기기에서는 2일간 코드를 다시 묻지 않습니다. 공용 PC라면 ‘잠그기’를 눌러주세요.<br />' +
       '‘확정하기’는 담당자가 확인을 마쳤다는 표시입니다. 크리에이터가 다시 내는 것을 막지는 않으니, 확정 뒤에 새 제출이 보이면 다시 확인해 주세요.</p>' +
       '</div>';
 
@@ -313,6 +343,10 @@
       try { nq.setSelectionRange(pos, pos); } catch (e) { /* 무시 */ }
     });
     document.getElementById('copy').addEventListener('click', function () { copyTable(this); });
+    document.getElementById('lock').addEventListener('click', function () {
+      forgetCode(); code = ''; rows = []; confirmed = {}; keyword = '';
+      renderGate('');
+    });
     document.getElementById('reload').addEventListener('click', function () {
       api({ code: code, action: 'list' }).then(function (r) {
         if (r.status === 200 && r.data.ok) {
@@ -329,7 +363,24 @@
     });
   }
 
-  renderGate('');
+  // 기억해 둔 코드가 있으면 입력 화면을 건너뛴다.
+  var saved = recallCode();
+  if (saved) {
+    root.innerHTML = '<div class="gate"><div class="gate-card"><p class="gate-desc">불러오는 중…</p></div></div>';
+    api({ code: saved, action: 'list' }).then(function (r) {
+      if (r.status === 200 && r.data.ok) {
+        code = saved;
+        rows = r.data.rows || [];
+        confirmed = r.data.confirmed || {};
+        renderList();
+      } else {
+        forgetCode();
+        renderGate(r.status === 401 ? '접속 코드가 변경되었습니다. 새 코드를 입력해 주세요.' : '');
+      }
+    }).catch(function () { renderGate(''); });
+  } else {
+    renderGate('');
+  }
 })();
 </script>
 </body>
