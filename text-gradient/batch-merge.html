@@ -2069,8 +2069,10 @@ function drawBadge(ctx, it, opts){
   const flatH = bh - notch;
 
   // 월 리본 뱃지는 폴더 대표(표지) 한 장에만 올린다 — 나머지 사진엔 필요 없음.
+  // "제목 빼기"(noFrame)를 한 장에는 리본도 올리지 않는다: 제목 틀이 없는데 리본만 떠 있으면
+  // 표지로도, 맨 사진으로도 쓸 수 없는 어중간한 결과가 나오기 때문이다.
   // 반면 스토어명(로고+글자)은 값을 넣은 아트보드마다 전부 나와야 하므로 아래에서 따로 그린다.
-  if (it.isMain) {
+  if (it.isMain && !it.noFrame) {
   // 그림자는 매번 shadowBlur로 다시 계산하지 않고, 캐싱해둔 halo 이미지를 붙여넣기만 함 (수백 개 썸네일이어도 비용 거의 없음)
   if (withShadow) {
     const shadow = getBadgeShadowSprite(side);
