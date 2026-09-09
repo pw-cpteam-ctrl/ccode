@@ -87,6 +87,9 @@ button:disabled{opacity:.4;cursor:default;}
 .folderHead select.none{background:#ffe9e9;border-color:#e05d5d!important;color:#b33;}
 .folderHead select.mixed{font-style:italic;}
 .folderHead button{font-size:11px;padding:4px 9px;}
+/* 폴더 통째로 지우기 — 되돌릴 수 있지만 영향 범위가 크므로 색으로 구분해둔다 */
+.folderHead button.del{color:#b33;border-color:#e0a9a9;}
+.folderHead button.del:hover{background:#ffe9e9;border-color:#e05d5d;}
 /* 대표 사진 표시(★) — 누르면 그 폴더의 대표가 됨. 대표엔 투명 제목이 항상 들어간다 */
 .mainStar{position:absolute;bottom:2px;left:2px;z-index:4;width:18px;height:18px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;
@@ -345,6 +348,7 @@ button:disabled{opacity:.4;cursor:default;}
       <button id="btnSelAll" style="font-size:11px;padding:4px 8px;">전체 선택</button>
       <button id="btnSelUnassigned" style="font-size:11px;padding:4px 8px;">투명 미배정만 선택</button>
       <button id="btnStripFrames" style="font-size:11px;padding:4px 8px;">★ 대표만 남기고 나머지 투명 제목 빼기</button>
+      <button id="btnSortByWork" style="font-size:11px;padding:4px 8px;" title="폴더 이름 앞에 라인업명(G.M.G. 등)이 붙어 흩어진 같은 작품 폴더를 한자리에 모은다">작품(IP)끼리 모으기</button>
     </span>
   </div>
   <div id="gridScroll"><div id="grid"></div></div>
@@ -808,6 +812,42 @@ function foldersInOrder(){
   for (const it of items) { const f = it.folder || ''; if (!out.includes(f)) out.push(f); }
   return out;
 }
+// 폴더를 "어느 작품(IP)인가"로 묶기 위한 대표 이름을 뽑는다.
+// 폴더 이름이 "G.M.G.COLLECTION18機動戦士ガンダム"처럼 라인업명이 앞에 오는 경우가 많아서
+// 이름순으로만 늘어놓으면 같은 은혼/건담이 화면 여기저기로 흩어진다. 그래서 이름 대신
+// 작품명을 기준으로 삼는다. 일본어 폴더는 사전 키로, 한국어 폴더는 사전의 한국 정식명이
+// 폴더 이름 안에 들어 있는지로 찾으므로, 같은 작품이면 언어가 달라도 한자리에 모인다.
+function workKeyOf(folder){
+  const f = String(folder || '');
+  const found = sharedWorkOf(f);
+  if (found) return found.ko;
+  let best = null;
+  const dict = (typeof SHARED_WORKS !== 'undefined') ? SHARED_WORKS : {};
+  for (const ko of Object.values(dict)) {
+    if (f.includes(ko) && (!best || ko.length > best.length)) best = ko;
+  }
+  return best || f;   // 사전에 없는 작품은 폴더 이름 자체를 기준으로 (최소한 같은 이름끼리는 붙음)
+}
+// 같은 작품 폴더끼리 붙여서 다시 늘어놓는다. 폴더 안 사진 순서는 절대 건드리지 않는다
+function sortItemsByWork(){
+  if (!items.length) { log('불러온 사진이 없음'); return; }
+  pushUndo('작품끼리 모으기');
+  const order = foldersInOrder();
+  const rank = new Map(order.map((f, i) => [f, i]));   // 원래 순서(같은 작품 안에서 순서 유지용)
+  const keyed = order.map(f => ({ f, key: workKeyOf(f) }));
+  keyed.sort((a, b) => naturalCompare(a.key, b.key) || naturalCompare(a.f, b.f) || rank.get(a.f) - rank.get(b.f));
+  const pos = new Map(keyed.map((x, i) => [x.f, i]));
+  const was = new Map(items.map((it, i) => [it, i]));
+  items = items.slice().sort((a, b) =>
+    pos.get(a.folder || '') - pos.get(b.folder || '') || was.get(a) - was.get(b));
+  const groups = new Set(keyed.map(x => x.key)).size;
+  clearSelection();
+  renderGrid();
+  renderMatchListTable();
+  saveMetaToCache();
+  saveFilesToCache();
+  log(`폴더 ${order.length}개를 작품 ${groups}종으로 묶어 정렬함 — Ctrl+Z로 되돌릴 수 있음`);
+}
 // 규칙 복구: 폴더마다 대표는 정확히 1장, 대표는 항상 투명 제목이 켜져 있음
 function normalizeMains(){
   for (const folder of foldersInOrder()) {
@@ -989,6 +1029,7 @@ $('#btnStripFrames').addEventListener('click', () => {
   saveMetaToCache();
   log(`대표 ${foldersInOrder().length}장만 제목을 남기고 ${changed}장 변경 — 투명 배정값은 그대로 있으니 되돌리기 가능`);
 });
+$('#btnSortByWork').addEventListener('click', () => sortItemsByWork());
 
 // ---------- 아트보드 삭제 ----------
 // 지운 사진은 되돌리기로 되살릴 수 있게 원래 위치까지 기억해둔다 (사진 데이터는 메모리에 그대로 있음)
@@ -2007,6 +2048,20 @@ function pageSeqMap(){
   return map;
 }
 
+// 폴더 머리에 "사전: OO" 칩을 붙인다.
+// 반드시 기존 칩을 먼저 지우고 다시 붙인다 — 예전에는 그냥 붙이기만 해서, 화면이 갱신될 때마다
+// 같은 칩이 계속 쌓이며 오른쪽의 제목 드롭다운을 화면 밖으로 밀어내는 문제가 있었다
+function applyWorkTag(head, folder){
+  head.querySelectorAll('.workTag').forEach(t => t.remove());
+  const found = sharedWorkOf(folder);
+  if (!found) return;
+  const tag = document.createElement('span');
+  tag.className = 'workTag';
+  tag.textContent = `사전: ${found.ko}`;
+  tag.title = `폴더명에서 "${found.jp}"를 찾아 "${found.ko}"로 봤습니다`;
+  head.querySelector('.fmeta').after(tag);
+}
+
 // 폴더 머리 한 줄 만들기 — 그 폴더 전체에 제목을 배정하는 드롭다운이 여기 있다
 function makeFolderHead(folder){
   const list = items.filter(x => (x.folder || '') === folder);
@@ -2021,14 +2076,7 @@ function makeFolderHead(folder){
   head.querySelector('.fname').textContent = folder || '(폴더 없음)';
   head.querySelector('.fmeta').textContent = `${list.length}장 · 제목 ${done}/${list.length}`;
   // 일본어 폴더명이라 글자로는 못 맞히는 경우, 사전이 무엇을 찾았는지 보여준다
-  const found = sharedWorkOf(folder);
-  if (found) {
-    const tag = document.createElement('span');
-    tag.className = 'workTag';
-    tag.textContent = `사전: ${found.ko}`;
-    tag.title = `폴더명에서 "${found.jp}"를 찾아 "${found.ko}"로 봤습니다`;
-    head.querySelector('.fmeta').after(tag);
-  }
+  applyWorkTag(head, folder);
 
   // 폴더 안에서 쓰는 제목이 하나뿐이면 그 값을, 섞여 있으면 "(섞여 있음)"을 보여준다
   const kinds = [...new Set(list.map(x => x.overlayName || ''))];
@@ -2073,6 +2121,24 @@ function makeFolderHead(folder){
   btn.textContent = '폴더 전체 선택';
   btn.addEventListener('click', (e) => { e.stopPropagation(); selectFolderGroup(folder); });
   head.appendChild(btn);
+
+  // 같은 사진이 여러 폴더에 중복으로 들어오는 경우가 있어서, 폴더째 빼는 길을 만들어둔다.
+  // 지워도 Ctrl+Z로 되살아나지만 한 번에 사라지는 장수가 많으므로 물어보고 지운다
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'del';
+  del.textContent = '폴더 삭제';
+  del.title = `"${folder || '(폴더 없음)'}" 폴더 ${list.length}장을 리스트에서 통째로 뺀다 (Ctrl+Z로 되돌리기 가능)`;
+  del.addEventListener('mousedown', e => e.stopPropagation());
+  del.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const group = items.filter(x => (x.folder || '') === folder);
+    if (!group.length) return;
+    if (!confirm(`"${folder || '(폴더 없음)'}" 폴더의 사진 ${group.length}장을 리스트에서 뺄까?\n\n원본 파일은 그대로 있고, 잘못 눌렀으면 Ctrl+Z로 되돌릴 수 있어.`)) return;
+    deleteItems(group);
+    log(`"${folder || '(폴더 없음)'}" 폴더 ${group.length}장 삭제 — Ctrl+Z로 되돌릴 수 있음`);
+  });
+  head.appendChild(del);
   return head;
 }
 // 칸에서 한 장만 바꿔도 폴더 머리의 "제목 n/n"과 드롭다운이 따라오게 한다
@@ -2084,15 +2150,7 @@ function refreshFolderHeads(){
     if (!list.length) return;
     const done = list.filter(x => x.overlayName).length;
     head.querySelector('.fmeta').textContent = `${list.length}장 · 제목 ${done}/${list.length}`;
-  // 일본어 폴더명이라 글자로는 못 맞히는 경우, 사전이 무엇을 찾았는지 보여준다
-  const found = sharedWorkOf(folder);
-  if (found) {
-    const tag = document.createElement('span');
-    tag.className = 'workTag';
-    tag.textContent = `사전: ${found.ko}`;
-    tag.title = `폴더명에서 "${found.jp}"를 찾아 "${found.ko}"로 봤습니다`;
-    head.querySelector('.fmeta').after(tag);
-  }
+    applyWorkTag(head, folder);
     const sel = head.querySelector('select');
     const kinds = [...new Set(list.map(x => x.overlayName || ''))];
     const cur = kinds.length === 1 ? kinds[0] : '__mixed__';
