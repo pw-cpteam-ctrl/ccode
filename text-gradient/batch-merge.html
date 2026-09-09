@@ -168,13 +168,20 @@ button:disabled{opacity:.4;cursor:default;}
 #exportStatus{font-size:12px;color:#555;margin-top:8px;}
 .hidden{display:none !important;}
 /* 조작 방법 안내 — 접을 수 있게. 설명이 화면 면적을 크게 먹어서 시선을 나눠 먹고 있었음 */
-.helpBox{font-size:12px;color:#7d7568;margin-bottom:10px;background:#faf9f6;
-  border:1px solid #ddd8ce;border-radius:9px;}
-.helpBox>summary{cursor:pointer;list-style:none;padding:8px 12px;font-weight:700;color:#252018;
+/* 접혀 있을 땐 검은 박스로 눈에 띄게, 펼치면 밝은 박스로 바뀐다.
+   접힌 상태에서 밝은 회색이라 있는 줄도 모르고 지나쳤고, 반대로 펼친 본문까지 검정이면
+   글이 많아 눈이 아프기 때문에 접힘/펼침의 색을 반대로 뒀다 */
+.helpBox{font-size:12px;color:#7d7568;margin-bottom:10px;background:#252018;
+  border:1px solid #252018;border-radius:9px;overflow:hidden;}
+.helpBox[open]{background:#faf9f6;border-color:#ddd8ce;}
+.helpBox>summary{cursor:pointer;list-style:none;padding:9px 12px;font-weight:700;color:#fff;
   display:flex;align-items:center;gap:7px;}
+.helpBox[open]>summary{color:#252018;border-bottom:1px solid #ddd8ce;}
+.helpBox>summary:hover{background:rgba(255,255,255,.10);}
+.helpBox[open]>summary:hover{background:rgba(37,32,24,.04);}
 .helpBox>summary::-webkit-details-marker{display:none;}
-.helpBox>summary::before{content:'▸';color:#7d7568;font-size:10px;}
-.helpBox[open]>summary::before{content:'▾';}
+.helpBox>summary::before{content:'▸';color:#fff;font-size:10px;}
+.helpBox[open]>summary::before{content:'▾';color:#7d7568;}
 .helpBox .helpBody{padding:0 12px 10px;display:flex;flex-direction:column;gap:6px;line-height:1.5;}
 .helpBox .helpBody b{color:#252018;}
 .helpBox .helpRemember{display:flex;align-items:center;gap:6px;font-size:11.5px;
@@ -280,7 +287,7 @@ button:disabled{opacity:.4;cursor:default;}
 <div class="panel">
   <h2>2. 폴더로 빠르게 시작</h2>
   <p style="font-size:12px;color:#7d7568;margin:0 0 10px;">
-    사진 폴더를 통째로 불러오면 아트보드 + 아래 리스트에 자동으로 채워져. 위에서 투명 이미지를 먼저 올려두면 리스트 "투명파일명" 칸에서 후보로 나와.
+    사진 폴더를 통째로 불러오면 아트보드 + 아래 리스트에 자동으로 채워집니다. 위에서 투명 이미지를 먼저 올려두면 리스트 "투명파일명" 칸에서 후보로 나옵니다.
   </p>
   <button id="btnPickFolder">사진 폴더 선택 (기존 리스트 비우고 새로)</button>
   <button id="btnPickFolderAppend">폴더 추가 (기존 리스트 유지, 뒤에 이어붙이기)</button>
@@ -313,7 +320,7 @@ button:disabled{opacity:.4;cursor:default;}
     <div class="ltitle">저장된 작업을 불러오는 중…</div>
     <div class="lbarWrap"><div class="lbar"></div></div>
     <div class="lcount">확인하는 중</div>
-    <div class="lnote">사진이 많으면 <b>30초~1분</b> 정도 걸려.<br/>다 뜰 때까지 새로고침하거나 폴더를 다시 고르지 말고 기다려줘.</div>
+    <div class="lnote">사진이 많으면 <b>30초~1분</b> 정도 걸립니다.<br/>다 뜰 때까지 새로고침하거나 폴더를 다시 고르지 마시고 기다려 주세요.</div>
   </div>
 <div id="gridPanel" style="display:none;">
   <h2>미리보기 (클릭해서 조정)</h2>
@@ -369,7 +376,7 @@ button:disabled{opacity:.4;cursor:default;}
       <button id="btnSelAll" style="font-size:11px;padding:4px 8px;">전체 선택</button>
       <button id="btnSelUnassigned" style="font-size:11px;padding:4px 8px;">투명 미배정만 선택</button>
       <button id="btnStripFrames" style="font-size:11px;padding:4px 8px;">★ 대표만 남기고 나머지 투명 제목 빼기</button>
-      <button id="btnSortByWork" style="font-size:11px;padding:4px 8px;" title="폴더 이름 앞에 라인업명(G.M.G. 등)이 붙어 흩어진 같은 작품 폴더를 한자리에 모은다">작품(IP)끼리 모으기</button>
+      <button id="btnSortByWork" style="font-size:11px;padding:4px 8px;" title="폴더 이름 앞에 라인업명(G.M.G. 등)이 붙어 흩어진 같은 작품 폴더를 한자리에 모아 줍니다">작품(IP)끼리 모으기</button>
     </span>
   </div>
   <div id="gridScroll"><div id="grid"></div></div>
@@ -494,10 +501,17 @@ function itemsMetaSnapshot(){
     };
   });
 }
+// 저장할 때 사진을 구분하는 이름표.
+// 예전에는 파일명만 썼는데, 본사 폴더는 사진 이름이 대부분 01.jpg·02.jpg 식이라
+// 폴더가 달라도 이름이 똑같다. 그래서 나중에 저장한 폴더의 01.jpg가 앞 폴더의 01.jpg를
+// 덮어써버렸고, 다시 불러오면 엉뚱한 폴더 사진이 섞여 나왔다. 폴더명까지 붙여 구분한다
+// 구분자는 폴더명·파일명에 들어갈 수 없는 글자(줄바꿈)를 써야, "폴더 a" + "b c" 와
+// "폴더 a b" + "c" 가 같은 이름표가 되어버리는 사고를 막을 수 있다
+function photoCacheKey(folder, name){ return (folder || '') + '\n' + name; }
 async function saveFilesToCache(){
   const photoBlobs = {}, overlayBlobs = {};
   for (const it of items) {
-    photoBlobs[it.photoName] = it.photoFile;
+    photoBlobs[photoCacheKey(it.folder, it.photoName)] = it.photoFile;
     if (it.overlayName && it.overlayFile) overlayBlobs[it.overlayName] = it.overlayFile;
   }
   try { await queueIdbSet('files', { photoBlobs, overlayBlobs }); }
@@ -571,10 +585,13 @@ async function restoreFromCache(){
   const total = itemsMeta.length;
   setLoadingProgress(0, total);
   items = [];
-  let done = 0, broken = 0;
+  let done = 0, broken = 0, usedOldKey = 0;
   for (const m of itemsMeta) {
     setLoadingProgress(done++, total);
-    const photoBlob = filesData.photoBlobs[m.photoName];
+    // 폴더명까지 붙인 새 이름표로 먼저 찾고, 없으면 파일명만 쓰던 예전 저장분을 찾는다
+    const key = photoCacheKey(m.folder, m.photoName);
+    let photoBlob = filesData.photoBlobs[key];
+    if (!photoBlob) { photoBlob = filesData.photoBlobs[m.photoName]; if (photoBlob) usedOldKey++; }
     if (!photoBlob) continue;
     const overlayBlob = m.overlayName ? filesData.overlayBlobs[m.overlayName] : null;
     // 한 장이 깨져 있어도 여기서 통째로 멈추면 나머지 작업물까지 못 불러온다 → 그 장만 건너뛴다
@@ -616,8 +633,25 @@ async function restoreFromCache(){
   renderGrid();
   renderMatchListTable();
   $('#listWrap').style.display = '';
-  log(`캐시에서 ${items.length}장 복원함`);
-  if (broken) log(`※ ${broken}장은 저장된 사진이 깨져 있어서 건너뜀 — 그 폴더만 다시 불러오면 됨`);
+  log(`캐시에서 ${items.length}장 복원했습니다.`);
+  if (broken) log(`※ ${broken}장은 저장된 사진이 깨져 있어 건너뛰었습니다. 그 폴더만 다시 불러오시면 됩니다.`);
+  // 예전 방식(파일명만)으로 저장된 작업은 폴더가 달라도 01.jpg끼리 서로 덮어쓴 상태라
+  // 사진이 이미 섞여 있을 수 있다. 겹치는 파일명이 실제로 있을 때만 알린다
+  if (usedOldKey) {
+    const seen = new Map();
+    let dup = 0;
+    for (const it of items) {
+      const f = it.folder || '';
+      if (seen.has(it.photoName) && seen.get(it.photoName) !== f) dup++;
+      else seen.set(it.photoName, f);
+    }
+    if (dup) {
+      const msg = `※ 예전 방식으로 저장된 작업입니다. 폴더가 달라도 파일명이 같으면(01.jpg 등) 사진이 서로 섞였을 수 있으니, 사진 폴더를 다시 불러와 주세요. 지금부터 저장되는 작업은 폴더까지 구분해 저장됩니다.`;
+      log(msg);
+      const note = $('#restoreNote');
+      if (note) { note.textContent = msg; note.style.color = '#b33'; note.style.fontWeight = '700'; }
+    }
+  }
   return true;
 }
 
@@ -886,7 +920,7 @@ function workKeyOf(folder){
 }
 // 같은 작품 폴더끼리 붙여서 다시 늘어놓는다. 폴더 안 사진 순서는 절대 건드리지 않는다
 function sortItemsByWork(){
-  if (!items.length) { log('불러온 사진이 없음'); return; }
+  if (!items.length) { log('불러온 사진이 없습니다.'); return; }
   pushUndo('작품끼리 모으기');
   const order = foldersInOrder();
   const rank = new Map(order.map((f, i) => [f, i]));   // 원래 순서(같은 작품 안에서 순서 유지용)
@@ -902,7 +936,7 @@ function sortItemsByWork(){
   renderMatchListTable();
   saveMetaToCache();
   saveFilesToCache();
-  log(`폴더 ${order.length}개를 작품 ${groups}종으로 묶어 정렬함 — Ctrl+Z로 되돌릴 수 있음`);
+  log(`폴더 ${order.length}개를 작품 ${groups}종으로 묶어 정렬했습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
 }
 // 규칙 복구: 폴더마다 대표는 정확히 1장, 대표는 항상 투명 제목이 켜져 있음
 function normalizeMains(){
@@ -2185,15 +2219,15 @@ function makeFolderHead(folder){
   del.type = 'button';
   del.className = 'del';
   del.textContent = '폴더 삭제';
-  del.title = `"${folder || '(폴더 없음)'}" 폴더 ${list.length}장을 리스트에서 통째로 뺀다 (Ctrl+Z로 되돌리기 가능)`;
+  del.title = `"${folder || '(폴더 없음)'}" 폴더 ${list.length}장을 리스트에서 통째로 뺍니다 (Ctrl+Z로 되돌리기 가능)`;
   del.addEventListener('mousedown', e => e.stopPropagation());
   del.addEventListener('click', (e) => {
     e.stopPropagation();
     const group = items.filter(x => (x.folder || '') === folder);
     if (!group.length) return;
-    if (!confirm(`"${folder || '(폴더 없음)'}" 폴더의 사진 ${group.length}장을 리스트에서 뺄까?\n\n원본 파일은 그대로 있고, 잘못 눌렀으면 Ctrl+Z로 되돌릴 수 있어.`)) return;
+    if (!confirm(`"${folder || '(폴더 없음)'}" 폴더의 사진 ${group.length}장을 리스트에서 뺄까요?\n\n원본 파일은 그대로 있고, 잘못 누르셨으면 Ctrl+Z로 되돌릴 수 있습니다.`)) return;
     deleteItems(group);
-    log(`"${folder || '(폴더 없음)'}" 폴더 ${group.length}장 삭제 — Ctrl+Z로 되돌릴 수 있음`);
+    log(`"${folder || '(폴더 없음)'}" 폴더 ${group.length}장을 삭제했습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
   });
   head.appendChild(del);
   return head;
