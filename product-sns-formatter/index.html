@@ -289,6 +289,15 @@ button.danger{background:var(--ui-warn);color:#fff;}
 .nt-list li{margin-bottom:6px;}
 .nt-actions{display:flex;gap:8px;justify-content:flex-end;}
 .nt-foot{margin:9px 0 0;text-align:right;font-size:11px;color:var(--ui-sub);}
+.nt-foot a{color:var(--ui-sub);}
+.su-field{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;
+  padding:10px 12px;margin:0 0 14px;}
+.su-field label{display:block;font-size:12px;margin-bottom:6px;}
+.su-field input{width:100%;border:1px solid var(--ui-border);border-radius:6px;
+  padding:8px 10px;font-size:13px;font-family:inherit;color:var(--ui-text);background:var(--ui-panel);}
+.su-hint{font-size:11px;color:var(--ui-sub);margin-top:5px;min-height:14px;}
+.su-hint.ok{color:var(--ui-ok);font-weight:700;}
+#scraperUpdateDialog button:disabled{opacity:.5;cursor:not-allowed;}
 .harvest{background:var(--ui-panel);border:1px solid var(--ui-accent);border-radius:12px;padding:15px 18px;margin-top:18px;}
 .harvest h3{margin:0 0 4px;font-size:13.5px;font-weight:800;display:flex;align-items:center;gap:8px;}
 .harvest p{margin:0 0 11px;font-size:12px;color:var(--ui-sub);}
@@ -383,6 +392,29 @@ button.danger{background:var(--ui-warn);color:#fff;}
         <button class="sm" id="noticeHide3d">3일간 그만보기</button>
       </div>
       <p class="nt-foot">그냥 닫으면(ESC) 다음에 접속할 때 또 보입니다.</p>
+    </div>
+  </dialog>
+
+  <dialog id="scraperUpdateDialog">
+    <div class="nt-body">
+      <h3>🔄 상품 가져오기 프로그램에 새 버전이 있어요</h3>
+      <p class="nt-lead">이 웹페이지가 아니라 <b>PC에 깔아둔 "굿스마일 상품 가져오기" 프로그램</b> 이야기예요.
+        업데이트하지 않아도 수집은 되지만, 새로 좋아진 부분이 빠진 상태로 받아옵니다.</p>
+      <ol class="nt-list">
+        <li>평소 쓰는 <b>run.bat 바로가기를 우클릭 → "파일 위치 열기"</b> 를 누르면 프로그램 폴더가 열려요.</li>
+        <li>그 폴더 안의 <b>update.bat</b> 을 더블클릭하면 끝입니다. (검은 창이 알아서 닫혀요)</li>
+        <li>로그인 정보와 받아둔 결과는 <b>그대로 남습니다.</b></li>
+      </ol>
+      <div class="su-field">
+        <label for="scraperAckInput">업데이트를 마쳤으면 아래에 <b>업데이트 완료</b> 라고 입력해주세요</label>
+        <input type="text" id="scraperAckInput" placeholder="업데이트 완료" autocomplete="off"/>
+        <div class="su-hint" id="scraperAckHint"></div>
+      </div>
+      <div class="nt-actions">
+        <button class="secondary sm" id="scraperLater">나중에 (하루 뒤 다시 알림)</button>
+        <button class="sm" id="scraperAckBtn" disabled>확인</button>
+      </div>
+      <p class="nt-foot"><a href="#" id="scraperNever">이 PC에서는 프로그램을 쓰지 않아요 (다시 안 띄우기)</a></p>
     </div>
   </dialog>
 
@@ -2480,6 +2512,72 @@ function setupNotice() {
   if (Date.now() > hiddenUntil) dlg.showModal();
 }
 
+/* ── 스크래퍼(PC 프로그램) 새 버전 안내 ────────────────────────────────────────
+   이 웹은 팀원 PC에 어떤 버전이 깔려 있는지 알 수 없다. 대신 스크래퍼 배포처가
+   최신 버전(파일 내용 해시)을 알려주는 주소를 이미 갖고 있어서, 그 값이 "이 브라우저에서
+   마지막으로 업데이트 완료라고 확인한 값"과 다르면 새 버전이 나온 것으로 본다.
+   해시라서 내가 스크래퍼 코드를 고치면 값이 저절로 바뀐다 — 웹 코드를 같이 고칠 필요가 없다.
+
+   "업데이트했는지"는 결국 자기 신고다. 그래서 작업을 막지는 않되(나중에 버튼), 대충
+   닫기는 어렵게 문구를 직접 입력받는다. 그냥 닫으면(ESC) 아무것도 저장하지 않아 다음
+   접속에 또 뜬다.
+
+   버전 확인이 실패하면(주소가 죽었든 인터넷이 끊겼든) 조용히 넘어간다 — 팝업이 안 뜰
+   뿐이고 페이지는 정상 동작해야 한다. */
+const SCRAPER_META_URL = 'https://b2b-scraper-kappa.vercel.app/api/files?meta=1';
+const SCRAPER_ACK_KEY = 'product-sns-formatter:scraperVersionAck:v1';
+const SCRAPER_SNOOZE_KEY = 'product-sns-formatter:scraperSnoozeUntil:v1';
+const SCRAPER_ACK_PHRASE = '업데이트 완료';
+async function setupScraperUpdateNotice() {
+  const dlg = $('#scraperUpdateDialog');
+  if (!dlg) return;
+  const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* 기억만 못 함 */ } };
+
+  if (lsGet(SCRAPER_ACK_KEY) === 'never') return;         // 이 PC는 프로그램을 안 씀
+  if (Date.now() < Number(lsGet(SCRAPER_SNOOZE_KEY) || 0)) return;  // 하루 미뤄둔 상태
+
+  let latest = '';
+  try {
+    // 응답이 늦어도 페이지가 붙잡히지 않게 짧게 끊는다.
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 4000);
+    const res = await fetch(SCRAPER_META_URL, { signal: ctl.signal, cache: 'no-store' });
+    clearTimeout(t);
+    if (!res.ok) return;
+    latest = String((await res.json()).version || '');
+  } catch { return; }
+  if (!latest || latest === lsGet(SCRAPER_ACK_KEY)) return;
+
+  // 다른 안내가 이미 떠 있으면 겹쳐 띄우지 않는다 — 다음 접속에 뜬다.
+  if (document.querySelector('dialog[open]')) return;
+
+  const input = $('#scraperAckInput'), hint = $('#scraperAckHint'), okBtn = $('#scraperAckBtn');
+  const normalize = v => String(v || '').replace(/\s+/g, '');
+  input.value = '';
+  okBtn.disabled = true;
+  hint.textContent = '';
+  hint.classList.remove('ok');
+  input.addEventListener('input', () => {
+    const match = normalize(input.value) === normalize(SCRAPER_ACK_PHRASE);
+    okBtn.disabled = !match;
+    hint.textContent = !input.value.trim() ? ''
+      : (match ? '확인 버튼을 눌러주세요' : `"${SCRAPER_ACK_PHRASE}" 라고 입력해주세요`);
+    hint.classList.toggle('ok', match);
+  });
+  okBtn.addEventListener('click', () => { lsSet(SCRAPER_ACK_KEY, latest); dlg.close(); });
+  $('#scraperLater').addEventListener('click', () => {
+    lsSet(SCRAPER_SNOOZE_KEY, String(Date.now() + 24 * 60 * 60 * 1000));
+    dlg.close();
+  });
+  $('#scraperNever').addEventListener('click', e => {
+    e.preventDefault();
+    lsSet(SCRAPER_ACK_KEY, 'never');
+    dlg.close();
+  });
+  dlg.showModal();
+}
+
 const GUIDE_OPEN_KEY = 'product-sns-formatter:guideOpen:v1';
 (function wireGuideBox() {
   const g = $('#guideBox');
@@ -2846,6 +2944,8 @@ bushiImportZone.addEventListener('drop', e => {
 
 (async function init() {
   setupNotice();
+  // 버전 확인은 바깥 주소를 다녀오므로 화면 그리기를 붙잡지 않게 기다리지 않는다.
+  setupScraperUpdateNotice();
   await loadProperNounDictionary();
   await loadProductLineMatcher();
   await loadWorkTitleDict(); // 상품을 그리기 전에 사전을 올려둬야 "확인 필요"가 잘못 뜨지 않는다

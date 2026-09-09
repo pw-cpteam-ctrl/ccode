@@ -116,6 +116,10 @@ module.exports = async (req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=120, stale-while-revalidate=600');
 
     if (req.query && (req.query.meta === '1' || req.query.meta === 'true')) {
+      // 원고작성페이지(다른 주소에 배포된 웹)가 "스크래퍼 새 버전이 나왔는지"를 확인할 수
+      // 있게 이 응답만 다른 주소에서도 읽도록 허용한다. 버전 해시와 파일 개수뿐이라
+      // 코드가 나가지 않고, 파일 내용을 내려주는 아래 응답에는 이 허용을 붙이지 않는다.
+      res.setHeader('Access-Control-Allow-Origin', '*');
       res.status(200).json(payload);
       return;
     }
