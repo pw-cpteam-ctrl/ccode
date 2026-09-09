@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>사진 일괄 합성 (프로토타입)</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fonts-archive/S-CoreDream/S-CoreDream.css"/>
+<!-- 공용 작품 사전 (일본어 작품명 → 한국 정식명). 다른 도구와 같은 파일을 읽는다 -->
+<script src="../assets/dict-works.js"></script>
 <style>
 *{box-sizing:border-box;}
 /* 배경(흰색) ↔ 카드(베이지) — 아트보드가 흰 바탕이라 카드까지 희면 사진 경계가 안 보였다 */
@@ -76,6 +78,9 @@ button:disabled{opacity:.4;cursor:default;}
 .folderHead .fdot{width:10px;height:10px;border-radius:50%;flex:none;}
 .folderHead .fname{font-size:13px;font-weight:800;}
 .folderHead .fmeta{font-size:11px;color:#7d7568;}
+/* 일본어 폴더명에서 공용 사전이 찾아낸 작품 표시 */
+.folderHead .workTag{font-size:10.5px;font-weight:700;color:#1a3d8f;background:#eef3ff;
+  border:1px solid #4a7cff;border-radius:999px;padding:2px 8px;white-space:nowrap;}
 .folderHead .fspacer{flex:1;}
 .folderHead select{font-size:11.5px;font-weight:700;padding:4px 8px;border-radius:7px;
   border:1.5px solid #ccc4b4;background:#fff;font-family:inherit;color:#252018;max-width:240px;}
@@ -687,6 +692,42 @@ function nameSimilarity(a, b){
   return (2 * hit) / (ga.length + gb.length);
 }
 // 폴더별로 가장 비슷한 투명 이미지를 찾아 계획을 세운다 (아직 적용은 안 함)
+// ---------- 일본어 폴더명 1차 대조 ----------
+// 본사에서 받는 zip은 폴더명이 일본어인데 우리가 만든 투명 제목 PNG는 한국어라,
+// 글자만 비교하는 방식으로는 절대 안 맞는다(공통 글자가 없음).
+// 그래서 공용 작품 사전으로 폴더명 안의 작품을 먼저 찾아 한국어 작품명을 얻고,
+// PNG 중 그 작품 것만 후보로 남긴다. 상품은 매달 새로 나와도 작품(IP)은 반복되기 때문에
+// 여기서 대부분 걸린다. 최종 선택은 사람이 한다 — 틀린 배정이 조용히 섞이는 게 제일 위험하므로.
+function sharedWorkOf(folder){
+  if (typeof findSharedWork !== 'function') return null;   // 사전을 못 읽어도 도구는 그대로 동작
+  return findSharedWork(folder || '');
+}
+// PNG 저장규칙이 "작품명_상품명.png" 이라 언더바 앞이 작품명이다
+function workPartOfOverlay(name){
+  const base = String(name || '').replace(/\.[^.]+$/, '');
+  const i = base.indexOf('_');
+  return (i > 0 ? base.slice(0, i) : base).trim();
+}
+// 표기 흔들림(하이큐 / 하이큐!!, 헌터×헌터 / 헌터x헌터)을 넘기려고 느슨하게 비교한다
+function loosePart(s){
+  return String(s || '').toLowerCase()
+    .replace(/[×xX]/g, 'x')
+    .replace(/[\s!！?？.·・:：;；~〜\-—–_'"“”‘’()（）\[\]【】]/g, '');
+}
+function sameWorkName(a, b){
+  const la = loosePart(a), lb = loosePart(b);
+  if (!la || !lb) return false;
+  return la === lb || la.includes(lb) || lb.includes(la);
+}
+// 그 폴더에 쓸 수 있는 PNG 후보를 작품 기준으로 좁혀서 돌려준다
+function overlayCandidatesForFolder(folder){
+  const all = overlayCandidateNames();
+  const hit = sharedWorkOf(folder);
+  if (!hit) return { work: null, list: all, narrowed: false };
+  const list = all.filter(n => sameWorkName(workPartOfOverlay(n), hit.ko));
+  return { work: hit, list: list.length ? list : all, narrowed: list.length > 0 };
+}
+
 function buildFolderMatchPlan(){
   const names = overlayCandidateNames();
   const folders = [];
@@ -699,6 +740,19 @@ function buildFolderMatchPlan(){
     const targets = items.filter(it => (it.folder || '') === folder && !it.overlayName);
     if (!folder) { skipped.push({ folder, reason: '폴더 정보가 없는 사진' }); continue; }
     if (!targets.length) { skipped.push({ folder, reason: '이미 전부 배정돼 있어서 건드리지 않음' }); continue; }
+    // ① 사전으로 작품을 먼저 찾는다 (일본어 폴더명이면 이 단계에서만 걸린다)
+    const nar = overlayCandidatesForFolder(folder);
+    if (nar.narrowed) {
+      if (nar.list.length === 1) {
+        plan.push({ folder, name: nar.list[0], score: 1, count: targets.length,
+                    via: `사전: ${nar.work.jp} → ${nar.work.ko}` });
+        continue;
+      }
+      // 후보가 여럿이면 자동으로 고르지 않고 사람에게 넘긴다 (상품·캐릭터까지는 사전이 모름)
+      skipped.push({ folder, reason: `"${nar.work.ko}" 후보 ${nar.list.length}개 — 드롭다운에서 그 작품 것만 보이게 좁혀뒀으니 직접 고르면 됨` });
+      continue;
+    }
+    // ② 사전에 없으면 예전처럼 글자 유사도로 (한국어 폴더명은 이쪽에서 걸린다)
     const scored = names.map(n => ({ n, s: nameSimilarity(folder, n) })).sort((x, y) => y.s - x.s);
     const best = scored[0], second = scored[1];
     if (!best || best.s < MATCH_MIN) {
@@ -722,7 +776,7 @@ $('#btnAutoMatchFolder').addEventListener('click', async () => {
   const lines = [];
   if (plan.length) {
     lines.push('■ 자동으로 배정할 폴더');
-    for (const p of plan) lines.push(`  ${p.folder} → ${p.name}  (${Math.round(p.score * 100)}% 일치, ${p.count}장)`);
+    for (const p of plan) lines.push(`  ${p.folder} → ${p.name}  (${p.via ? p.via : Math.round(p.score * 100) + '% 일치'}, ${p.count}장)`);
   }
   if (skipped.length) {
     lines.push('', '■ 건너뛰는 폴더 (직접 골라줘야 함)');
@@ -1870,6 +1924,15 @@ function makeFolderHead(folder){
   head.querySelector('.fdot').style.background = color;
   head.querySelector('.fname').textContent = folder || '(폴더 없음)';
   head.querySelector('.fmeta').textContent = `${list.length}장 · 제목 ${done}/${list.length}`;
+  // 일본어 폴더명이라 글자로는 못 맞히는 경우, 사전이 무엇을 찾았는지 보여준다
+  const found = sharedWorkOf(folder);
+  if (found) {
+    const tag = document.createElement('span');
+    tag.className = 'workTag';
+    tag.textContent = `사전: ${found.ko}`;
+    tag.title = `폴더명에서 "${found.jp}"를 찾아 "${found.ko}"로 봤습니다`;
+    head.querySelector('.fmeta').after(tag);
+  }
 
   // 폴더 안에서 쓰는 제목이 하나뿐이면 그 값을, 섞여 있으면 "(섞여 있음)"을 보여준다
   const kinds = [...new Set(list.map(x => x.overlayName || ''))];
@@ -1881,7 +1944,23 @@ function makeFolderHead(folder){
   const opts = [];
   if (cur === '__mixed__') opts.push(`<option value="__mixed__">(섞여 있음)</option>`);
   opts.push(`<option value="">제목 없음</option>`);
-  for (const n of overlayCandidateNames()) opts.push(`<option value="${n}">${n}</option>`);
+  // 사전으로 작품이 잡히면 그 작품 PNG를 맨 위 묶음으로 올린다.
+  // 나머지도 아래 묶음에 그대로 남겨둔다 — 사전이 틀렸을 때 손으로 고를 길을 막지 않기 위해
+  const nar = overlayCandidatesForFolder(folder);
+  const all = overlayCandidateNames();
+  if (nar.narrowed) {
+    opts.push(`<optgroup label="${nar.work.ko} (사전에서 찾음)">`);
+    for (const n of nar.list) opts.push(`<option value="${n}">${n}</option>`);
+    opts.push(`</optgroup>`);
+    const rest = all.filter(n => !nar.list.includes(n));
+    if (rest.length) {
+      opts.push(`<optgroup label="그 밖의 제목 ${rest.length}개">`);
+      for (const n of rest) opts.push(`<option value="${n}">${n}</option>`);
+      opts.push(`</optgroup>`);
+    }
+  } else {
+    for (const n of all) opts.push(`<option value="${n}">${n}</option>`);
+  }
   sel.innerHTML = opts.join('');
   sel.value = cur;
   sel.addEventListener('mousedown', e => e.stopPropagation());
@@ -1909,6 +1988,15 @@ function refreshFolderHeads(){
     if (!list.length) return;
     const done = list.filter(x => x.overlayName).length;
     head.querySelector('.fmeta').textContent = `${list.length}장 · 제목 ${done}/${list.length}`;
+  // 일본어 폴더명이라 글자로는 못 맞히는 경우, 사전이 무엇을 찾았는지 보여준다
+  const found = sharedWorkOf(folder);
+  if (found) {
+    const tag = document.createElement('span');
+    tag.className = 'workTag';
+    tag.textContent = `사전: ${found.ko}`;
+    tag.title = `폴더명에서 "${found.jp}"를 찾아 "${found.ko}"로 봤습니다`;
+    head.querySelector('.fmeta').after(tag);
+  }
     const sel = head.querySelector('select');
     const kinds = [...new Set(list.map(x => x.overlayName || ''))];
     const cur = kinds.length === 1 ? kinds[0] : '__mixed__';
