@@ -1129,6 +1129,24 @@ body {
   font-size: 11.5px; line-height: 1.5; color: var(--danger-fg);
 }
 
+/* 다시 제출해도 된다는 안내 — 둘째 장 제출 버튼 바로 위.
+   경고가 아니라 안심시키는 말이므로 .reply-warn의 빨간 선을 쓰지 않고,
+   같은 자리·같은 크기에 중립적인 회색으로만 둔다. */
+.reply-restate {
+  margin-top: 2px; padding: 8px 11px;
+  background: var(--ink-50); border-left: 3px solid var(--ink-300);
+  border-radius: 0 8px 8px 0;
+  font-size: 11.5px; line-height: 1.5; color: var(--ink-700);
+}
+
+/* 개인정보 안내 — 카드 맨 아래. 읽고 넘어가는 고지라 가장 약하게 둔다. */
+.reply-privacy {
+  margin-top: 12px; padding-top: 10px;
+  border-top: 1px solid var(--ink-100);
+  font-size: 10.5px; line-height: 1.55; color: var(--ink-500);
+  text-align: center;
+}
+
 /* ─── 06 보상: 2열 비교 표 ───────────────────────────────────────
    '얼마를 받나'(유입 기준)와 '언제 받나'(수령 방식)를 같은 형태의 표로 두어,
    두 축을 나란히 비교할 수 있게 한다. 예전엔 큰 카드로 펼쳐져 있어 세로로

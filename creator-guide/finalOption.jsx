@@ -393,7 +393,10 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, wi
             spellCheck={false}
             placeholder="네이버 아이디"
           />
-          <div className="reply-hint">쿠폰이 이 계정으로 발급돼요</div>
+          {/* 성함을 따로 받지 않기로 해서 이 아이디가 유일한 신원 확인 수단이다.
+              오타 하나가 곧 다른 사람에게 쿠폰이 나가는 일이라, 왜 필요한지와
+              틀렸을 때 어떻게 되는지를 입력칸 바로 밑에서 알린다. */}
+          <div className="reply-hint">쿠폰 발급을 위해 필요해요. 아이디 오기재로 인한 쿠폰 재발급은 도와드리기 어려우니 한 번 더 꼼꼼하게 확인 부탁드려요.</div>
         </div>
 
         {/* 상품 쿠폰은 '어느 룩업인지'가 있어야 준비가 된다. 고른 사람에게만
@@ -408,11 +411,18 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, wi
               maxLength={60}
               value={wish}
               onChange={(e) => setWish(e.target.value)}
-              placeholder="예: 9월 라인업 ○○ 룩업"
+              placeholder="예: 9월 ○○ 룩업"
             />
-            <div className="reply-hint">아직 정하지 못하셨다면 &lsquo;상담 후 결정&rsquo;이라고 적어주셔도 됩니다</div>
+            {/* '못 정했으면 상담 후 결정이라고 적으세요'라는 안내가 있었는데,
+                정해둔 사람까지 그쪽으로 새게 만들어 결국 담당자가 다시 물어보러
+                다니게 된다. 이 칸을 만든 이유 자체가 그 왕복을 없애는 것이라 뺀다. */}
           </div>
         )}
+
+        {/* 접수는 덮어쓰지 않고 계속 쌓이고 마지막 것이 유효하다. 앞 장에서
+            '수정이 어렵다'고 알린 뒤라, 다시 낼 수 있다는 사실을 여기서 알려주지
+            않으면 한 번 잘못 낸 사람이 막혔다고 오해한다. */}
+        <div className="reply-restate">여러 번 제출하시면 마지막에 보내주신 내용으로 진행돼요.</div>
 
         <button type="button" className="reply-copy"
           disabled={!canCopy || sending} onClick={onSubmit}>
@@ -423,6 +433,11 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, wi
         </div>
         {sendErr && <div className="sent-err">{sendErr}</div>}
         <button type="button" className="sum-edit" onClick={() => setStep(1)}>‹ 이전</button>
+
+        {/* 아이디를 적는 화면이라 '이게 어디로 가나'가 자연스럽게 생긴다.
+            보관 방식까지 설명하면 묻지도 않은 걸 답하는 인상이 되므로,
+            용도와 열람 범위 두 가지만 짧게 적는다. */}
+        <div className="reply-privacy">보내주신 내용은 쿠폰 발급 외의 용도로 사용하지 않으며, 담당자만 열람 가능하게끔 비공개로 안전하게 보관됩니다.</div>
       </div>
     );
   }
@@ -476,7 +491,11 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, wi
         <div className="reply-hint">금액·구성은 유입 수에 따라 정해져요</div>
       </div>
 
-      <div className="reply-warn">제출하신 뒤에도 담당자 확인 전까지는 수정하실 수 있습니다. 확인된 뒤에는 변경·교환이 어렵습니다.</div>
+      {/* 예전엔 '담당자 확인 전까지 수정 가능'이라고 썼는데, 확인이 언제 끝나는지
+          크리에이터가 알 방법이 없어 지금 고칠 수 있는 상태인지 스스로 판단할 수
+          없었다. 예고 없이 잠기는 느낌을 주므로, 기준 시점을 없애고 막힐 때 연락할
+          곳만 남긴다. */}
+      <div className="reply-warn">제출 후에는 수정이 어려우니 신중히 골라 주세요. 부득이한 경우 담당자에게 말씀 부탁드립니다.</div>
 
       <button type="button" className="reply-copy"
         disabled={!canNext} onClick={() => setStep(2)}>
