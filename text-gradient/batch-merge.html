@@ -113,7 +113,13 @@ button:disabled{opacity:.4;cursor:default;}
 .storeColorBtn:first-of-type{border-radius:6px 0 0 6px;}
 .storeColorBtn:last-of-type{border-radius:0 6px 6px 0;border-left:none;}
 .storeColorBtn.on{background:#252018;color:#fff;border-color:#252018;}
-.thumb{border-radius:6px;}
+.thumb{border-radius:6px;padding:5px;}
+/* 인스타 캐러셀 권장 장수(10장) 안에 드는 사진에 옅은 배경을 깔아, 폴더마다 어디까지가
+   한 번에 올라가는 분량인지 눈으로 바로 세지 않고도 알 수 있게 한다 */
+.thumb.in10{background:#eaf3ff;box-shadow:inset 0 0 0 1px #cfe1fb;}
+.thumb.over10{background:#fdf0f0;box-shadow:inset 0 0 0 1px #f4d4d4;}
+.folderHead .overWarn{font-size:10.5px;font-weight:700;color:#b33;background:#fdeaea;
+  border:1px solid #e0a9a9;border-radius:999px;padding:2px 8px;white-space:nowrap;}
 .listFolder{font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;color:#fff;display:inline-block;margin-bottom:2px;}
 #matchListTable td.photoCell{cursor:pointer;}
 #matchListTable td.photoCell:hover{background:#eef3ff;}
@@ -348,6 +354,7 @@ button:disabled{opacity:.4;cursor:default;}
       <b id="selZoomVal" style="min-width:42px;">100%</b>
     </label>
     <button id="btnSelBadgeFlip">뱃지 좌우 전환</button>
+    <button id="btnSelMergeFolder" title="선택한 사진을 폴더 하나로 합칩니다. 같은 IP를 한 캐러셀로 올릴 때 씁니다">폴더 합치기</button>
     <button id="btnSelDelete" style="background:#fff0f0;border-color:#e05d5d;color:#b33;">선택 삭제</button>
     <button id="btnSelClear">선택 해제</button>
   </div>
@@ -740,12 +747,13 @@ function folderColorOf(folder){ return folderColorMap.get(folder || '') || '#7d7
 // 폴더가 2개 이상일 때만 폴더 표시를 보여준다 (하나뿐이면 화면만 복잡해짐)
 function hasMultipleFolders(){ return folderColorMap.size > 1; }
 // 사진 하나를 클릭하면 그 사진이 속한 폴더 전체가 한 단위로 선택되게 한다
-function selectFolderGroup(folder){
-  selectedIdx.clear();
+// add가 참이면 기존 선택에 더한다 — 폴더 두 개를 골라 합치려면 더하기가 있어야 한다
+function selectFolderGroup(folder, add){
+  if (!add) selectedIdx.clear();
   items.forEach((it, i) => { if ((it.folder || '') === (folder || '')) selectedIdx.add(i); });
   _lastSelIdx = null;
   updateSelUi();
-  log(`"${folder || '(폴더 없음)'}" 폴더 사진 ${selectedIdx.size}장 선택 — 위쪽 파란 바에서 투명 이미지를 고르면 한꺼번에 배정됨`);
+  log(`사진 ${selectedIdx.size}장을 선택했습니다. 위쪽 파란 바에서 투명 이미지를 고르면 한꺼번에 배정되고, "폴더 합치기"를 누르면 한 폴더로 묶입니다.`);
   const bar = $('#selBar');
   if (bar) bar.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
@@ -909,34 +917,76 @@ function foldersInOrder(){
 // 폴더 이름 안에 들어 있는지로 찾으므로, 같은 작품이면 언어가 달라도 한자리에 모인다.
 function workKeyOf(folder){
   const f = String(folder || '');
+  // 1순위: 이미 배정된 제목 PNG의 작품명.
+  // 투명 파일이 "작품명_상품명.png" 규칙이라, 제목을 고른 순간 그 폴더의 작품이 확정된다.
+  // 사전에 없는 작품(사이버 포뮬러 등)도 이 경로로 정확히 묶이므로, 묶임이 "됐다 안 됐다" 하지 않는다
+  const assigned = items.filter(x => (x.folder || '') === f && x.overlayName)
+                        .map(x => workPartOfOverlay(x.overlayName)).filter(Boolean);
+  if (assigned.length) {
+    const cnt = new Map();
+    for (const a of assigned) cnt.set(a, (cnt.get(a) || 0) + 1);
+    return [...cnt.entries()].sort((x, y) => y[1] - x[1] || naturalCompare(x[0], y[0]))[0][0];
+  }
+  // 2순위: 사전 (일본어 폴더명 → 한국 정식명)
   const found = sharedWorkOf(f);
   if (found) return found.ko;
+  // 3순위: 한국어로 폴더링한 경우 — 사전의 한국 정식명이 폴더 이름 안에 있는지
   let best = null;
   const dict = (typeof SHARED_WORKS !== 'undefined') ? SHARED_WORKS : {};
   for (const ko of Object.values(dict)) {
     if (f.includes(ko) && (!best || ko.length > best.length)) best = ko;
   }
-  return best || f;   // 사전에 없는 작품은 폴더 이름 자체를 기준으로 (최소한 같은 이름끼리는 붙음)
+  return best || f;   // 그래도 못 찾으면 폴더 이름 자체 (최소한 같은 이름끼리는 붙음)
+}
+// 제목이 하나도 배정되지 않은 폴더인지 — 이런 폴더는 맨 밑에 따로 모아서 남은 일이 한눈에 보이게 한다
+function isFolderUnassigned(folder){
+  const group = items.filter(x => (x.folder || '') === (folder || ''));
+  return group.length > 0 && !group.some(x => x.overlayName);
+}
+// 정렬했을 때 폴더가 놓일 순서. 버튼 숫자를 세는 데도 쓰므로 실제 이동과 같은 계산을 한 곳에서 한다
+function plannedFolderOrder(){
+  const order = foldersInOrder();
+  const rank = new Map(order.map((f, i) => [f, i]));
+  const keyed = order.map(f => ({ f, key: workKeyOf(f), tail: isFolderUnassigned(f) ? 1 : 0 }));
+  keyed.sort((a, b) => a.tail - b.tail
+    || naturalCompare(a.key, b.key) || naturalCompare(a.f, b.f) || rank.get(a.f) - rank.get(b.f));
+  return { order, keyed };
 }
 // 같은 작품 폴더끼리 붙여서 다시 늘어놓는다. 폴더 안 사진 순서는 절대 건드리지 않는다
 function sortItemsByWork(){
   if (!items.length) { log('불러온 사진이 없습니다.'); return; }
   pushUndo('작품끼리 모으기');
-  const order = foldersInOrder();
-  const rank = new Map(order.map((f, i) => [f, i]));   // 원래 순서(같은 작품 안에서 순서 유지용)
-  const keyed = order.map(f => ({ f, key: workKeyOf(f) }));
-  keyed.sort((a, b) => naturalCompare(a.key, b.key) || naturalCompare(a.f, b.f) || rank.get(a.f) - rank.get(b.f));
+  const { order, keyed } = plannedFolderOrder();
   const pos = new Map(keyed.map((x, i) => [x.f, i]));
   const was = new Map(items.map((it, i) => [it, i]));
   items = items.slice().sort((a, b) =>
     pos.get(a.folder || '') - pos.get(b.folder || '') || was.get(a) - was.get(b));
-  const groups = new Set(keyed.map(x => x.key)).size;
+  const groups = new Set(keyed.filter(x => !x.tail).map(x => x.key)).size;
+  const tail = keyed.filter(x => x.tail).length;
   clearSelection();
   renderGrid();
   renderMatchListTable();
   saveMetaToCache();
   saveFilesToCache();
-  log(`폴더 ${order.length}개를 작품 ${groups}종으로 묶어 정렬했습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
+  log(`폴더 ${order.length}개를 작품 ${groups}종으로 묶어 정렬했습니다.`
+    + (tail ? ` 제목이 아직 없는 폴더 ${tail}개는 맨 밑으로 모았습니다.` : '')
+    + ' Ctrl+Z로 되돌릴 수 있습니다.');
+}
+// 버튼 이름에 "지금 누르면 몇 개가 움직이는지"를 넣어둔다.
+// 자동으로 옮기면 배정하던 폴더가 눈앞에서 사라져 방금 한 일을 확인할 수 없으므로,
+// 옮기는 시점은 사용자가 정하게 하고 대신 눌러야 할 때가 언제인지만 숫자로 알린다
+function updateSortButton(){
+  const btn = $('#btnSortByWork');
+  if (!btn) return;
+  if (!items.length) { btn.textContent = '작품(IP)끼리 모으기'; btn.disabled = true; return; }
+  const { order, keyed } = plannedFolderOrder();
+  let moves = 0;
+  keyed.forEach((x, i) => { if (order[i] !== x.f) moves++; });
+  btn.disabled = moves === 0;
+  btn.textContent = moves ? `작품(IP)끼리 모으기 (${moves})` : '작품(IP)끼리 모으기 (정렬됨)';
+  btn.title = moves
+    ? `지금 누르면 폴더 ${moves}개가 같은 작품끼리 붙도록 자리를 옮깁니다 (Ctrl+Z로 되돌리기 가능)`
+    : '이미 같은 작품끼리 모여 있습니다';
 }
 // 규칙 복구: 폴더마다 대표는 정확히 1장, 대표는 항상 투명 제목이 켜져 있음
 function normalizeMains(){
@@ -1026,7 +1076,7 @@ function pushUndoGrouped(key, label, gapMs){
 function endUndoGroup(){ _undoGroupKey = null; }
 
 function undo(){
-  if (!_undoStack.length) { log('더 이상 되돌릴 게 없어'); return; }
+  if (!_undoStack.length) { log('더 이상 되돌릴 게 없습니다.'); return; }
   const { label, state } = _undoStack.pop();
   _restoringUndo = true;
   try {
@@ -1105,21 +1155,67 @@ function invalidateStripUndo(){
 }
 
 // 대표 외에서 투명 제목 빼기
-$('#btnStripFrames').addEventListener('click', () => {
+// 대표 한 장만 제목을 남기고 나머지는 뺀다. 대상 목록을 받으므로 전체에도, 폴더 하나에도 쓴다
+// (예전에는 전체 일괄만 있어서 "이 폴더만" 하고 싶을 때 쓸 방법이 없었다)
+function stripFramesOf(list, label){
+  if (!list || !list.length) return;
   normalizeMains();
-  pushUndo('대표만 남기고 제목 빼기');
+  pushUndo(label);
   let changed = 0;
-  items.forEach(it => {
+  for (const it of list) {
     const want = !it.isMain;
     if (it.noFrame !== want) changed++;
     it.noFrame = want;
-  });
+  }
   normalizeMains();
   renderGrid();
+  renderMatchListTable();
   saveMetaToCache();
-  log(`대표 ${foldersInOrder().length}장만 제목을 남기고 ${changed}장 변경 — 투명 배정값은 그대로 있으니 되돌리기 가능`);
+  return changed;
+}
+$('#btnStripFrames').addEventListener('click', () => {
+  const changed = stripFramesOf(items, '대표만 남기고 제목 빼기');
+  log(`대표 ${foldersInOrder().length}장만 제목을 남기고 ${changed}장을 바꿨습니다. 투명 배정값은 그대로 남아 있어 되돌릴 수 있습니다.`);
 });
 $('#btnSortByWork').addEventListener('click', () => sortItemsByWork());
+
+// ---------- 폴더 합치기 ----------
+// 상품별로 나뉘어 들어왔지만 같은 IP라 한 캐러셀로 올릴 때 쓴다.
+// 예전에는 도구 밖에서 사람이 내려받은 뒤 폴더를 손으로 합쳐야 했다
+function mergeSelectedIntoOneFolder(){
+  const list = selectedItems();
+  if (list.length < 2) { log('합칠 사진을 2장 이상 선택해 주세요. (폴더 머리의 "폴더 전체 선택"을 누르고, 다른 폴더는 Ctrl을 누른 채 눌러 더하면 됩니다)'); return; }
+  const folders = [...new Set(list.map(x => x.folder || ''))];
+  // 이름 후보: 작품명이 잡히면 그걸 쓰고, 아니면 첫 폴더 이름
+  const suggest = workKeyOf(folders[0]) || folders[0] || '합친 폴더';
+  const input = prompt(`선택한 사진 ${list.length}장을 한 폴더로 합칩니다.\n합친 폴더의 이름을 정해 주세요.`, suggest);
+  if (input === null) return;                       // 취소
+  const target = (input || '').trim() || suggest;
+  pushUndo(`폴더 ${folders.length}개 합치기`);
+  for (const it of list) it.folder = target;
+  // 합친 사진들을 원래 순서를 지킨 채, 가장 먼저 있던 자리로 모아 붙인다
+  const inSet = new Set(list);
+  const out = [];
+  let placed = false;
+  for (const it of items) {
+    if (inSet.has(it)) { if (!placed) { out.push(...list); placed = true; } }
+    else out.push(it);
+  }
+  items = out;
+  // 한 캐러셀은 첫 장에만 제목이 들어가므로, 합친 폴더는 대표 한 장만 제목을 남긴다
+  // (배정값은 지우지 않으므로 폴더 머리의 "★만 제목"으로 다시 조정할 수 있고 Ctrl+Z로도 되돌아감)
+  const merged = items.filter(x => (x.folder || '') === target);
+  normalizeMains();
+  for (const it of merged) it.noFrame = !it.isMain;
+  normalizeMains();
+  clearSelection();
+  renderGrid();
+  renderMatchListTable();
+  saveMetaToCache();
+  saveFilesToCache();
+  log(`폴더 ${folders.length}개를 "${target}" 하나로 합쳤습니다 (사진 ${list.length}장). 제목은 첫 장만 남겼습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
+}
+$('#btnSelMergeFolder').addEventListener('click', () => mergeSelectedIntoOneFolder());
 
 // ---------- 아트보드 삭제 ----------
 // 지운 사진은 되돌리기로 되살릴 수 있게 원래 위치까지 기억해둔다 (사진 데이터는 메모리에 그대로 있음)
@@ -1489,6 +1585,7 @@ async function assignOverlayMany(list, name){
   }
   updateListProgress();
   refreshFolderHeads();   // 폴더 머리의 배정 현황·드롭다운도 같이 맞춤
+  updateSortButton();     // 제목이 배정되면 그 폴더의 작품이 확정되므로 정렬 대상 수도 달라진다
   saveMetaSoon();
   saveFilesSoon();
 }
@@ -2139,11 +2236,23 @@ function pageSeqMap(){
   return map;
 }
 
+// 인스타 캐러셀 권장 장수. 이 수를 넘는 사진은 배경색으로 구분해 보여준다
+const CAROUSEL_MAX = 10;
+
 // 폴더 머리에 "사전: OO" 칩을 붙인다.
 // 반드시 기존 칩을 먼저 지우고 다시 붙인다 — 예전에는 그냥 붙이기만 해서, 화면이 갱신될 때마다
 // 같은 칩이 계속 쌓이며 오른쪽의 제목 드롭다운을 화면 밖으로 밀어내는 문제가 있었다
 function applyWorkTag(head, folder){
-  head.querySelectorAll('.workTag').forEach(t => t.remove());
+  head.querySelectorAll('.workTag, .overWarn').forEach(t => t.remove());
+  // 인스타 권장 장수를 넘으면 몇 장이 넘쳤는지 알려준다 (넘친 사진은 칸 배경도 빨갛게 표시됨)
+  const cnt = items.filter(x => (x.folder || '') === (folder || '')).length;
+  if (cnt > CAROUSEL_MAX) {
+    const w = document.createElement('span');
+    w.className = 'overWarn';
+    w.textContent = `10장 초과 +${cnt - CAROUSEL_MAX}`;
+    w.title = `인스타 캐러셀 권장은 10장입니다. 이 폴더는 ${cnt}장이라 ${cnt - CAROUSEL_MAX}장이 넘칩니다`;
+    head.querySelector('.fmeta').after(w);
+  }
   const found = sharedWorkOf(folder);
   if (!found) return;
   const tag = document.createElement('span');
@@ -2207,10 +2316,25 @@ function makeFolderHead(folder){
   });
   head.appendChild(sel);
 
+  // 이 폴더만 대표 한 장만 제목을 남긴다 — 전체 일괄만 있으면 폴더별로 다르게 갈 수가 없다
+  const strip = document.createElement('button');
+  strip.type = 'button';
+  strip.textContent = '★만 제목';
+  strip.title = `"${folder || '(폴더 없음)'}" 폴더만 대표 한 장에 제목을 남기고 나머지는 뺍니다 (배정값은 남아 있어 Ctrl+Z로 되돌리기 가능)`;
+  strip.addEventListener('mousedown', e => e.stopPropagation());
+  strip.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const group = items.filter(x => (x.folder || '') === folder);
+    const changed = stripFramesOf(group, `"${folder || '(폴더 없음)'}" 대표만 제목 남기기`);
+    log(`"${folder || '(폴더 없음)'}" 폴더에서 대표 1장만 제목을 남기고 ${changed}장을 바꿨습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
+  });
+  head.appendChild(strip);
+
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.textContent = '폴더 전체 선택';
-  btn.addEventListener('click', (e) => { e.stopPropagation(); selectFolderGroup(folder); });
+  btn.title = '이 폴더 사진을 전부 선택합니다 (Ctrl을 누른 채 누르면 지금 선택에 더해집니다 — 폴더 합치기에 사용)';
+  btn.addEventListener('click', (e) => { e.stopPropagation(); selectFolderGroup(folder, e.ctrlKey || e.metaKey); });
   head.appendChild(btn);
 
   // 같은 사진이 여러 폴더에 중복으로 들어오는 경우가 있어서, 폴더째 빼는 길을 만들어둔다.
@@ -2276,9 +2400,11 @@ function renderGrid(){
       grid.appendChild(makeFolderHead(lastFolder));
     }
     const wrap = document.createElement('div');
-    wrap.className = 'thumb';
+    // 폴더 안에서 몇 번째 장인지에 따라 배경을 다르게 — 10장까지가 인스타 권장 분량
+    const seqNo = seqMap.get(it) || 0;
+    wrap.className = 'thumb ' + (seqNo && seqNo <= CAROUSEL_MAX ? 'in10' : 'over10');
     wrap.dataset.idx = idx;
-    wrap.style.width = THUMB_W + 'px'; // 파일명이 길어도 이 너비를 넘지 않고 말줄임표로 잘리게
+    wrap.style.width = (THUMB_W + 10) + 'px'; // 좌우 여백(5px×2)을 더해 사진 폭은 그대로 유지
     const canvas = document.createElement('canvas');
     canvas.width = THUMB_W; canvas.height = h;
     canvas.style.width = THUMB_W + 'px';
@@ -2414,6 +2540,7 @@ function renderGrid(){
     updatePanCursor(it);
   });
   updateSelUi(); // 미리보기 크기 변경 등으로 다시 그릴 때도 선택 상태가 유지되게
+  updateSortButton(); // 흩어진 폴더가 몇 개인지 버튼 이름에 항상 최신으로 보이게
 }
 // ---------- 표 ↔ 미리보기 서로 짚어주기 ----------
 // 마우스를 올리면 표시만(스크롤 없음), 누르면 그때 그쪽으로 이동한다
