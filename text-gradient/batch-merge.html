@@ -1202,18 +1202,17 @@ function mergeSelectedIntoOneFolder(){
     else out.push(it);
   }
   items = out;
-  // 한 캐러셀은 첫 장에만 제목이 들어가므로, 합친 폴더는 대표 한 장만 제목을 남긴다
-  // (배정값은 지우지 않으므로 폴더 머리의 "★만 제목"으로 다시 조정할 수 있고 Ctrl+Z로도 되돌아감)
-  const merged = items.filter(x => (x.folder || '') === target);
-  normalizeMains();
-  for (const it of merged) it.noFrame = !it.isMain;
-  normalizeMains();
+  // 제목(투명 PNG)은 손대지 않는다.
+  // 예전에는 여기서 "첫 장만 제목 남기기"를 자동으로 걸었는데, 합치자마자 나머지 장의 제목이
+  // 사라지는 것처럼 보여 제목이 없어지는 버그로 읽혔다. 첫 장만 남기고 싶으면 폴더 머리의
+  // "★만 제목"을 누르면 되므로, 합치기는 폴더를 묶는 일만 한다
+  normalizeMains();   // 합친 폴더의 대표는 1장 규칙만 맞춘다
   clearSelection();
   renderGrid();
   renderMatchListTable();
   saveMetaToCache();
   saveFilesToCache();
-  log(`폴더 ${folders.length}개를 "${target}" 하나로 합쳤습니다 (사진 ${list.length}장). 제목은 첫 장만 남겼습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
+  log(`폴더 ${folders.length}개를 "${target}" 하나로 합쳤습니다 (사진 ${list.length}장). 제목은 그대로 두었으니, 첫 장만 남기려면 폴더 머리의 "★만 제목"을 누르세요. Ctrl+Z로 되돌릴 수 있습니다.`);
 }
 $('#btnSelMergeFolder').addEventListener('click', () => mergeSelectedIntoOneFolder());
 
@@ -1247,11 +1246,21 @@ function deleteItems(list){
 
   log(`사진 ${removed.length}장 삭제 (Ctrl+Z로 되살리기 가능) — 남은 ${items.length}장`);
 }
-$('#btnSelDelete').addEventListener('click', () => {
+function deleteSelected(){
   const list = selectedItems();
   if (!list.length) return;
-  if (list.length > 1 && !confirm(`선택한 ${list.length}장을 목록에서 지울까요? (되돌리기 가능)`)) return;
+  if (list.length > 1 && !confirm(`선택한 ${list.length}장을 목록에서 지울까요? (Ctrl+Z로 되돌리기 가능)`)) return;
   deleteItems(list);
+}
+$('#btnSelDelete').addEventListener('click', () => deleteSelected());
+// Delete(또는 Backspace) 키로도 선택한 사진을 지운다.
+// 글자를 치는 칸에서는 브라우저 기본 동작(한 글자 지우기)이 우선이어야 하므로 비켜준다
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+  if (isTextEntry(document.activeElement)) return;
+  if (!selectedIdx.size) return;
+  e.preventDefault();
+  deleteSelected();
 });
 
 let _folderPickAppendMode = false;
@@ -1609,6 +1618,13 @@ function updateSelUi(){
   const n = selectedIdx.size;
   $('#selBar').style.display = n ? 'flex' : 'none';
   $('#selCount').textContent = `${n}개 선택됨`;
+  // 버튼 이름에 장수를 넣는다 — "선택 삭제"만 적혀 있으면 몇 장이 지워지는지 몰라
+  // 일괄 삭제인 줄 모르고 지나치게 된다. Delete 키로도 같은 동작을 한다
+  const delBtn = $('#btnSelDelete');
+  if (delBtn && n) {
+    delBtn.textContent = `선택 ${n}장 삭제 (Delete)`;
+    delBtn.title = `선택한 ${n}장을 목록에서 지웁니다. Delete 키로도 됩니다 (Ctrl+Z로 되돌리기 가능)`;
+  }
   if (n) { // 슬라이더를 선택한 사진의 현재 배율에 맞춰둔다 (안 맞추면 슬라이더를 잡는 순간 값이 튄다)
     const first = selectedItems()[0];
     const pct = Math.round(((first && first.zoom) || 1) * 100);
