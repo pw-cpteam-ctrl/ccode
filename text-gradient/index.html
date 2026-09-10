@@ -15,7 +15,7 @@
 body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Malgun Gothic',sans-serif;display:flex;min-height:100vh;}
 
 /* ─── 좌측 패널 ─── */
-.panel{width:380px;min-width:380px;height:100vh;overflow-y:auto;border-right:1px solid var(--ui-border);background:var(--ui-panel);padding:16px 15px 100px;}
+.panel{width:437px;min-width:437px;height:100vh;overflow-y:auto;border-right:1px solid var(--ui-border);background:var(--ui-panel);padding:16px 15px 100px;}
 .field{margin-bottom:10px;}
 .field label{display:block;font-size:13px;color:var(--ui-sub);margin-bottom:4px;font-weight:600;}
 .field input,.field textarea{width:100%;background:var(--ui-card);border:1px solid var(--ui-border);border-radius:6px;padding:7px 10px;font-size:14.5px;font-family:inherit;color:var(--ui-text);}
@@ -37,6 +37,20 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Mal
 .col-divider:hover,.col-divider.dragging{background:var(--ui-accent);}
 .row3{display:flex;gap:6px;}.row3 .field-col,.row3 .field{flex:1;min-width:0;}
 .col-title{font-size:12px;font-weight:700;color:var(--ui-sub);text-align:center;margin-bottom:4px;}
+/* 자주 안 쓰는 기능은 접어둔다 — 펼쳐진 채로 두면 매번 지나쳐 스크롤해야 해서 자리만 먹는다 */
+.foldSec{border:1px solid var(--ui-border);border-radius:9px;background:var(--ui-card);margin-bottom:12px;}
+.foldSec>summary{cursor:pointer;list-style:none;padding:9px 11px;font-size:13px;font-weight:700;
+  display:flex;align-items:center;gap:7px;}
+.foldSec>summary::-webkit-details-marker{display:none;}
+.foldSec>summary::before{content:'▸';font-size:10px;color:var(--ui-sub);}
+.foldSec[open]>summary::before{content:'▾';}
+.foldSec[open]>summary{border-bottom:1px solid var(--ui-border);}
+.foldSec .foldHint{font-weight:400;font-size:11.5px;color:var(--ui-sub);}
+.foldSec .foldBody{padding:10px 11px 4px;}
+/* 아트보드 위 버튼 — 지금 보고 있는 그 슬롯을 복제·삭제한다 */
+.slot-btns{display:flex;gap:4px;}
+.slot-dl-btn.del{color:#b3261e;}
+.slot-dl-btn.del:hover{background:#b3261e;color:#fff;}
 .sec{font-size:15px;font-weight:800;color:var(--ui-text);margin:16px 0 9px;padding-bottom:6px;border-bottom:2px solid var(--ui-border);}
 /* 다른 도구로 가는 링크 — 지금 도구의 진짜 제목(h1)보다 톤을 낮춰서, 시선이 h1로 먼저 가게 함.
    패널 폭(380px)에 맞춰 꽉 채우고, 글씨도 잘 읽히게 키움 */
@@ -109,23 +123,12 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
     <button onclick="duplicateSlot()" style="flex:1;">⧉ 아트보드 복제</button>
   </div>
 
-  <div class="sec">마크다운 일괄입력</div>
-  <div class="field"><label>공통 배지 문구 (생성되는 슬롯 전체에 적용)</label><input type="text" id="inBulkBadge" value="예약판매 기간 5% 할인 캠페인 중!"/></div>
-  <div class="field">
-    <label>"**좌 | 우**" 볼드 헤더 = 슬롯 1개(아래 - 항목 전부 그 슬롯 불릿) · 헤더 없으면 최상위 불릿=슬롯 · 들여쓴 하위 불릿=불릿리스트</label>
-    <textarea id="inBulkMd" rows="10" placeholder="**⚔️ 헌터×헌터 | 룩업**
-- 곤 프릭스
-- 키르아 조르딕
-
-**🏴‍☠️ 원피스 | 메가캣 프로젝트**
-- 냥피스 냥! DINER!"></textarea>
-  </div>
-  <button onclick="applyBulkMarkdown()" style="width:100%;margin-bottom:4px;">일괄 적용 (기존 슬롯 전부 교체)</button>
-
   <div class="sec">텍스트</div>
   <div class="field"><label>배지 문구</label><input type="text" id="inBadge" value="예약판매 기간 5% 할인 캠페인 중!"/></div>
-  <div class="field"><label>타이틀 (좌)</label><input type="text" id="inTitleL" value="주술회전"/></div>
-  <div class="field"><label>타이틀 (우)</label><input type="text" id="inTitleR" value="메가캣 프로젝트"/></div>
+  <div class="row2">
+    <div class="field"><label>타이틀 (좌)</label><input type="text" id="inTitleL" value="주술회전"/></div>
+    <div class="field"><label>타이틀 (우)</label><input type="text" id="inTitleR" value="메가캣 프로젝트"/></div>
+  </div>
   <div class="field"><label>서브타이틀</label><input type="text" id="inSubtitle" value=""/></div>
   <div style="font-size:12px;color:var(--ui-sub);margin-bottom:4px;">불릿 리스트 — 줄 앞에 "-"를 붙이면 그 줄만 • 불릿으로 표시, 없으면 일반 텍스트</div>
   <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ui-sub);margin-bottom:6px;cursor:pointer;">
@@ -146,23 +149,23 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
   <div class="row3">
     <div class="field-col">
       <div class="col-title">배지</div>
-      <div class="field"><label>위치 오프셋</label><input type="range" id="badgeY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="badgeSize" min="10" max="60" value="20"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="badgeY" min="-150" max="150" value="0"/></div>
     </div>
     <div class="field-col">
       <div class="col-title">타이틀</div>
-      <div class="field"><label>위치 오프셋</label><input type="range" id="titleY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="titleSize" min="20" max="140" value="64"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="titleY" min="-150" max="150" value="0"/></div>
     </div>
     <div class="field-col">
       <div class="col-title">서브타이틀</div>
-      <div class="field"><label>위치 오프셋</label><input type="range" id="subtitleY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="subtitleSize" min="14" max="100" value="34"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="subtitleY" min="-150" max="150" value="0"/></div>
     </div>
     <div class="field-col">
       <div class="col-title">불릿</div>
-      <div class="field"><label>위치 오프셋</label><input type="range" id="bulletsY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="bulletsSize" min="14" max="60" value="28"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="bulletsY" min="-150" max="150" value="0"/></div>
     </div>
   </div>
   <div class="row3">
@@ -176,23 +179,23 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
   <div class="row3">
     <div class="field-col">
       <div class="col-title">배지</div>
-      <div class="field"><label>위치 오프셋</label><input type="range" id="allBadgeY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="allBadgeSize" min="10" max="60" value="20"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="allBadgeY" min="-150" max="150" value="0"/></div>
     </div>
     <div class="field-col">
       <div class="col-title">타이틀</div>
-      <div class="field"><label>위치 오프셋</label><input type="range" id="allTitleY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="allTitleSize" min="20" max="140" value="64"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="allTitleY" min="-150" max="150" value="0"/></div>
     </div>
     <div class="field-col">
       <div class="col-title">서브타이틀</div>
-      <div class="field"><label>위치 오프셋</label><input type="range" id="allSubtitleY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="allSubtitleSize" min="14" max="100" value="34"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="allSubtitleY" min="-150" max="150" value="0"/></div>
     </div>
     <div class="field-col">
       <div class="col-title">불릿</div>
-      <div class="field"><label>위치 오프셋</label><input type="range" id="allBulletsY" min="-150" max="150" value="0"/></div>
       <div class="field"><label>크기</label><input type="range" id="allBulletsSize" min="14" max="60" value="28"/></div>
+      <div class="field"><label>위치 오프셋</label><input type="range" id="allBulletsY" min="-150" max="150" value="0"/></div>
     </div>
   </div>
   <div class="row3">
@@ -211,7 +214,10 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
     <div class="field"><label>압축 %</label><input type="range" id="gradCompress" min="0" max="60" value="0"/></div>
   </div>
 
-  <div class="sec">인디자인 파일목록 생성기</div>
+  <div class="toolLinkSep"></div>
+  <details class="foldSec">
+    <summary>인디자인 파일목록 생성기 <span class="foldHint">가끔 쓰는 기능</span></summary>
+    <div class="foldBody">
   <div style="font-size:12px;color:var(--ui-sub);line-height:1.6;margin-bottom:8px;">
     • 파일명을 한 줄에 하나씩 입력. 확장자 생략 시 <b>.png 자동 추가</b>.<br>
     • <code>[그룹제목.png]</code> 줄을 넣으면 그 아래 사진들이 한 그룹으로 묶이고,
@@ -233,6 +239,27 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
   <div class="field"><label>투명제목 폴더 경로 (그룹 사용 시에만)</label><input type="text" id="inTitleFolderPath" placeholder="C:\Users\Judy\Downloads\투명제목"/></div>
   <button onclick="autoDetectFromFolder()" style="width:100%;margin-bottom:4px;background:#3a3428;">캐릭터별 하위 폴더에서 자동 인식 (Chrome/Edge)</button>
   <button onclick="downloadFileListTxt()" style="width:100%;margin-bottom:4px;">유니코드 텍스트로 다운로드</button>
+
+    </div>
+  </details>
+
+  <div class="toolLinkSep"></div>
+  <details class="foldSec">
+    <summary>마크다운 일괄입력 <span class="foldHint">한 번에 여러 슬롯 만들기</span></summary>
+    <div class="foldBody">
+      <div class="field"><label>공통 배지 문구 (생성되는 슬롯 전체에 적용)</label><input type="text" id="inBulkBadge" value="예약판매 기간 5% 할인 캠페인 중!"/></div>
+      <div class="field">
+        <label>"**좌 | 우**" 볼드 헤더 = 슬롯 1개(아래 - 항목 전부 그 슬롯 불릿) · 헤더 없으면 최상위 불릿=슬롯 · 들여쓴 하위 불릿=불릿리스트</label>
+        <textarea id="inBulkMd" rows="10" placeholder="**⚔️ 헌터×헌터 | 룩업**
+- 곤 프릭스
+- 키르아 조르딕
+
+**🏴‍☠️ 원피스 | 메가캣 프로젝트**
+- 냥피스 냥! DINER!"></textarea>
+      </div>
+      <button onclick="applyBulkMarkdown()" style="width:100%;margin-bottom:4px;">일괄 적용 (기존 슬롯 전부 교체)</button>
+    </div>
+  </details>
 
   <div class="actions">
     <button onclick="downloadPng()" style="flex:1;">이 슬롯만 다운로드</button>
@@ -362,12 +389,8 @@ function renderTabs() {
     };
     item.appendChild(btn);
 
-    if (slots.length > 1) {
-      const del = document.createElement('button');
-      del.className = 'ptab-del'; del.title = '슬롯 삭제'; del.textContent = '×';
-      del.onclick = () => deleteSlot(pg);
-      item.appendChild(del);
-    }
+    // 탭의 × 는 없앴다 — 번호마다 붙어 자리를 먹었고, 삭제·복제는 아트보드 위에 있는 게
+    // "지금 보고 있는 그것"을 지운다는 뜻이 분명해서 잘못 누를 일도 적다
     row.appendChild(item);
   });
 }
@@ -589,7 +612,12 @@ function renderAllSlots() {
   slots.forEach((_, i) => {
     const pg = i + 1;
     const wrap = document.createElement('div'); wrap.className = 'slot-wrap' + (pg === curSlot ? ' cur' : ''); wrap.id = 'slot'+pg;
-    wrap.innerHTML = `<div class="slot-num-row"><span class="slot-num">슬롯 ${pg}</span><button class="slot-dl-btn" title="이 슬롯만 PNG로 다운로드">⬇ 다운로드</button></div>
+    wrap.innerHTML = `<div class="slot-num-row"><span class="slot-num">슬롯 ${pg}</span>
+      <span class="slot-btns">
+        <button class="slot-dl-btn" data-act="dl" title="이 슬롯만 PNG로 다운로드">⬇</button>
+        <button class="slot-dl-btn" data-act="dup" title="이 슬롯을 복제해서 바로 뒤에 추가">⧉</button>
+        <button class="slot-dl-btn del" data-act="del" title="이 슬롯 삭제">✕</button>
+      </span></div>
     <div class="canvas-clip"><div class="canvas" id="canvas${pg}">
       <div class="grad-overlay" id="grad${pg}"></div>
       <div class="badge" id="badge${pg}"></div>
@@ -601,9 +629,20 @@ function renderAllSlots() {
       if (curSlot === pg) return;
       curSlot = pg; renderTabs(); loadInputsFromCurSlot();
     });
-    wrap.querySelector('.slot-dl-btn').addEventListener('click', e => {
-      e.stopPropagation(); // 다운로드 클릭이 슬롯 전환으로 이어지지 않도록
-      downloadPng(pg);
+    // 아트보드 위 버튼들 — 다운로드 / 복제 / 삭제. 버튼 하나에만 리스너를 달던 것을
+    // 세 개 모두 받도록 묶고, 어느 것이든 슬롯 전환으로 이어지지 않게 막는다
+    wrap.querySelectorAll('.slot-dl-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const act = btn.dataset.act;
+        if (act === 'dup') { curSlot = pg; duplicateSlot(); }
+        else if (act === 'del') {
+          if (slots.length <= 1) { alert('슬롯이 하나뿐이라 지울 수 없습니다.'); return; }
+          if (!confirm(`슬롯 ${pg}을 지울까요? (Ctrl+Z로 되돌릴 수 있습니다)`)) return;
+          deleteSlot(pg);
+        }
+        else downloadPng(pg);
+      });
     });
     row.appendChild(wrap);
   });
