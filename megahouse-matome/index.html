@@ -145,6 +145,9 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 /* 헤더·푸터 띠는 눌러서 디자인 탭으로 갈 수 있는 자리 — 평소엔 티 안 나게 두고
    마우스를 올렸을 때만 옅게 표시(다운로드 결과물에는 영향 없음) */
 .to-design{cursor:pointer;}
+/* 오픈용 헤더는 사진 위에 덮이는 투명 오버레이라 클릭이 전부 사진으로 통과했음.
+   글자·로고가 실제로 있는 부분만 클릭을 받게 해서, 빈 자리는 그대로 사진 조작에 양보 */
+.p-hd-open .oh-title-wrap, .p-hd-open .oh-store-wrap{pointer-events:auto;cursor:pointer;}
 .p-hd.to-design:hover{filter:brightness(1.06);}
 .p-ft.to-design:hover{background:#f4f2ee;}
 .p-open{font-weight:700;font-size:38px;color:#FFE500;line-height:1;white-space:nowrap;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.15);flex-shrink:0;}
@@ -265,6 +268,8 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 /* 오픈일 입력칸 + 페이지별 ON/OFF를 한 칸 안에 나란히 — 줄을 늘리지 않으려고 */
 .openbox{display:flex;gap:4px;align-items:center;}
 .openbox input{flex:1;min-width:0;}
+#openPageBtns{display:flex;gap:5px;flex-wrap:wrap;align-items:center;}
+#openPageBtns .miniswitch{width:36px;}
 .miniswitch{flex:0 0 auto;width:34px;padding:4px 0;border-radius:6px;cursor:pointer;
   font-size:10.5px;font-weight:800;font-family:inherit;
   border:1px solid var(--ui-border);background:var(--ui-card);color:var(--ui-sub);}
@@ -470,9 +475,9 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
         <option value="4">-4</option><option value="5">-5</option></select></div>
       <div class="field openbox">
         <input type="text" id="inOpen" value="6/4"/>
-        <button id="btnOpenOn" class="miniswitch on" onclick="togglePageOpen()"
-          title="지금 보는 페이지에서 오픈일을 보일지 여부 (페이지마다 따로 저장)">ON</button>
       </div></div>
+    <div class="frow"><span class="flbl">날짜 표시</span>
+      <div class="field" id="openPageBtns" title="불 켜진 페이지에만 날짜가 보입니다"></div></div>
     <div class="frow pair"><span class="flbl">스토어명<br>글자 / 굵기</span>
       <div class="field"><input type="text" id="inStore" value="메가하우스 공식 스토어"/></div>
       <div class="field">
@@ -667,20 +672,26 @@ const $ = s => document.querySelector(s);
 /* ─── Undo stack ─── */
 const undoStack = [];
 const UNDO_MAX = 30;
-function pushUndo() {
-  undoStack.push({
-    pages: JSON.parse(JSON.stringify(pages)),
-    idSeq,
-    rowFontSizes: JSON.parse(JSON.stringify(rowFontSizes)),
-    firstRowFlex: JSON.parse(JSON.stringify(firstRowFlex)),
-    pageOpenOn: JSON.parse(JSON.stringify(pageOpenOn)),
-    curPage,
+// 되돌릴 지점은 "바꾸기 직전" 상태여야 하는데, 기록을 화면 갱신 뒤에 하다 보니
+// 바뀐 뒤 상태가 쌓였음 → 첫 번째 실행취소는 헛돌고 그 다음부터 한 칸씩 밀려서
+// "한참 전으로 돌아간다"로 보였음. 직전 상태를 한 개 들고 있다가 그걸 쌓는 방식으로 바꿈
+let _lastSnap = null;
+function makeSnap() {
+  return JSON.stringify({
+    pages, idSeq, rowFontSizes, firstRowFlex, pageOpenOn, curPage,
   });
+}
+function pushUndo() {
+  const now = makeSnap();
+  if (_lastSnap === null) { _lastSnap = now; return; }
+  if (_lastSnap === now) return;   // 실제로 달라진 게 없으면 기록하지 않음(슬라이더 연타 등)
+  undoStack.push(_lastSnap);
+  _lastSnap = now;
   if (undoStack.length > UNDO_MAX) undoStack.shift();
 }
 function undo() {
   if (!undoStack.length) { toast('더 이상 되돌릴 수 없습니다'); return; }
-  const s = undoStack.pop();
+  const s = JSON.parse(undoStack.pop());
   pages.length = 0; s.pages.forEach(p => pages.push(p));
   idSeq = s.idSeq;
   rowFontSizes.length = 0; s.rowFontSizes.forEach(v => rowFontSizes.push(v));
@@ -688,6 +699,7 @@ function undo() {
   pageOpenOn.length = 0; (s.pageOpenOn || []).forEach(v => pageOpenOn.push(v));
   ensurePageFlags();
   curPage = Math.min(s.curPage, pages.length);
+  _lastSnap = makeSnap();   // 되돌린 결과가 다시 새 변경으로 기록되지 않게 기준점을 맞춤
   // rebuild poster wraps
   document.getElementById('postersRow').innerHTML = '';
   pages.forEach((_, i) => ensurePosterWrap(i+1));
@@ -1186,6 +1198,7 @@ window.addEventListener('mouseup', e => {
     // 토글로 두면 이미 펼쳐진 칸을 다시 눌렀을 때 파란 표시만 들어오고 설정은
     // 닫혀버려서 "가끔 안 켜진다"로 보였음 — 칸 클릭은 항상 펼치는 쪽으로 고정
     setOpenItem(it.id);
+    gotoPhotoTab(); // 디자인 탭을 보던 중이면 펼쳐진 행이 안 보여서 아무 반응 없어 보였음
     const row = document.querySelector(`.item[data-item-id="${it.id}"]`);
     if (row) {
       row.classList.add('selected');
@@ -1718,6 +1731,7 @@ function toggleHeader() {
   if (_bootDone) saveState();
 }
 function syncOpenHeader() {
+  ensurePageFlags();
   const t = $('#inOhTitle') ? $('#inOhTitle').value.trim() : '';
   const d = $('#inOhDate') ? $('#inOhDate').value.trim() : '';
   const s = $('#inOhStore') ? $('#inOhStore').value.trim() : '';
@@ -1727,7 +1741,8 @@ function syncOpenHeader() {
   const tWeight = $('#ohTitleFontWeight') ? $('#ohTitleFontWeight').value : '900';
   pages.forEach((_, i) => { const p = i+1;
     const tEl = $(`#ohTitle${p}`); if (tEl) { tEl.textContent = t; tEl.dataset.baseSize = tSize; tEl.style.fontSize = tSize; tEl.style.fontWeight = tWeight; }
-    const dEl = $(`#ohDate${p}`); if (dEl) { dEl.textContent = d; dEl.dataset.baseSize = dSize; dEl.style.fontSize = dSize; }
+    const dEl = $(`#ohDate${p}`); if (dEl) { dEl.textContent = d; dEl.dataset.baseSize = dSize; dEl.style.fontSize = dSize;
+      dEl.style.display = pageOpenOn[i] === false ? 'none' : ''; }
     const sEl = $(`#ohStore${p}`); if (sEl) { sEl.textContent = s; sEl.dataset.baseSize = sSize; sEl.style.fontSize = sSize; }
   });
   // 타이틀/날짜가 스토어 배지와 겹치지 않게, 레이아웃 확정 후 공간 부족 시 자동 축소
@@ -1818,6 +1833,9 @@ function fixLogoAspect(el, heightPx) {
 function syncLogoSize() {
   const topSz = +$('#logoSize').value;
   document.querySelectorAll('.p-logo').forEach(el => fixLogoAspect(el, topSz));
+  // 오픈용 헤더의 동그란 로고도 같은 슬라이더를 따름
+  // (여기만 CSS 52px 고정이라, 오픈용 헤더를 쓰는 동안엔 슬라이더가 아무 반응 없어 보였음)
+  document.querySelectorAll('.oh-logo').forEach(el => { el.style.width = topSz+'px'; el.style.height = topSz+'px'; });
   const pwSz = +$('#pwLogoSize').value;
   document.querySelectorAll('.p-ft-logo').forEach(el => fixLogoAspect(el, pwSz));
   if (_bootDone) saveState();
@@ -2233,19 +2251,28 @@ $('#importFile').addEventListener('change', e => {
 
 // 그룹 탭 전환 — 아코디언(동시 펼침)을 대체. 한 번에 한 묶음만 보이게 함
 // 지금 보는 페이지에서만 오픈일을 켜고 끔 (문구 자체는 전체 공통)
-function togglePageOpen() {
+function togglePageOpen(i) {
   ensurePageFlags();
-  const i = curPage - 1;
   pageOpenOn[i] = pageOpenOn[i] === false;
   syncOpenBtn();
   syncHeader();
+  syncOpenHeader();
+  if (_bootDone) saveState();
 }
+// 페이지를 오가며 켜고 끄지 않도록, 페이지 수만큼 버튼을 깔아 한 줄에서 다 끝냄
 function syncOpenBtn() {
-  const b = $('#btnOpenOn'); if (!b) return;
+  const box = $('#openPageBtns'); if (!box) return;
   ensurePageFlags();
-  const on = pageOpenOn[curPage-1] !== false;
-  b.classList.toggle('on', on);
-  b.textContent = on ? 'ON' : 'OFF';
+  box.innerHTML = '';
+  pages.forEach((_, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'miniswitch' + (pageOpenOn[i] !== false ? ' on' : '');
+    b.textContent = (i+1) + 'p';
+    b.title = (i+1) + '페이지 날짜 표시 켜기/끄기';
+    b.onclick = () => togglePageOpen(i);
+    box.appendChild(b);
+  });
 }
 
 // 푸터 문구: 자주 쓰는 두 개는 고르기만 하고, 나머지는 직접 입력칸을 열어줌
@@ -2268,6 +2295,10 @@ function syncFooterPreset() {
 
 // 헤더·푸터 띠를 누르면 그 설정이 있는 디자인 탭으로 이동
 // (그 안의 제목·스토어명·오픈일·푸터 문구·로고가 전부 디자인 탭 소관이라)
+function gotoPhotoTab() {
+  const btn = document.querySelector('.gt[onclick*="sec-photo"]');
+  if (btn) switchGroup('sec-photo', btn);
+}
 function gotoDesignTab() {
   const btn = document.querySelector('.gt[onclick*="sec-layout"]');
   if (btn) switchGroup('sec-layout', btn);
@@ -2466,6 +2497,7 @@ function setSaveState(state) {
 }
 
 function saveState() {
+  if (_bootDone) pushUndo();   // refresh()를 안 거치는 변경(체크박스·이름 수정 등)도 한 단계로 남김
   setSaveState('saving');
   const json = JSON.stringify(buildState());
   const key = slotStateKey(getActiveSlot());
@@ -2576,6 +2608,7 @@ ensurePosterWrap(1);
   await loadState();
   await populateSlotSelect();
   _bootDone = true; // 이 시점부터는 sync* 함수의 saveState() 호출을 허용
+  undoStack.length = 0; _lastSnap = makeSnap(); // 불러오기 직후를 실행취소의 출발점으로
   syncHeader();
   syncLogoSize();
   syncBadgeStyle();
