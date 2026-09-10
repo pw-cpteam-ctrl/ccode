@@ -289,6 +289,7 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
 .item.sel{border-color:var(--ui-accent);}
 .item.sel .item-body{display:grid;gap:6px;}
 .irow{display:grid;grid-template-columns:56px 1fr;align-items:center;gap:8px;}
+.irow.nolbl{grid-template-columns:1fr;}
 .ilbl{font-size:11.5px;font-weight:600;color:var(--ui-sub);text-align:right;}
 .item-extra{display:flex;align-items:center;justify-content:center;gap:11px;flex-wrap:wrap;}
 .ex-sep{width:1px;height:22px;background:var(--ui-border);flex:0 0 auto;}
@@ -1008,12 +1009,15 @@ function makeCell(it, ri, pg) {
     // topRow: 메모 (항상 위). 뱃지가 overflow시 여기로 이동
     const topRow = document.createElement('div');
     topRow.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;';
+    // 메모를 상품명 '위' 줄에 둘지 '옆'에 둘지 — 예전엔 값만 저장하고 여기서 읽지
+    // 않아 버튼을 눌러도 포스터가 그대로였음. 기본은 위(예전 화면과 동일)
+    let memoEl = null;
     if (it.memoOn && it.memo) {
-      const memoEl = document.createElement('span');
+      memoEl = document.createElement('span');
       memoEl.className = 'cell-memo';
       memoEl.textContent = it.memo;
-      memoEl.style.cssText = `font-size:${it.memoSize||14}px;color:${it.memoColor||'#fff'};font-weight:700;text-shadow:1px 2px 5px rgba(0,0,0,.7);`;
-      topRow.appendChild(memoEl);
+      memoEl.style.cssText = `font-size:${it.memoSize||14}px;color:${it.memoColor||'#fff'};font-weight:700;text-shadow:1px 2px 5px rgba(0,0,0,.7);flex-shrink:0;`;
+      if (it.memoPos !== 'side') topRow.appendChild(memoEl);
     }
 
     // mainRow: 상품명 + 뱃지 (짧으면 한 줄 우측, 길면 뱃지가 topRow로 이동)
@@ -1053,6 +1057,7 @@ function makeCell(it, ri, pg) {
       if (e.key === 'Escape') { it.name = it.name||''; setNameHtml(txtSpan, it.name); txtSpan.contentEditable='false'; }
     });
     mainRow.appendChild(txtSpan);
+    if (memoEl && it.memoPos === 'side') mainRow.appendChild(memoEl);
 
     const hasMemo = it.memoOn && it.memo;
     // 메모 있으면 뱃지도 항상 topRow / 메모 없으면 뱃지는 mainRow(overflow시 topRow 이동)
@@ -1275,7 +1280,10 @@ function fitCellNames() {
     const allBadges = [...nm.querySelectorAll('.reprint-badge, .special-badge')];
     allBadges.forEach(b => mainRow.appendChild(b));
     const badges = allBadges;
-    const badgeW = badges.reduce((s,b) => s + b.offsetWidth + 5, 0);
+    // 메모를 이름 옆에 둔 경우 그 폭도 빼줘야 이름이 칸 밖으로 밀리지 않음
+    const sideMemo = mainRow.querySelector('.cell-memo');
+    const badgeW = badges.reduce((s,b) => s + b.offsetWidth + 5, 0)
+      + (sideMemo ? sideMemo.offsetWidth + 10 : 0);
     const minSize = 14;
     // 글자 크기를 줄여 목표 폭 안에 맞추는 헬퍼 (맞춘 크기 반환)
     const shrinkToFit = (availW) => {
@@ -1515,19 +1523,25 @@ function makeItemRow(it, i, pg) {
   const body = document.createElement('div'); body.className = 'item-body';
   function irow(label, el) {
     const r = document.createElement('div'); r.className = 'irow';
+    // 라벨이 없으면 2열 그리드의 첫 칸(56px)에 내용이 통째로 들어가 찌그러졌음
+    // → 라벨 없는 줄은 한 칸짜리로 만들어 폭을 다 쓰게 함
     if (label) { const l = document.createElement('span'); l.className = 'ilbl'; l.textContent = label; r.appendChild(l); }
+    else r.classList.add('nolbl');
     r.appendChild(el); return r;
   }
   body.appendChild(extra);
 
   // 메모 컨트롤 행 (체크 시 표시)
   const memoRow = document.createElement('div');
+  memoRow.className = 'memo-row';
   // 보임/숨김은 감싸는 줄(memoRowWrap)이 담당하므로 여기선 항상 flex
-  memoRow.style.cssText = 'display:flex;gap:3px;align-items:center;flex-wrap:wrap;';
+  // 한 줄에 [문구][크기][색][위][옆]이 다 들어가게. 줄바꿈을 허용하면 폭이 조금만
+  // 모자라도 버튼이 아래로 떨어져 배치가 흐트러졌음
+  memoRow.style.cssText = 'display:flex;gap:4px;align-items:center;flex-wrap:nowrap;';
 
   const memoInp = document.createElement('input'); memoInp.type='text';
   memoInp.placeholder = '메모…'; memoInp.value = it.memo || '';
-  memoInp.style.cssText = 'flex:1 1 90px;min-width:0;height:28px;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:3px 6px;font-size:12px;font-family:inherit;';
+  memoInp.style.cssText = 'flex:1 1 60px;min-width:0;height:28px;background:var(--ui-bg);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:5px;padding:3px 6px;font-size:12px;font-family:inherit;';
   memoInp.addEventListener('input', () => { it.memo = memoInp.value; renderGrid(pg); saveState(); });
 
   const memoSizeInp = document.createElement('input'); memoSizeInp.type='number';
@@ -1547,7 +1561,7 @@ function makeItemRow(it, i, pg) {
   const posSideBtn  = document.createElement('button'); posSideBtn.textContent='옆'; posSideBtn.style.cssText=posStyle;
 
   function updatePosBtns() {
-    const pos = it.memoPos||'side';
+    const pos = it.memoPos || 'above';
     posAboveBtn.style.background = pos==='above' ? 'var(--ui-accent)' : 'var(--ui-bg)';
     posAboveBtn.style.color      = pos==='above' ? '#fff' : 'var(--ui-text)';
     posSideBtn.style.background  = pos==='side'  ? 'var(--ui-accent)' : 'var(--ui-bg)';
@@ -1565,7 +1579,7 @@ function makeItemRow(it, i, pg) {
   memoChk.addEventListener('change', () => {
     it.memoOn = memoChk.checked;
     memoRowWrap.style.display = it.memoOn ? 'grid' : 'none';
-    if (it.memoOn) { if (!it.memoPos) it.memoPos='side'; memoInp.focus(); }
+    if (it.memoOn) { if (!it.memoPos) it.memoPos='above'; memoInp.focus(); }
     renderGrid(pg); saveState();
   });
 
