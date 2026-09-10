@@ -142,6 +142,11 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 .p-store{position:absolute;left:0;right:0;text-align:center;pointer-events:none;
   font-size:22px;font-weight:800;letter-spacing:5px;opacity:.95;}
 .p-hd .top{position:relative;}
+/* 헤더·푸터 띠는 눌러서 디자인 탭으로 갈 수 있는 자리 — 평소엔 티 안 나게 두고
+   마우스를 올렸을 때만 옅게 표시(다운로드 결과물에는 영향 없음) */
+.to-design{cursor:pointer;}
+.p-hd.to-design:hover{filter:brightness(1.06);}
+.p-ft.to-design:hover{background:#f4f2ee;}
 .p-open{font-weight:700;font-size:38px;color:#FFE500;line-height:1;white-space:nowrap;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.15);flex-shrink:0;}
 .p-title{font-family:'Paperlogy','Pretendard',sans-serif;font-weight:900;font-size:92px;line-height:1;letter-spacing:-2px;text-shadow:0 3px 0 rgba(0,0,0,.1);text-align:center;}
 
@@ -257,6 +262,13 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 .frow{display:grid;grid-template-columns:82px 1fr;align-items:center;gap:8px;min-height:32px;margin-bottom:5px;}
 .frow.pair{grid-template-columns:82px 1fr 1fr;}
 .frow.trio{grid-template-columns:82px 1fr 58px 1fr;}
+/* 오픈일 입력칸 + 페이지별 ON/OFF를 한 칸 안에 나란히 — 줄을 늘리지 않으려고 */
+.openbox{display:flex;gap:4px;align-items:center;}
+.openbox input{flex:1;min-width:0;}
+.miniswitch{flex:0 0 auto;width:34px;padding:4px 0;border-radius:6px;cursor:pointer;
+  font-size:10.5px;font-weight:800;font-family:inherit;
+  border:1px solid var(--ui-border);background:var(--ui-card);color:var(--ui-sub);}
+.miniswitch.on{background:var(--ui-accent);border-color:var(--ui-accent);color:#fff;}
 .frow > .flbl{font-size:12.5px;font-weight:600;color:var(--ui-sub);text-align:right;line-height:1.25;}
 .frow .field{margin:0;}
 .frow .field label{display:none;}
@@ -455,7 +467,11 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
         style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:5px 4px;font-size:13px;font-family:inherit;">
         <option value="">—</option><option value="2">-2</option><option value="3">-3</option>
         <option value="4">-4</option><option value="5">-5</option></select></div>
-      <div class="field"><input type="text" id="inOpen" value="6/4"/></div></div>
+      <div class="field openbox">
+        <input type="text" id="inOpen" value="6/4"/>
+        <button id="btnOpenOn" class="miniswitch on" onclick="togglePageOpen()"
+          title="지금 보는 페이지에서 오픈일을 보일지 여부 (페이지마다 따로 저장)">ON</button>
+      </div></div>
     <div class="frow pair"><span class="flbl">스토어명<br>글자 / 굵기</span>
       <div class="field"><input type="text" id="inStore" value="메가하우스 공식 스토어"/></div>
       <div class="field">
@@ -512,6 +528,13 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
       <div class="field"><button id="badgeBlurBtn" class="ptab" style="width:100%;padding:5px 0;font-size:14px" onclick="toggleBadgeBlur()">OFF</button></div></div>
     <div class="sec">푸터</div>
     <div class="frow"><span class="flbl">문구</span>
+      <div class="field"><select id="footerPreset" onchange="applyFooterPreset()"
+        style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:5px 6px;font-size:12.5px;font-family:inherit;">
+        <option value="국내외 사정에 따라 출시 시점 등 일부 사항이 변동될 수 있습니다.">1. 국내외 사정에 따라 출시 시점 등…</option>
+        <option value="MEGAHOUSE OFFICIAL STORE | AUTHORIZED DISTRIBUTOR IN KOREA">2. MEGAHOUSE OFFICIAL STORE | …</option>
+        <option value="__custom__">3. 그 외 직접 입력</option>
+      </select></div></div>
+    <div class="frow" id="footerCustomRow" style="display:none"><span class="flbl">직접 입력</span>
       <div class="field"><input type="text" id="inFooter" value="국내외 사정에 따라 출시 시점 등 일부 사항이 변동될 수 있습니다."/></div></div>
     <div class="frow pair"><span class="flbl">크기 / 위치</span>
       <div class="field"><input type="range" id="footerFontSize" min="10" max="28" value="18" oninput="syncHeader()"/></div>
@@ -625,6 +648,14 @@ let curPage = 1;
 let idSeq = 1;
 let rowFontSizes = [38,38,38,38];
 let firstRowFlex = [null];
+// 오픈일 문구 자체는 모든 페이지 공통이고, 페이지마다 "보일지 말지"만 따로 기억함.
+// 페이지 추가 경로가 여러 곳(＋버튼, 사진 자동 분리, 항목 옮기기 등)이라 배열을
+// 각 지점에서 늘리지 않고, ensurePageFlags()로 길이를 한 번에 맞춘다
+let pageOpenOn = [true];
+function ensurePageFlags() {
+  while (pageOpenOn.length < pages.length) pageOpenOn.push(true);
+  if (pageOpenOn.length > pages.length) pageOpenOn.length = pages.length;
+}
 let blurPx = 10;
 let blurBright = 80;
 let dragSrc = null;
@@ -641,6 +672,7 @@ function pushUndo() {
     idSeq,
     rowFontSizes: JSON.parse(JSON.stringify(rowFontSizes)),
     firstRowFlex: JSON.parse(JSON.stringify(firstRowFlex)),
+    pageOpenOn: JSON.parse(JSON.stringify(pageOpenOn)),
     curPage,
   });
   if (undoStack.length > UNDO_MAX) undoStack.shift();
@@ -652,6 +684,8 @@ function undo() {
   idSeq = s.idSeq;
   rowFontSizes.length = 0; s.rowFontSizes.forEach(v => rowFontSizes.push(v));
   firstRowFlex.length = 0; s.firstRowFlex.forEach(f => firstRowFlex.push(f));
+  pageOpenOn.length = 0; (s.pageOpenOn || []).forEach(v => pageOpenOn.push(v));
+  ensurePageFlags();
   curPage = Math.min(s.curPage, pages.length);
   // rebuild poster wraps
   document.getElementById('postersRow').innerHTML = '';
@@ -695,6 +729,13 @@ function makePosterWrap(pg) {
     </div>`;
   // clicking the poster switches to that page's tab
   wrap.addEventListener('click', () => { if (curPage !== pg) switchTab(pg); });
+  // 헤더·푸터 띠(사진 그리드 바깥)를 누르면 그 설정이 모인 디자인 탭으로 이동.
+  // 제목을 고치려고 눌렀는데 사진 탭이 열려 있어 매번 탭을 갈아타야 했음
+  wrap.querySelectorAll('.p-hd, .p-hd-open, .p-ft').forEach(el => {
+    el.classList.add('to-design');
+    el.title = '눌러서 디자인 탭 열기';
+    el.addEventListener('click', gotoDesignTab);
+  });
   return wrap;
 }
 function ensurePosterWrap(pg) {
@@ -759,6 +800,8 @@ function reorderPages(from, to) {
   pages.splice(to, 0, moved);
   const [movedFlex] = firstRowFlex.splice(from, 1);
   firstRowFlex.splice(to, 0, movedFlex);
+  const [movedOpen] = pageOpenOn.splice(from, 1);
+  pageOpenOn.splice(to, 0, movedOpen);
   curPage = pages.indexOf(curRef) + 1;
   document.getElementById('postersRow').innerHTML = '';
   pages.forEach((_, i) => ensurePosterWrap(i+1));
@@ -778,6 +821,7 @@ function deletePage(pg) {
   if (pages[pg-1].length && !confirm(`${pg}페이지에 사진 ${pages[pg-1].length}장이 있습니다. 정말 삭제할까요? (Ctrl+Z로 되돌릴 수 있습니다)`)) return;
   pages.splice(pg-1, 1);
   firstRowFlex.splice(pg-1, 1);
+  pageOpenOn.splice(pg-1, 1);
   if (curPage > pg) curPage--;
   curPage = Math.min(curPage, pages.length);
   document.getElementById('postersRow').innerHTML = '';
@@ -1134,7 +1178,9 @@ window.addEventListener('mouseup', e => {
     // 파란 표시만 주면 세부 설정은 또 화살표를 눌러야 나와서 두 번 일함.
     // 누른 칸의 행을 바로 펼치고, 한 번에 하나만 펼쳐 두도록 이전 것은 접음
     document.querySelectorAll('.item.selected').forEach(r => r.classList.remove('selected'));
-    setOpenItem(String(_openItemId) === String(it.id) ? null : it.id);
+    // 토글로 두면 이미 펼쳐진 칸을 다시 눌렀을 때 파란 표시만 들어오고 설정은
+    // 닫혀버려서 "가끔 안 켜진다"로 보였음 — 칸 클릭은 항상 펼치는 쪽으로 고정
+    setOpenItem(it.id);
     const row = document.querySelector(`.item[data-item-id="${it.id}"]`);
     if (row) {
       row.classList.add('selected');
@@ -1630,7 +1676,12 @@ function syncHeader() {
     const seq = $('#titleSeq') ? $('#titleSeq').value : '';
     titleEl.textContent = (m ? `${m} 신제품 예고` : '신제품 예고') + (seq ? `-${seq}` : '');
     titleEl.style.fontSize = tSize;
-    const openEl = $(`#open${p}`); if (openEl) openEl.textContent = o ? `${o} 오픈` : '';
+    // 끈 페이지는 자리까지 비우도록 숨김
+    const openEl = $(`#open${p}`);
+    if (openEl) {
+      openEl.textContent = o ? `${o} 오픈` : '';
+      openEl.style.display = pageOpenOn[i] === false ? 'none' : '';
+    }
     const storeEl = $(`#store${p}`);
     if (storeEl) { storeEl.textContent = s; storeEl.style.fontSize = sSize; storeEl.style.fontWeight = $('#storeFontWeight') ? $('#storeFontWeight').value : '800'; storeEl.style.transform = `translateX(${offset})`; }
     const fn = $(`#ftNote${p}`);
@@ -2022,6 +2073,7 @@ function switchTab(pg) {
   renderTabs();
   renderItemList();
   renderRowControls();
+  syncOpenBtn(); // 오픈일 ON/OFF는 페이지별 값이라 페이지를 바꾸면 표시도 같이 바꿔줌
 }
 
 /* ═══════════════════════════════════════
@@ -2031,6 +2083,8 @@ let _refreshing = false;
 function refresh(noUndo) {
   if (!noUndo && !_refreshing) pushUndo();
   _refreshing = true;
+  ensurePageFlags();
+  syncOpenBtn();
   renderTabs();
   renderItemList();
   pages.forEach((_, i) => { ensurePosterWrap(i+1); renderGrid(i+1); });
@@ -2164,6 +2218,47 @@ $('#importFile').addEventListener('change', e => {
 })();
 
 // 그룹 탭 전환 — 아코디언(동시 펼침)을 대체. 한 번에 한 묶음만 보이게 함
+// 지금 보는 페이지에서만 오픈일을 켜고 끔 (문구 자체는 전체 공통)
+function togglePageOpen() {
+  ensurePageFlags();
+  const i = curPage - 1;
+  pageOpenOn[i] = pageOpenOn[i] === false;
+  syncOpenBtn();
+  syncHeader();
+}
+function syncOpenBtn() {
+  const b = $('#btnOpenOn'); if (!b) return;
+  ensurePageFlags();
+  const on = pageOpenOn[curPage-1] !== false;
+  b.classList.toggle('on', on);
+  b.textContent = on ? 'ON' : 'OFF';
+}
+
+// 푸터 문구: 자주 쓰는 두 개는 고르기만 하고, 나머지는 직접 입력칸을 열어줌
+function applyFooterPreset() {
+  const sel = $('#footerPreset'), row = $('#footerCustomRow'), inp = $('#inFooter');
+  if (!sel || !row || !inp) return;
+  const custom = sel.value === '__custom__';
+  row.style.display = custom ? '' : 'none';
+  if (!custom) inp.value = sel.value;
+  syncHeader();
+}
+// 저장본을 불러왔을 때, 저장된 문구가 목록에 있으면 그 항목을 고르고 없으면 직접 입력으로
+function syncFooterPreset() {
+  const sel = $('#footerPreset'), row = $('#footerCustomRow'), inp = $('#inFooter');
+  if (!sel || !row || !inp) return;
+  const hit = [...sel.options].find(o => o.value === inp.value);
+  sel.value = hit ? hit.value : '__custom__';
+  row.style.display = hit ? 'none' : '';
+}
+
+// 헤더·푸터 띠를 누르면 그 설정이 있는 디자인 탭으로 이동
+// (그 안의 제목·스토어명·오픈일·푸터 문구·로고가 전부 디자인 탭 소관이라)
+function gotoDesignTab() {
+  const btn = document.querySelector('.gt[onclick*="sec-layout"]');
+  if (btn) switchGroup('sec-layout', btn);
+}
+
 function switchGroup(id, btn) {
   document.querySelectorAll('.gpane').forEach(p => p.classList.toggle('on', p.id === id));
   document.querySelectorAll('.gt').forEach(b => b.classList.toggle('on', b === btn));
@@ -2198,7 +2293,7 @@ function switchGroup(id, btn) {
 $('#btnReset').addEventListener('click', () => {
   if (!confirm('모두 초기화할까요?')) return;
   pages.splice(0, pages.length, []);
-  rowFontSizes = [38,38,38,38]; firstRowFlex = [null];
+  rowFontSizes = [38,38,38,38]; firstRowFlex = [null]; pageOpenOn = [true];
   // clear all poster wraps and recreate page 1
   const row = document.getElementById('postersRow');
   row.innerHTML = '';
@@ -2296,7 +2391,7 @@ async function switchSlot(slot) {
 function buildState() {
   return {
       pages: pages.map(pg => pg.map(it => ({...it}))),
-      rowFontSizes, firstRowFlex,
+      rowFontSizes, firstRowFlex, pageOpenOn,
       month: $('#inMonth').value,
       open: $('#inOpen').value,
       store: $('#inStore').value,
@@ -2400,6 +2495,9 @@ async function loadState() {
     }
     rowFontSizes = (Array.isArray(st.rowFontSizes) && typeof st.rowFontSizes[0] === 'number') ? st.rowFontSizes : [38,38,38,38];
     firstRowFlex = st.firstRowFlex || pages.map(() => null);
+    // 이 항목이 없던 예전 저장본은 전부 켜진 상태로 열림
+    pageOpenOn = st.pageOpenOn || pages.map(() => true);
+    ensurePageFlags();
     // ensure poster wraps for all loaded pages
     const postersRow = document.getElementById('postersRow');
     if (postersRow) postersRow.innerHTML = '';
@@ -2408,7 +2506,7 @@ async function loadState() {
     if (st.month) $('#inMonth').value = st.month;
     if (st.open)  $('#inOpen').value  = st.open;
     if (st.store) $('#inStore').value = st.store;
-    if (st.footer) $('#inFooter').value = st.footer;
+    if (st.footer) { $('#inFooter').value = st.footer; syncFooterPreset(); }
     if (st.storeFontSize) $('#storeFontSize').value = st.storeFontSize;
     if (st.titleFontSize) $('#titleFontSize').value = st.titleFontSize;
     if (st.footerFontSize) $('#footerFontSize').value = st.footerFontSize;
