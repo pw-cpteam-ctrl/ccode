@@ -346,7 +346,16 @@ button:disabled{opacity:.4;cursor:default;}
 #selBar{position:absolute;left:50%;transform:translateX(-50%);bottom:14px;z-index:50;
   display:flex;align-items:center;gap:8px;padding:9px 12px;max-width:calc(100% - 28px);
   flex-wrap:wrap;justify-content:center;row-gap:7px;
+  /* 떠 있는 막대라 뒤 사진이 비치면 글자가 안 읽힌다 — 불투명 배경과 테두리를 확실히 준다
+     (막대를 띄우는 과정에서 이 두 줄이 사라져 투명해졌던 것을 되살림) */
+  background:#eef3ff;border:1px solid #4a7cff;border-radius:10px;
   box-shadow:0 6px 24px rgba(37,32,24,.22);}
+/* 방금 한 일을 알려주는 글자 — 막대 "안"에 두면 글자가 생길 때마다 폭이 바뀌어 버튼이
+   좌우로 움직였다. 막대 위쪽에 따로 띄워서 버튼 위치에 영향을 주지 않게 한다 */
+#selBar #selAction{position:absolute;left:50%;bottom:calc(100% + 6px);transform:translateX(-50%);
+  white-space:nowrap;background:#252018;color:#fff;font-size:11.5px;font-weight:700;
+  padding:4px 10px;border-radius:999px;pointer-events:none;}
+#selBar #selAction:empty{display:none;}
 #selBar button{font-size:12px;padding:6px 12px;white-space:nowrap;flex:none;}
 #selBar select{font-size:12px;padding:6px 8px;border-radius:6px;border:1px solid #4a7cff;background:#fff;font-family:inherit;font-weight:700;color:#1a3d8f;cursor:pointer;}
 </style>
@@ -655,7 +664,13 @@ async function saveMetaToCache(){
 let _saveMetaT;
 function saveMetaSoon(){
   clearTimeout(_saveMetaT);
-  _saveMetaT = setTimeout(saveMetaToCache, 400);
+  // 300장이면 설정값 저장에 178ms가 걸린다. 순서를 바꾼 직후에 이게 겹쳐 돌면 화면이 두 번
+  // 멈춘 것처럼 느껴졌다 → 잠깐 기다린 뒤, 브라우저가 한가한 틈에 저장한다.
+  // 한가한 틈이 오지 않아도 2초 안에는 반드시 저장되게 해서 작업이 날아갈 일은 없다
+  _saveMetaT = setTimeout(() => {
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(saveMetaToCache, { timeout: 2000 });
+    else saveMetaToCache();
+  }, 400);
 }
 // 원본 파일 캐시는 사진 수백 장 블롭을 한꺼번에 쓰는 무거운 작업이라, 투명을 한 장씩 배정할 때마다
 // 바로 저장하지 않고 잠깐 기다렸다가 마지막 한 번만 저장한다
@@ -1855,6 +1870,16 @@ function updateSelUi(){
     $('#selZoom').value = String(Math.max(20, Math.min(400, pct)));
     $('#selZoomVal').textContent = $('#selZoom').value + '%';
   }
+}
+// 선택 바의 확대/축소 숫자만 지금 값으로 맞춘다 (칸 전체를 훑지 않아 휠을 굴려도 가볍다)
+function syncSelZoomUi(){
+  const first = selectedItems()[0];
+  if (!first) return;
+  const pct = Math.round(((first && first.zoom) || 1) * 100);
+  const sl = $('#selZoom');
+  if (!sl) return;
+  sl.value = String(Math.max(20, Math.min(400, pct)));
+  $('#selZoomVal').textContent = pct + '%';
 }
 function clearSelection(){
   selectedIdx.clear();
@@ -3194,8 +3219,10 @@ $('#grid').addEventListener('wheel', e => {
   }
   if (targets.length > 1) { refreshVisibleThumbs(targets); scheduleFullRefresh(targets); }
   else refreshThumb(it);
-  reportAction(`휠 ${targets.length}장 배율 ${Math.round((it.zoom ?? 1) * 100)}%` +
-    (targets.length === 1 && selectedIdx.size > 1 ? ' (이 칸은 선택에 안 들어있어서 1장만)' : ''));
+  // 휠과 슬라이더는 같은 값(사진 배율)을 조작하는데 휠 쪽이 슬라이더를 갱신하지 않아,
+  // 실제 배율과 슬라이더 숫자가 서로 다르게 떠 있었다
+  syncSelZoomUi();
+  if (targets.length === 1 && selectedIdx.size > 1) reportAction('이 칸은 선택에 안 들어있어서 1장만 바뀜');
   saveMetaSoon();
 }, { passive: false });
 
@@ -3408,6 +3435,13 @@ function updateEditorGeom(){
   editPhoto.style.height = dh + 'px';
 }
 
+// 크게보기는 ESC로도 닫는다 (팝업이면 ESC로 닫히는 게 당연해서 매번 X를 찾게 되는 게 불편함)
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (!editOverlay.classList.contains('open')) return;
+  e.preventDefault();
+  $('#btnCloseEditor').click();
+});
 $('#btnCloseEditor').addEventListener('click', () => {
   editOverlay.classList.remove('open');
   refreshThumb(curItem);
