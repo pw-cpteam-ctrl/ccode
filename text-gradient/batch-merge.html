@@ -103,6 +103,9 @@ button:disabled{opacity:.4;cursor:default;}
 .folderHead button{font-size:11px;padding:4px 8px;white-space:nowrap;flex:none;}
 /* 툴바 — 성격이 다른 묶음 사이에 선을 둬서 "무엇을 고르는 자리"인지 구분되게 한다 */
 .previewToolbar .tbGroup{display:flex;gap:6px;align-items:center;}
+.previewToolbar .tbSize{display:flex;align-items:center;gap:6px;font-size:11.5px;white-space:nowrap;}
+.previewToolbar .tbSize input[type=range]{width:110px;}
+.previewToolbar .tbChk{display:flex;align-items:center;gap:5px;font-size:11.5px;white-space:nowrap;}
 .previewToolbar .tbGroup button{font-size:11.5px;padding:5px 10px;}
 .previewToolbar .tbSep{width:1px;align-self:stretch;background:#ddd8ce;margin:0 10px;}
 .previewToolbar .tbSpacer{flex:1;}
@@ -200,7 +203,7 @@ button:disabled{opacity:.4;cursor:default;}
 /* 인스타 권장 10장 안쪽은 연초록으로 "여기까지 안전"을 알리고, 넘치는 칸은 배경을 그대로 둔 채
    빨간 테두리만 두껍게 해 한눈에 걸리게 한다 (둘 다 옅은 배경이면 넘친 걸 놓친다) */
 .thumb.in10{background:#e6f6ea;box-shadow:inset 0 0 0 1px #b9e0c4;}
-.thumb.over10{background:#e6f6ea;box-shadow:inset 0 0 0 3px #d93b3b;}
+.thumb.over10{background:#fdeaea;box-shadow:inset 0 0 0 2px #d93b3b;}
 .folderHead .overWarn{font-size:10.5px;font-weight:700;color:#b33;background:#fdeaea;
   border:1px solid #e0a9a9;border-radius:999px;padding:2px 8px;white-space:nowrap;}
 .listFolder{font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;color:#fff;display:inline-block;margin-bottom:2px;}
@@ -440,21 +443,26 @@ button:disabled{opacity:.4;cursor:default;}
   <div id="selBar" style="display:none;">
     <b id="selCount"></b>
     <span id="selAction" style="color:#1a3d8f;font-weight:400;"></span>
-    <select id="selOverlaySel"><option value="__ph__">투명 이미지 일괄 배정 ▾</option></select>
+    <select id="selOverlaySel"><option value="__ph__">고른 사진에 제목 배정 ▾</option></select>
     <label style="display:flex;align-items:center;gap:6px;">확대/축소
       <input type="range" id="selZoom" min="20" max="400" value="100" style="width:150px;"/>
       <b id="selZoomVal" style="min-width:42px;">100%</b>
     </label>
     <button id="btnSelBadgeFlip">뱃지 좌우 전환</button>
     <button id="btnSelMergeFolder" title="선택한 사진을 폴더 하나로 합칩니다. 같은 IP를 한 캐러셀로 올릴 때 씁니다">폴더 합치기</button>
-    <button id="btnSelFrameOff" title="선택한 사진에서 투명 제목(틀)을 뺍니다. 대표(★)에도 적용됩니다 — 배정값은 남아 있어 다시 넣을 수 있습니다">제목 빼기</button>
-    <button id="btnSelFrameOn" title="선택한 사진에 배정된 투명 제목(틀)을 다시 넣습니다">제목 넣기</button>
+    <button id="btnSelFrameOff" title="고른 사진에서 제목 이미지를 화면에서 끕니다. 배정은 그대로 남아 있어 언제든 다시 켤 수 있습니다">제목 끄기</button>
+    <button id="btnSelFrameOn" title="고른 사진에 배정된 제목 이미지를 다시 켭니다">제목 켜기</button>
     <button id="btnSelDelete" style="background:#fff0f0;border-color:#e05d5d;color:#b33;">선택 삭제</button>
     <button id="btnSelClear">선택 해제</button>
   </div>
   <!-- 툴바를 성격으로 나눴다. 한 줄에 11개가 뒤섞여 있어서 무엇이 "지금 할 일"인지 안 보였다.
        자주 누르는 선택·일괄 작업만 남기고, 한 번 정하면 잘 안 바꾸는 뱃지 설정은 접어둔다 -->
   <div class="previewToolbar">
+    <span class="tbGroup">
+      <label class="tbSize">미리보기 크기<input type="range" id="thumbSizeSlider" min="70" max="240" value="120"/></label>
+      <label class="tbChk"><input type="checkbox" id="thumbZoomToggle"/> 휠로 개별 확대</label>
+    </span>
+    <span class="tbSep"></span>
     <span class="tbGroup">
       <button id="btnSelAll">전체 선택</button>
       <button id="btnSelUnassigned">제목 없는 것만 선택</button>
@@ -466,10 +474,8 @@ button:disabled{opacity:.4;cursor:default;}
     </span>
     <span class="tbSpacer"></span>
     <details id="tbSettings" class="tbFold">
-      <summary>뱃지·표시 설정</summary>
+      <summary>뱃지 설정</summary>
       <div class="tbFoldBody">
-        <label>미리보기 크기 <input type="range" id="thumbSizeSlider" min="70" max="240" value="120"/></label>
-        <label><input type="checkbox" id="thumbZoomToggle"/> 휠로 개별 확대/축소</label>
         <label>월 <input type="number" id="badgeMonth" min="1" max="12" style="width:48px;"/></label>
         <label>글자 굵기
           <select id="badgeWeight">
@@ -2632,51 +2638,33 @@ function makeFolderHead(folder){
   });
   head.appendChild(sel);
 
-  // 폴더당 버튼 6개가 늘 떠 있어 폴더 25개면 150개가 화면을 채웠다. 자주 쓰는 것만 남기고
-  // 나머지는 ⋯ 안으로 넣는다. 마우스를 올릴 때 나타나는 방식은 쓰지 않았다 — 폴더 머리는
-  // 스크롤할 때 화면 위에 붙어 있어서, 지나가기만 해도 버튼이 깜빡여 오히려 산만해진다
-  const more = document.createElement('div');
-  more.className = 'fmore';
-  const moreBtn = document.createElement('button');
-  moreBtn.type = 'button';
-  moreBtn.className = 'fmoreBtn';
-  moreBtn.textContent = '⋯';
-  moreBtn.title = '이 폴더에 할 수 있는 일';
-  const menu = document.createElement('div');
-  menu.className = 'fmenu';
-  const addItem = (label, fn, danger) => {
+  // 실제로 자주 쓰는 동작이라 숨기지 않고 그대로 둔다(⋯ 메뉴로 접었다가 되돌림).
+  // 대신 "폴더 전체 선택"은 폴더 이름을 누르는 것으로 대신해 버튼 하나를 줄였고,
+  // 라벨을 짧게 줘서 한 줄에 들어가게 했다
+  const mk = (label, title, cls, fn) => {
     const b = document.createElement('button');
     b.type = 'button';
-    if (danger) b.className = 'danger';
+    if (cls) b.className = cls;
     b.textContent = label;
-    b.addEventListener('click', (e) => { e.stopPropagation(); closeFolderMenus(); fn(); });
-    menu.appendChild(b);
+    b.title = title;
+    b.addEventListener('mousedown', e => e.stopPropagation());
+    b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+    head.appendChild(b);
   };
-  addItem('폴더 전체 선택', () => selectFolderGroup(folder));
-  addItem('★ 대표만 제목 남기기', () => {
+  mk('★만', `"${folder || '(폴더 없음)'}" 폴더만 대표 한 장에 제목을 남기고 나머지는 끕니다 (배정값은 남아 있어 되돌리기 가능)`, '', () => {
     const group = items.filter(x => (x.folder || '') === folder);
     const changed = stripFramesOf(group, `"${folder || '(폴더 없음)'}" 대표만 제목 남기기`);
     log(`"${folder || '(폴더 없음)'}" 폴더에서 대표 1장만 제목을 남기고 ${changed}장을 바꿨습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
   });
-  addItem('＋ 이 폴더에 사진 추가', () => openAddToFolderPicker(folder));
-  addItem('⬇ 폴더 다운로드 (개별 PNG)', () => downloadFolderItems(folder));
-  addItem('🗑 폴더 삭제', () => {
+  mk('＋', `"${folder || '(폴더 없음)'}" 폴더에 사진을 골라 끼워 넣습니다 (이 폴더 맨 뒤에 붙습니다)`, 'addBtn', () => openAddToFolderPicker(folder));
+  mk('⬇', `"${folder || '(폴더 없음)'}" 폴더 ${list.length}장을 개별 PNG로 내려받습니다 (압축 아님)`, '', () => downloadFolderItems(folder));
+  mk('삭제', `"${folder || '(폴더 없음)'}" 폴더 ${list.length}장을 리스트에서 통째로 뺍니다 (Ctrl+Z로 되돌리기 가능)`, 'del', () => {
     const group = items.filter(x => (x.folder || '') === folder);
     if (!group.length) return;
     if (!confirm(`"${folder || '(폴더 없음)'}" 폴더의 사진 ${group.length}장을 리스트에서 뺄까요?\n\n원본 파일은 그대로 있고, 잘못 누르셨으면 Ctrl+Z로 되돌릴 수 있습니다.`)) return;
     deleteItems(group);
     log(`"${folder || '(폴더 없음)'}" 폴더 ${group.length}장을 삭제했습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
-  }, true);
-  moreBtn.addEventListener('mousedown', e => e.stopPropagation());
-  moreBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const willOpen = !more.classList.contains('open');
-    closeFolderMenus();
-    if (willOpen) more.classList.add('open');
   });
-  more.appendChild(moreBtn);
-  more.appendChild(menu);
-  head.appendChild(more);
   return head;
 }
 // 칸에서 한 장만 바꿔도 폴더 머리의 "제목 n/n"과 드롭다운이 따라오게 한다
