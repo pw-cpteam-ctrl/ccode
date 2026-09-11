@@ -215,7 +215,7 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
   </div>
 
   <div class="toolLinkSep"></div>
-  <details class="foldSec">
+  <details class="foldSec" id="foldIndesign">
     <summary>인디자인 파일목록 생성기 <span class="foldHint">가끔 쓰는 기능</span></summary>
     <div class="foldBody">
   <div style="font-size:12px;color:var(--ui-sub);line-height:1.6;margin-bottom:8px;">
@@ -244,7 +244,7 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
   </details>
 
   <div class="toolLinkSep"></div>
-  <details class="foldSec">
+  <details class="foldSec" id="foldMarkdown">
     <summary>마크다운 일괄입력 <span class="foldHint">한 번에 여러 슬롯 만들기</span></summary>
     <div class="foldBody">
       <div class="field"><label>공통 배지 문구 (생성되는 슬롯 전체에 적용)</label><input type="text" id="inBulkBadge" value="예약판매 기간 5% 할인 캠페인 중!"/></div>
@@ -758,6 +758,17 @@ async function downloadAllPng() {
     await new Promise(r => setTimeout(r, 300));
   }
 }
+
+/* 접어둔 섹션의 펼침 여부를 기억한다 — 매번 다시 펼치게 하면 자주 쓰는 사람에게는
+   접어둔 것이 오히려 방해가 된다. 기본값은 접힘(처음 오는 사람 기준) */
+document.querySelectorAll('details.foldSec[id]').forEach(d => {
+  try {
+    if (localStorage.getItem('tg_fold_' + d.id) === 'open') d.open = true;
+  } catch (e) {}
+  d.addEventListener('toggle', () => {
+    try { localStorage.setItem('tg_fold_' + d.id, d.open ? 'open' : 'closed'); } catch (e) {}
+  });
+});
 
 /* ── 인디자인 파일목록 생성기 (슬롯과 무관한 전역 유틸) ── */
 $('#inFileList').addEventListener('input', () => {
