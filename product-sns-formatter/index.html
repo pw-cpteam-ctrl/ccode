@@ -474,7 +474,8 @@ function loadGradSettings() {
   } catch { /* 무시하고 기본값 사용 */ }
 }
 function saveGradSettings() {
-  try { localStorage.setItem(GRAD_SETTINGS_KEY, JSON.stringify(GLOBAL_GRAD)); } catch { /* 용량 초과 시 무시 */ }
+  try { localStorage.setItem(GRAD_SETTINGS_KEY, JSON.stringify(GLOBAL_GRAD)); }
+  catch { setSaveWarning('⚠ 저장 공간이 가득 차서 조절값이 이 브라우저에 저장되지 않았어요 — 완성본을 먼저 내려받고 "상품 초기화"로 정리해주세요'); }
 }
 const BRAND_LABELS = { bushiroad: '부시로드', megahouse: '메가하우스', goodsmile: '굿스마일' };
 const DEFAULT_BRAND = 'goodsmile';
@@ -838,8 +839,8 @@ function loadLocalWorkDict() {
   catch { return []; }
 }
 function persistLocalWorkDict(list) {
-  try { localStorage.setItem(WORK_DICT_STORAGE_KEY, JSON.stringify(list)); }
-  catch (err) { console.warn('작품명 사전 로컬 저장 실패:', err); }
+  try { localStorage.setItem(WORK_DICT_STORAGE_KEY, JSON.stringify(list)); return true; }
+  catch (err) { console.warn('작품명 사전 로컬 저장 실패:', err); return false; }
 }
 function addToWorkDict(entry) {
   for (const raw of [entry.work, entry.workJa]) {
@@ -893,17 +894,18 @@ async function saveWorkTitle({ work, workJa, ko }) {
   const list = loadLocalWorkDict().filter(e => normalizeWorkKey(e.work) !== normalizeWorkKey(entry.work)
                                             || normalizeWorkKey(e.workJa) !== normalizeWorkKey(entry.workJa));
   list.push(entry);
-  persistLocalWorkDict(list);
+  const localOk = persistLocalWorkDict(list);
   try {
     const res = await fetch('/api/save-work-title', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
-    return { ok: true, shared: true };
+    return { ok: true, shared: true, localOk };
   } catch (err) {
     // 서버 저장이 안 돼도 이 브라우저에는 남아있으므로 작업은 계속할 수 있다.
-    return { ok: true, shared: false, error: err.message };
+    // 단 로컬 저장까지 실패했으면 확인한 표기가 아무 데도 안 남는다 — 그건 알려야 한다.
+    return { ok: true, shared: false, localOk, error: err.message };
   }
 }
 
@@ -1936,7 +1938,8 @@ function wireWorkBlock(p) {
   const loc = $('#btnWorkLocale');
   if (loc) loc.addEventListener('click', () => {
     workLocale = workLocale === 'ja' ? 'en' : 'ja';
-    try { localStorage.setItem(WORK_LOCALE_KEY, workLocale); } catch { /* 저장 실패해도 화면은 바뀜 */ }
+    try { localStorage.setItem(WORK_LOCALE_KEY, workLocale); }
+    catch { /* 어느 언어로 볼지 기억만 못 할 뿐, 화면은 정상 동작한다 */ }
     renderDetail();
   });
   const edit = $('#btnWorkEdit');
@@ -1965,7 +1968,9 @@ function wireWorkBlock(p) {
     const el = $('#workSaveStatus');
     if (el) el.textContent = r.shared
       ? `저장했어요 — 팀 전체에 공유돼요${extra}`
-      : `이 브라우저에 저장했어요${extra}. 팀 공유 저장은 실패했어요 (${r.error || '원인 불명'})`;
+      : (r.localOk
+          ? `이 브라우저에 저장했어요${extra}. 팀 공유 저장은 실패했어요 (${r.error || '원인 불명'})`
+          : `⚠ 저장에 실패했어요 — 팀 공유도, 이 브라우저에도 못 남겼어요 (${r.error || '원인 불명'}). 표기를 다시 넣어주세요`);
   });
 }
 
@@ -2351,7 +2356,13 @@ function loadMemos() {
   try { return JSON.parse(localStorage.getItem(MEMO_STORAGE_KEY) || '[]'); }
   catch { return []; }
 }
-function persistMemos(memos) { localStorage.setItem(MEMO_STORAGE_KEY, JSON.stringify(memos)); }
+// 저장 공간이 차면 여기서 예외가 그대로 튀어 저장 흐름이 중간에 끊겼다. 성공 여부를
+// 돌려주고, 부르는 쪽이 화면에 알린다 — 메모는 서버에도 보내므로 로컬 저장이 실패해도
+// 내용이 완전히 사라지는 건 아니라서 그 사실까지 같이 알려준다.
+function persistMemos(memos) {
+  try { localStorage.setItem(MEMO_STORAGE_KEY, JSON.stringify(memos)); return true; }
+  catch (err) { console.warn('메모 로컬 저장 실패:', err); return false; }
+}
 function renderMemos(memos) {
   $('#memoList').innerHTML = memos.slice().reverse().map(m => `
     <div class="memo-item">
@@ -2365,10 +2376,12 @@ async function saveMemo() {
   const memos = loadMemos();
   const entry = { at: new Date().toISOString(), text, synced: false };
   memos.push(entry);
-  persistMemos(memos);
+  const localOk = persistMemos(memos);
   renderMemos(memos);
   $('#inMemo').value = '';
-  $('#memoStatus').textContent = '브라우저에 저장했어요. 깃허브에도 저장을 시도합니다...';
+  $('#memoStatus').textContent = localOk
+    ? '브라우저에 저장했어요. 깃허브에도 저장을 시도합니다...'
+    : '⚠ 저장 공간이 가득 차서 이 브라우저에는 못 남겼어요. 깃허브에는 계속 보냅니다...';
   try {
     const res = await fetch('/api/save-memo', {
       method: 'POST',
@@ -2385,11 +2398,17 @@ async function saveMemo() {
     // 어디까지 갔는지 그대로 알려준다 — 저장은 됐는데 알림만 실패한 경우를 "다 됐다"로
     // 뭉뚱그리면, 담당자가 못 보고 지나갔을 때 원인을 못 찾는다.
     const 알림 = [data.notified && '기록', data.slacked && '슬랙', data.mailed && '메일'].filter(Boolean);
-    $('#memoStatus').textContent = 알림.length
+    // 이 브라우저 저장이 실패했으면 그 사실도 끝까지 달고 간다 — 서버에 갔다는 이유로
+    // "다 됐다"고만 하면, 목록에서 사라진 걸 나중에 보고 원인을 못 찾는다.
+    const 로컬 = localOk ? '' : ' (이 브라우저에는 저장 공간이 없어 못 남겼어요)';
+    $('#memoStatus').textContent = (알림.length
       ? `메모를 저장하고 ${알림.join('·')}으로 알렸어요.`
-      : '메모를 저장했어요. (알림은 실패했어요 — 메모 자체는 남아 있어요)';
+      : '메모를 저장했어요. (알림은 실패했어요 — 메모 자체는 남아 있어요)') + 로컬;
   } catch (err) {
-    $('#memoStatus').textContent = `깃허브 저장은 실패했지만 브라우저에는 남아있어요 (${err.message}).`;
+    // 둘 다 실패했는데 "브라우저에는 남아있다"고 하면 사실과 다르다 — 그대로 알린다.
+    $('#memoStatus').textContent = localOk
+      ? `깃허브 저장은 실패했지만 브라우저에는 남아있어요 (${err.message}).`
+      : `⚠ 메모를 저장하지 못했어요 — 깃허브도, 이 브라우저(저장 공간 부족)도 실패했어요 (${err.message}). 내용을 다른 곳에 옮겨 적어주세요.`;
   }
 }
 
