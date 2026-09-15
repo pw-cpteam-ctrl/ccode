@@ -60,7 +60,13 @@ function loadLocalDict() {
 function saveLocalDict(partial) {
   const current = loadLocalDict();
   const merged = { ...current, ...partial };
-  localStorage.setItem(DICT_LS_KEY, JSON.stringify(merged));
+  try {
+    localStorage.setItem(DICT_LS_KEY, JSON.stringify(merged));
+    return true;
+  } catch (e) {
+    console.warn('사전 로컬 저장 실패:', e);
+    return false;
+  }
 }
 
 async function loadDict() {
@@ -128,9 +134,12 @@ function mergeMoodClusters(seed, server, local) {
 }
 
 // 이 브라우저에 즉시 저장 (백엔드 불필요, 확인창 없음 — 언제든 되돌릴 수 있는 로컬 편집이라서).
+// 화면 상태(state.dict)는 저장 성공 여부와 무관하게 항상 반영한다 — 저장이 실패해도
+// 지금 세션에서 계속 쓸 수는 있어야 하고, 대신 "새로고침하면 사라질 수 있다"는 걸 알려준다.
 function saveDictLocal(section, value) {
   state.dict[section] = value;
-  saveLocalDict({ [section]: value });
+  const ok = saveLocalDict({ [section]: value });
+  if (!ok) alert('이 브라우저에 저장하지 못했어요(저장 공간이 가득 찼을 수 있어요).\n방금 바꾼 내용은 지금 화면에서는 쓸 수 있지만, 새로고침하면 사라질 수 있어요.');
 }
 
 // 선택 기능: 배포된 백엔드가 있을 때만 팀 공유용으로 GitHub에도 커밋한다.
@@ -356,13 +365,28 @@ function readImageFile(file) {
 
 async function handleFilesSelected(fileList) {
   const files = Array.from(fileList).slice(0, 3 - state.sources.length);
-  // 이미지 로딩은 순차 로딩이 눈에 띄게 느리므로 Promise.all로 병렬 처리한다.
-  const imgs = await Promise.all(files.map(readImageFile));
+  // 이미지 로딩은 순차 로딩이 눈에 띄게 느리므로 Promise.all... 대신 allSettled를 쓴다 —
+  // 여러 장 중 하나가 손상됐거나 이미지가 아니어도(readImageFile이 reject) 나머지 멀쩡한
+  // 파일까지 통째로 무효화되면 안 되기 때문 (예전엔 Promise.all이라 하나만 실패해도
+  // 전부 안 올라가고 콘솔에만 에러가 남아 사용자는 이유를 알 방법이 없었다).
+  const results = await Promise.allSettled(files.map(readImageFile));
+  let failCount = 0;
+  const imgs = [];
+  results.forEach((r) => {
+    if (r.status === 'fulfilled') imgs.push(r.value);
+    else failCount++;
+  });
   imgs.forEach((img) => {
-    const grid = GridDetect.detectGrid(img, 0);
-    state.sources.push({ id: uid('src'), img, grid, confirmed: false, gridVariant: 0, headerHeightOverride: null });
+    try {
+      const grid = GridDetect.detectGrid(img, 0);
+      state.sources.push({ id: uid('src'), img, grid, confirmed: false, gridVariant: 0, headerHeightOverride: null });
+    } catch (e) {
+      failCount++;
+      console.warn('그리드 검출 실패:', e);
+    }
   });
   renderSourceList();
+  if (failCount) alert(`이미지 ${failCount}개는 처리하지 못해 제외했어요(손상됐거나 이미지 파일이 아닐 수 있어요).${imgs.length ? ` 나머지 ${imgs.length}개는 정상적으로 추가됐어요.` : ''}`);
 }
 
 function renderSourceList() {
@@ -1694,40 +1718,52 @@ function updateHeaderPreview() {
 }
 
 async function generatePages() {
-  const headerId = document.getElementById('headerSelect').value;
-  const header = state.headers.find((h) => h.id === headerId);
-  const groups = chunk(state.items, 20);
-  const cardGroups = groups.map((g) => g.map((item) => ({
-    photo: state.photos[item.photoId], ip: item.ip, price: item.price, ship: item.ship, tag: item.tag,
-  })));
+  const btn = document.getElementById('generatePagesBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '생성 중...'; }
+  try {
+    const headerId = document.getElementById('headerSelect').value;
+    const header = state.headers.find((h) => h.id === headerId);
+    const groups = chunk(state.items, 20);
+    const cardGroups = groups.map((g) => g.map((item) => ({
+      photo: state.photos[item.photoId], ip: item.ip, price: item.price, ship: item.ship, tag: item.tag,
+    })));
 
-  // 페이지별 renderPage 호출은 서로 독립적이므로 Promise.all로 병렬 렌더 (순차 대비 체감상 빠름)
-  const copyrightText = formatCopyright(state.copyrightText);
-  const canvases = await Promise.all(cardGroups.map((cards) => RenderPage.renderPage(
-    cards, header ? header.canvas : null,
-    { cols: 5, rows: 4, pageW: 1080, pageH: 1350, scale: 2, showShipping: state.showShipping, copyrightText },
-  )));
+    // 페이지별 renderPage 호출은 서로 독립적이므로 Promise.all로 병렬 렌더 (순차 대비 체감상 빠름)
+    const copyrightText = formatCopyright(state.copyrightText);
+    const canvases = await Promise.all(cardGroups.map((cards) => RenderPage.renderPage(
+      cards, header ? header.canvas : null,
+      { cols: 5, rows: 4, pageW: 1080, pageH: 1350, scale: 2, showShipping: state.showShipping, copyrightText },
+    )));
 
-  state.finalPages = canvases.map((canvas, i) => ({ canvas, index: i }));
-  state.finalPagesSig = pagesSignature();
-  document.getElementById('pagesArea').style.display = 'block';
-  const container = document.getElementById('pagesContainer');
-  container.innerHTML = '';
-  state.finalPages.forEach(({ canvas }, i) => {
-    const block = document.createElement('div');
-    block.className = 'page-thumb';
-    const img = document.createElement('img');
-    img.src = canvas.toDataURL('image/jpeg', 0.94);
-    block.appendChild(img);
-    const btn = document.createElement('button');
-    btn.className = 'btn';
-    btn.textContent = `${i + 1}페이지 JPEG 다운로드`;
-    btn.addEventListener('click', () => downloadCanvasAsJpeg(canvas, `입고안내_${i + 1}.jpg`));
-    block.appendChild(btn);
-    container.appendChild(block);
-  });
-  document.getElementById('downloadAllBtn').disabled = false;
-  refreshPagesStale();
+    state.finalPages = canvases.map((canvas, i) => ({ canvas, index: i }));
+    state.finalPagesSig = pagesSignature();
+    document.getElementById('pagesArea').style.display = 'block';
+    const container = document.getElementById('pagesContainer');
+    container.innerHTML = '';
+    state.finalPages.forEach(({ canvas }, i) => {
+      const block = document.createElement('div');
+      block.className = 'page-thumb';
+      const img = document.createElement('img');
+      img.src = canvas.toDataURL('image/jpeg', 0.94);
+      block.appendChild(img);
+      const dlBtn = document.createElement('button');
+      dlBtn.className = 'btn';
+      dlBtn.textContent = `${i + 1}페이지 JPEG 다운로드`;
+      dlBtn.addEventListener('click', () => downloadCanvasAsJpeg(canvas, `입고안내_${i + 1}.jpg`));
+      block.appendChild(dlBtn);
+      container.appendChild(block);
+    });
+    document.getElementById('downloadAllBtn').disabled = false;
+    refreshPagesStale();
+  } catch (e) {
+    // 이 도구의 핵심 결과물(최종 이미지)을 만드는 단계라, 다른 위험한 동작들(AI 호출·
+    // GitHub 저장 등)과 마찬가지로 실패하면 이유를 사람이 알 수 있게 알려야 한다 —
+    // 예전엔 여기에 아무 방어가 없어서 실패하면 화면엔 아무 반응 없이 콘솔에만 에러가 남았다.
+    console.error('페이지 생성 실패:', e);
+    alert(`페이지 생성에 실패했어요: ${e.message}\n사진이나 항목 정보에 문제가 있을 수 있어요. 다시 시도해도 안 되면 사진을 다시 확인해주세요.`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '페이지 생성 (JPEG q0.94)'; }
+  }
 }
 
 function downloadCanvasAsJpeg(canvas, filename) {
