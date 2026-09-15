@@ -968,8 +968,11 @@ function renderDataTable() {
       .join('');
     const dis = locked ? 'disabled' : '';
     const photoAdjusted = (item.photoZoom && item.photoZoom !== 1) || item.photoOffsetX || item.photoOffsetY;
+    // 원본이 없어 조정이 안 되는 사진은 "잡을 수 있다"는 손 모양 커서를 주지 않는다 —
+    // 커서만 보고 끌 수 있는 줄 알았다가 안 움직이면 고장으로 오해하기 때문.
+    const adjustable = !!item.cropSrcId;
     card.innerHTML = `
-      <div class="thumb${photoAdjusted ? ' photo-adjusted' : ''}">
+      <div class="thumb${photoAdjusted ? ' photo-adjusted' : ''}${adjustable ? '' : ' no-adjust'}">
         <button type="button" class="photo-reset-btn" title="자동 인식했던 원래 크롭으로 되돌리기">↺</button>
       </div>
       <div class="fields">
@@ -1081,6 +1084,17 @@ const PHOTO_ZOOM_MIN = 0.3;
 
 function clampOffset(v) { return Math.max(-1, Math.min(1, v)); }
 
+// 원본이 없어서 조정이 안 되는 사진을 건드렸을 때의 안내. 휠은 1초에 수십 번
+// 들어오고 드래그도 연달아 시도하게 되므로, 그대로 알리면 안내창이 계속 뜬다 —
+// 안내는 하되 일정 시간 안에는 한 번만 띄운다(안내를 아예 안 하면 "왜 안 움직이지"
+// 하고 고장으로 오해하므로 침묵은 답이 아니다).
+let _photoAdjustUnavailableAt = 0;
+function notePhotoAdjustUnavailable() {
+  if (Date.now() - _photoAdjustUnavailableAt < 5000) return;
+  _photoAdjustUnavailableAt = Date.now();
+  alert('이 사진은 원본이 이번 세션에 없어서(작업 슬롯을 불러온 경우 등) 확대/축소·위치 조정을 할 수 없어요.\n사진을 다시 올려서 크롭하면 조정할 수 있어요.');
+}
+
 function applyPhotoTransform(item) {
   const src = state.sources.find((s) => s.id === item.cropSrcId);
   if (!src) return false;
@@ -1094,18 +1108,31 @@ function applyPhotoTransform(item) {
   const y = Math.max(0, Math.min(src.img.height - h, cy - h / 2));
   const cw = Math.min(w, src.img.width - x);
   const ch = Math.min(h, src.img.height - y);
-  state.photos[item.photoId] = GridDetect.cropCell(src.img, x, y, cw, ch);
+  // 캔버스 크기에 소수점이 들어가면 브라우저가 잘라내서(정수 변환) 자르는 범위가
+  // 미세하게 어긋나므로, 좌표와 크기를 정수로 맞춘 뒤 자른다.
+  state.photos[item.photoId] = GridDetect.cropCell(
+    src.img, Math.round(x), Math.round(y), Math.max(1, Math.round(cw)), Math.max(1, Math.round(ch)),
+  );
   return true;
 }
 
+// 썸네일은 <img>를 새로 만들어 갈아끼우지 않고 기존 요소의 src만 바꾼다.
+// 드래그 중에 요소를 교체해버리면, 그 요소가 바로 포인터를 붙잡고 있던(setPointerCapture)
+// 주체라서 교체되는 순간 캡처가 풀리고 이후 움직임이 안 들어온다 — 실제로 사진을
+// 끌면 처음 몇 px만 움직이고 멈추는 버그가 났었다(재현 확인함).
 function refreshThumbUi(item) {
   const thumbEl = document.querySelector(`.step2-card[data-item-id="${item.id}"] .thumb`);
   if (!thumbEl) return;
   const adjusted = (item.photoZoom && item.photoZoom !== 1) || item.photoOffsetX || item.photoOffsetY;
   thumbEl.classList.toggle('photo-adjusted', !!adjusted);
+  const canvas = state.photos[item.photoId];
   const oldImg = thumbEl.querySelector('img.pthumb');
-  const newImg = scaledThumb(state.photos[item.photoId]);
-  if (oldImg) oldImg.replaceWith(newImg); else thumbEl.prepend(newImg);
+  if (oldImg) {
+    oldImg.src = canvas ? canvas.toDataURL('image/png') : '';
+    return;
+  }
+  const newImg = scaledThumb(canvas);
+  thumbEl.prepend(newImg);
   bindPhotoDrag(newImg, item);
 }
 
@@ -1143,7 +1170,7 @@ function bindPhotoDrag(imgEl, item) {
   let startX = 0, startY = 0;
   let startOffsets = null; // Map<itemId, {x, y}> — 선택된 항목마다 시작 시점 오프셋을 따로 기억
   imgEl.addEventListener('pointerdown', (e) => {
-    if (!item.cropSrcId) return; // 원본 소스가 없는 사진(슬롯 복원 등)은 위치 조정 불가
+    if (!item.cropSrcId) { notePhotoAdjustUnavailable(); return; } // 원본 없는 사진은 위치 조정 불가 — 조용히 무시하지 않고 알린다
     dragging = true;
     startX = e.clientX; startY = e.clientY;
     // 여러 장이 선택된 상태로 드래그하면, 전부 같은 절대 위치로 "스냅"시키는 게 아니라
@@ -1207,7 +1234,7 @@ function bindPhotoWheelZoomOnce() {
     const item = state.items.find((it) => it.id === itemId);
     if (!item) return;
     if (!item.cropSrcId) {
-      alert('이 사진은 원본이 이번 세션에 없어서(작업 슬롯 복원 등) 확대/축소를 할 수 없어요.');
+      notePhotoAdjustUnavailable();
       return;
     }
     const factor = e.deltaY < 0 ? PHOTO_ZOOM_STEP : 1 / PHOTO_ZOOM_STEP;

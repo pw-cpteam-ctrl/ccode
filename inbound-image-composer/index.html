@@ -99,6 +99,7 @@
     padding: 0; cursor: pointer; display: none;
   }
   .step2-card .thumb.photo-adjusted .photo-reset-btn { display: block; } /* 기본값(줌1·위치0)일 땐 누를 게 없으니 숨김 */
+  .step2-card .thumb.no-adjust img { cursor: default; } /* 원본이 없어 조정 불가한 사진 */
   .step2-card .fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
   @media (max-width: 480px) { .step2-card { flex-direction: column; gap: 8px; } .step2-card .thumb { align-self: flex-start; } }
   .step2-card .fields-row { display: flex; gap: 6px; }
