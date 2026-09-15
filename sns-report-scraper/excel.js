@@ -1,0 +1,223 @@
+const fs = require('fs');
+const path = require('path');
+const ExcelJS = require('exceljs');
+
+const FIELD_LABELS = { likes: '좋아요', retweets: '리트윗', comments: '댓글' };
+
+function metricLabel(key) {
+  if (key === 'postCount') return '게시물 수';
+  const [type, field] = key.split('_'); // 'total_likes' -> ['total','likes']
+  return `${type === 'total' ? '총' : '평균'} ${FIELD_LABELS[field] || field}`;
+}
+
+function ratioText(cmp) {
+  if (!cmp || cmp.ratioPercent === null) return 'N/A';
+  // label 자체에 비율(%p) 정보가 들어있어 중복 표기하지 않음 (예: "자사 우세 (+12.5%p)")
+  return `${cmp.ratioPercent}%, ${cmp.label}`;
+}
+
+// 엑셀 시트 이름은 31자 제한 + \/:*?[] 사용 불가
+function sanitizeSheetName(name) {
+  return name.replace(/[\\/:*?[\]]/g, '-').slice(0, 31);
+}
+
+// 시트 이름을 수집 기간(baseName)만으로 고정 — 같은 기간으로 재실행하면 그 시트만 최신
+// 내용으로 교체(갱신)하고, 기간이 다르면 그대로 새 시트로 추가(히스토리 보존).
+function replaceWorksheet(workbook, name) {
+  const existing = workbook.getWorksheet(name);
+  if (existing) {
+    console.log(`♻️  같은 수집 기간의 기존 시트 "${name}"를 최신 내용으로 갱신(이전 내용은 교체됨)`);
+    workbook.removeWorksheet(existing.id);
+  }
+  return workbook.addWorksheet(name);
+}
+
+function writePlatformSection(sheet, platformKey, data) {
+  const platformTitle = { twitter: 'X(트위터)', instagram: '인스타그램' }[platformKey] || platformKey;
+  const titleRow = sheet.addRow([`[${platformTitle}] 비교표`]);
+  titleRow.font = { bold: true, size: 12 };
+
+  const metricKeys = ['postCount', ...data.fields.flatMap(f => [`total_${f}`, `avg_${f}`])];
+
+  const header = ['지표', '자사'];
+  data.competitors.forEach(c => header.push(c.account, '비율'));
+  if (data.competitorAverage) header.push('경쟁사 평균', '비율');
+  const headerRow = sheet.addRow(header);
+  headerRow.font = { bold: true };
+  headerRow.eachCell(cell => { cell.border = { bottom: { style: 'thin' } }; });
+
+  metricKeys.forEach(key => {
+    const row = [metricLabel(key), data.ownTotals[key]];
+    data.perCompetitorComparison.forEach(pc => {
+      row.push(pc.metrics[key].competitor, ratioText(pc.metrics[key]));
+    });
+    if (data.vsAverage) {
+      row.push(data.competitorAverage[key], ratioText(data.vsAverage[key]));
+    }
+    sheet.addRow(row);
+  });
+
+  // 파싱 실패 건수가 있으면 투명하게 경고 표시 (특히 instagram 좌표 파싱 미검증 상태 고려)
+  const failureNotes = [];
+  data.own.forEach(acc => {
+    Object.entries(acc.parseFailures).forEach(([field, count]) => {
+      if (count > 0) failureNotes.push(`자사(${acc.account}) ${FIELD_LABELS[field] || field} 파싱 실패 ${count}건`);
+    });
+  });
+  data.competitors.forEach(acc => {
+    Object.entries(acc.parseFailures).forEach(([field, count]) => {
+      if (count > 0) failureNotes.push(`경쟁사(${acc.account}) ${FIELD_LABELS[field] || field} 파싱 실패 ${count}건`);
+    });
+  });
+  if (failureNotes.length > 0) {
+    const warnRow = sheet.addRow([`⚠ ${failureNotes.join(' / ')}`]);
+    warnRow.font = { italic: true, color: { argb: 'FFCC0000' } };
+  }
+
+  sheet.addRow([]); // 섹션 구분 공백
+}
+
+function writeProductPlatformSection(sheet, platformKey, data) {
+  const platformTitle = { twitter: 'X(트위터)', instagram: '인스타그램' }[platformKey] || platformKey;
+  const titleRow = sheet.addRow([`[${platformTitle}] 상품별 비교 (PW=자사, BH=경쟁사)`]);
+  titleRow.font = { bold: true, size: 12 };
+
+  const { products, ownUnmatched, competitorUnmatched, displayFields } = data.productComparison;
+
+  const header = ['IP', '시리즈'];
+  displayFields.forEach(f => header.push(`PW ${FIELD_LABELS[f] || f}`, `BH ${FIELD_LABELS[f] || f}`));
+  header.push('PW 시각', 'BH 시각');
+  displayFields.forEach(f => header.push(`${FIELD_LABELS[f] || f}차이`));
+  header.push('시각차이', '결과');
+  const headerRow = sheet.addRow(header);
+  headerRow.font = { bold: true };
+  headerRow.eachCell(cell => { cell.border = { bottom: { style: 'thin' } }; });
+
+  if (products.length === 0) {
+    sheet.addRow(['매칭된 상품 없음 (자사/경쟁사 게시물에서 공통 키워드를 찾지 못함)']);
+  }
+  products.forEach(p => {
+    const row = [p.ip || '(미분류)', p.line || '-'];
+    displayFields.forEach(f => row.push(p.own[`total_${f}`], p.competitor[`total_${f}`]));
+    row.push(p.pwTime, p.bhTime);
+    displayFields.forEach(f => row.push(p.diffText[f]));
+    row.push(`${p.timeDiffMinutes}분`, p.needsReview ? `${p.verdict} (⚠확인필요)` : p.verdict);
+    sheet.addRow(row);
+  });
+
+  // 합계("계") 행 — 시각/결과는 상품마다 달라서 총합 의미가 없어 비워둠
+  if (products.length > 0) {
+    const totalRow = ['계', '계'];
+    displayFields.forEach(f => {
+      const pwSum = products.reduce((s, p) => s + p.own[`total_${f}`], 0);
+      const bhSum = products.reduce((s, p) => s + p.competitor[`total_${f}`], 0);
+      totalRow.push(pwSum, bhSum);
+    });
+    totalRow.push('', '');
+    displayFields.forEach(f => {
+      const pwSum = products.reduce((s, p) => s + p.own[`total_${f}`], 0);
+      const bhSum = products.reduce((s, p) => s + p.competitor[`total_${f}`], 0);
+      totalRow.push(pwSum - bhSum);
+    });
+    totalRow.push('', '');
+    const totalRowObj = sheet.addRow(totalRow);
+    totalRowObj.font = { bold: true };
+  }
+  sheet.addRow([]);
+
+  // 매칭 안 된 게시물도 숨기지 않고 그대로 노출 (상품명 추출 실패/양쪽 표현이 달라 매칭 실패).
+  // 번호(PW #1, BH #1...)를 붙여둠 — 수동 매칭 지시할 때 "PW 3번 BH 1번 매칭해줘"처럼
+  // 번호로 바로 가리킬 수 있게.
+  const textField = { twitter: 'text', instagram: 'caption' }[platformKey];
+  const writeUnmatchedTable = (label, posts) => {
+    const noteRow = sheet.addRow([`▸ 매칭 안 된 ${label} 게시물 (${posts.length}건) — 상품명을 못 뽑았거나 상대측과 겹치는 키워드가 없어서 매칭 안 됨`]);
+    noteRow.font = { italic: true };
+    if (posts.length === 0) return;
+    sheet.addRow(['번호', '링크', '날짜', ...data.fields.map(f => FIELD_LABELS[f] || f), '본문 일부']);
+    posts.forEach((post, i) => {
+      const link = post.link || post.url || '';
+      const preview = (post[textField] || '').replace(/\n/g, ' ').slice(0, 60);
+      sheet.addRow([`${label} #${i + 1}`, link, post.datetime, ...data.fields.map(f => post[f]), preview]);
+    });
+  };
+  writeUnmatchedTable('자사', ownUnmatched);
+  writeUnmatchedTable('경쟁사', competitorUnmatched);
+
+  sheet.addRow([]);
+}
+
+// Windows에서는 대상 파일(outputPath)이 엑셀 등 다른 프로그램에서 열려있으면 rename이
+// EPERM으로 실패함(맥/리눅스는 열려있어도 rename 가능해서 여기서 처음 겪는 문제). 잠깐의
+// 잠금(백신 검사, OneDrive 동기화 등)일 수도 있어서 몇 번 재시도해보고, 그래도 안 되면
+// "엑셀 파일을 닫아야 함"을 사용자가 바로 알 수 있는 안내 메시지로 바꿔서 던짐 — 원본
+// 스택트레이스만 봐서는 뭘 해야 하는지 알기 어려움. 수집한 데이터 자체는 tmpPath에 그대로
+// 남아있어 유실되지 않음(재시도/재실행 시 새로 만들어지므로 tmpPath를 지우진 않음).
+async function renameWithRetry(tmpPath, outputPath, { retries = 5, delayMs = 1000 } = {}) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      fs.renameSync(tmpPath, outputPath);
+      return;
+    } catch (e) {
+      if (e.code !== 'EPERM' && e.code !== 'EBUSY') throw e;
+      if (attempt === retries) {
+        throw new Error(
+          `엑셀 파일(${outputPath})이 다른 프로그램(엑셀 등)에서 열려있어서 저장하지 못했습니다. ` +
+          `그 파일을 닫고 다시 실행해주세요. 이번에 수집/취합한 내용은 유실되지 않고 ` +
+          `"${tmpPath}"에 그대로 남아있습니다.`
+        );
+      }
+      console.log(`⏳ 엑셀 파일이 다른 프로그램에서 사용 중인 것 같습니다 — ${delayMs / 1000}초 후 재시도 (${attempt}/${retries})`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
+/**
+ * 취합 리포트를 엑셀 파일에 저장. 시트는 "수집 기간"(startDate_endDate) 기준으로 관리됨 —
+ * 같은 기간으로 재실행하면 그 기간의 기존 시트만 최신 내용으로 교체(갱신)하고, 기간이
+ * 다르면 새 시트로 추가되어 과거 기간의 히스토리는 그대로 보존된다(같은 기간 재실행을
+ * 반복해도 시트가 무한히 쌓이지 않게 하기 위한 정책 — 다른 기간끼리는 절대 서로 덮어쓰지 않음).
+ * 쓰기 중 프로세스가 죽어도 원본이 깨지지 않도록 임시 파일에 쓴 뒤 교체(원자적 교체)한다.
+ *
+ * @param {object} report   aggregate.js의 buildComparisonReport() 결과
+ * @param {string} outputPath  저장할 xlsx 경로
+ * @returns {Promise<string>} 실제로 사용된 시트 이름
+ */
+async function saveReportToExcel(report, outputPath) {
+  const workbook = new ExcelJS.Workbook();
+
+  if (fs.existsSync(outputPath)) {
+    await workbook.xlsx.readFile(outputPath);
+  }
+
+  const baseName = sanitizeSheetName(`${report.startDate}_${report.endDate}`.replace(/-/g, ''));
+  const sheetName = baseName;
+  const sheet = replaceWorksheet(workbook, sheetName);
+
+  sheet.addRow([`수집 기간: ${report.startDate} ~ ${report.endDate}`]);
+  sheet.addRow([`생성 시각: ${report.generatedAt}`]);
+  sheet.addRow([]);
+
+  Object.entries(report.platforms).forEach(([platformKey, data]) => {
+    writePlatformSection(sheet, platformKey, data);
+  });
+
+  sheet.columns.forEach(col => { col.width = 20; });
+
+  const productSheetName = sanitizeSheetName(`${baseName}-상품별`);
+  const productSheet = replaceWorksheet(workbook, productSheetName);
+  Object.entries(report.platforms).forEach(([platformKey, data]) => {
+    writeProductPlatformSection(productSheet, platformKey, data);
+  });
+  productSheet.columns.forEach(col => { col.width = 22; });
+
+  const dir = path.dirname(outputPath);
+  fs.mkdirSync(dir, { recursive: true });
+  const tmpPath = `${outputPath}.tmp-${process.pid}`;
+  await workbook.xlsx.writeFile(tmpPath);
+  await renameWithRetry(tmpPath, outputPath); // 같은 파일시스템 내 rename은 원자적 교체
+
+  return sheetName;
+}
+
+module.exports = { saveReportToExcel, sanitizeSheetName, renameWithRetry, replaceWorksheet };

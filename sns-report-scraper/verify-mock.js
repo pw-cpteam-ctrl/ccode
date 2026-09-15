@@ -1,0 +1,1541 @@
+/**
+ * 브라우저/로그인 세션 없이 aggregate.js + excel.js 내부 로직만 검증하는 스크립트.
+ * twitter.js/instagram.js가 실제로 반환할 형태를 흉내낸 모킹 데이터를 사용한다.
+ * (twitter.js, instagram.js 자체는 실제 세션 없이는 검증 불가 — README/PLAN 참고)
+ */
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const { parseCount, summarizeAccount, buildComparisonReport, buildProductComparison, extractOwnProductName, extractCompetitorProductName, extractKeywords, formatKstTime, applyManualPosts } = require('./aggregate');
+const { parsePastedPost } = require('./paste-parser');
+const { buildAccountReportHtml, buildPlaintextDump } = require('./account-report');
+const { saveReportToExcel, renameWithRetry } = require('./excel');
+const { saveAccountReportToExcel } = require('./account-excel');
+const { buildPeriodSummary, buildPeriodComparisonHtml } = require('./period-comparison');
+const { savePeriodComparisonToExcel } = require('./period-excel');
+const { extractFromHtml, sanitizeJsonLiteral, extractAssignedJson, withPageParam } = require('./naver-stock');
+const { buildStockComparison, rankStockProducts, findStockMatch, matchPwBhStockProducts, buildIntegratedStockRows, renderStockSectionHtml } = require('./stock-report');
+const { buildHtmlReport } = require('./html-report');
+const { listBrands, loadBrand, ensureBrandDirs, parseBrandArg, saveLastRun, readLastRun, DEFAULT_BRAND } = require('./brand-config');
+const { archiveAndGetPath } = require('./report-archive');
+
+function check(label, fn) {
+  try {
+    fn();
+    console.log(`✅ ${label}`);
+  } catch (e) {
+    console.error(`❌ ${label}: ${e.message}`);
+    process.exitCode = 1;
+  }
+}
+
+// ── 1. parseCount 단위 검증 ──
+check('parseCount: 콤마/만/천/K/M/실패 케이스', () => {
+  assert.strictEqual(parseCount('3,412'), 3412);
+  assert.strictEqual(parseCount('1.2만'), 12000);
+  assert.strictEqual(parseCount('3천'), 3000);
+  assert.strictEqual(parseCount('1.2K'), 1200);
+  assert.strictEqual(parseCount('3.4M'), 3400000);
+  assert.strictEqual(parseCount('0'), 0);
+  assert.strictEqual(parseCount(null), null);
+  assert.strictEqual(parseCount(''), null);
+  assert.strictEqual(parseCount('알 수 없음'), null); // 좌표 파싱 실패 등으로 이상값이 들어와도 죽지 않고 null
+});
+
+// ── 2. 모킹 데이터: twitter.js / instagram.js가 실제로 뱉을 형태 흉내 ──
+// 상품별 비교(본문 템플릿 기반 상품명 추출) 검증용. 당사는 "첫 줄 = 상품명", 경쟁사는
+// "바로가기/링크 줄 바로 위 줄(✔️ 표시) = 상품명" 템플릿을 따른다고 가정.
+// 실제 계정 테스트에서 "26년 7월" 같은 날짜 표현이 키워드로 잡혀서, 날짜 하나로 서로 다른
+// 상품의 게시물이 전부 사슬처럼 엮여버리는 버그가 있었음(회귀 방지용으로 날짜 포함시켜 테스트).
+const ownTwitterPosts = [
+  { link: 'https://x.com/own/status/1', datetime: '2026-07-01T02:00:00.000Z', likes: '1.2만', retweets: '3,400', text: '26년 7월 은혼 GEM 카무이 ver.2\n\n예약판매 중\nhttps://m.site.naver.com/xyz' },
+  { link: 'https://x.com/own/status/2', datetime: '2026-07-01T05:00:00.000Z', likes: '5,000', retweets: '900', text: '정기 휴무 안내입니다 (특정 상품 아님)' },
+  { link: 'https://x.com/own/status/3', datetime: '2026-07-01T06:00:00.000Z', likes: '2,000', retweets: '500', text: '26년 8월 진격의 거인 GEM 엘런\n\n예약판매 중\nhttps://m.site.naver.com/abc2' },
+];
+const compTwitterPosts = [
+  { link: 'https://x.com/comp/status/1', datetime: '2026-07-01T03:00:00.000Z', likes: '8,000', retweets: '1,000', text: '✔️은혼 GEM 카무이 ver.2 세컨드\n\n🛍️바로가기 : https://mkt.shopping.naver.com/link/xyz' },
+  { link: 'https://x.com/comp/status/2', datetime: '2026-07-01T07:00:00.000Z', likes: '4,000', retweets: '300', text: '✔️26년 8월 진격의 거인 GEM 엘런 세컨드\n\n🛍️바로가기 : https://mkt.shopping.naver.com/link/abc2' },
+];
+const ownInstaPosts = [
+  // instagram.js는 좌표 파싱 실패 시 likes/comments가 null일 수 있음 — 그 케이스도 포함
+  { url: 'https://instagram.com/p/1', datetime: '2026-07-01T01:00:00.000Z', likes: '2.3만', comments: '150', caption: '은혼 카무이 GEM 세트\n\n예약중\nhttps://m.site.naver.com/abc' },
+  { url: 'https://instagram.com/p/2', datetime: '2026-07-01T04:00:00.000Z', likes: null, comments: '알수없음', caption: '정기 점검 안내 (특정 상품 아님)' },
+];
+const compInstaPosts = [
+  { url: 'https://instagram.com/p/3', datetime: '2026-07-01T02:00:00.000Z', likes: '1.5만', comments: '80', caption: '✔️은혼 GEM 카무이 세컨드 버전\n\n🛍️바로가기 : https://mkt.shopping.naver.com/link/abc' },
+];
+
+const report = buildComparisonReport({
+  startDate: '2026-07-01',
+  endDate: '2026-07-02',
+  own: [
+    { platform: 'twitter', account: 'own_twitter', posts: ownTwitterPosts },
+    { platform: 'instagram', account: 'own_insta', posts: ownInstaPosts },
+  ],
+  competitors: [
+    { platform: 'twitter', account: 'comp_twitter', posts: compTwitterPosts },
+    { platform: 'instagram', account: 'comp_insta', posts: compInstaPosts },
+  ],
+});
+
+check('buildComparisonReport: 트위터 합계/비율 계산', () => {
+  const tw = report.platforms.twitter;
+  assert.strictEqual(tw.ownTotals.total_likes, 19000); // 12000 + 5000 + 2000
+  assert.strictEqual(tw.ownTotals.total_retweets, 4800); // 3400 + 900 + 500
+  const cmp = tw.perCompetitorComparison[0].metrics.total_likes;
+  assert.strictEqual(cmp.own, 19000);
+  assert.strictEqual(cmp.competitor, 12000); // 8000 + 4000
+  assert.strictEqual(cmp.ratioPercent, 158.3); // 19000/12000*100
+});
+
+check('buildComparisonReport: 인스타 파싱 실패 건수 투명하게 집계', () => {
+  const ig = report.platforms.instagram;
+  const own = ig.own.find(a => a.account === 'own_insta');
+  assert.strictEqual(own.parseFailures.comments, 1); // "알수없음" 파싱 실패 1건
+  assert.strictEqual(own.total_likes, 23000); // null은 실패로 안 세고 그냥 제외, 있는 값만 합산
+});
+
+check('buildProductComparison: 본문 템플릿 기반 상품명 추출 + 키워드 매칭', () => {
+  const tw = report.platforms.twitter.productComparison;
+  assert.strictEqual(tw.products.length, 2, '은혼 상품, 진격의거인 상품 각각 따로 매칭돼야 함(날짜로 서로 엮이면 안 됨)');
+  const eunhon = tw.products.find(p => /은혼|카무이/.test(p.ip));
+  const attack = tw.products.find(p => /진격|엘런/.test(p.ip));
+  assert.ok(eunhon, '은혼 상품 그룹이 있어야 함');
+  assert.ok(attack, '진격의거인 상품 그룹이 있어야 함');
+  assert.strictEqual(eunhon.line, 'GEM');
+  assert.strictEqual(eunhon.own.total_likes, 12000);
+  assert.strictEqual(eunhon.competitor.total_likes, 8000);
+  assert.strictEqual(attack.own.total_likes, 2000);
+  assert.strictEqual(attack.competitor.total_likes, 4000);
+  // 날짜("26년","7월"/"8월")가 필터링 안 됐으면 위 두 그룹이 하나로 합쳐졌을 것 — 분리 확인이 핵심
+  assert.strictEqual(tw.ownUnmatched.length, 1, '특정 상품 아닌 자사 공지 게시물 1건만 매칭 안 됨으로 분리돼야 함');
+  assert.strictEqual(tw.competitorUnmatched.length, 0);
+
+  // PW/BH 값이 한 행에 나란히 + 차이/배수/시각차이/결과까지 계산되는지 확인
+  assert.strictEqual(eunhon.diffText.likes, '4000 (1.5배)'); // 12000-8000=4000, 12000/8000=1.5
+  assert.strictEqual(eunhon.verdict, '우세'); // 리트윗/좋아요 둘 다 자사가 큼
+  assert.strictEqual(eunhon.pwTime, '7/1 11:00'); // 2026-07-01T02:00:00Z + 9h
+  assert.strictEqual(eunhon.bhTime, '7/1 12:00'); // 2026-07-01T03:00:00Z + 9h
+  assert.strictEqual(eunhon.timeDiffMinutes, 60);
+
+  const ig = report.platforms.instagram.productComparison;
+  assert.strictEqual(ig.products.length, 1);
+  assert.match(ig.products[0].ip, /카무이/);
+  assert.strictEqual(ig.products[0].own.total_comments, 150);
+  assert.strictEqual(ig.products[0].competitor.total_comments, 80);
+  assert.strictEqual(ig.ownUnmatched.length, 1);
+});
+
+// 실제 계정 데이터로 검증했을 때 발견된 3가지 오매칭 패턴 회귀 방지 테스트
+check('extractKeywords: 실전에서 발견된 오매칭 패턴들이 다시 생기지 않는지', () => {
+  // 1) 브라켓 태그("[채색원형 최초공개]")가 서로 다른 프랜차이즈 게시물을 연결하면 안 됨
+  const a = extractKeywords('[채색원형 최초공개] 원피스 메가캣\n\nMEGA CAT PROJECT 냥피스');
+  const b = extractKeywords('[채색원형 최초공개] 은혼 룩업 미니어처 컬렉션');
+  const bracketOverlap = a.filter(k => b.includes(k));
+  assert.strictEqual(bracketOverlap.length, 0, '브라켓 태그 문구만으로는 겹치는 키워드가 없어야 함');
+
+  // 2) naver.com 링크의 16진수 해시 조각("ca","ef" 등)이 무관한 게시물을 연결하면 안 됨
+  const c = extractKeywords('원피스 토비마스\n\nhttps://\nmkt.shopping.naver.com/link/6a44b667b\nb3426556b41926e\n…');
+  const d = extractKeywords('은혼 카무이\n\nhttps://\nmkt.shopping.naver.com/link/6a45eb80b\nb3426556b41939a\n…');
+  const urlHashOverlap = c.filter(k => d.includes(k));
+  assert.strictEqual(urlHashOverlap.length, 0, 'URL 해시 조각으로는 겹치는 키워드가 없어야 함');
+
+  // 3) 흔한 단어("SET") 하나만 겹치는 건 매칭 기준(2개 이상) 미달이어야 함
+  const e = extractKeywords('원피스 컬렉션 SET');
+  const f = extractKeywords('은혼 컬렉션 SET');
+  const singleWordOverlap = e.filter(k => f.includes(k));
+  assert.ok(singleWordOverlap.length < 2, '흔한 단어 1개 겹침만으로는 매칭 기준(2개 이상)에 못 미쳐야 함');
+});
+
+check('extractKeywords: "헌터×헌터"(곱셈기호)와 "헌터x헌터"(영문x)가 같은 토큰으로 잡혀야 함', () => {
+  // 실전 사례: 자사는 "헌터x헌터"(영문 x)로 쓰고 경쟁사는 "헌터×헌터"(곱셈 기호, U+00D7)로
+  // 써서, 곱셈 기호가 글자(\p{L})가 아니라 토큰이 "헌터"+"헌터"로 끊겨버림 → 겹치는 키워드가
+  // 0개로 나와 같은 프랜차이즈인데도 절대 매칭될 수 없었던 문제.
+  const own = extractKeywords('헌터x헌터 룩업 곤 프릭스');
+  const competitor = extractKeywords('헌터×헌터 환상의 콤비 룩업 출시');
+  assert.ok(own.includes('헌터x헌터'), '영문 x는 한 토큰으로 잡혀야 함');
+  assert.ok(competitor.includes('헌터x헌터'), '곱셈 기호도 x로 정규화돼서 같은 토큰으로 잡혀야 함');
+});
+
+check('완전히 다른 프랜차이즈(페르소나3 vs 헌터x헌터)가 "초회특전(방석) SET" 상용구만으로 묶이면 안 됨', () => {
+  // 실전 사례: 자사가 여러 프랜차이즈 예약 발표 게시물마다 똑같이 쓰는 "초회특전 SET(방석)"
+  // 문구가 안 걸러졌을 때, 완전히 무관한 페르소나3 게시물과 헌터x헌터 게시물이 이 상용구 3개
+  // 단어(초회/방석/SET)만으로 겹쳐서 하나의 상품으로 잘못 묶였음 — 그 결과 "헌터x헌터" 실적
+  // 숫자에 페르소나3 실적이 섞여 들어가 있었음(사용자가 실제 리포트에서 발견).
+  const persona = extractKeywords(
+    '[예약시작] 페르소나3 리로드 룩업\n\n주인공(유키 마코토)\n\n아이기스\n\n초회특전 SET(방석)\n\n발매:27년 2월\n예약판매 기간 내 5% 할인 캠페인 중!'
+  );
+  const hxh = extractKeywords(
+    '[예약시작] 헌터x헌터 룩업\n\n곤 프릭스\n\n키르아 조르딕\n\n초회특전 (방석 SET)\n\n발매: 27년 1월\n예약판매 기간 내 5% 할인 캠페인 중!'
+  );
+  const overlap = persona.filter(k => hxh.includes(k));
+  assert.strictEqual(overlap.length, 0, '상용구("초회","방석","SET")를 빼면 겹치는 키워드가 없어야 함');
+});
+
+check('BH 발표 게시물 고정 템플릿("원형/최초/추가/추후")이 서로 다른 상품끼리 다리 역할 하면 안 됨', () => {
+  // 실전 사례: BH가 신제품 발표 게시물마다 "OO 원형 첫 공개... 룩업 시리즈 신제품 OO 최초
+  // 공개! 추가 정보 추후 공개 예정"이라는 문구를 그대로 재사용해서, 이 상용구 단어들이
+  // GENERIC_KEYWORDS에 없었을 때 BH 게시물 5건이 서로 전부 연결되고, 거기에 각 PW 게시물이
+  // 다리처럼 붙어서 실제로는 무관한 상품 10건(PW 5 + BH 5)이 통째로 하나로 뭉쳤었음.
+  const own = [
+    { link: 'https://x.com/own/reborn', datetime: '2026-07-10T01:00:00.000Z', likes: '10', retweets: '5', text: '[원형 최초공개] 가히리 룩업\n\n가정교사 히트맨 REBORN!\n사와다 츠나요시\n히바리 쿄야' },
+    { link: 'https://x.com/own/p5r', datetime: '2026-07-10T02:00:00.000Z', likes: '10', retweets: '5', text: '[원형 최초공개] 페르소나5 더 로열 룩업\n\n주인공\n모르가나' },
+    { link: 'https://x.com/own/kaguya', datetime: '2026-07-10T03:00:00.000Z', likes: '10', retweets: '5', text: '[원형 최초공개] 초 가구야 공주! 룩업\n\n가구야\n이로하' },
+    { link: 'https://x.com/own/bleach', datetime: '2026-07-10T04:00:00.000Z', likes: '10', retweets: '5', text: '[채색원형 최초공개] 블리치 룩업\n\n히츠가야 토시로\n히라코 신지' },
+    { link: 'https://x.com/own/honkai', datetime: '2026-07-10T05:00:00.000Z', likes: '10', retweets: '5', text: '[채색원형 최초공개] 붕괴 스타레일 룩업\n\n더 헤르타\n카프카' },
+  ];
+  const comp = [
+    { link: 'https://x.com/comp/reborn', datetime: '2026-07-10T06:00:00.000Z', likes: '3', retweets: '1', text: '원형 첫 공개\n가정교사 히트맨 리본 REBORN\n룩업 사와다 츠나요시\n룩업 히바리 쿄야\n룩업 시리즈 신제품 원형 최초 공개! 추가 정보 추후 공개 예정' },
+    { link: 'https://x.com/comp/p5r', datetime: '2026-07-10T06:10:00.000Z', likes: '3', retweets: '1', text: '원형 첫 공개\n페르소나 5 더 로열 P5R\n룩업 주인공\n룩업 모르가나\n룩업 시리즈 신제품 원형 최초 공개! 추가 정보 추후 공개 예정' },
+    { link: 'https://x.com/comp/kaguya', datetime: '2026-07-10T06:20:00.000Z', likes: '3', retweets: '1', text: '원형 첫 공개\n초 가구야 공주\n룩업 가구야\n룩업 사카요리 이로하\n룩업 시리즈 신제품 원형 최초 공개! 추가 정보 추후 공개 예정' },
+    { link: 'https://x.com/comp/bleach', datetime: '2026-07-10T06:30:00.000Z', likes: '3', retweets: '1', text: '색채 조형 첫 공개\n블리치 BLEACH\n룩업 히츠가야 토시로\n룩업 히라코 신지\n룩업 시리즈 신제품 색채 조형 공개! 추가 정보 추후 공개 예정' },
+    { link: 'https://x.com/comp/honkai', datetime: '2026-07-10T06:40:00.000Z', likes: '3', retweets: '1', text: '색채 조형 첫 공개\n붕괴 스타레일\n룩업 헤르타 카프카\n룩업 시리즈 신제품 색채 조형 공개! 추가 정보 추후 공개 예정' },
+  ];
+  const result = buildProductComparison(own, comp, ['likes', 'retweets'], 'text', ['retweets', 'likes']);
+  assert.strictEqual(result.products.length, 5, '상용구로 다리 놓이지 않고 5개 상품으로 정확히 분리돼야 함');
+  result.products.forEach(p => {
+    assert.strictEqual(p.own.postCount, 1, `"${p.ip}" 행은 PW 게시물 1건씩만 있어야 함(다른 상품과 안 섞임)`);
+    assert.strictEqual(p.competitor.postCount, 1, `"${p.ip}" 행은 BH 게시물 1건씩만 있어야 함(다른 상품과 안 섞임)`);
+  });
+});
+
+check('상품 매칭 그룹에 게시물이 너무 많이 몰리면(오묶음 의심) "확인 필요" 표시가 붙어야 함', () => {
+  const many = [
+    { link: 'https://x.com/own/many1', datetime: '2026-07-01T01:00:00.000Z', likes: '10', retweets: '5', text: '왕눈이 캐릭터 인형 1탄' },
+    { link: 'https://x.com/own/many2', datetime: '2026-07-01T02:00:00.000Z', likes: '10', retweets: '5', text: '왕눈이 캐릭터 인형 2탄' },
+    { link: 'https://x.com/own/many3', datetime: '2026-07-01T03:00:00.000Z', likes: '10', retweets: '5', text: '왕눈이 캐릭터 인형 3탄' },
+  ];
+  const manyComp = [
+    { link: 'https://x.com/comp/many1', datetime: '2026-07-01T04:00:00.000Z', likes: '3', retweets: '1', text: '왕눈이 캐릭터 인형 4탄' },
+    { link: 'https://x.com/comp/many2', datetime: '2026-07-01T05:00:00.000Z', likes: '3', retweets: '1', text: '왕눈이 캐릭터 인형 5탄' },
+  ];
+  const few = [{ link: 'https://x.com/own/few1', datetime: '2026-07-01T06:00:00.000Z', likes: '10', retweets: '5', text: '별똥별 소녀 인형' }];
+  const fewComp = [{ link: 'https://x.com/comp/few1', datetime: '2026-07-01T07:00:00.000Z', likes: '3', retweets: '1', text: '별똥별 소녀 인형' }];
+
+  const result = buildProductComparison(
+    [...many, ...few], [...manyComp, ...fewComp], ['likes', 'retweets'], 'text', ['retweets', 'likes']
+  );
+  assert.strictEqual(result.products.length, 2, '두 그룹(많이 몰린 것/적은 것)으로 나뉘어야 함');
+  const bigGroup = result.products.find(p => p.own.postCount + p.competitor.postCount >= 5);
+  const smallGroup = result.products.find(p => p.own.postCount + p.competitor.postCount < 5);
+  assert.strictEqual(bigGroup.needsReview, true, '게시물 5건 이상 몰린 그룹은 확인 필요 표시가 있어야 함');
+  assert.strictEqual(smallGroup.needsReview, false, '게시물 몇 건 안 되는 정상 그룹은 확인 필요 표시가 없어야 함');
+
+  const manualResult = buildProductComparison([...many, ...few], [...manyComp, ...fewComp], ['likes', 'retweets'], 'text', ['retweets', 'likes'], [
+    { pw: many.map(p => p.link), bh: manyComp.map(p => p.link), label: '수동상품(게시물 많음)' },
+  ]);
+  const manualProduct = manualResult.products.find(p => p.ip === '수동상품(게시물 많음)');
+  assert.strictEqual(manualProduct.needsReview, false, '사람이 직접 확인하고 지정한 수동 매칭은 게시물이 많아도 확인 필요 표시를 달지 않아야 함');
+});
+
+check('수동 매칭(manual-matches): 자동으로 안 묶이는 게시물도 사람이 지정하면 상품 행에 들어감', () => {
+  const ownP = [{ link: 'https://x.com/own/999', datetime: '2026-07-01T01:00:00.000Z', likes: '10', retweets: '5', text: '전혀 안 겹치는 문구' }];
+  const compP = [{ link: 'https://x.com/comp/999', datetime: '2026-07-01T02:00:00.000Z', likes: '3', retweets: '1', text: '완전히 다른 문구' }];
+  const result = buildProductComparison(ownP, compP, ['likes', 'retweets'], 'text', ['retweets', 'likes'], [
+    { pw: ['https://x.com/own/999'], bh: ['https://x.com/comp/999'], label: '수동상품' },
+  ]);
+  assert.strictEqual(result.products.length, 1, '수동 매칭 1건이 상품 행으로 만들어져야 함');
+  assert.strictEqual(result.products[0].ip, '수동상품');
+  assert.strictEqual(result.products[0].own.total_likes, 10);
+  assert.strictEqual(result.products[0].competitor.total_likes, 3);
+  assert.strictEqual(result.ownUnmatched.length, 0, '수동 매칭된 게시물은 매칭 안 됨 목록에서 빠져야 함');
+  assert.strictEqual(result.competitorUnmatched.length, 0);
+});
+
+check('ignore-posts: 상품 아닌 공지 게시물은 "매칭 안 됨" 목록에서만 빠지고 계정 총계엔 그대로 포함', () => {
+  const ownP = [{ link: 'https://x.com/own/1', datetime: '2026-07-01T01:00:00.000Z', likes: '10', retweets: '5', text: '전혀 안 겹치는 문구' }];
+  const compP = [
+    { link: 'https://x.com/comp/1', datetime: '2026-07-01T02:00:00.000Z', likes: '3', retweets: '1', text: '완전히 다른 문구' },
+    { link: 'https://x.com/comp/2', datetime: '2026-07-01T03:00:00.000Z', likes: '7', retweets: '2', text: '쿠폰 이벤트 공지' },
+  ];
+  const result = buildProductComparison(ownP, compP, ['likes', 'retweets'], 'text', ['retweets', 'likes'], [], {
+    bh: ['https://x.com/comp/2'],
+  });
+  assert.strictEqual(result.ownUnmatched.length, 1, 'ignorePosts에 없는 own 게시물은 그대로 매칭 안 됨에 남아야 함');
+  assert.strictEqual(result.competitorUnmatched.length, 1, 'ignore 대상 아닌 comp/1은 그대로 매칭 안 됨에 남아야 함');
+  assert.strictEqual(result.competitorUnmatched[0].link, 'https://x.com/comp/1', 'comp/2(ignore 대상)만 매칭 안 됨 목록에서 빠져야 함');
+});
+
+check('희귀 토큰 1개만 겹쳐도 매칭돼야 함 (2026-08-07 회귀 방지: 반대쪽에 다른 단어가 많으면 다시 기준 미달로 떨어지던 버그)', () => {
+  // 실제 2026-08 수집분 재현 — 자사는 "고질라 컬렉션 피규어"까지 붙여서 길게 쓰고 경쟁사는
+  // "헤도라" 한 단어뿐이라, 겹친 토큰(헤도라)이 배치 안에서 희귀해도(rareOnly) 자사 쪽 다른
+  // 단어들 때문에 분모가 커져 비율이 다시 기준(0.34) 밑으로 떨어졌던 실제 버그.
+  const own = [
+    { link: 'https://x.com/own/hedora', datetime: '2026-08-06T08:00:00.000Z', likes: '10', retweets: '5', text: '[예약시작] 고질라 컬렉션 피규어\n\nINSIDE FANTASY 헤도라\n\nhttps://mkt.shopping.naver.com/link/a' },
+    // 배치 크기를 늘려서 실제 데이터(70여 건)처럼 "헤도라"가 진짜 희귀 토큰이 되게 함
+    ...Array.from({ length: 20 }, (_, i) => ({ link: `https://x.com/own/filler${i}`, datetime: '2026-08-06T08:00:00.000Z', likes: '1', retweets: '1', text: `무관한 상품 ${i}번 안내\n\nhttps://mkt.shopping.naver.com/link/f${i}` })),
+  ];
+  const comp = [
+    { link: 'https://x.com/comp/hedora', datetime: '2026-08-06T09:00:00.000Z', likes: '3', retweets: '1', text: '【 메가하우스 8월 신제품 예약 개시 】\n\n인사이드 판타지 헤도라\n\n바로가기 : https://mkt.shopping.naver.com/link/b' },
+    ...Array.from({ length: 20 }, (_, i) => ({ link: `https://x.com/comp/filler${i}`, datetime: '2026-08-06T09:00:00.000Z', likes: '1', retweets: '1', text: `【 신제품 안내 】\n\n무관한 경쟁사 상품 ${i}번\n\n바로가기 : https://mkt.shopping.naver.com/link/g${i}` })),
+  ];
+  const result = buildProductComparison(own, comp, ['likes', 'retweets'], 'text', ['retweets', 'likes']);
+  const hedora = result.products.find(p => p.line === 'INSIDE FANTASY');
+  assert.ok(hedora, '헤도라(INSIDE FANTASY 라인) 게시물이 PW+BH 한 상품으로 매칭돼야 함');
+  assert.strictEqual(hedora.ownPosts.length, 1);
+  assert.strictEqual(hedora.competitorPosts.length, 1);
+});
+
+check('우연히 짧은 단어 하나만 겹치는 무관한 게시물끼리는 매칭되면 안 됨 (위 희귀 토큰 완화가 과하게 관대해지는 것 방지)', () => {
+  // 양쪽 다 다른 단어가 여러 개라 "그 상대편을 사실상 대표하는 토큰"이 아닌 경우 —
+  // 희귀 토큰 완화가 이런 우연의 일치까지 통과시키면 안 됨.
+  const own = [{ link: 'https://x.com/own/1', datetime: '2026-07-01T01:00:00.000Z', likes: '10', retweets: '5', text: '전혀 안 겹치는 문구' }];
+  const comp = [{ link: 'https://x.com/comp/1', datetime: '2026-07-01T02:00:00.000Z', likes: '3', retweets: '1', text: '완전히 다른 문구' }];
+  const result = buildProductComparison(own, comp, ['likes', 'retweets'], 'text', ['retweets', 'likes']);
+  assert.strictEqual(result.products.length, 0, '무관한 두 게시물이 매칭되면 안 됨');
+  assert.strictEqual(result.ownUnmatched.length, 1);
+  assert.strictEqual(result.competitorUnmatched.length, 1);
+});
+
+check('인스타그램 자사 캡션이 자모분리(NFD)로 들어와도 CTA 상용구가 정상적으로 걸러져야 함 (2026-08-07 회귀 방지)', () => {
+  // 실제 2026-08 수집분 재현 — 자사 인스타 계정 캡션의 "구매는 프로필 링크 참고 해주세요"
+  // 부분만 유독 유니코드 자모분리형(NFD)으로 들어와서, GENERIC_KEYWORDS(완성형/NFC)로
+  // 안 걸러지고 그대로 키워드에 남아 가중치를 흐려 매칭 점수가 기준 밑으로 떨어졌던 버그.
+  const nfdCta = '🛒 :구매는 프로필 링크 참고 해주세요'.normalize('NFD');
+  const kw = extractKeywords(`📢[예약시작] 나루토 질풍전 G.E.M. 시리즈\n\nG.E.M. 테노히라\n나미카제 미나토\n${nfdCta}`);
+  assert.ok(!kw.includes('구매는') && !kw.includes('프로필') && !kw.includes('링크') && !kw.includes('참고') && !kw.includes('해주세요'),
+    'NFD로 들어온 CTA 상용구도 GENERIC_KEYWORDS로 걸러져야 함 — 남은 키워드: ' + kw.join(','));
+  assert.ok(kw.includes('미나토'), '실제 상품명 키워드는 그대로 남아야 함');
+});
+
+check('같은 IP(원피스)라도 상품 라인(룩업/GEM)이 다르면 분리돼야 함', () => {
+  // 실제 데이터에서 "원피스" 하나로 룩업/스케일/컬렉션 등 완전히 다른 라인이 다 뭉쳐버리는
+  // 문제가 있었음. 아래는 키워드는 3개나 겹치지만("원피스","루피","기어") 라인이 다른
+  // own_a-comp_b, own_b-comp_a 쌍이 절대 합쳐지면 안 됨을 검증.
+  const own = [
+    { link: 'https://x.com/own/a', datetime: '2026-07-01T01:00:00.000Z', likes: '10', retweets: '5', text: '원피스 룩업 루피 기어\n\nhttps://m.site.naver.com/x' },
+    { link: 'https://x.com/own/b', datetime: '2026-07-01T02:00:00.000Z', likes: '20', retweets: '8', text: '원피스 GEM 루피 기어\n\nhttps://m.site.naver.com/y' },
+  ];
+  const comp = [
+    { link: 'https://x.com/comp/a', datetime: '2026-07-01T03:00:00.000Z', likes: '3', retweets: '1', text: '✔️원피스 룩업 루피 기어\n\n🛍️바로가기 : https://mkt.shopping.naver.com/link/x' },
+    { link: 'https://x.com/comp/b', datetime: '2026-07-01T04:00:00.000Z', likes: '6', retweets: '2', text: '✔️원피스 GEM 루피 기어\n\n🛍️바로가기 : https://mkt.shopping.naver.com/link/y' },
+  ];
+  const result = buildProductComparison(own, comp, ['likes', 'retweets'], 'text', ['retweets', 'likes']);
+  assert.strictEqual(result.products.length, 2, '라인이 다르면 키워드가 겹쳐도 별도 상품으로 분리돼야 함');
+  const byLine = Object.fromEntries(result.products.map(p => [p.line, p]));
+  assert.strictEqual(byLine['룩업'].own.total_likes, 10);
+  assert.strictEqual(byLine['룩업'].competitor.total_likes, 3);
+  assert.strictEqual(byLine['GEM'].own.total_likes, 20);
+  assert.strictEqual(byLine['GEM'].competitor.total_likes, 6);
+});
+
+check('상품 라인 별칭 통일: "스케일"(당사 표현)과 "POP"(경쟁사 표현)은 같은 라인으로 매칭', () => {
+  const own = [
+    { link: 'https://x.com/own/c', datetime: '2026-07-01T01:00:00.000Z', likes: '10', retweets: '5', text: '원피스 스케일 피규어\n\nPOP 시리즈\n하이에나 베라미\n\nhttps://m.site.naver.com/z' },
+  ];
+  const comp = [
+    { link: 'https://x.com/comp/c', datetime: '2026-07-01T02:00:00.000Z', likes: '3', retweets: '1', text: '✔️P.O.P 시리즈 하이에나 베라미\n\n🛍️바로가기 : https://mkt.shopping.naver.com/link/z' },
+  ];
+  const result = buildProductComparison(own, comp, ['likes', 'retweets'], 'text', ['retweets', 'likes']);
+  assert.strictEqual(result.products.length, 1, '"스케일"과 "P.O.P"는 같은 라인(POP)으로 취급해서 매칭돼야 함');
+  assert.strictEqual(result.products[0].line, 'POP');
+});
+
+check('formatKstTime: 날짜가 다른 게시물끼리 비교할 때 날짜도 같이 표시돼야 함', () => {
+  // 실제 데이터에서 "시각차이 1496분"처럼 이상해 보이는 값이 나온 원인 — PW/BH가 하루
+  // 넘게 차이나는 날 각각 게시했는데 시:분만 보여줘서 헷갈렸음. 날짜 포함 표시로 수정.
+  assert.strictEqual(formatKstTime('2026-07-02T08:06:45.000Z'), '7/2 17:06');
+  assert.strictEqual(formatKstTime('2026-07-01T07:11:00.000Z'), '7/1 16:11');
+});
+
+check('extractOwnProductName / extractCompetitorProductName: 템플릿 위치 기반 추출', () => {
+  assert.strictEqual(extractOwnProductName('[예약시작] 은혼 GEM 피규어\n\n다음 줄'), '은혼 GEM 피규어');
+  assert.strictEqual(
+    extractCompetitorProductName('✔️G.E.M. 시리즈 손바닥 엘런 & 리바이 병장 세트\n\n🛍️바로가기 : https://example.com'),
+    'G.E.M. 시리즈 손바닥 엘런 & 리바이 병장 세트'
+  );
+});
+
+// ── 리포트 "붙여넣기로 게시물 추가" 기능용: paste-parser.js + aggregate.js의 applyManualPosts ──
+check('parsePastedPost: 트위터 게시물 상세페이지 복사 텍스트에서 본문/시각/지표 추출', () => {
+  const raw = `📢[예약시작] 헌터x헌터 룩업
+
+곤 프릭스🎣
+https://mkt.shopping.naver.com/link/6a577cc1ba6bc43bdea0bb1f…
+
+키르아 조르딕⚡
+https://mkt.shopping.naver.com/link/6a577cc8149eb0351e13c131…
+
+초회특전⭕️ (방석 SET)
+https://mkt.shopping.naver.com/link/6a577cd000cc0d59ae193873…
+
+📍발매: 27년 1월
+📍예약판매 기간 내 5% 할인 캠페인 중!
+
+#HxH #메가하우스공식스토어 #헌터헌터 #헌헌
+이미지
+이미지
+이미지
+이미지
+오후 1:01 · 2026년 7월 16일
+·
+5.4만
+ 조회수
+
+1
+
+445
+
+373
+
+218
+
+이 게시물에 답글을 달 수 있습니다.
+@MegahouseStore 님에게 보내는 답글
+메가하우스 공식 스토어
+답글 게시하기
+`;
+  const result = parsePastedPost(raw);
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.datetime, '2026-07-16T04:01:00.000Z', '오후 1:01(KST) → UTC 04:01로 변환돼야 함');
+  assert.strictEqual(result.retweets, 445, '조회수 다음 두 번째 숫자(리트윗)');
+  assert.strictEqual(result.likes, 373, '조회수 다음 세 번째 숫자(좋아요)');
+  assert.strictEqual(result.replies, 1);
+  assert.strictEqual(result.bookmarks, 218);
+  assert.match(result.text, /헌터x헌터 룩업/);
+  assert.ok(!result.text.includes('이미지'), '"이미지" 플레이스홀더 줄은 본문에서 제거돼야 함(오묶음 방지)');
+  assert.ok(!result.text.includes('조회수'), '시각 줄 이후 내용은 본문에 안 들어가야 함');
+});
+
+check('parsePastedPost: 게시 시각 줄을 못 찾으면 실패 사유를 알려줘야 함', () => {
+  const result = parsePastedPost('그냥 아무 텍스트\n더 있음');
+  assert.strictEqual(result.ok, false);
+  assert.match(result.error, /게시 시각/);
+});
+
+check('applyManualPosts: manual-posts.json 내용이 "(수동 추가)" 계정으로 own/competitors에 덧붙여져야 함(원본 불변)', () => {
+  const own = [{ platform: 'twitter', account: 'own', posts: [{ link: 'a' }] }];
+  const competitors = [{ platform: 'twitter', account: 'comp', posts: [{ link: 'b' }] }];
+  const manualPosts = {
+    twitter: { pw: [{ link: 'manual-pw-1' }], bh: [{ link: 'manual-bh-1' }] },
+  };
+  const result = applyManualPosts(own, competitors, manualPosts);
+  assert.strictEqual(result.own.length, 2, '자사 쪽에 수동 추가 계정 1개가 더 생겨야 함');
+  assert.strictEqual(result.own[1].account, '(수동 추가)');
+  assert.deepStrictEqual(result.own[1].posts, [{ link: 'manual-pw-1' }]);
+  assert.strictEqual(result.competitors[1].posts[0].link, 'manual-bh-1');
+  assert.strictEqual(own.length, 1, '원본 배열은 그대로 유지돼야 함(불변)');
+});
+
+check('applyManualPosts로 합쳐진 게시물이 실제 파이프라인(buildComparisonReport)에서 평소처럼 자동 매칭돼야 함', () => {
+  // 스크래퍼가 놓친 경쟁사 게시물을 사람이 직접 붙여넣기로 채워넣었을 때, 별도 매칭 지정 없이도
+  // 이미 있던 자사 게시물과 자동으로 짝지어져야 한다는 게 이 기능의 핵심 전제 — 회귀 방지.
+  const own = [{ platform: 'twitter', account: 'own', posts: [
+    { link: 'https://x.com/own/1', datetime: '2026-07-16T01:00:00.000Z', likes: '10', retweets: '5', text: '[예약시작] 페르소나3 리로드 룩업\n\nhttps://m.site.naver.com/x' },
+  ] }];
+  const competitors = [{ platform: 'twitter', account: 'comp', posts: [] }]; // 스크래퍼가 놓쳐서 원래 0건
+  const manualPosts = {
+    twitter: { pw: [], bh: [{ link: 'https://x.com/comp/manual-1', datetime: '2026-07-16T02:00:00.000Z', likes: '3', retweets: '1', text: '✔️페르소나3 리로드 룩업\n\n🛍️바로가기 : https://mkt.shopping.naver.com/link/y' } ] },
+  };
+  const { own: mergedOwn, competitors: mergedCompetitors } = applyManualPosts(own, competitors, manualPosts);
+  const report = buildComparisonReport({ startDate: '2026-07-16', endDate: '2026-07-16', own: mergedOwn, competitors: mergedCompetitors });
+  const products = report.platforms.twitter.productComparison.products;
+  assert.strictEqual(products.length, 1, '수동으로 채운 경쟁사 게시물이 자사 게시물과 자동으로 매칭돼야 함');
+  assert.match(products[0].ip, /페르소나/);
+  assert.strictEqual(products[0].competitor.total_likes, 3);
+});
+
+check('collect-account용 buildAccountReportHtml: 계정 단독 성과(비교 없음) 리포트 생성', () => {
+  const posts = [
+    { link: 'https://x.com/GoodsmileP/status/1', datetime: '2026-07-02T01:00:00.000Z', likes: '100', retweets: '10', text: '이벤트 안내' },
+    { link: 'https://x.com/GoodsmileP/status/2', datetime: '2026-07-03T01:00:00.000Z', likes: '200', retweets: '30', text: '새 피규어 공개' },
+  ];
+  const summary = summarizeAccount({ platform: 'twitter', account: 'GoodsmileP', posts, fields: ['likes', 'retweets'] });
+  assert.strictEqual(summary.postCount, 2);
+  assert.strictEqual(summary.total_likes, 300);
+  assert.strictEqual(summary.avg_likes, 150);
+
+  const ranked = [...posts].sort((a, b) =>
+    (parseCount(b.likes) + parseCount(b.retweets)) - (parseCount(a.likes) + parseCount(a.retweets))
+  );
+  assert.strictEqual(ranked[0].text, '새 피규어 공개', '(좋아요+리트윗) 합산 큰 게시물이 먼저 나와야 함');
+
+  const html = buildAccountReportHtml({ handle: 'GoodsmileP', startDate: '2026-07-01', endDate: '2026-07-11', summary, rankedPosts: ranked });
+  assert.match(html, /GoodsmileP/);
+  assert.match(html, /새 피규어 공개/);
+  assert.match(html, />300</, '총 좋아요 합계가 표시돼야 함');
+});
+
+check('collect-account용 buildPlaintextDump: plaintext 모드는 지표 없이 시각순(오래된 것부터) 본문만', () => {
+  const chronologicalPosts = [
+    { link: 'https://x.com/GoodsmileP/status/1', datetime: '2026-07-02T01:00:00.000Z', likes: '999', retweets: '999', text: '먼저 쓴 글' },
+    { link: 'https://x.com/GoodsmileP/status/2', datetime: '2026-07-03T01:00:00.000Z', likes: '1', retweets: '1', text: '나중에 쓴 글' },
+  ];
+  const dump = buildPlaintextDump({ handle: 'GoodsmileP', startDate: '2026-07-01', endDate: '2026-07-11', chronologicalPosts });
+  assert.ok(dump.indexOf('먼저 쓴 글') < dump.indexOf('나중에 쓴 글'), '좋아요/리트윗과 무관하게 오래된 게시물이 먼저 나와야 함');
+  assert.ok(!/999/.test(dump), '지표(좋아요/리트윗 숫자)는 plaintext 출력에 없어야 함');
+  assert.match(dump, /GoodsmileP/);
+});
+
+check('naver-stock: __PRELOADED_STATE__ / __next_f 플라이트 두 경로 다 재고·가격 추출', () => {
+  const preloadedObj = {
+    product: {
+      A: {
+        channelProductNo: 13647054468,
+        productName: '테스트 피규어',
+        stockQuantity: 42,
+        salePrice: 29000,
+        benefitsView: { discountedSalePrice: 25000, discountedRatio: 14 },
+      },
+    },
+  };
+  // __PRELOADED_STATE__는 순수 JSON이 아닌 JS 객체 리터럴이라 undefined 같은 토큰이 섞일 수
+  // 있음 — sanitizeJsonLiteral이 이런 토큰을 null로 치환해서 파싱이 안 깨지는지도 같이 확인.
+  const preloadedJson = JSON.stringify(preloadedObj).replace(
+    '"salePrice":29000',
+    '"salePrice":29000,"legacyNote":undefined'
+  );
+  const preloadedHtml = `<script>window.__PRELOADED_STATE__ = ${preloadedJson};</script>`;
+
+  const flightRowObj = { channelProductId: 99887766, productName: '플라이트 상품', availableStockQuantity: 7, salePrice: 15000 };
+  const flightRowText = `1:${JSON.stringify(flightRowObj)}`;
+  const innerEscaped = JSON.stringify(flightRowText).slice(1, -1);
+  const flightHtml = `<script>self.__next_f.push([1,"${innerEscaped}"])</script>`;
+
+  const records = extractFromHtml(`<html><head>${preloadedHtml}${flightHtml}</head></html>`);
+
+  const preloaded = records.find(r => r.productId === '13647054468');
+  assert.ok(preloaded, '__PRELOADED_STATE__ 경로 상품이 추출돼야 함');
+  assert.strictEqual(preloaded.stock, 42);
+  assert.strictEqual(preloaded.price, 25000, '할인가가 있으면 할인가를 가격으로 써야 함');
+  assert.strictEqual(preloaded.name, '테스트 피규어');
+
+  const flight = records.find(r => r.productId === '99887766');
+  assert.ok(flight, '__next_f 플라이트 경로 상품도 추출돼야 함');
+  assert.strictEqual(flight.stock, 7);
+  assert.strictEqual(flight.price, 15000);
+});
+
+check('naver-stock: sanitizeJsonLiteral/extractAssignedJson 유틸 단위 검증', () => {
+  assert.strictEqual(sanitizeJsonLiteral('{"a":undefined,"b":NaN,"c":"undefined 문자열은 유지"}'),
+    '{"a":null,"b":null,"c":"undefined 문자열은 유지"}');
+  assert.strictEqual(extractAssignedJson('window.__X__ = {"a":1};', '__X__'), '{"a":1}');
+  assert.strictEqual(extractAssignedJson('no marker here', '__X__'), '');
+});
+
+check('naver-stock: withPageParam — 다음 페이지 URL을 만들 때 다른 쿼리 파라미터는 그대로 유지', () => {
+  assert.strictEqual(
+    withPageParam('https://m.smartstore.naver.com/mall/category/1?st=TOTALSALE&page=1&size=40', 2),
+    'https://m.smartstore.naver.com/mall/category/1?st=TOTALSALE&page=2&size=40'
+  );
+  assert.strictEqual(
+    withPageParam('https://example.com/list?page=1', 3),
+    'https://example.com/list?page=3'
+  );
+});
+
+check('stock-report: 스냅샷 1개뿐일 땐 비교 없이 현재값만, 2개면 변화량(판매 추정) 계산', () => {
+  const oneSnapshot = {
+    snapshots: [
+      { takenAt: '2026-07-01T00:00:00.000Z', stores: { PW: [{ productId: 'A', name: '[예약] 상품A', price: 10000, stock: 9999 }] } },
+    ],
+  };
+  const onlyOne = buildStockComparison(oneSnapshot);
+  assert.strictEqual(onlyOne.previousTakenAt, null, '스냅샷이 1개면 비교 대상이 없어야 함');
+  assert.strictEqual(onlyOne.stores.PW[0].stockDelta, null);
+  assert.strictEqual(onlyOne.stores.PW[0].totalSoldIsEstimated, true, '예약 상품의 totalSold는 초기한도 역산 기반 추정치');
+  assert.strictEqual(onlyOne.stores.PW[0].totalSold, 1, '예약 상품 재고 9999 → 초기한도 10000으로 가정 → 10000-9999=1');
+
+  const twoSnapshots = {
+    snapshots: [
+      { takenAt: '2026-07-01T00:00:00.000Z', stores: { PW: [{ productId: 'A', name: '[예약] 상품A', price: 10000, stock: 9999 }] } },
+      {
+        takenAt: '2026-07-02T00:00:00.000Z',
+        stores: {
+          PW: [
+            { productId: 'A', name: '[예약] 상품A', price: 10000, stock: 9486 }, // 재고 감소 = 판매 추정
+            { productId: 'B', name: '신상품B', price: 5000, stock: 100 }, // 첫 등장(비교 불가)
+          ],
+        },
+      },
+    ],
+  };
+  const compared = buildStockComparison(twoSnapshots);
+  assert.ok(compared.previousTakenAt, '스냅샷이 2개면 직전 스냅샷과 비교해야 함');
+  const a = compared.stores.PW.find(p => p.productId === 'A');
+  const b = compared.stores.PW.find(p => p.productId === 'B');
+  assert.strictEqual(a.stockDelta, 513, '9999 - 9486 = 513개 판매 추정(직전 스냅샷 대비, 실측값)');
+  assert.strictEqual(b.stockDelta, null, '이전 스냅샷에 없던 신규 상품은 직전 대비 비교 불가(null)');
+  assert.strictEqual(a.totalSold, 514, '예약 상품은 최초 관측값과 무관하게 초기한도 역산: 재고 9486 → 초기한도 10000 → 514');
+  assert.strictEqual(a.totalSoldIsEstimated, true, '예약 상품의 totalSold는 추정치');
+  // ⚠️ 예전엔 여기서 b.totalSold === 900을 기대했음 — 재고 100개짜리 입고 상품을 "900개
+  // 팔렸다"고 지어내던 버그를 테스트가 정답으로 못박고 있었던 것(2026-08-06 실사용에서
+  // "재고 11개 → 989개 판매추정"으로 터짐). 입고 상품은 총 판매량을 알 수 없으므로 null이 맞음.
+  assert.strictEqual(b.totalSoldIsEstimated, false, '입고 상품은 추정 자체를 하지 않음');
+  assert.strictEqual(b.totalSold, null, '입고 상품(예약 표기 없음)은 총 판매량을 알 수 없으므로 지어내지 말고 null');
+});
+
+check('stock-report: 입고 상품에 가짜 판매추정을 만들지 않음 (2026-08-06 회귀 방지)', () => {
+  const snap = ts => ({
+    takenAt: ts,
+    stores: {
+      PW: [
+        // 실제 사고 사례: [예약] 표기가 붙은 재판 상품인데 재고는 22개 — 표기만 믿으면
+        // 초기한도 1000으로 역산해 "978개 판매"라는 가짜 숫자가 나옴
+        { productId: 'P1', name: '[예약] 파피몬 룩업 l 디지몬 어드벤처 (재판)', price: 40000, stock: 22 },
+        // 예약 표기 자체가 없는 입고 상품
+        { productId: 'P2', name: '토미오카 기유 멍한 버전 룩업 l 귀멸의 칼날 (재판)', price: 42000, stock: 2222 },
+        // 진짜 예약 상품
+        { productId: 'P3', name: '[예약] 상품C', price: 50000, stock: 9500 },
+      ],
+    },
+  });
+  const r = buildStockComparison({ snapshots: [snap('2026-08-01T00:00:00.000Z'), snap('2026-08-06T00:00:00.000Z')] });
+  const [p1, p2, p3] = ['P1', 'P2', 'P3'].map(id => r.stores.PW.find(p => p.productId === id));
+  assert.strictEqual(p1.totalSold, null, '[예약] 표기가 있어도 재고가 2000 이하면 입고로 보고 추정하지 않음');
+  assert.strictEqual(p1.isPreorder, false);
+  assert.strictEqual(p2.totalSold, null, '예약 표기가 없으면 재고가 2000을 넘어도 입고 상품');
+  assert.strictEqual(p3.totalSold, 500, '진짜 예약 상품만 역산: 재고 9500 → 초기한도 10000 → 500');
+  assert.strictEqual(p3.isPreorder, true);
+});
+
+check('stock-report: 괄호형 "(N종세트)" 상품은 세트 단위로 환산 (2026-08-06 추가)', () => {
+  const snap = (ts, stock) => ({
+    takenAt: ts,
+    stores: {
+      PW: [
+        // 낱개로 차감되는 세트 상품 — 8종세트 1개 팔리면 재고가 8 줄어듦
+        { productId: 'S1', name: '[예약] 메가캣 프로젝트 냐루토 (8종세트)', price: 8000, stock },
+        // "6종+랜덤2종 세트" → 합산 8
+        { productId: 'S2', name: '[예약] 오챠토모 시리즈 원피스 (6종+랜덤2종세트)', price: 9000, stock: 9888 },
+        // 괄호 밖 "2종세트"는 서로 다른 피규어를 묶어 파는 상품이라 1판매=1차감 → 나누면 안 됨
+        { productId: 'S3', name: '[예약][특전] 2종세트 곤 키르아 룩업 l 헌터x헌터', price: 104000, stock: 9000 },
+      ],
+    },
+  });
+  const r = buildStockComparison({ snapshots: [snap('2026-08-01T00:00:00.000Z', 9600), snap('2026-08-06T00:00:00.000Z', 9200)] });
+  const [s1, s2, s3] = ['S1', 'S2', 'S3'].map(id => r.stores.PW.find(p => p.productId === id));
+  assert.strictEqual(s1.setSize, 8, '괄호 안 "(8종세트)" → 세트 크기 8');
+  assert.strictEqual(s1.stock, 1150, '재고 9200 ÷ 8 = 1150세트');
+  assert.strictEqual(s1.stockDelta, 50, '재고 감소 400 ÷ 8 = 50세트 판매');
+  assert.strictEqual(s1.totalSold, 100, '(초기한도 10000 - 9200) ÷ 8 = 100세트');
+  assert.strictEqual(s2.setSize, 8, '"6종+랜덤2종 세트"는 합산해서 8');
+  assert.strictEqual(s3.setSize, 1, '괄호 밖 "2종세트"는 묶음상품이라 나누지 않음');
+  assert.strictEqual(s3.stock, 9000, '나누지 않았으므로 재고 그대로');
+});
+
+check('stock-report: rankStockProducts — 총 판매추정치를 모르는 상품은 순위 없이 "-" 처리용 null', () => {
+  const ranked = rankStockProducts([
+    { productId: 'A', name: '상품A', stock: 9486, totalSold: 513 },
+    { productId: 'B', name: '상품B', stock: 100, totalSold: null },
+    { productId: 'C', name: '상품C', stock: 9062, totalSold: 438 },
+  ]);
+  assert.strictEqual(ranked[0].productId, 'A', '가장 많이 판매 추정된 상품이 1위여야 함');
+  assert.strictEqual(ranked[0].rank, 1);
+  assert.strictEqual(ranked[1].productId, 'C');
+  assert.strictEqual(ranked[1].rank, 2);
+  const b = ranked.find(r => r.productId === 'B');
+  assert.strictEqual(b.rank, null, '총 판매추정치를 모르는 상품은 순위를 매기면 안 됨(근거 없는 숫자 방지)');
+});
+
+check('stock-report: findStockMatch — SNS 상품(ip/line)과 재고 상품명 근사 매칭', () => {
+  const ranked = rankStockProducts([
+    { productId: 'A', name: '[예약] 은혼 GEM 카무이 ver.2 (재판)', stock: 9486, totalSold: 513 },
+    { productId: 'B', name: '은혼 룩업 미니어처 컬렉션', stock: 9062, totalSold: 438 },
+  ]);
+  const match = findStockMatch('은혼', 'GEM', ranked);
+  assert.ok(match, 'ip+line이 둘 다 포함된 상품명을 찾아야 함');
+  assert.strictEqual(match.productId, 'A', 'line(GEM)까지 일치하는 쪽을 우선해야 함(룩업 말고)');
+  assert.strictEqual(findStockMatch('없는상품', null, ranked), null, '매칭되는 게 없으면 null');
+  assert.strictEqual(findStockMatch(null, null, ranked), null, 'ip 자체가 없으면 매칭 시도 안 함');
+});
+
+check('html-report: SNS 표 우측 매출 칸(PW vs BH 분할 바) + 하단 재고 스냅샷 섹션, 둘 다 있어야 함', () => {
+  // 한 번 실수로 하단 독립 섹션을 지웠다가 복구한 적 있음 — 회귀 방지: 둘 다 공존해야 함.
+  const stockComparison = {
+    latestTakenAt: '2026-07-08T00:00:00.000Z',
+    previousTakenAt: '2026-07-06T00:00:00.000Z',
+    snapshotCount: 2,
+    stores: {
+      PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9486, totalSold: 513, totalSoldIsEstimated: false }],
+      BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 470, totalSold: 30, totalSoldIsEstimated: false }],
+    },
+    storeComparable: { PW: true, BH: true },
+  };
+
+  // 2026-09-07부터 재고는 stockMode를 켜야만 리포트에 들어감(기본은 SNS 전용) —
+  // "한 장에 정보가 너무 많다"는 팀 피드백 + 재고 수량은 대외비라는 방침 반영.
+  const html = buildHtmlReport(report, stockComparison, { stockMode: 'ratio' });
+  assert.ok(html.includes('📦 매출 (PW vs BH)'), '헤더에 매출 칸이 리트윗/좋아요와 같은 "PW vs BH" 형식으로 있어야 함');
+  assert.ok(html.includes('class="metricbar-val pw">94%') && html.includes('class="metricbar-val bh">6%'),
+    '매출 칸은 개수 대신 PW:BH 점유율(%)로 나와야 함(513:30 → 94%:6%)');
+  assert.ok(html.includes('재고 비교 (비율만)'), '하단 재고 섹션(비율 전용)도 함께 나와야 함');
+
+  assert.strictEqual(buildHtmlReport(report, null, { stockMode: 'ratio' }).includes('재고 비교'), false,
+    '재고 히스토리가 아예 없으면(null) 하단 섹션도 안 나와야 함');
+});
+
+check('html-report: 재고는 한 파일 안에서 탭으로 분리 — 첫 화면은 SNS만, 표 안 📦 칸은 기본 접힘 (2026-09-08)', () => {
+  // "리포트 한 장에 정보가 너무 많다"는 피드백을 리포트를 두 번 만드는 걸로 풀면 일이 늘어나므로,
+  // 수집 한 번 = 파일 한 개로 두고 보는 화면만 나눔. 회귀 시 재고가 첫 화면에 다시 깔림.
+  const stockComparison = {
+    latestTakenAt: '2026-07-08T00:00:00.000Z',
+    previousTakenAt: '2026-07-06T00:00:00.000Z',
+    snapshotCount: 2,
+    stores: {
+      PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9486, totalSold: 513, totalSoldIsEstimated: false }],
+      BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 470, totalSold: 30, totalSoldIsEstimated: false }],
+    },
+    storeComparable: { PW: true, BH: true },
+  };
+  const html = buildHtmlReport(report, stockComparison, { stockMode: 'ratio' });
+
+  assert.ok(html.includes("switchView('stock')") && html.includes("switchView('sns')"), '상단에 SNS/재고 전환 탭이 있어야 함');
+  assert.ok(/<body class="[^"]*view-sns/.test(html), '파일을 열면 SNS 화면부터 보여야 함');
+
+  // 재고 쪽은 겉으로 안 보이게 — 탭 버튼도, 재고를 언급하는 안내 문구도 기본 숨김.
+  // (#stock으로 들어온 사람에게만 열림. 보안이 아니라 "눈에 안 띄게"가 목적)
+  assert.ok(html.includes('.viewtabs{display:none'), '탭 버튼은 기본으로 안 보여야 함');
+  assert.ok(html.includes('body.stock-unlocked .viewtabs{display:flex}'), '#stock으로 들어왔을 때만 탭이 보여야 함');
+  assert.ok(html.includes('body:not(.stock-unlocked) .stock-note{display:none}'), '재고를 언급하는 안내 문구도 기본으로 안 보여야 함');
+  assert.ok(html.includes("if (v === 'stock') document.body.classList.add('stock-unlocked')"), '#stock 진입 시 잠금이 풀려야 함');
+  assert.ok(!/<button class="viewtab active"/.test(html), '기본 상태에서 활성 탭 표시가 미리 박혀 있으면 안 됨(진입 시 계산)');
+  assert.ok(html.includes('body.view-sns .stock-section{display:none}'), 'SNS 화면에서는 재고 섹션이 가려져야 함');
+  assert.ok(html.includes('body.view-stock .platform:not(.stock-section){display:none}'), '재고 화면에서는 SNS 섹션이 가려져야 함');
+  assert.ok(html.includes("location.hash.slice(1) === 'stock'"), '주소 끝 #stock으로 재고 화면에 바로 들어갈 수 있어야 함');
+
+  // 표 안 📦 칸: 마크업은 있되(체크박스로 켤 수 있게) 기본은 접혀 있어야 함
+  assert.ok(html.includes('body:not(.show-stockcol) .stock-col{display:none}'), '표 안 📦 칸은 기본으로 접혀 있어야 함');
+  assert.ok(html.includes('<th class="stock-col">📦 매출 (PW vs BH)</th>'), '📦 헤더 칸에 접기용 클래스가 붙어 있어야 함');
+  assert.ok(html.includes('<td class="metric stock-col"'), '📦 데이터 칸에도 접기용 클래스가 붙어 있어야 함');
+  assert.ok(html.includes('id="stockColToggle"'), '표 안 📦 칸을 켜는 체크박스가 있어야 함');
+
+  // 탭으로 나눴다고 해서 대외비 방침이 느슨해지면 안 됨 — 개수는 여전히 파일에 없어야 함
+  assert.ok(!html.includes('513') && !html.includes('9486'), '탭 뒤에 숨긴 게 아니라, 판매 개수·재고 수량은 여전히 파일에 없어야 함');
+});
+
+check('html-report: stock=none(외부 공유용)이면 재고 데이터가 있어도 리포트에 재고가 하나도 안 들어가야 함', () => {
+  const stockComparison = {
+    latestTakenAt: '2026-07-08T00:00:00.000Z',
+    previousTakenAt: '2026-07-06T00:00:00.000Z',
+    snapshotCount: 2,
+    stores: {
+      PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9486, totalSold: 513, totalSoldIsEstimated: false }],
+      BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 470, totalSold: 30, totalSoldIsEstimated: false }],
+    },
+    storeComparable: { PW: true, BH: true },
+  };
+  const html = buildHtmlReport(report, stockComparison); // stockMode 미지정 = 'none'
+  assert.ok(!html.includes('📦 매출'), '기본값에서는 SNS 표에 매출 칸이 없어야 함');
+  assert.ok(!html.includes('재고 비교') && !html.includes('재고 스냅샷 ('), '기본값에서는 하단 재고 섹션도 없어야 함');
+  assert.ok(html.includes('SNS 전용(재고 미포함)'), '리포트 상단에 SNS 전용이라는 표시가 있어야 함');
+});
+
+check('html-report: 비율 모드에서 판매 개수·재고 수량이 파일에 남지 않아야 함 (대외비 — 가리는 게 아니라 미포함)', () => {
+  // 감추기(display:none/토글)로는 소스 보기로 다 보이므로, 비율 모드에서는 절대 수치를
+  // 애초에 HTML에 안 심는 것이 요구사항. 툴팁·축 라벨까지 포함해 새는 곳이 없는지 확인.
+  const history = {
+    snapshots: [
+      { takenAt: '2026-07-06T00:00:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '[예약] 은혼 GEM 카무이 ver.2', price: 220000, stock: 9777 }],
+        BH: [{ productId: 'Y1', name: '[예약] 은혼 GEM 카무이 세컨드', price: 210000, stock: 9888 }],
+      } },
+      { takenAt: '2026-07-08T00:00:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '[예약] 은혼 GEM 카무이 ver.2', price: 220000, stock: 9486 }],
+        BH: [{ productId: 'Y1', name: '[예약] 은혼 GEM 카무이 세컨드', price: 210000, stock: 9470 }],
+      } },
+    ],
+  };
+  const compared = buildStockComparison(history);
+  const html = buildHtmlReport(report, compared, { stockMode: 'ratio' });
+  // 이 데이터의 실제 판매추정치/재고값 문자열이 HTML 어디에도 없어야 함
+  const leaked = ['514개', '530개', '9,486', '9,470', '9,777', '9,888', '판매추정(재고'].filter(v => html.includes(v));
+  assert.deepStrictEqual(leaked, [], '절대 수량이 HTML에 남아있음: ' + leaked.join(', '));
+  assert.ok(html.includes('점유율'), '대신 점유율은 표시돼야 함');
+  assert.ok(html.includes('지수'), '추이는 지수로 표시돼야 함');
+});
+
+check('html-report/stock-report: 직전 스냅샷이 있어도 특정 store만 그때 수집 실패(0건)했으면 "신규" 오표시하면 안 됨 — 초기 한도 추정치로 대체', () => {
+  // 실제로 있었던 버그: BH가 로그인 게이트에 걸려서 0건 수집된 스냅샷 다음에, 정상 수집된
+  // 스냅샷과 비교하면 BH 상품 전체가 진짜 신규가 아닌데도 "신규"로 잘못 표시됐음. 지금은
+  // totalSold 자체가 실제 과거 기록 유무와 무관하게 항상 초기 한도(가장 가까운 1000단위)
+  // 역산이라 PW/BH 둘 다 이미 같은 형식이고("신규" 분기 자체가 없음), 이 테스트는 그 상태가
+  // 계속 유지되는지 보는 회귀 방지용.
+  const historyWithFailedBhSnapshot = {
+    snapshots: [
+      { takenAt: '2026-07-06T00:00:00.000Z', stores: { PW: [{ productId: 'X1', name: '[예약] 은혼 GEM 카무이 ver.2', price: 220000, stock: 9999 }], BH: [] } },
+      { takenAt: '2026-07-08T00:00:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '[예약] 은혼 GEM 카무이 ver.2', price: 220000, stock: 9486 }],
+        BH: [{ productId: 'Y1', name: '[예약] 은혼 GEM 카무이 세컨드', price: 210000, stock: 9470 }],
+      } },
+    ],
+  };
+  const compared = buildStockComparison(historyWithFailedBhSnapshot);
+  assert.strictEqual(compared.storeComparable.PW, true, 'PW는 직전 스냅샷 데이터가 있었으니 비교 가능해야 함');
+  assert.strictEqual(compared.storeComparable.BH, false, 'BH는 직전 스냅샷이 0건이었으니 비교 불가로 표시돼야 함');
+  const pwProduct = compared.stores.PW[0];
+  const bhProduct = compared.stores.BH[0];
+  assert.strictEqual(pwProduct.totalSold, 514, '예약 상품은 초기한도 역산: 재고 9486 → 초기한도 10000 → 514');
+  assert.strictEqual(pwProduct.totalSoldIsEstimated, true, '예약 상품의 totalSold는 초기한도 추정');
+  assert.strictEqual(bhProduct.estimatedCap, 10000, '재고 9470을 가장 가까운 1000단위로 올리면 10000이어야 함');
+  assert.strictEqual(bhProduct.totalSold, 530, '10000 - 9470 = 530이 추정 판매량이어야 함');
+  assert.strictEqual(bhProduct.totalSoldIsEstimated, true, 'BH도 예약 상품이므로 초기한도 추정');
+
+  const html = buildHtmlReport(report, compared, { stockMode: 'ratio' });
+  assert.ok(html.includes('class="metricbar-val pw">49%') && html.includes('class="metricbar-val bh">51%'),
+    'PW/BH 둘 다 같은 분할 바 형식(비율 모드에서는 점유율 %)으로 나와야 함(514:530 → 49%:51%)');
+  // 각주 설명 문구엔 "신규"라는 단어 자체가 나오지만(의미 설명용), 실제 셀 내용(>신규<)으로
+  // 렌더링되면 안 됨 — BH는 직전 데이터가 없었을 뿐 진짜 신규가 아님.
+  assert.ok(!html.includes('>신규<'), 'BH는 직전 데이터가 없었을 뿐 진짜 신규가 아니므로 "신규" 셀로 표시하면 안 됨');
+});
+
+check('stock-report: 재고 스냅샷 하단 표에 "직전 스냅샷 대비" 컬럼 — totalSold(초기한도 추정)와 별개로 순수 실측 변화량', () => {
+  const history = {
+    snapshots: [
+      { takenAt: '2026-07-06T00:00:00.000Z', stores: { PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9999 }] } },
+      { takenAt: '2026-07-08T00:00:00.000Z', stores: { PW: [
+        { productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9486 },
+        { productId: 'X2', name: '신상품', price: 100000, stock: 500 },
+      ] } },
+    ],
+  };
+  const compared = buildStockComparison(history);
+  const html = renderStockSectionHtml(compared);
+  assert.ok(html.includes('직전 스냅샷 대비'), '헤더에 새 컬럼이 있어야 함');
+  assert.ok(html.includes('513개 판매'), '9999 - 9486 = 513개 판매(직전 스냅샷 대비, 순수 실측값)가 표시돼야 함');
+  assert.ok(html.includes('비교 불가'), '직전 스냅샷에 없던 신규 상품(X2)은 "비교 불가"로 표시돼야 함');
+});
+
+check('stock-report: matchPwBhStockProducts — SNS 매칭과 같은 규칙(키워드 2개+라인 일치)으로 PW/BH 재고 상품명 매칭', () => {
+  const pw = [
+    { productId: 'P1', name: '[예약] GEM 시리즈 카무이 ver 2 l 은혼 (재판)' },
+    { productId: 'P2', name: '전혀 다른 상품 룩업 나루토' },
+  ];
+  const bh = [
+    { productId: 'B1', name: '은혼 GEM 카무이 세컨드' },
+    { productId: 'B2', name: '상관없는 상품' },
+  ];
+  const pairs = matchPwBhStockProducts(pw, bh);
+  assert.strictEqual(pairs.length, 1, '카무이·은혼끼리만 매칭되고 나머지는 매칭 안 돼야 함');
+  assert.strictEqual(pairs[0].pw.productId, 'P1');
+  assert.strictEqual(pairs[0].bh.productId, 'B1');
+});
+
+check('stock-report: matchPwBhStockProducts — 같은 프랜차이즈의 단품/세트 변형이 섞여 있어도 진짜 짝을 찾아야 함(Union-Find 회귀 방지)', () => {
+  // 실사용 버그: "블리치" 프랜차이즈 안에 "이치고 단품", "뱌쿠야 단품", "이치고+뱌쿠야 세트"가
+  // 공존하는데, Union-Find 방식은 공통 키워드("룩업"은 라인이라 제외되지만 "블리치"류 공통
+  // 토큰)만으로도 이들을 전부 한 그룹으로 묶어버려서(PW 2개 + BH 3개) 결국 하나도 매칭 못
+  // 시켰음. 점수 기반 상호 최선 방식이면 "이치고 단품"끼리는 세트 상품보다 키워드 비중(자카드
+  // 유사도)이 뚜렷하게 높아서 세트 상품과 안 헷갈리고 정확히 짝지어져야 함.
+  const pw = [
+    { productId: 'PW-이치고', name: '쿠로사키 이치고 룩업 l 블리치 (재판)' },
+    { productId: 'PW-뱌쿠야', name: '쿠치키 뱌쿠야 룩업 l 블리치 (재판)' },
+  ];
+  const bh = [
+    { productId: 'BH-이치고', name: '룩업 쿠로사키 이치고 천년혈전편 l 블리치 (재판) 27.01' },
+    { productId: 'BH-뱌쿠야', name: '룩업 쿠치키 뱌쿠야 천년혈전편 l 블리치 (재판) 27.01' },
+    { productId: 'BH-세트', name: '룩업 쿠로사키 이치고 천년혈전편 & 쿠치키 뱌쿠야 천년혈전편 일반품 세트 l 블리치 (재판) 27.01' },
+  ];
+  const pairs = matchPwBhStockProducts(pw, bh);
+  const byPw = Object.fromEntries(pairs.map(p => [p.pw.productId, p.bh.productId]));
+  assert.strictEqual(byPw['PW-이치고'], 'BH-이치고', '이치고 단품끼리 짝지어야 함(세트 상품과 헷갈리면 안 됨)');
+  assert.strictEqual(byPw['PW-뱌쿠야'], 'BH-뱌쿠야', '뱌쿠야 단품끼리 짝지어야 함(세트 상품과 헷갈리면 안 됨)');
+});
+
+check('stock-report: matchPwBhStockProducts — 후보가 여럿이어도 점수 차이가 뚜렷하면(상호 최선) 짝지음', () => {
+  // 실사용 데이터로 확인해보니 예전 Union-Find 방식은 매칭률이 너무 낮았음(51개 중 14쌍) —
+  // 원인은 전이적 그룹화라 프랜차이즈명만 겹쳐도 서로 무관한 변형 상품들이 한 그룹으로
+  // 뭉쳐서 "1:1 아니면 매칭 안 함" 규칙에 걸려 다 버려졌기 때문. 이제는 자카드 유사도
+  // 점수로 "서로가 서로를 1순위로 고르는지"만 확인 — "재판"(BH와 키워드가 완전히 같음,
+  // 점수 1.0)이 "초판"(부분적으로만 겹침, 점수 0.67)보다 뚜렷하게 높으므로 재판 쪽이
+  // 확정 매칭돼야 함(모호함이 아니라 명백한 우위).
+  const pw = [
+    { productId: 'P1', name: '은혼 GEM 카무이 초판' },
+    { productId: 'P2', name: '은혼 GEM 카무이 재판' },
+  ];
+  const bh = [{ productId: 'B1', name: '은혼 GEM 카무이 세컨드' }];
+  const pairs = matchPwBhStockProducts(pw, bh);
+  assert.strictEqual(pairs.length, 1, '점수가 뚜렷하게 높은 쪽(재판)은 확정 매칭돼야 함');
+  assert.strictEqual(pairs[0].pw.productId, 'P2', '키워드가 BH와 완전히 겹치는 재판 쪽이 선택돼야 함');
+});
+
+check('stock-report: matchPwBhStockProducts — 점수가 완전히 동률이면(진짜 구분 불가) 매칭 안 시킴', () => {
+  // 실제로 있었던 패턴: BH가 같은 상품을 "박스 구성"/"단품 랜덤" 두 SKU로 중복 등록해서,
+  // PW의 단일 상품이 BH 두 후보 모두와 동점으로 겹침 — 이 경우는 점수로도 구분이 안 되니
+  // 안전하게 매칭하지 않아야 함.
+  const pw = [{ productId: 'P1', name: '은혼 룩업 미니어처 컬렉션 (4종세트)' }];
+  const bh = [
+    { productId: 'B1', name: '룩업 미니어처 컬렉션 은혼 (1BOX 4개 구성)' },
+    { productId: 'B2', name: '룩업 미니어처 컬렉션 은혼 (4종 단품 랜덤)' },
+  ];
+  const pairs = matchPwBhStockProducts(pw, bh);
+  assert.strictEqual(pairs.length, 0, 'BH 두 후보가 동점이면(박스/단품 구성 차이만) 어느 쪽인지 확정할 수 없으니 매칭하면 안 됨');
+});
+
+check('stock-report: 종합표 — PW/BH 매칭 + 점유율 + 직전/전전 스냅샷 대비 + 추이 그래프(스냅샷 2개 이상)', () => {
+  const history = {
+    snapshots: [
+      { takenAt: '2026-07-04T00:00:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9999 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 900 }],
+      } },
+      { takenAt: '2026-07-06T00:00:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9700 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 700 }],
+      } },
+      { takenAt: '2026-07-08T00:00:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9486 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 470 }],
+      } },
+    ],
+  };
+  const compared = buildStockComparison(history);
+  const rows = buildIntegratedStockRows(compared);
+  assert.strictEqual(rows.length, 1, 'PW/BH 은혼 카무이가 매칭돼서 1쌍 나와야 함');
+  const row = rows[0];
+  assert.strictEqual(row.pwDelta2, 299, '전전 스냅샷 대비: 9999-9700=299');
+  assert.strictEqual(row.bhDelta2, 200, '전전 스냅샷 대비: 900-700=200');
+  assert.strictEqual(row.pwSeries.length, 3, 'PW는 스냅샷 3개 모두에 등장해야 함');
+  assert.strictEqual(row.bhSeries.length, 3, 'BH도 스냅샷 3개 모두에 등장해야 함');
+
+  const html = renderStockSectionHtml(compared);
+  assert.ok(html.includes('🔗 종합'), '종합표 헤더가 있어야 함');
+  assert.ok(html.includes('전체 펼치기') && html.includes('전체 접기'), 'SNS 표처럼 전체 펼치기/접기 버튼이 있어야 함');
+  assert.ok(html.includes('<svg'), '스냅샷 2개 이상이면 추이 그래프(svg)가 그려져야 함');
+  assert.ok(html.includes('점유율'), 'PW/BH 총판매추정 칸에 점유율이 표시돼야 함');
+});
+
+check('stock-report: 종합표 — 스냅샷이 2개뿐이면 "그 전 스냅샷 대비"는 계산 불가(null)지만 추이 그래프는 2개 시점부터 표시', () => {
+  // 2026-08-07: "3개 이상"이던 최소 시점 기준을 사용자 요청으로 2개로 낮춤 — 시점이 2개면
+  // 이미 선 하나(시작→끝)를 그릴 수 있어서 굳이 3개까지 기다릴 필요가 없었음.
+  const history = {
+    snapshots: [
+      { takenAt: '2026-07-06T00:00:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9999 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 900 }],
+      } },
+      { takenAt: '2026-07-08T00:00:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9486 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 470 }],
+      } },
+    ],
+  };
+  const compared = buildStockComparison(history);
+  const rows = buildIntegratedStockRows(compared);
+  assert.strictEqual(rows[0].pwDelta2, null, '스냅샷이 2개뿐이면 전전 대비를 계산할 과거가 없어야 함');
+
+  const html = renderStockSectionHtml(compared);
+  assert.ok(html.includes('<svg'), '시점이 2개면 안내 문구 대신 추이 그래프(svg)가 나와야 함');
+  assert.ok(!html.includes('아직 한 시점에서만 관측'), '시점이 2개면 "1개 시점" 안내 문구가 나오면 안 됨');
+});
+
+check('stock-report: 종합표 — 시점이 1개뿐이면 추이 그래프 대신 안내 문구로 대체', () => {
+  const history = {
+    snapshots: [
+      { takenAt: '2026-07-06T00:00:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9999 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 900 }],
+      } },
+    ],
+  };
+  const compared = buildStockComparison(history);
+  const html = renderStockSectionHtml(compared);
+  assert.ok(html.includes('스냅샷이 2개 시점 이상 쌓이면 추이 그래프'), '시점이 1개뿐이면 그래프 대신 안내 문구가 나와야 함');
+  assert.ok(html.includes('이 상품은 아직 한 시점에서만 관측됨'),
+    '안내 문구는 전체 스냅샷 수가 아니라 "이 상품이 관측된 시점 수"임을 밝혀야 함 — 예전 문구("현재 N개 시점")는 전체 히스토리가 유실된 것처럼 읽혔음');
+});
+
+check('stock-report: 종합표 — 많이 팔린 순(PW+BH 합산) 정렬 누락 버그 수정 확인', () => {
+  const history = {
+    snapshots: [
+      { takenAt: '2026-07-06T00:00:00.000Z', stores: {
+        PW: [
+          { productId: 'A1', name: '[예약] 적게 팔린 상품 GEM 아무개', price: 10000, stock: 9900 },
+          { productId: 'B1', name: '[예약] 많이 팔린 상품 GEM 누구', price: 10000, stock: 9100 },
+        ],
+        BH: [
+          { productId: 'A2', name: '[예약] 적게 팔린 상품 GEM 아무개 세컨드', price: 10000, stock: 9900 },
+          { productId: 'B2', name: '[예약] 많이 팔린 상품 GEM 누구 세컨드', price: 10000, stock: 9100 },
+        ],
+      } },
+    ],
+  };
+  const compared = buildStockComparison(history);
+  const rows = buildIntegratedStockRows(compared);
+  assert.strictEqual(rows.length, 2);
+  assert.ok(rows[0].pw.name.includes('많이 팔린'), '판매추정치 합산이 더 큰 상품(재고 9100 → 900개 판매 쪽)이 먼저 나와야 함');
+  assert.ok(rows[1].pw.name.includes('적게 팔린'), '판매추정치 합산이 더 작은 상품이 뒤에 나와야 함');
+});
+
+check('stock-report: 종합표 추이 그래프 — 지수화 대신 총판매추정(개) 값을 그대로 그려야 함(사용자 피드백)', () => {
+  // 사용자 피드백: "지수화 이런거 필요없고 그냥 총판매추정 개수만 가지고 꺾은선 만들면
+  // 되잖아" — 재고 대신 총판매추정(estimateInitialCap 역산, 항상 0에서 우상향)을 그대로
+  // 그리면 PW/BH 규모가 달라도(996개 vs 386개) 자체 축이 변화량에 비례해서 안 짓눌림.
+  const history = {
+    snapshots: [
+      { takenAt: '2026-07-04T00:00:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9999 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 900 }],
+      } },
+      { takenAt: '2026-07-06T00:00:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9700 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 700 }],
+      } },
+      { takenAt: '2026-07-08T00:00:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9486 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 470 }],
+      } },
+    ],
+  };
+  const compared = buildStockComparison(history);
+  const html = renderStockSectionHtml(compared);
+  assert.ok(html.includes('1개 판매추정(재고 9,999개)'), 'PW 첫 시점(10000-9999=1)이 툴팁에 나와야 함');
+  assert.ok(html.includes('514개 판매추정(재고 9,486개)'), 'PW 마지막 시점(10000-9486=514)이 툴팁에 나와야 함');
+  assert.ok(html.includes('100개 판매추정(재고 900개)'), 'BH 첫 시점(1000-900=100)이 툴팁에 나와야 함');
+  assert.ok(html.includes('530개 판매추정(재고 470개)'), 'BH 마지막 시점(1000-470=530)이 툴팁에 나와야 함');
+  assert.ok(html.includes('총판매추정(개) 추이'), '지수 대신 총판매추정 기준이라는 설명이 나와야 함');
+  assert.ok(!html.includes('지수'), '지수화 문구가 더 이상 남아있으면 안 됨');
+});
+
+check('stock-report: 종합표 추이 그래프 — x축 라벨이 날짜/시각 2줄로 나뉘어야 함(같은 날 여러 스냅샷 구분)', () => {
+  const history = {
+    snapshots: [
+      { takenAt: '2026-07-09T02:13:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9999 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 900 }],
+      } },
+      { takenAt: '2026-07-09T05:52:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9700 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 700 }],
+      } },
+      { takenAt: '2026-07-10T02:13:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9486 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 470 }],
+      } },
+    ],
+  };
+  const compared = buildStockComparison(history);
+  const html = renderStockSectionHtml(compared);
+  // KST = UTC+9: 07-09 02:13 → 07-09 11:13, 07-09 05:52 → 07-09 14:52
+  assert.ok(html.includes('>11:13<') && html.includes('>14:52<'), '같은 날짜(07-09)에 찍힌 두 스냅샷이 시각으로 구분돼야 함');
+  assert.ok(html.includes('>07-09<'), '날짜 라벨도 그대로 나와야 함(시각과 별도 줄)');
+});
+
+check('stock-report: 종합표 추이 그래프 — PW가 좁은 범위(994~999)에서만 움직여도, BH(변화 없음)와 축을 공유하지 않아서 눌리지 않고 보여야 함', () => {
+  // 실사용 버그 리포트 재현: PW 총판매추정이 994~999개(범위 5)로 아주 좁게 움직이는데,
+  // 이걸 BH(386개, 변화 없음)와 같은 축(0부터 시작)에 그리면 5개짜리 움직임이 전체 축의
+  // 1%도 안 돼서 "일자"로 보임 — PW/BH를 각자 축을 가진 두 그래프(위아래)로 분리해서
+  // 그 문제를 해결했는지, PW 선의 y좌표가 실제로 서로 달라지는지 확인.
+  const history = {
+    snapshots: [
+      { takenAt: '2026-07-09T00:34:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9001 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 4614 }],
+      } },
+      { takenAt: '2026-07-09T00:53:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9006 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 4614 }],
+      } },
+      { takenAt: '2026-07-09T04:24:00.000Z', stores: {
+        PW: [{ productId: 'X1', name: '은혼 GEM 카무이 ver.2', price: 220000, stock: 9004 }],
+        BH: [{ productId: 'Y1', name: '은혼 GEM 카무이 세컨드', price: 210000, stock: 4614 }],
+      } },
+    ],
+  };
+  const compared = buildStockComparison(history);
+  const html = renderStockSectionHtml(compared);
+  const pathMatches = [...html.matchAll(/<path d="([^"]+)"/g)].map(m => m[1]);
+  assert.strictEqual(pathMatches.length, 2, 'PW 패널 1개 + BH 패널 1개, 총 path 2개여야 함');
+  const pwYs = [...pathMatches[0].matchAll(/[ML]-?[\d.]+,(-?[\d.]+)/g)].map(m => parseFloat(m[1]));
+  assert.strictEqual(pwYs.length, 3, 'PW 점 3개(994~999개 대응)가 모두 그려져야 함');
+  const spread = Math.max(...pwYs) - Math.min(...pwYs);
+  assert.ok(spread > 20, `PW가 994~999개로만 움직여도(BH와 축을 공유하지 않으므로) 화면상 y좌표 차이가 눈에 띄어야 함(실측 ${spread.toFixed(1)}px)`);
+});
+
+check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 다)를 old/로 옮기고 새 타임스탬프 경로를 돌려줌', () => {
+  const dir = path.join(__dirname, 'verify-output', 'archive-test');
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'sns-report.html'), '예전 고정이름 파일');
+  fs.writeFileSync(path.join(dir, 'sns-report_20260101_0000.html'), '예전 타임스탬프 파일');
+  fs.writeFileSync(path.join(dir, 'sns-report.xlsx'), '엑셀은 손대면 안 됨');
+
+  const newPath = archiveAndGetPath(dir, 'sns-report', 'html');
+
+  assert.ok(/sns-report_\d{8}_\d{4}\.html$/.test(newPath), `새 경로는 타임스탬프 형식이어야 함: ${newPath}`);
+  assert.ok(!fs.existsSync(path.join(dir, 'sns-report.html')), '예전 고정이름 파일은 dir에 남아있으면 안 됨');
+  assert.ok(!fs.existsSync(path.join(dir, 'sns-report_20260101_0000.html')), '예전 타임스탬프 파일도 dir에 남아있으면 안 됨');
+  assert.ok(fs.existsSync(path.join(dir, 'old', 'sns-report.html')), 'old/에 고정이름 파일이 옮겨져 있어야 함');
+  assert.ok(fs.existsSync(path.join(dir, 'old', 'sns-report_20260101_0000.html')), 'old/에 타임스탬프 파일도 옮겨져 있어야 함');
+  assert.ok(fs.existsSync(path.join(dir, 'sns-report.xlsx')), '엑셀(.xlsx)은 html이 아니니 옮겨지면 안 됨');
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ── 3. 엑셀 저장: 같은 기간 재실행은 시트를 갱신(교체), 다른 기간은 누적 보존 ──
+(async () => {
+  const outPath = path.join(__dirname, 'verify-output', 'mock-report.xlsx');
+  fs.rmSync(path.dirname(outPath), { recursive: true, force: true });
+
+  const sheet1 = await saveReportToExcel(report, outPath);
+  const sheet2 = await saveReportToExcel(report, outPath); // 같은 기간으로 재실행(테스트 중 반복 실행 시나리오)
+
+  const ExcelJS = require('exceljs');
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(outPath);
+
+  check('엑셀: 같은 수집 기간으로 재실행하면 시트가 쌓이지 않고 갱신(교체)됨', () => {
+    assert.strictEqual(sheet1, sheet2, '같은 기간이면 시트 이름도 같아야 함(같은 시트를 갱신하는 것)');
+    assert.ok(wb.getWorksheet(sheet1), '갱신된 시트가 남아있어야 함');
+    // 같은 기간을 2번 저장해도 요약 시트 + 상품별 비교 시트, 총 2개만 있어야 함(누적되면 안 됨)
+    assert.strictEqual(wb.worksheets.length, 2);
+  });
+
+  const otherReport = { ...report, startDate: '2026-07-10', endDate: '2026-07-11' };
+  const sheet3 = await saveReportToExcel(otherReport, outPath); // 다른 기간
+  const wb2 = new ExcelJS.Workbook();
+  await wb2.xlsx.readFile(outPath);
+
+  check('엑셀: 다른 수집 기간은 별도 시트로 추가되고 기존 기간 시트는 그대로 보존됨', () => {
+    assert.notStrictEqual(sheet1, sheet3, '기간이 다르면 시트 이름도 달라야 함');
+    assert.ok(wb2.getWorksheet(sheet1), '이전 기간 시트가 지워지지 않고 남아있어야 함');
+    assert.ok(wb2.getWorksheet(sheet3), '새 기간 시트도 존재해야 함');
+    // 기간1(요약+상품별 2개) + 기간2(요약+상품별 2개) = 4개
+    assert.strictEqual(wb2.worksheets.length, 4);
+  });
+
+  check('엑셀: 임시파일이 정리되고 최종 파일만 남음', () => {
+    const files = fs.readdirSync(path.dirname(outPath));
+    assert.deepStrictEqual(files, ['mock-report.xlsx']);
+  });
+
+  // ── renameWithRetry: 엑셀 파일이 다른 프로그램(엑셀 등)에 열려있어 rename이 EPERM으로
+  // 실패하는 윈도우 환경을 재현 — 실제 fs.renameSync를 잠깐 흉내낸 함수로 바꿔치기해서 검증.
+  const realRename = fs.renameSync;
+  try {
+    let calls = 0;
+    fs.renameSync = () => {
+      calls++;
+      if (calls < 3) { const e = new Error('mock EPERM'); e.code = 'EPERM'; throw e; }
+    };
+    await renameWithRetry('from', 'to', { retries: 5, delayMs: 1 });
+    check('엑셀: 파일이 잠깐 잠겨있어도(EPERM) 재시도해서 결국 성공함', () => {
+      assert.strictEqual(calls, 3, '3번째 시도에서 성공해야 함');
+    });
+  } catch (e) {
+    check('엑셀: 파일이 잠깐 잠겨있어도(EPERM) 재시도해서 결국 성공함', () => { throw e; });
+  } finally {
+    fs.renameSync = realRename;
+  }
+
+  try {
+    fs.renameSync = () => { const e = new Error('mock EPERM'); e.code = 'EPERM'; throw e; };
+    let thrown = null;
+    try {
+      await renameWithRetry('from', 'to', { retries: 3, delayMs: 1 });
+    } catch (e) {
+      thrown = e;
+    }
+    check('엑셀: 계속 잠겨있으면(EPERM) 재시도 다 써도 "파일을 닫아달라"는 안내 메시지로 실패함', () => {
+      assert.ok(thrown, '에러가 던져져야 함');
+      assert.match(thrown.message, /다른 프로그램.*열려있어서/);
+      assert.match(thrown.message, /유실되지 않고/);
+    });
+  } finally {
+    fs.renameSync = realRename;
+  }
+
+  // ── collect-account용 엑셀: excel.js와 같은 정책(같은 계정+기간이면 시트 교체, 다른
+  // 기간은 별도 시트로 누적)이 account-report.xlsx에도 그대로 적용되는지 확인 ──
+  const accountOutPath = path.join(__dirname, 'verify-output', 'account-report.xlsx');
+  const accountPosts = [
+    { link: 'https://x.com/GoodsmileP/status/1', datetime: '2026-07-02T01:00:00.000Z', likes: '10', retweets: '5', text: '게시물 A' },
+    { link: 'https://x.com/GoodsmileP/status/2', datetime: '2026-07-03T01:00:00.000Z', likes: '30', retweets: '9', text: '게시물 B' },
+  ];
+  const sheetA1 = await saveAccountReportToExcel({ handle: 'GoodsmileP', startDate: '2026-07-01', endDate: '2026-07-11', posts: accountPosts }, accountOutPath);
+  const sheetA2 = await saveAccountReportToExcel({ handle: 'GoodsmileP', startDate: '2026-07-01', endDate: '2026-07-11', posts: accountPosts }, accountOutPath);
+  const sheetB = await saveAccountReportToExcel({ handle: 'GoodsmileP', startDate: '2026-07-12', endDate: '2026-07-19', posts: accountPosts }, accountOutPath);
+
+  const ExcelJS2 = require('exceljs');
+  const wbAcc = new ExcelJS2.Workbook();
+  await wbAcc.xlsx.readFile(accountOutPath);
+
+  check('account-excel: 같은 계정+같은 기간으로 재실행하면 시트가 쌓이지 않고 갱신됨', () => {
+    assert.strictEqual(sheetA1, sheetA2, '같은 계정+기간이면 시트 이름도 같아야 함');
+    assert.ok(wbAcc.getWorksheet(sheetA1));
+  });
+  check('account-excel: 다른 기간은 별도 시트로 추가되고 기존 시트는 보존됨', () => {
+    assert.notStrictEqual(sheetA1, sheetB);
+    assert.ok(wbAcc.getWorksheet(sheetA1), '이전 기간 시트가 남아있어야 함');
+    assert.ok(wbAcc.getWorksheet(sheetB));
+    assert.strictEqual(wbAcc.worksheets.length, 2, '계정별 시트 1개(엑셀은 요약+상품별처럼 나뉘지 않고 계정당 1개) x 기간 2개');
+  });
+  check('account-excel: 게시물이 (좋아요+리트윗) 합산 내림차순으로 들어감', () => {
+    const ws = wbAcc.getWorksheet(sheetB);
+    // 5행: 헤더, 6행: 1위(게시물 B, 30+9=39), 7행: 2위(게시물 A, 10+5=15)
+    assert.strictEqual(ws.getCell('F6').value, '게시물 B');
+    assert.strictEqual(ws.getCell('F7').value, '게시물 A');
+  });
+
+  const multilinePosts = [
+    { link: 'https://x.com/GoodsmileP/status/3', datetime: '2026-07-13T01:00:00.000Z', likes: '1', retweets: '1', text: '1번째 줄\n2번째 줄\n3번째 줄' },
+  ];
+  const sheetC = await saveAccountReportToExcel({ handle: 'GoodsmileP', startDate: '2026-07-20', endDate: '2026-07-21', posts: multilinePosts }, accountOutPath);
+  const wbAcc2 = new ExcelJS2.Workbook();
+  await wbAcc2.xlsx.readFile(accountOutPath);
+  check('account-excel: 본문의 줄바꿈이 공백으로 뭉개지지 않고 셀 안에 그대로 보존되며 wrapText가 켜져 있어야 함', () => {
+    const ws = wbAcc2.getWorksheet(sheetC);
+    const cell = ws.getCell('F6');
+    assert.strictEqual(cell.value, '1번째 줄\n2번째 줄\n3번째 줄', '줄바꿈 문자가 그대로 남아있어야 함(공백으로 치환 금지)');
+    assert.strictEqual(cell.alignment && cell.alignment.wrapText, true, 'wrapText가 켜져 있어야 실제로 줄바꿈되어 보임');
+  });
+
+  // ── compare-periods.js용: 여러 기간(공백 있어도 됨)을 나란히 비교하는 기능 ──
+  const periodA = { label: '2026-06-10~2026-06-13', report: buildComparisonReport({
+    startDate: '2026-06-10', endDate: '2026-06-13',
+    own: [{ platform: 'twitter', account: 'own', posts: [
+      { link: 'https://x.com/own/a1', datetime: '2026-06-10T01:00:00.000Z', likes: '100', retweets: '10', text: '기간A 게시물' },
+    ] }],
+    competitors: [{ platform: 'twitter', account: 'comp', posts: [
+      { link: 'https://x.com/comp/a1', datetime: '2026-06-10T02:00:00.000Z', likes: '40', retweets: '4', text: '기간A 경쟁사 게시물' },
+    ] }],
+  }) };
+  const periodB = { label: '2026-06-18~2026-06-22', report: buildComparisonReport({
+    startDate: '2026-06-18', endDate: '2026-06-22',
+    own: [{ platform: 'twitter', account: 'own', posts: [
+      { link: 'https://x.com/own/b1', datetime: '2026-06-18T01:00:00.000Z', likes: '200', retweets: '20', text: '기간B 게시물 1' },
+      { link: 'https://x.com/own/b2', datetime: '2026-06-19T01:00:00.000Z', likes: '300', retweets: '30', text: '기간B 게시물 2' },
+    ] }],
+    competitors: [{ platform: 'twitter', account: 'comp', posts: [
+      { link: 'https://x.com/comp/b1', datetime: '2026-06-18T02:00:00.000Z', likes: '90', retweets: '9', text: '기간B 경쟁사 게시물' },
+    ] }],
+  }) };
+
+  check('buildPeriodSummary: 기간마다 자사/경쟁사 총합이 따로 계산되고 나란히 놓여야 함', () => {
+    const summary = buildPeriodSummary([periodA, periodB]);
+    const tw = summary.find(s => s.platform === 'twitter');
+    const postCountRow = tw.rows.find(r => r.key === 'postCount');
+    assert.deepStrictEqual(postCountRow.cells[0], { own: 1, competitor: 1 }, '기간A: 자사 1건, 경쟁사 1건');
+    assert.deepStrictEqual(postCountRow.cells[1], { own: 2, competitor: 1 }, '기간B: 자사 2건, 경쟁사 1건');
+    const likesRow = tw.rows.find(r => r.key === 'total_likes');
+    assert.strictEqual(likesRow.cells[0].own, 100);
+    assert.strictEqual(likesRow.cells[1].own, 500, '기간B 자사 좋아요 합산(200+300)');
+    assert.strictEqual(likesRow.cells[1].competitor, 90);
+  });
+
+  check('buildPeriodComparisonHtml: 기간 라벨과 지표가 표에 들어가야 함', () => {
+    const html = buildPeriodComparisonHtml([periodA, periodB]);
+    assert.match(html, /2026-06-10~2026-06-13/);
+    assert.match(html, /2026-06-18~2026-06-22/);
+    assert.match(html, /게시물 수/);
+  });
+
+  const periodExcelPath = path.join(__dirname, 'verify-output', 'period-comparison.xlsx');
+  const sheetP1 = await savePeriodComparisonToExcel([periodA, periodB], periodExcelPath);
+  const sheetP2 = await savePeriodComparisonToExcel([periodA, periodB], periodExcelPath);
+  const periodC = { label: '2026-06-27~2026-06-30', report: periodB.report };
+  const sheetP3 = await savePeriodComparisonToExcel([periodA, periodC], periodExcelPath);
+
+  const ExcelJS3 = require('exceljs');
+  const wbPeriod = new ExcelJS3.Workbook();
+  await wbPeriod.xlsx.readFile(periodExcelPath);
+  check('period-excel: 같은 기간 조합으로 재실행하면 시트가 쌓이지 않고 갱신됨', () => {
+    assert.strictEqual(sheetP1, sheetP2, '같은 기간 조합이면 시트 이름도 같아야 함');
+  });
+  check('period-excel: 다른 기간 조합은 별도 시트로 추가되고 기존 시트는 보존됨', () => {
+    assert.notStrictEqual(sheetP1, sheetP3);
+    assert.ok(wbPeriod.getWorksheet(sheetP1), '이전 기간 조합 시트가 남아있어야 함');
+    assert.ok(wbPeriod.getWorksheet(sheetP3));
+  });
+
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 브랜드 분리 (2026-09-07) — 메가하우스/굿스마일이 같은 파일을 덮어쓰지 않는지
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  check('brand-config: 브랜드 목록에 메가하우스/굿스마일이 있고, 계정 설정 여부(ready)를 알려줘야 함', () => {
+  const list = listBrands();
+  const keys = list.map(b => b.key);
+  assert.ok(keys.includes('megahouse'), '메가하우스 브랜드가 있어야 함');
+  assert.ok(keys.includes('goodsmile'), '굿스마일 브랜드가 있어야 함');
+  assert.strictEqual(list[0].key, DEFAULT_BRAND, '기본 브랜드(메가하우스)가 목록 맨 앞에 와야 함');
+  const mega = list.find(b => b.key === 'megahouse');
+  assert.strictEqual(mega.ready, true, '메가하우스는 계정이 채워져 있어야 함');
+  const gsc = list.find(b => b.key === 'goodsmile');
+  assert.strictEqual(gsc.ready, false, '굿스마일은 계정 핸들이 아직 비어 있어서 ready=false여야 함(채우면 true)');
+});
+
+  check('brand-config: 브랜드마다 저장 경로가 완전히 갈려야 함 (같은 파일을 덮어쓰면 먼저 수집한 브랜드 데이터가 사라짐)', () => {
+  const mega = loadBrand('megahouse');
+  const gsc = loadBrand('goodsmile');
+  const keysToCheck = ['cache', 'stockHistory', 'excel', 'periodCacheDir', 'manualMatches', 'ignorePosts', 'manualPosts', 'lastRun'];
+  for (const key of keysToCheck) {
+    assert.notStrictEqual(mega.paths[key], gsc.paths[key], `${key} 경로가 두 브랜드에서 같으면 서로 덮어씀`);
+  }
+  assert.ok(mega.paths.cache.includes('megahouse'), '메가하우스 캐시는 megahouse 폴더 안이어야 함');
+  assert.ok(gsc.paths.cache.includes('goodsmile'), '굿스마일 캐시는 goodsmile 폴더 안이어야 함');
+});
+
+  check('brand-config: 굿스마일은 재고 스토어가 비어 있어서 재고 단계를 건너뛰게 돼 있어야 함', () => {
+  assert.strictEqual(loadBrand('goodsmile').stockStores.length, 0, '스토어가 정해지면 brands/goodsmile.json에 채우면 됨');
+  assert.ok(loadBrand('megahouse').stockStores.length >= 1, '메가하우스는 재고 스토어가 설정돼 있어야 함');
+});
+
+  check('brand-config: 예전(브랜드 폴더 도입 전) 데이터를 브랜드 폴더로 복사하고, 이미 있는 파일은 덮어쓰지 않아야 함', () => {
+  const os = require('os');
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'brandmig-'));
+  // brand-config는 자기 파일 위치(__dirname) 기준으로 동작하므로, 이관 로직만 같은 규칙으로
+  // 재현해서 검증함(실제 사용자 데이터를 건드리지 않기 위해 임시 폴더에서).
+  const legacyCache = path.join(tmpRoot, 'reports', '_last-collection.json');
+  const brandCache = path.join(tmpRoot, 'reports', 'megahouse', '_last-collection.json');
+  fs.mkdirSync(path.dirname(legacyCache), { recursive: true });
+  fs.writeFileSync(legacyCache, JSON.stringify({ marker: '예전데이터' }));
+
+  const copyIfAbsent = (src, dest) => {
+    if (!fs.existsSync(src) || fs.existsSync(dest)) return false;
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(src, dest);
+    return true;
+  };
+
+  assert.strictEqual(copyIfAbsent(legacyCache, brandCache), true, '브랜드 폴더에 없으면 예전 파일을 복사해야 함');
+  assert.strictEqual(JSON.parse(fs.readFileSync(brandCache, 'utf-8')).marker, '예전데이터', '복사된 내용이 같아야 함');
+  assert.ok(fs.existsSync(legacyCache), '원본은 남겨둬야 함(되돌릴 수 있게)');
+
+  fs.writeFileSync(brandCache, JSON.stringify({ marker: '이미있던새데이터' }));
+  assert.strictEqual(copyIfAbsent(legacyCache, brandCache), false, '브랜드 폴더에 이미 있으면 건드리면 안 됨');
+  assert.strictEqual(JSON.parse(fs.readFileSync(brandCache, 'utf-8')).marker, '이미있던새데이터', '기존 파일이 덮어써지면 데이터 유실');
+
+  fs.rmSync(tmpRoot, { recursive: true, force: true });
+});
+
+  check('brand-config: parseBrandArg — brand= 인자만 걷어내고 나머지 인자는 그대로 넘겨야 함', () => {
+  assert.deepStrictEqual(parseBrandArg(['brand=goodsmile', 'today', 'nostock']), { brandKey: 'goodsmile', rest: ['today', 'nostock'] });
+  assert.deepStrictEqual(parseBrandArg(['--brand=megahouse', '2026-09-01', '2026-09-07']), { brandKey: 'megahouse', rest: ['2026-09-01', '2026-09-07'] });
+  assert.deepStrictEqual(parseBrandArg(['today']), { brandKey: DEFAULT_BRAND, rest: ['today'] }, '브랜드를 안 주면 기본 브랜드(메가하우스)');
+});
+
+  check('brand-config: 마지막 수집 기간 기록/읽기 — "마지막 수집 이후 전부" 버튼의 근거 데이터', () => {
+  const os = require('os');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lastrun-'));
+  const fakeBrand = { paths: { lastRun: path.join(tmp, '_last-run.json') } };
+  assert.strictEqual(readLastRun(fakeBrand), null, '기록이 없으면 null (버튼이 비활성화돼야 함)');
+  saveLastRun(fakeBrand, { startDate: '2026-09-01', endDate: '2026-09-07' });
+  const got = readLastRun(fakeBrand);
+  assert.strictEqual(got.startDate, '2026-09-01');
+  assert.strictEqual(got.endDate, '2026-09-07');
+  fs.writeFileSync(fakeBrand.paths.lastRun, '{깨진 JSON');
+  assert.strictEqual(readLastRun(fakeBrand), null, '파일이 깨져 있어도 수집 자체를 막지 않고 null로 넘어가야 함');
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+  check('matching-core: 굿스마일 POP UP PARADE가 메가하우스 POP(스케일) 라인으로 오분류되면 안 됨 (부분 문자열 충돌)', () => {
+  const { detectProductLine } = require('./matching-core');
+  assert.strictEqual(detectProductLine('굿스마일 POP UP PARADE 프리렌 피규어'), 'POP UP PARADE');
+  assert.strictEqual(detectProductLine('팝업퍼레이드 프리렌'), 'POP UP PARADE', '한글 표기도 같은 라인으로 통일돼야 함');
+  assert.strictEqual(detectProductLine('넨도로이드 하츠네 미쿠'), '넨도로이드');
+  assert.strictEqual(detectProductLine('figma 링크'), 'figma');
+  assert.strictEqual(detectProductLine('원피스 POP 시리즈 루피'), 'POP', '메가하우스 POP 라인은 그대로 잡혀야 함');
+  assert.strictEqual(detectProductLine('원피스 스케일 피규어 루피'), 'POP', '스케일=POP 별칭도 유지');
+});
+
+  check('matching-core: 한글 음역 vs 영문 원문 표기(카이타닉스 ↔ KAITANICS)도 같은 상품으로 매칭돼야 함 (2026-09-07)', () => {
+    // 실제 2026-08-06 수집분에서 끝까지 안 잡혔던 유일한 쌍 — 자사는 한글 음역, 경쟁사는
+    // 영문 원문으로 써서 글자가 하나도 안 겹쳤음(붙여쓰기 보정으로도 못 잡는 유형).
+    const own = [
+      { link: 'https://x.com/pw/kai', datetime: '2026-08-06T08:00:00.000Z', likes: '50', retweets: '20', text: '[예약시작] 카이타닉스 혼다 피규어\n\n슈퍼커브110 그린트 웨이브 블루 메탈릭\n\nhttps://mkt.shopping.naver.com/link/a' },
+      ...Array.from({ length: 15 }, (_, i) => ({ link: 'https://x.com/pw/f' + i, datetime: '2026-08-06T08:00:00.000Z', likes: '1', retweets: '1', text: '[예약시작] 무관한 상품 ' + i + '번 안내\n\nhttps://mkt.shopping.naver.com/link/f' + i })),
+    ];
+    const comp = [
+      { link: 'https://x.com/bh/kai', datetime: '2026-08-06T09:00:00.000Z', likes: '20', retweets: '10', text: '【 메가하우스 8월 신제품 예약 개시 】\n\nKAITANICS 혼다 슈퍼 커브 110 4종\n\n바로가기 : https://mkt.shopping.naver.com/link/c' },
+      ...Array.from({ length: 15 }, (_, i) => ({ link: 'https://x.com/bh/f' + i, datetime: '2026-08-06T09:00:00.000Z', likes: '1', retweets: '1', text: '【 신제품 안내 】\n\n무관한 경쟁사 상품 ' + i + '번\n\n바로가기 : https://mkt.shopping.naver.com/link/g' + i })),
+    ];
+    const r = buildProductComparison(own, comp, ['likes', 'retweets'], 'text', ['retweets', 'likes']);
+    const kai = r.products.find(p => (p.ip || '').includes('카이타닉스'));
+    assert.ok(kai, '카이타닉스(PW) ↔ KAITANICS(BH)가 한 상품으로 묶여야 함');
+    assert.strictEqual(kai.ownPosts.length, 1);
+    assert.strictEqual(kai.competitorPosts.length, 1);
+  });
+
+  check('matching-core: 일본어 원제/영문 표기도 한국어 표기로 통일돼야 함 (표기만 다른 같은 프랜차이즈)', () => {
+    const { extractKeywords } = require('./matching-core');
+    assert.deepStrictEqual(extractKeywords('은혼 카구라 #銀魂 #Gintama').sort(), ['은혼', '카구라'].sort(),
+      '銀魂/Gintama가 은혼으로 접혀서 중복 토큰이 되지 않아야 함');
+    assert.ok(extractKeywords('#ナルト 미나토').includes('나루토'), 'ナルト → 나루토');
+    assert.ok(extractKeywords('#ゴジラ 헤도라').includes('고질라'), 'ゴジラ → 고질라');
+    // 표에 없는 말은 그대로 남아야 함(임의로 바꾸면 안 됨)
+    assert.ok(extractKeywords('전혀 새로운 상품명').includes('새로운'));
+  });
+
+  check('matching-core: 굿스마일 브랜드명은 상품 구분 키워드에서 빠져야 함(메가하우스와 같은 처리)', () => {
+  const { extractKeywords } = require('./matching-core');
+  const kw = extractKeywords('굿스마일 POP UP PARADE 프리렌 피규어');
+  assert.ok(!kw.includes('굿스마일') && !kw.some(k => /GOODSMILE/i.test(k)), '브랜드명은 매칭 키워드에서 제외돼야 함');
+  assert.ok(kw.includes('프리렌'), '실제 상품명 키워드는 남아야 함');
+});
+
+  check('맞대결: 링크 종류 판별 — X/인스타 게시물 주소만 통과하고, 추적 파라미터는 걷어내야 함', () => {
+    const { classifyUrl } = require('./collect-by-link');
+
+    const x = classifyUrl('https://x.com/megahouse/status/1234567890?t=abc&s=20');
+    assert.strictEqual(x.ok, true);
+    assert.strictEqual(x.platform, 'twitter');
+    assert.strictEqual(x.url, 'https://x.com/megahouse/status/1234567890', '공유용 ?t=…&s=20이 붙어 있어도 정규화돼야 함');
+
+    assert.strictEqual(classifyUrl('https://twitter.com/a/status/99').platform, 'twitter', '옛 twitter.com 주소도 받아야 함');
+    assert.strictEqual(classifyUrl('https://www.instagram.com/p/CxYz123/').platform, 'instagram');
+    assert.strictEqual(classifyUrl('https://www.instagram.com/reel/CxYz123/').platform, 'instagram', '릴스도 게시물로 취급');
+
+    // 실패는 조용히 빠지지 않고 "왜 안 되는지"가 붙어 나와야 함 — 링크를 잘못 넣은 건지
+    // 도구가 실패한 건지 사람이 구분할 수 있어야 하므로.
+    for (const bad of ['', 'megahouse', 'https://x.com/megahouse', 'https://youtube.com/watch?v=1']) {
+      const r = classifyUrl(bad);
+      assert.strictEqual(r.ok, false, `${bad || '(빈 값)'}은 게시물 주소가 아님`);
+      assert.ok(r.error && r.error.length > 0, '왜 못 읽는지 이유가 있어야 함');
+    }
+  });
+
+  check('맞대결 리포트: 게시일이 벌어져도 훈계 없이 경과일·하루 평균이라는 사실만 보여줘야 함', () => {
+    const { buildMatchupReportHtml } = require('./matchup-report');
+    const collectedAt = '2026-09-08T00:00:00.000Z';
+    const html = buildMatchupReportHtml({
+      title: '토모에 넨도로이드 이벤트',
+      brandLabel: '굿스마일',
+      collectedAt,
+      pairs: [{
+        label: '토모에 이벤트',
+        // 당사 8/25, 경쟁사 8/20 — 실제 상황 그대로(경쟁사가 5일 먼저)
+        pw: { ok: true, platform: 'twitter', url: 'https://x.com/pw/status/1', account: 'pw', datetime: '2026-08-25T05:00:00.000Z', likes: '1,200', retweets: '300', comments: '40' },
+        bh: { ok: true, platform: 'twitter', url: 'https://x.com/bh/status/2', account: 'bh', datetime: '2026-08-20T02:00:00.000Z', likes: '1,500', retweets: '350', comments: '55' },
+      }],
+    });
+
+    assert.ok(html.includes('13.8일 전') && html.includes('18.9일 전'), '양쪽 경과일이 각각 표시돼야 함');
+    assert.ok(html.includes('하루 평균'), '노출 기간 차이를 감안할 참고치(하루 평균)가 있어야 함');
+    assert.ok(html.includes('1,200') && html.includes('1,500'), '원본 숫자가 주인공으로 남아야 함');
+    assert.ok(html.includes('twitter-tweet'), '게시물 미리보기(임베드)가 나란히 들어가야 함');
+    // 예전엔 "그대로 승패로 읽으면 안 됩니다" 경고 박스를 띄웠는데, 변명처럼 읽힌다는
+    // 피드백으로 뺐음. 날짜·경과일이라는 사실만 두고 판단은 사람 몫(2026-09-08).
+    assert.ok(!html.includes('그대로 승패로 읽으면'), '훈계하는 경고 박스는 없어야 함');
+  });
+
+  check('맞대결 리포트: 맨 위 전체 합산에 X+인스타가 더해져 나와야 함 (플랫폼별 소계까지)', () => {
+    const { buildMatchupReportHtml } = require('./matchup-report');
+    const html = buildMatchupReportHtml({
+      title: '토모에 넨도 이벤트', collectedAt: '2026-09-08T05:54:00.000Z',
+      pairs: [
+        { label: '토모에', pw: { ok: true, platform: 'instagram', url: 'https://www.instagram.com/p/A/', datetime: '2026-08-25T05:43:00.000Z', likes: '786', comments: '461', retweets: null },
+          bh: { ok: true, platform: 'instagram', url: 'https://www.instagram.com/p/B/', datetime: '2026-08-20T08:37:00.000Z', likes: '1,400', comments: '668', retweets: null } },
+        { label: '토모에', pw: { ok: true, platform: 'twitter', url: 'https://x.com/a/status/1', datetime: '2026-08-25T05:03:00.000Z', likes: '324', retweets: '612', quotes: '37', comments: '2' },
+          bh: { ok: true, platform: 'twitter', url: 'https://x.com/b/status/2', datetime: '2026-08-20T08:36:00.000Z', likes: '325', retweets: '544', quotes: '21', comments: '1' } },
+      ],
+    });
+
+    assert.ok(html.includes('전체 합산'), '맨 위에 통합 요약이 있어야 함');
+    assert.ok(html.includes('1,110') && html.includes('1,725'), '좋아요 합계 786+324 / 1400+325');
+    assert.ok(html.includes('2,222') && html.includes('2,959'), '총 반응(좋아요+리트윗+인용+댓글) 합계');
+    assert.ok(html.includes('좋아요 + 리트윗 + 인용 + 댓글'), '무엇을 더한 값인지 실제 들어간 지표로 적어야 함');
+    assert.ok(html.indexOf('전체 합산') < html.indexOf('1. 토모에'), '요약이 개별 쌍보다 위에 있어야 함');
+    assert.ok(html.includes('인스타그램</b>') && html.includes('X(트위터)</b>'), '플랫폼별 소계도 있어야 함');
+
+    // 같은 제목이 두 번 나오므로 어느 플랫폼 얘기인지 제목에서 구분돼야 함
+    assert.ok(/1\. 토모에 <span class="ptag">인스타그램/.test(html), '섹션 제목에 플랫폼이 붙어야 함');
+
+    // 리트윗은 X에만 있는 지표 — 인스타에 값이 없는 걸 "못 읽음"으로 세면
+    // 있지도 않은 문제가 합계 밑에 표시됨
+    assert.ok(!html.includes('못 읽어서 합계에서 빠짐'), '인스타에 리트윗이 없는 걸 누락으로 세면 안 됨');
+    assert.ok(!html.includes('읽을 수 없었음'), '인스타 섹션에서 리트윗 줄은 아예 빠져야 함');
+  });
+
+  check('맞대결 리포트: 인용(X 전용) 지표 + 쌍별 지표는 가로 열로, 인스타에는 칸 자체가 없어야 함', () => {
+    const { buildMatchupReportHtml } = require('./matchup-report');
+    const heads = html => [...html.matchAll(/<div class="mhead">([^<]+)</g)].map(m => m[1]);
+
+    const x = buildMatchupReportHtml({
+      title: 't', collectedAt: '2026-09-08T00:00:00.000Z',
+      pairs: [{ pw: { ok: true, platform: 'twitter', url: 'https://x.com/a/status/1', datetime: '2026-08-25T05:03:00.000Z', likes: '324', retweets: '612', quotes: '37', comments: '2' },
+                bh: { ok: true, platform: 'twitter', url: 'https://x.com/b/status/2', datetime: '2026-08-20T08:36:00.000Z', likes: '325', retweets: '544', quotes: '21', comments: '1' } }],
+    });
+    assert.deepStrictEqual(heads(x), ['❤️ 좋아요', '🔁 리트윗', '🗨️ 인용', '💬 댓글'], 'X는 인용까지 4칸이 가로로 놓여야 함');
+    assert.ok(x.includes('>37<') && x.includes('>21<'), '인용 수가 표시돼야 함');
+    assert.ok(x.includes('.metric-cols{display:grid'), '지표는 행이 아니라 가로 열로 배치돼야 함(스크롤 절약)');
+
+    // 인스타는 리트윗·인용이라는 개념 자체가 없음 — 칸을 만들어놓고 '-'로 두면
+    // "왜 안 읽혔지"로 헤매게 되므로 칸 자체가 없어야 함
+    const ig = buildMatchupReportHtml({
+      title: 't', collectedAt: '2026-09-08T00:00:00.000Z',
+      pairs: [{ pw: { ok: true, platform: 'instagram', url: 'https://www.instagram.com/p/A/', datetime: '2026-09-01T00:00:00.000Z', likes: '10', comments: '2' },
+                bh: { ok: true, platform: 'instagram', url: 'https://www.instagram.com/p/B/', datetime: '2026-09-01T00:00:00.000Z', likes: '5', comments: '1' } }],
+    });
+    assert.deepStrictEqual(heads(ig), ['❤️ 좋아요', '💬 댓글'], '인스타는 좋아요·댓글 2칸만');
+    assert.deepStrictEqual(
+      [...ig.matchAll(/<th>([^<]+)<\/th>/g)].map(m => m[1]),
+      ['🔥 총 반응', '❤️ 좋아요', '💬 댓글'],
+      '인스타만 넣은 리포트의 전체 합산에도 리트윗·인용 줄이 없어야 함');
+    assert.ok(ig.includes('좋아요 + 댓글') && !ig.includes('좋아요 + 리트윗'), '합산 설명도 실제 지표만 적어야 함');
+  });
+
+  check('맞대결 리포트: 본문 원문은 기본 접힘 + 임베드는 70%로 축소 (스크롤 절약)', () => {
+    const { buildMatchupReportHtml } = require('./matchup-report');
+    const html = buildMatchupReportHtml({
+      title: 't', collectedAt: '2026-09-08T00:00:00.000Z',
+      pairs: [{ pw: { ok: true, platform: 'twitter', url: 'https://x.com/a/status/1', datetime: '2026-09-06T00:00:00.000Z', likes: '1', retweets: '1', quotes: '0', comments: '1', text: '토모에 넨도로이드 RT 이벤트!' }, bh: null }],
+    });
+    assert.ok(html.includes('<details class="body-details">'), '본문은 <details>로 감싸 접혀 있어야 함');
+    assert.ok(!/<details class="body-details" open/.test(html), '기본이 펼침이면 안 됨(특수 상황용)');
+    assert.ok(html.includes('토모에 넨도로이드 RT 이벤트!'), '접혀 있어도 내용은 파일 안에 있어야 함');
+    assert.ok(html.includes('.embed-shrink{zoom:.7}'), '임베드는 70%로 축소돼야 함');
+  });
+
+  check('맞대결 리포트: 전체 스크린샷 버튼 — 여백 제외 + 파일명은 ASCII (한글이면 확장자까지 날아감)', () => {
+    const { buildMatchupReportHtml } = require('./matchup-report');
+    const html = buildMatchupReportHtml({
+      title: 't', collectedAt: '2026-09-08T00:00:00.000Z',
+      pairs: [{ pw: { ok: true, platform: 'twitter', url: 'https://x.com/a/status/1', datetime: '2026-09-06T00:00:00.000Z', likes: '1', retweets: '1', quotes: '0', comments: '1' }, bh: null }],
+    });
+    assert.ok(html.includes('captureAll()'), '리포트 전체를 찍는 버튼이 있어야 함');
+    assert.ok(html.includes(".capturing{padding:0!important}"), '전체 캡처 때 .wrap 여백이 사진에 흰 띠로 남지 않아야 함');
+    assert.ok(html.includes("el.classList.add('capturing')") && html.includes("el.classList.remove('capturing')"),
+      '여백은 찍는 동안만 없애고 되돌려야 함');
+    // Chromium은 file:// 페이지의 다운로드 파일명이 ASCII가 아니면 이름을 버리고
+    // 확장자도 없는 "download"로 저장함(브라우저로 실측) — 한글 파일명을 쓰면 안 됨
+    assert.ok(html.includes("'matchup-' + (ascii || 'report')"), '파일명은 ASCII로 만들어야 함');
+    assert.ok(!/a\.download = '[^']*[가-힣]/.test(html), '다운로드 파일명에 한글을 넣으면 안 됨');
+  });
+
+  check('맞대결 리포트: 우세/경합/약세 판정 — X에만 있는 리트윗은 인스타 판정에서 빠져야 함', () => {
+    const { verdictOf } = require('./matchup-report');
+    const ig = p => Object.assign({ platform: 'instagram' }, p);
+    const tw = p => Object.assign({ platform: 'twitter' }, p);
+
+    assert.strictEqual(verdictOf(ig({ likes: '100', comments: '10', retweets: null }), ig({ likes: '50', comments: '5', retweets: null })).text, '우세');
+    assert.strictEqual(verdictOf(ig({ likes: '10', comments: '1', retweets: null }), ig({ likes: '50', comments: '5', retweets: null })).text, '약세');
+    assert.strictEqual(verdictOf(tw({ likes: '100', retweets: '1', comments: '5' }), tw({ likes: '50', retweets: '9', comments: '5' })).text, '경합');
+    assert.strictEqual(verdictOf(null, null), null, '읽힌 지표가 하나도 없으면 판정하지 않음');
+  });
+
+  check('맞대결 리포트: 임베드가 안 뜨는 환경을 대비해 본문 앞부분이 파일에 들어가야 함', () => {
+    const { buildMatchupReportHtml } = require('./matchup-report');
+    const html = buildMatchupReportHtml({
+      title: 't', collectedAt: '2026-09-08T00:00:00.000Z',
+      pairs: [{ pw: { ok: true, platform: 'twitter', url: 'https://x.com/a/status/1', datetime: '2026-09-06T00:00:00.000Z', likes: '1', retweets: '1', comments: '1', text: '토모에 넨도로이드 발매 기념 RT 이벤트!' }, bh: null }],
+    });
+    assert.ok(html.includes('토모에 넨도로이드 발매 기념 RT 이벤트!'), '사내 차단·오프라인이면 임베드가 안 떠서 링크만 남음 — 본문이 있어야 함');
+    assert.ok(html.includes('capturePair'), '보고용 스크린샷 버튼이 있어야 함');
+  });
+
+  check('맞대결 리포트: 못 읽은 글은 0으로 채우지 않고 이유를 보여줘야 함', () => {
+    const { buildMatchupReportHtml } = require('./matchup-report');
+    const html = buildMatchupReportHtml({
+      title: '테스트', collectedAt: '2026-09-08T00:00:00.000Z',
+      pairs: [{
+        pw: { ok: true, platform: 'instagram', url: 'https://www.instagram.com/p/A/', datetime: '2026-09-06T00:00:00.000Z', likes: null, comments: '12', retweets: null },
+        bh: { ok: false, platform: 'twitter', url: 'https://x.com/bh/status/9', error: '읽기 실패: 비공개 계정' },
+      }],
+    });
+    assert.ok(html.includes('읽기 실패: 비공개 계정'), '실패한 링크는 왜 실패했는지 리포트에 남아야 함');
+    // 좋아요를 숨긴 인스타 글 + 실패한 X 글 → 좋아요는 양쪽 다 값이 없음
+    assert.ok(html.includes('읽을 수 없었음'), '숫자를 못 읽은 지표는 0이 아니라 "읽을 수 없었음"으로 나와야 함');
+    assert.ok(html.includes('>12<'), '읽힌 지표(댓글 12)는 정상적으로 나와야 함');
+    // 한쪽만 읽힌 지표를 막대로 그리면 그쪽이 100%를 채워서 "압승"으로 오해됨
+    assert.ok(html.includes('한쪽 숫자를 못 읽어서 비교는 못 합니다'), '한쪽만 읽힌 지표는 비교 불가라고 명시해야 함');
+    assert.ok(!/<div class="pw" style="width:100%">/.test(html), '한쪽만 읽혔는데 막대를 꽉 채우면 안 됨');
+  });
+
+  console.log(`\n(생성된 검증용 엑셀 파일: ${outPath} — 직접 열어서 표 형태도 확인 가능)`);
+  if (process.exitCode) {
+    console.error('\n일부 검증 실패');
+  } else {
+    console.log('\n전체 검증 통과');
+  }
+})();

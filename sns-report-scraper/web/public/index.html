@@ -1,0 +1,1020 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SNS 성과 리포트 대시보드</title>
+<style>
+/* 2026-09-10 화면 개편 — 세로 1열 나열을 "작업 고르기(카드) + 결과 열 고정"으로 바꿈.
+   근거가 된 진단 수치(1920×1080, 실제 분량 더미 데이터):
+     - 페이지 높이 3,115px = 2.88화면, 버튼→결과 거리 1,349~1,872px
+     - 본문 폭 1,000px 고정이라 좌우 460px씩(화면 48%)이 빈 채로 남음
+     - 설명문 면적이 조작 요소의 2.02배, 폭 15% 버튼이 혼자 한 줄 먹는 곳 7군데
+   자세한 진단·처방은 레포 루트 UI-리뉴얼-시-신경쓸것.md 절차를 따름 */
+*{box-sizing:border-box}
+body{margin:0;font-family:'Malgun Gothic',system-ui,sans-serif;background:#f4f6fb;color:#1f2937}
+button{border:1px solid #3b5bdb;background:#3b5bdb;color:#fff;font-size:13px;padding:8px 16px;border-radius:8px;cursor:pointer}
+button:hover{background:#2f4bc7}
+button:disabled{background:#c4cbe0;border-color:#c4cbe0;cursor:not-allowed}
+button.secondary{background:#fff;color:#3b5bdb}
+button.secondary:hover{background:#eef2ff}
+button.secondary:disabled{background:#f2f4f8;color:#a8b0c0;border-color:#e0e4ec}
+button.ghost{background:#fff;color:#374151;border-color:#d0d5e0}
+button.ghost:hover{background:#f2f5fb}
+button.big{font-size:15px;padding:13px 30px;font-weight:700}
+input,select,textarea{border:1px solid #d0d5e0;border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit}
+.muted{color:#9099a6}
+code{background:#eef1f6;border-radius:4px;padding:1px 5px;font-size:11px}
+
+/* 진단: 1920에서 좌우 460px씩(48%)이 비어 있었음 → 폭을 넓혀 2열로 씀 */
+.wrap{max-width:1560px;margin:0 auto;padding:20px 24px 32px}
+
+/* ── 머리줄: 제목 + 브랜드 + 로그인 상태를 한 줄로 ──
+   진단: 브랜드 패널은 가로 11%, 로그인 패널은 47%만 쓰면서 둘이 세로 305px을 먹었음 */
+.topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px}
+.topbar h1{font-size:18px;margin:0 10px 0 0;white-space:nowrap}
+.brand-tabs{display:flex;gap:6px;flex-wrap:wrap}
+.brand-tab{border:1px solid #d0d5e0;background:#fff;color:#374151;font-size:13px;font-weight:700;padding:7px 16px;border-radius:8px;cursor:pointer}
+.brand-tab:hover{background:#eef2ff}
+.brand-tab.active{background:#3b5bdb;border-color:#3b5bdb;color:#fff}
+.brand-tab .tag{display:block;font-size:10px;font-weight:400;opacity:.8;margin-top:2px}
+.ready{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:12px;color:#4b5563;flex-wrap:wrap}
+.dot{width:8px;height:8px;border-radius:50%;background:#c9ced8;display:inline-block;margin-right:5px}
+.dot.ok{background:#2f9e44}.dot.warn{background:#e8590c}
+.brand-note{font-size:12px;color:#6b7280;margin:0 0 14px;line-height:1.6}
+.brand-note.warn{color:#c0504d}
+.meta{color:#9099a6;font-size:11px}
+
+/* ── 본문 2열: 왼쪽 작업 / 오른쪽 결과(화면에 붙음) ──
+   진단: 버튼→결과 거리가 1,349~1,872px이었음 → 결과가 항상 보이게 */
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:18px;align-items:start}
+.deck-title{font-size:13px;font-weight:700;color:#374151;margin:0 0 10px}
+
+/* 자주 쓰는 2개는 큰 카드, 가끔 쓰는 것은 가로줄 — 크기 차이가 곧 사용 빈도 */
+.big-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.bigcard{background:#fff;border:1px solid #e4e8f0;border-radius:12px;padding:16px 18px;cursor:pointer;text-align:left;color:inherit;font:inherit;box-shadow:0 1px 3px rgba(0,0,0,.06);display:block;width:100%}
+.bigcard:hover{border-color:#93a3bf;background:#fbfcff}
+.bigcard.on{border-color:#3b5bdb;border-width:2px;padding:15px 17px;background:#f7f9ff}
+.bigcard .ttl{font-size:15px;font-weight:700;margin-bottom:8px}
+.bigcard .body{font-size:12px;color:#6b7280;line-height:1.7}
+.bigcard .eg{display:block;margin-top:8px;color:#9099a6}
+.rowsep{display:flex;align-items:center;gap:10px;font-size:11px;color:#9099a6;margin:0 0 10px}
+.rowsep::after{content:"";flex:1;height:1px;background:#e4e8f0}
+.row-cards{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.rowcard{background:#fff;border:1px solid #e4e8f0;border-radius:10px;padding:11px 14px;cursor:pointer;text-align:left;color:inherit;font:inherit;display:flex;align-items:center;gap:12px;width:100%}
+.rowcard:hover{border-color:#93a3bf;background:#fbfcff}
+.rowcard.on{border-color:#3b5bdb;background:#f7f9ff}
+.rowcard .ttl{font-size:13px;font-weight:700;white-space:nowrap}
+.rowcard .body{font-size:12px;color:#6b7280;flex:1;min-width:0}
+.rowcard .arrow{color:#9099a6;font-size:14px}
+/* 카드는 작업을 고르기만 하는 버튼이라 작업 중에도 잠그지 않음 — 색만 유지 */
+.bigcard:disabled,.rowcard:disabled,.brand-tab:disabled{cursor:pointer}
+
+/* ── 작업 화면 ── */
+.work{background:#fff;border-radius:12px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.work h2{font-size:15px;margin:0 0 4px}
+.work .lead{font-size:12px;color:#6b7280;margin:0 0 14px;line-height:1.6}
+.pane{display:none}
+.pane.on{display:block}
+.step{font-size:13px;font-weight:700;color:#374151;margin:0 0 8px}
+
+.period-choices{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.period-choices label{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;padding:8px 10px;border:1px solid #e4e8f0;border-radius:8px;cursor:pointer}
+.period-choices label:hover{background:#f7f9ff}
+.period-choices label.picked{border-color:#3b5bdb;background:#eef2ff}
+.period-choices label.disabled{opacity:.5;cursor:not-allowed}
+.period-choices input[type=radio]{margin-top:2px;width:auto;min-width:auto}
+.period-choices .hint{display:block;color:#9099a6;font-size:11px;margin-top:2px}
+
+/* 진단: 폭 15%짜리 버튼이 혼자 한 줄을 먹는 곳이 7군데 → 버튼을 요약줄과 같은 줄에 */
+.actbar{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+.summary{font-size:12px;color:#6b7280;background:#f7f9ff;border:1px solid #e4e8f0;border-radius:8px;padding:8px 12px;flex:1;min-width:240px;line-height:1.6}
+
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:12px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field>span{font-size:12px;color:#374151}
+.field input,.field select,.field textarea{width:100%}
+.span2{grid-column:1 / -1}
+.checkline{display:flex;align-items:center;gap:6px;font-size:12px;color:#374151}
+.checkline input{width:auto;min-width:auto}
+.field.inline{flex-direction:row;align-items:center;padding-top:18px}
+
+/* 설명은 지우지 않고 접되 접은 상태를 기억 — 진단상 설명이 조작의 2.02배인데
+   가장 큰 블록이 12%뿐이라, 기본 펼침만 두면 면적이 그대로임 */
+details.more{margin-top:12px;border-top:1px solid #eef0f4;padding-top:10px}
+details.more summary{cursor:pointer;font-size:12px;color:#6b7280}
+details.more .in{font-size:12px;color:#6b7280;line-height:1.7;margin-top:8px}
+
+.matchup-pair{display:grid;grid-template-columns:24px 1fr 1fr;gap:10px;align-items:end;margin-bottom:8px}
+.matchup-pair .mp-num{font-size:12px;color:#9099a6;font-weight:700;text-align:center;padding-bottom:9px}
+.matchup-pair label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#374151}
+.matchup-pair input{width:100%}
+
+/* ── 오른쪽 결과 열: 화면에 붙되 화면보다 커지지 않게(안쪽만 스크롤) ── */
+.side{position:sticky;top:20px;display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 40px)}
+.sidebox{background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column;min-height:0}
+.sidebox h2{font-size:14px;margin:0 0 4px;display:flex;align-items:center;gap:8px}
+.pill{font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px;background:#eef1f6;color:#6b7280;white-space:nowrap}
+.pill.run{background:#fff4e0;color:#a8620a}
+.pill.done{background:#e7f5ed;color:#1b7f4a}
+.pill.err{background:#fdecec;color:#c0392b}
+#log{background:#0f1117;color:#d5f5e3;font-family:monospace;font-size:11px;white-space:pre-wrap;border-radius:8px;padding:10px;margin-top:8px;overflow-y:auto;max-height:220px;line-height:1.5;display:none}
+.report-list{list-style:none;margin:8px 0 0;padding:0;font-size:12px;overflow-y:auto;min-height:0}
+.report-list li{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f4f6fb}
+.report-list .kind{font-size:10px;font-weight:700;border-radius:5px;padding:2px 6px;background:#eef2ff;color:#3b5bdb;flex:none}
+.report-list .kind.xls{background:#e7f5ed;color:#1b7f4a}
+.report-list .kind.vs{background:#fdecec;color:#c0392b}
+.report-list .kind.old{background:#f2f4f8;color:#9099a6}
+.report-list a{color:#3b5bdb;text-decoration:none;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.report-list a:hover{text-decoration:underline}
+.report-list .when{color:#9099a6;font-size:11px;flex:none}
+.note{background:#fff9db;border:1px solid #ffe066;border-radius:8px;padding:9px 12px;font-size:11px;color:#665500;line-height:1.6}
+
+@media (max-width:1200px){.cols{grid-template-columns:1fr}.side{position:static;max-height:none}}
+@media (max-width:820px){.big-cards,.fields,.period-choices{grid-template-columns:1fr}.matchup-pair{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <h1>📊 SNS 성과 리포트 대시보드</h1>
+    <div class="brand-tabs" id="brandTabs">불러오는 중...</div>
+    <div class="ready">
+      <span><span class="dot" id="dot-twitter"></span><span id="text-twitter">확인 중...</span></span>
+      <span><span class="dot" id="dot-instagram"></span><span id="text-instagram">확인 중...</span></span>
+      <button class="ghost" id="loginToggleBtn" onclick="toggleLoginBox()">로그인 관리</button>
+    </div>
+  </div>
+  <div class="brand-note" id="brandNote"></div>
+
+  <!-- 화면이 크게 바뀌었으니 접속만으로 알 수 있게 안내. 만료일을 박아둬서 기간이 지나면
+       저절로 안 뜨고(나중에 지우러 들어올 필요 없음), "봤음"이 아니라 다시 볼 시각을
+       저장해서 "하루만 그만보기"가 값 하나로 해결되게 함. 버튼을 눌러야만 저장되므로
+       그냥 넘어가면 다음 접속 때 다시 보임. -->
+  <div class="note" id="whatsNew" style="display:none;margin-bottom:14px">
+    <b>화면이 바뀌었어요.</b> 세로로 길게 늘어놓던 것을 <b>①위에서 할 일을 고르고 → ②아래에서 설정하고 →
+    ③오른쪽에서 결과를 보는</b> 방식으로 정리했어요. 기능은 그대로 다 있고, 없어진 건 없습니다.
+    <br>· <b>"다시 수집하지 않고 리포트만 다시 만들기"</b>는 없어진 게 아니라
+    <b>[📊 기간 지정 SNS 비교]</b> 화면 안의 두 번째 버튼으로 들어갔어요(키워드를 두 번 입력할 필요가 없어졌습니다).
+    <br>· <b>로그인</b>은 오른쪽 위 <b>[로그인 관리]</b>에 있고, 로그인이 풀리면 저절로 펼쳐집니다.
+    <div class="actbar" style="margin-top:8px">
+      <button class="ghost" onclick="dismissWhatsNew(1)">하루 동안 그만 보기</button>
+      <button class="ghost" onclick="dismissWhatsNew(3650)">다시 보지 않기</button>
+    </div>
+  </div>
+
+  <div class="work" id="loginBox" style="display:none;margin-bottom:14px">
+    <h2>로그인 관리</h2>
+    <p class="lead">
+      실적을 수집하려면 트위터/인스타그램에 로그인된 상태(세션)가 필요해요. 한 번 로그인해두면
+      며칠~몇 주 정도는 계속 쓸 수 있고, 풀리면 수집할 때 로그인 화면이 계속 뜨는 식으로 알 수 있어요.
+    </p>
+    <div class="actbar" style="margin-top:0">
+      <button class="secondary" onclick="startLogin('twitter')">트위터 로그인하기</button>
+      <button class="secondary" onclick="startLogin('instagram')">인스타그램 로그인하기</button>
+      <button id="confirmLoginBtn" style="display:none" onclick="confirmLogin()">로그인 완료했어요</button>
+    </div>
+    <p class="lead" id="loginHelp" style="display:none;margin:10px 0 0">
+      버튼을 누르면 이 컴퓨터에 실제 브라우저 창이 새로 뜰 거예요. 그 창에서 평소처럼 직접
+      로그인(2단계 인증 있으면 그것도 그대로)하고, 다 되면 "로그인 완료했어요" 버튼을 눌러주세요.
+    </p>
+    <div class="note" style="margin-top:12px">
+      이 화면은 <b>이 컴퓨터 안에서만</b> 동작해요. 다른 컴퓨터·팀원은 이 주소로 못 들어오고,
+      각자 자기 컴퓨터에서 이 프로그램을 따로 실행해야 해요. 로그인 정보도 이 컴퓨터 밖으로
+      전송되지 않고 여기 파일로만 저장돼요.
+    </div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <div class="deck-title">무엇을 하시겠어요?</div>
+      <div class="big-cards" id="bigCards">
+        <button class="bigcard on" data-pane="period" onclick="pickPane(this)">
+          <div class="ttl">📊 기간 지정 SNS 비교</div>
+          <div class="body">날짜를 정하면 그 기간 우리 글·경쟁사 글을 전부 모아 나란히 놓습니다
+            <span class="eg">평소 쓰는 게 이거예요</span></div>
+        </button>
+        <button class="bigcard" data-pane="matchup" onclick="pickPane(this)">
+          <div class="ttl">⚔️ 게시글 맞대결</div>
+          <div class="body">링크 넣은 글끼리만 1:1로. 날짜가 서로 달라도 됩니다
+            <span class="eg">예) 우리 이벤트 글 vs 경쟁사 이벤트 글</span></div>
+        </button>
+      </div>
+
+      <div class="rowsep">가끔 쓰는 것</div>
+      <div class="row-cards">
+        <button class="rowcard" data-pane="account" onclick="pickPane(this)">
+          <span class="ttl">🔍 계정 하나 단독 보기</span>
+          <span class="body">비교 없이 계정 하나의 글과 반응만 뽑아봅니다 · 예) 새로 생긴 계정이 뭘 올리는지 볼 때</span>
+          <span class="arrow">›</span>
+        </button>
+        <button class="rowcard" data-pane="periods" onclick="pickPane(this)">
+          <span class="ttl">📅 기간끼리 증감 비교</span>
+          <span class="body">이미 수집해둔 기간을 나란히 놓고 늘었는지 줄었는지 봅니다 · 새로 수집 안 해요</span>
+          <span class="arrow">›</span>
+        </button>
+        <button class="rowcard" data-pane="notion" onclick="pickPane(this)">
+          <span class="ttl">📋 노션으로 보내기</span>
+          <span class="body">방금 만든 리포트의 표를 스크린샷이 아니라 진짜 노션 표로 만듭니다 · 검색·정렬·편집 가능</span>
+          <span class="arrow">›</span>
+        </button>
+        <button class="rowcard" id="stockCard" data-pane="stock" onclick="pickPane(this)">
+          <span class="ttl">📦 오늘 재고 기록</span>
+          <span class="body">재고는 "지금" 것만 볼 수 있어서, 오늘 안 찍으면 영영 못 봐요 · SNS 수집 땐 자동으로 같이 찍힘</span>
+          <span class="arrow">›</span>
+        </button>
+      </div>
+
+      <div class="work">
+        <!-- ① 기간 지정 SNS 비교 -->
+        <div class="pane on" id="pane-period">
+          <h2>📊 기간 지정 SNS 비교</h2>
+          <p class="lead">자사(PW)와 경쟁사(BH)의 게시물을 모아서 비교 리포트를 만들어요.
+            인터넷을 오가며 실제로 읽어오는 거라 보통 <b>몇 분</b> 걸립니다.</p>
+
+          <div class="step">① 어느 기간을 볼까요?</div>
+          <div class="period-choices" id="periodChoices"></div>
+          <div class="fields" id="customRange" style="display:none">
+            <label class="field"><span>시작일</span>
+              <input type="date" id="rangeStart" onchange="document.getElementById('rangeEnd').value = this.value; updateCollectSummary()"></label>
+            <label class="field"><span>종료일 (이 날짜도 포함돼요)</span>
+              <input type="date" id="rangeEnd" onchange="updateCollectSummary()"></label>
+          </div>
+
+          <div class="actbar">
+            <button class="big" onclick="collectFromChoice()">② 수집 시작</button>
+            <span class="summary" id="collectSummary"></span>
+          </div>
+
+          <div class="fields">
+            <label class="field"><span>플랫폼</span>
+              <select id="collectPlatform" onchange="updateCollectSummary()"><option value="">둘 다</option><option value="twitter">트위터만</option><option value="instagram">인스타그램만</option></select></label>
+            <label class="field"><span>🔍 키워드 1단어 (선택)</span>
+              <input type="text" id="collectKeyword" placeholder="비워두면 전체 · 예: 은혼" oninput="updateCollectSummary()"></label>
+            <label class="field"><span title="넣어도 첫 화면은 SNS만 보입니다 — 재고는 리포트 맨 위 [📦 재고 비교] 탭 안에 들어갑니다.">재고 표시</span>
+              <select id="stockMode" onchange="updateCollectSummary()">
+                <option value="ratio" selected>📦 재고 탭 함께 넣기 (개수 비공개)</option>
+                <option value="none">아예 빼기 (SNS만, 외부 공유용)</option>
+              </select></label>
+            <label class="field inline" title="재고는 지금 시점만 조회할 수 있어서, 안 찍고 지나간 날은 나중에 되돌릴 수 없어요.">
+              <span class="checkline"><input type="checkbox" id="withStock" checked onchange="updateCollectSummary()">
+                재고도 같이 기록 <span class="muted">(권장)</span></span></label>
+          </div>
+
+          <div class="actbar" style="border-top:1px solid #eef0f4;padding-top:12px">
+            <button class="secondary" onclick="rebuild()">수집 없이 리포트만 다시 만들기</button>
+            <span class="muted" style="font-size:12px">방금 모아둔 데이터로 몇 초 만에 다시 만들어요(인터넷 접속 없음).
+              위 <b>키워드·재고 표시</b>가 그대로 적용되니, 키워드만 바꿔서 다시 볼 때 쓰면 좋아요.</span>
+          </div>
+
+          <details class="more" data-key="period">
+            <summary>이 기능 설명 자세히 보기</summary>
+            <div class="in">
+              상품명은 게시물 본문에서 자동으로 뽑아 비슷한 것끼리 짝지어요. 표현이 다르거나 못 뽑은 글은
+              리포트의 "매칭 안 됨" 목록에 따로 남습니다 — 조용히 빠지지 않아요.<br>
+              재고를 "같이 기록"으로 두는 걸 권합니다 — 재고는 지금 시점만 조회할 수 있어서, 안 찍고
+              지나간 날은 나중에 되돌릴 수 없어요.
+            </div>
+          </details>
+        </div>
+
+        <!-- ② 게시글 맞대결 -->
+        <div class="pane" id="pane-matchup">
+          <h2>⚔️ 게시글 맞대결</h2>
+          <p class="lead">비교하고 싶은 글 링크만 넣으세요. <b>양쪽 게시일이 서로 달라도 됩니다.</b>
+            기간 수집과 달리 넣어준 주소만 바로 열기 때문에 몇 주 전 글이어도 금방 끝나요.</p>
+          <div class="fields" style="margin-top:0">
+            <label class="field span2"><span>이 맞대결의 이름</span>
+              <input type="text" id="matchupTitle" placeholder="리포트에 표시될 이름"></label>
+          </div>
+          <div id="matchupPairs" style="margin-top:12px"></div>
+          <div class="actbar">
+            <button class="big" onclick="runMatchup()">⚔️ 맞대결 리포트 만들기</button>
+            <button class="secondary" onclick="addMatchupPair()">＋ 한 쌍 더</button>
+            <span class="summary" id="matchupSaved"></span>
+          </div>
+          <details class="more" data-key="matchup">
+            <summary>이 기능 설명 자세히 보기 · 입력 지우기</summary>
+            <div class="in">
+              X(트위터)·인스타그램 링크 둘 다 됩니다(섞어도 돼요). 한쪽만 넣어도 만들어져요.<br>
+              게시일이 다르면 먼저 올린 쪽이 더 오래 노출된 상태라, 리포트에 <b>경과일</b>이 같이 표시됩니다.<br>
+              인스타그램은 좋아요를 숨긴 게시물이면 좋아요 수를 못 읽어요(댓글 수만 나옴).
+              <div class="actbar">
+                <button class="ghost" onclick="resetMatchup()" title="입력한 이름·링크와 쌍 개수를 모두 지우고 처음 상태로 되돌립니다.">입력 전부 지우기(초기화)</button>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- ③ 계정 하나 단독 보기 -->
+        <div class="pane" id="pane-account">
+          <h2>🔍 계정 하나 단독 보기</h2>
+          <p class="lead">자사·경쟁사 비교가 아니라, 트위터 계정 하나만 골라서 그 계정 게시물 성과만
+            순위표로 보고 싶을 때 사용해요.</p>
+          <div class="fields" style="margin-top:0">
+            <label class="field"><span>계정 핸들 (@ 없이)</span><input type="text" id="acctHandle" placeholder="예: GoodsmileP"></label>
+            <label class="field"><span>시작일</span><input type="date" id="acctStart"></label>
+            <label class="field"><span>종료일</span><input type="date" id="acctEnd"></label>
+            <label class="field inline"><span class="checkline"><input type="checkbox" id="acctPlaintext"> 글 내용만 (지표 없이)</span></label>
+          </div>
+          <div class="actbar">
+            <button class="big" onclick="collectAccount()">이 계정 수집</button>
+            <span class="summary">트위터 계정만 가능해요 · 기간이 길면 오래 걸립니다</span>
+          </div>
+        </div>
+
+        <!-- ④ 기간끼리 증감 비교 -->
+        <div class="pane" id="pane-periods">
+          <h2>📅 기간끼리 증감 비교</h2>
+          <p class="lead">예: 6/10~13, 6/18~22처럼 사이에 공백이 있는 여러 기간을 각각 미리 모아뒀다면,
+            그 기간들을 나란히 비교하는 표를 만들어요. 새로 수집하지 않아요.</p>
+          <div class="fields" style="margin-top:0">
+            <label class="field span2"><span>비교할 기간 — "시작일_종료일" 형태로 한 줄에 하나 (2개 이상)</span>
+              <textarea id="periodsInput" rows="3" placeholder="2026-06-10_2026-06-13&#10;2026-06-18_2026-06-22" style="font-family:monospace;font-size:12px"></textarea></label>
+          </div>
+          <div class="actbar">
+            <button class="big" onclick="comparePeriods()">기간별로 비교하기</button>
+            <span class="summary">미리 "기간 지정 SNS 비교"로 모아둔 기간만 쓸 수 있어요</span>
+          </div>
+        </div>
+
+        <!-- ⑤ 노션으로 보내기 -->
+        <div class="pane" id="pane-notion">
+          <h2>📋 노션으로 보내기</h2>
+          <p class="lead">방금 만든 리포트의 표를 스크린샷이 아니라 진짜 노션 표로 만들어줘요(검색·정렬·편집 가능).</p>
+          <div class="actbar" style="margin-top:0">
+            <button class="big" onclick="copyMarkdownForNotion()">📋 노션용 표 복사하기</button>
+            <button class="secondary" onclick="exportNotion()">노션으로 자동 전송</button>
+          </div>
+          <details class="more" data-key="notion">
+            <summary>두 버튼의 차이 보기</summary>
+            <div class="in">
+              <b>복사하기</b>: 버튼 누르면 바로 클립보드에 복사돼요 — 노션 페이지에서 <b>Ctrl+V</b>만
+              누르면 끝(연동 설정 필요 없음).<br>
+              <b>자동 전송</b>: 노션 연동을 미리 설정해뒀다면 클릭 한 번으로 전송돼요(처음 한 번은 새
+              페이지 생성, 그다음부턴 같은 페이지 내용만 갱신 — 노션에서 손으로 맞춘 칸 너비가 계속
+              유지돼요). <code>notion-config.json</code> 파일이 없으면 실패 메시지가 떠요.
+            </div>
+          </details>
+        </div>
+
+        <!-- ⑥ 오늘 재고 기록 -->
+        <div class="pane" id="pane-stock">
+          <h2>📦 오늘 재고 기록</h2>
+          <p class="lead">네이버 스토어의 지금 재고만 기록해요. SNS 수집(몇 분)과 로그인 없이 수십 초면 끝나요.</p>
+          <div class="actbar" style="margin-top:0">
+            <button class="big" onclick="stockSnapshot()">📦 오늘 재고 찍기</button>
+            <span class="summary">추이 그래프는 같은 상품이 <b>2번 이상</b> 기록돼야 나와요 ·
+              SNS 수집을 할 때는 재고도 자동으로 같이 기록되니 그때는 따로 누르지 않아도 돼요</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 오른쪽: 결과 (항상 보임) ── -->
+    <div class="side">
+      <div class="sidebox">
+        <h2>진행 상황 <span class="pill" id="jobPill">대기 중</span></h2>
+        <div class="muted" style="font-size:12px" id="jobLabel">아직 실행한 작업이 없어요.</div>
+        <div id="jobStatus" style="font-size:12px;color:#4b5563;margin-top:4px"></div>
+        <div class="actbar" style="margin-top:8px">
+          <button class="ghost" id="cancelBtn" style="display:none" onclick="cancelJob()">작업 취소</button>
+        </div>
+        <div id="log"></div>
+      </div>
+
+      <div class="sidebox" style="flex:1;min-height:0">
+        <h2>만들어진 리포트 <span class="pill" id="reportCount"></span></h2>
+        <div class="meta">받아서 메일·메신저로 그대로 공유할 수 있어요(서버 공유 아님)</div>
+        <ul class="report-list" id="reportList"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let evtSource = null;
+let jobRunning = false;
+// 선택된 브랜드는 화면을 새로 열어도 유지되게 브라우저에 저장해둠(값 변경 → 화면 반영 → 저장).
+let brands = [];
+let currentBrand = localStorage.getItem('snsReportBrand') || '';
+// 브랜드를 빠르게 바꾸면 먼저 보낸 요청의 응답이 나중에 도착해서 **이전 브랜드 화면이
+// 최신 화면을 덮어쓰는** 문제가 있었음(굿스마일을 골랐는데 메가하우스 기간 목록이 남음).
+// 요청마다 번호를 매겨서, 응답이 왔을 때 그 사이 다른 브랜드를 골랐으면 그 응답은 버림.
+let brandRequestSeq = 0;
+
+function brandQuery() {
+  return currentBrand ? ('?brand=' + encodeURIComponent(currentBrand)) : '';
+}
+function withBrand(body) {
+  return Object.assign({ brand: currentBrand || undefined }, body || {});
+}
+
+// ── 작업 고르기(카드) ──
+// 카드를 누르면 그 작업 화면만 보여줌. 어느 작업을 보고 있었는지는 기억해서, 새로고침해도
+// 하던 자리로 돌아오게 함.
+function pickPane(btn) {
+  const key = btn.dataset.pane;
+  document.querySelectorAll('.bigcard, .rowcard').forEach(b => b.classList.toggle('on', b === btn));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'pane-' + key));
+  try { localStorage.setItem('snsReportPane', key); } catch (e) { /* 저장이 막혀 있어도 화면 전환은 됨 */ }
+}
+
+function showPaneByKey(key) {
+  const btn = document.querySelector('[data-pane="' + key + '"]');
+  if (btn && btn.style.display !== 'none') pickPane(btn);
+}
+
+function toggleLoginBox() {
+  const box = document.getElementById('loginBox');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+
+async function loadBrands() {
+  const box = document.getElementById('brandTabs');
+  try {
+    const res = await fetch('/api/brands');
+    // ⚠️ 여기서 실패하면 화면이 "불러오는 중..."에서 영영 멈춰 보였음(실제로 겪음).
+    // 가장 흔한 원인은 update.bat으로 화면 파일만 새로 받고 도구(검은 창)를 재시작하지 않은 것 —
+    // 화면은 새 버전인데 서버는 옛날 코드라 이 기능(/api/brands)이 아직 없어서 404가 남.
+    // 원인을 모른 채 기다리게 두지 말고 무엇을 하면 되는지 화면에 바로 알려줌.
+    if (!res.ok) throw new Error('서버 응답 ' + res.status);
+    brands = await readJson(res);
+    if (brands.length === 0) { box.textContent = '브랜드 설정 파일(brands/*.json)이 없어요.'; return; }
+    if (!brands.some(b => b.key === currentBrand)) currentBrand = brands[0].key;
+    renderBrandTabs();
+    await selectBrand(currentBrand);
+  } catch (e) {
+    box.innerHTML = '⚠️ 브랜드 목록을 불러오지 못했어요.<br>' +
+      '<b>도구를 껐다 켜면 대부분 해결돼요</b> — 검은 창을 닫고 <code>start-dashboard.bat</code>을 다시 실행한 뒤, ' +
+      '이 화면에서 <b>Ctrl+Shift+R</b>로 새로고침해주세요.<br>' +
+      '<span class="meta">(업데이트로 화면 파일만 새로 받고 도구를 재시작하지 않으면 이 상태가 됩니다 · 오류: ' + e.message + ')</span>';
+  }
+}
+
+function renderBrandTabs() {
+  const box = document.getElementById('brandTabs');
+  box.innerHTML = '';
+  brands.forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = 'brand-tab' + (b.key === currentBrand ? ' active' : '');
+    btn.innerHTML = b.label + (b.ready ? '' : '<span class="tag">계정 설정 필요</span>');
+    btn.onclick = () => selectBrand(b.key);
+    box.appendChild(btn);
+  });
+}
+
+async function selectBrand(key) {
+  currentBrand = key;
+  localStorage.setItem('snsReportBrand', key);
+  renderBrandTabs();
+  await refreshStatus();
+  await refreshReports();
+}
+
+function renderDatePresets(brandInfo) {
+  const box = document.getElementById('periodChoices');
+  if (!box) return;
+  const presets = (brandInfo && brandInfo.datePresets) || [];
+  const last = brandInfo && brandInfo.lastRun;
+
+  // 기간을 "버튼 여러 개"가 아니라 "고르는 목록"으로 둠 — 실행 버튼은 [수집 시작]
+  // 하나뿐이라, 처음 보는 사람도 "고른다 → 시작한다" 두 단계로만 읽힘.
+  const choices = presets.map(pr => ({
+    id: pr.id,
+    label: pr.label + (pr.id === 'today' ? ' 하루' : ''),
+    hint: pr.days ? ('오늘부터 ' + pr.days + '일 전까지') : '오늘 하루만',
+    days: pr.days,
+  }));
+  choices.push({
+    id: 'since-last',
+    label: '지난번 수집 이후 새로 올라온 것 전부',
+    hint: last ? ('마지막 수집(' + last.endDate + ') 다음날부터 오늘까지') : '아직 이 브랜드로 수집한 적이 없어서 쓸 수 없어요',
+    disabled: !last,
+  });
+  choices.push({ id: 'custom', label: '날짜를 직접 고를래요', hint: '아래에 시작일·종료일을 입력해요' });
+
+  box.innerHTML = choices.map(c => (
+    '<label class="' + (c.disabled ? 'disabled' : '') + '">' +
+    '<input type="radio" name="periodChoice" value="' + c.id + '"' +
+    (c.days ? ' data-days="' + c.days + '"' : '') +
+    (c.disabled ? ' disabled' : '') + '>' +
+    '<span>' + c.label + '<span class="hint">' + c.hint + '</span></span></label>'
+  )).join('');
+
+  box.querySelectorAll('input[name=periodChoice]').forEach(r => {
+    r.addEventListener('change', onPeriodChoiceChange);
+  });
+  // 브랜드 기본값을 미리 골라둠(메가=오늘, 굿스마=직접 지정)
+  const preferred = (brandInfo && brandInfo.defaultDateMode === 'today') ? 'today' : (choices[0] && choices[0].id);
+  const target = box.querySelector('input[value="' + preferred + '"]:not([disabled])') || box.querySelector('input:not([disabled])');
+  if (target) { target.checked = true; }
+  onPeriodChoiceChange();
+}
+
+function selectedPeriod() {
+  const el = document.querySelector('input[name=periodChoice]:checked');
+  return el ? { id: el.value, days: el.dataset.days ? parseInt(el.dataset.days, 10) : null } : null;
+}
+
+function onPeriodChoiceChange() {
+  document.querySelectorAll('.period-choices label').forEach(l => {
+    l.classList.toggle('picked', !!l.querySelector('input:checked'));
+  });
+  const sel = selectedPeriod();
+  // 날짜 입력칸은 "직접 고르기"를 골랐을 때만 보여줌 — 평소 화면을 짧게 유지
+  document.getElementById('customRange').style.display = (sel && sel.id === 'custom') ? '' : 'none';
+  updateCollectSummary();
+}
+
+// 누르기 전에 "무엇이 실행되는지" 한 줄로 보여줌 — 몇 분짜리 작업을 잘못 눌러 날리는 것 방지
+function updateCollectSummary() {
+  const el = document.getElementById('collectSummary');
+  if (!el) return;
+  const sel = selectedPeriod();
+  if (!sel) { el.textContent = ''; return; }
+
+  let period = '';
+  if (sel.id === 'today') period = '오늘 하루';
+  else if (sel.id === 'since-last') period = '지난번 수집 이후 전부';
+  else if (sel.id === 'custom') {
+    const a = document.getElementById('rangeStart').value;
+    const b = document.getElementById('rangeEnd').value;
+    period = (a && b) ? (a + ' ~ ' + b) : '날짜를 입력해주세요';
+  } else if (sel.days) {
+    const end = new Date();
+    const start = new Date(end.getTime() - (sel.days - 1) * 86400000);
+    const fmt = d => d.toISOString().slice(0, 10);
+    period = fmt(start) + ' ~ ' + fmt(end);
+  }
+
+  const platformSel = document.getElementById('collectPlatform').value;
+  const platform = platformSel === 'twitter' ? '트위터만' : platformSel === 'instagram' ? '인스타만' : '트위터+인스타';
+  const kw = (document.getElementById('collectKeyword').value || '').trim();
+  const stock = document.getElementById('withStock').checked ? '재고 함께 기록' : '재고 기록 안 함';
+  const stockShow = document.getElementById('stockMode').value === 'ratio' ? '리포트에 재고 탭 포함' : '리포트는 SNS만';
+  el.textContent = [period, platform, stock, stockShow, kw ? ('키워드 "' + kw + '"') : '키워드 없음'].join(' · ');
+}
+
+// 한국어 조사 처리 — 받침이 있으면 "은", 없으면 "는" (예: 굿스마일'은', 메가하우스'는')
+function withParticle(word, withFinal, withoutFinal) {
+  const last = (word || '').trim().slice(-1);
+  const code = last ? last.charCodeAt(0) : 0;
+  const isHangul = code >= 0xac00 && code <= 0xd7a3;
+  const hasFinal = isHangul && (code - 0xac00) % 28 !== 0;
+  return word + (hasFinal ? withFinal : withoutFinal);
+}
+
+function renderBrandNote(brandInfo) {
+  const note = document.getElementById('brandNote');
+  if (!brandInfo) { note.textContent = ''; return; }
+  if (brandInfo.error) { note.className = 'brand-note warn'; note.textContent = '⚠️ ' + brandInfo.error; return; }
+  if (!brandInfo.ready) {
+    note.className = 'brand-note warn';
+    note.innerHTML = '⚠️ <b>' + brandInfo.label + '</b>' + withParticle(brandInfo.label, '은', '는').slice(brandInfo.label.length) + ' 아직 수집할 계정이 설정되지 않았어요 — <code>brands/' + brandInfo.key + '.json</code> 파일의 own/competitors에 계정 아이디(@ 없이)를 넣어주세요(이 파일은 업데이트해도 안 덮어써져요).';
+    return;
+  }
+  note.className = 'brand-note';
+  const bits = [];
+  bits.push('계정 ' + brandInfo.accounts + '개');
+  bits.push(brandInfo.hasStock ? '네이버 재고 연동 있음' : '네이버 재고 연동 없음');
+  bits.push(brandInfo.lastRun ? ('마지막 수집: ' + brandInfo.lastRun.startDate + ' ~ ' + brandInfo.lastRun.endDate) : '수집 기록 없음');
+  note.textContent = brandInfo.label + ' · ' + bits.join(' · ');
+}
+
+// 브랜드에 따라 카드 구성이 달라짐 — 재고를 안 쓰는 브랜드에 재고 카드를 남겨두면
+// 눌러봐야 할 일이 없는 버튼이 되고, 게시가 뜨문한 브랜드는 맞대결을 더 자주 씀.
+function applyBrandToCards(brandInfo) {
+  if (!brandInfo || brandInfo.error) return;
+  const stockCard = document.getElementById('stockCard');
+  const hide = !brandInfo.hasStock;
+  stockCard.style.display = hide ? 'none' : '';
+  // 숨긴 카드를 보고 있었으면 기본 화면으로 돌려놓음(빈 화면이 남지 않게)
+  if (hide && stockCard.classList.contains('on')) showPaneByKey('period');
+
+  const deck = document.getElementById('bigCards');
+  const cards = [...deck.children];
+  const matchupShouldBeFirst = !brandInfo.hasStock; // 재고를 안 쓰는 브랜드 = 정기 수집보다 맞대결 위주
+  const matchupIsFirst = cards[0].dataset.pane === 'matchup';
+  if (matchupShouldBeFirst !== matchupIsFirst) deck.appendChild(cards[0]);
+}
+
+// 작업 중에는 실행 버튼을 잠그되, 결과 열의 [작업 취소]·[로그인 완료]와
+// **작업을 고르기만 하는 카드/브랜드 탭/로그인 관리**는 잠그지 않음
+// — 잠그면 진행 중에 다른 화면을 들여다보지도 못하고, 취소도 못 하게 됨.
+function setButtonsDisabled(disabled) {
+  document.querySelectorAll('button').forEach(b => {
+    if (b.id === 'cancelBtn' || b.id === 'confirmLoginBtn' || b.id === 'loginToggleBtn') return;
+    if (b.classList.contains('bigcard') || b.classList.contains('rowcard') || b.classList.contains('brand-tab')) return;
+    b.disabled = disabled;
+  });
+  document.getElementById('cancelBtn').style.display = disabled ? '' : 'none';
+}
+
+function setJobPill(state, text) {
+  const pill = document.getElementById('jobPill');
+  pill.className = 'pill' + (state ? ' ' + state : '');
+  pill.textContent = text;
+}
+
+async function refreshStatus() {
+  const seq = ++brandRequestSeq;
+  const res = await fetch('/api/status' + brandQuery());
+  const data = await readJson(res);
+  if (seq !== brandRequestSeq) return; // 그 사이 다른 브랜드를 고름 → 이 응답은 버림
+  setSession('twitter', data.hasTwitterSession);
+  setSession('instagram', data.hasInstagramSession);
+  renderBrandNote(data.brand);
+  renderDatePresets(data.brand);
+  applyBrandToCards(data.brand);
+  // 재고 연동이 없는 브랜드는 "재고도 같이 기록" 체크를 켜도 할 일이 없으니 꺼두고 잠금
+  const stockChk = document.getElementById('withStock');
+  if (stockChk && data.brand && !data.brand.error) {
+    stockChk.disabled = !data.brand.hasStock;
+    if (!data.brand.hasStock) stockChk.checked = false;
+    updateCollectSummary();
+  }
+  // 로그인이 하나라도 없으면 로그인 상자를 펼쳐둠 — 접혀 있으면 왜 수집이 안 되는지 모름
+  if (!data.hasTwitterSession || !data.hasInstagramSession) {
+    document.getElementById('loginBox').style.display = '';
+  }
+  if (data.job && data.job.status === 'running') {
+    jobRunning = true;
+    setButtonsDisabled(true);
+    document.getElementById('jobLabel').textContent = data.job.label;
+    setJobPill('run', '실행 중');
+    startEventStream();
+  }
+}
+
+function setSession(platform, has) {
+  document.getElementById('dot-' + platform).className = 'dot ' + (has ? 'ok' : 'warn');
+  const name = platform === 'twitter' ? '트위터' : '인스타그램';
+  document.getElementById('text-' + platform).textContent = name + (has ? ' 로그인 있음' : ' 로그인 필요');
+}
+
+function startEventStream() {
+  if (evtSource) return;
+  evtSource = new EventSource('/api/jobs/stream');
+  const log = document.getElementById('log');
+  log.style.display = 'block';
+  evtSource.addEventListener('init', e => {
+    const data = JSON.parse(e.data);
+    document.getElementById('jobLabel').textContent = data.label;
+    setJobPill(data.status === 'running' ? 'run' : '', data.status === 'running' ? '실행 중' : '대기 중');
+    log.textContent = data.logs.join('');
+    log.scrollTop = log.scrollHeight;
+    // 재접속(새로고침/탭 재연결) 시점엔 이미 작업이 끝나있을 수 있는데, 그 경우 'status'
+    // 이벤트는 다시 안 오므로(과거에 이미 발생한 전환이라) 여기서도 직접 버튼을 풀어줘야 함
+    // — 안 그러면 재접속 타이밍에 따라 버튼이 영원히 잠긴 채로 남는 문제가 있었음.
+    if (data.status !== 'running') {
+      jobRunning = false;
+      setButtonsDisabled(false);
+    }
+  });
+  evtSource.addEventListener('log', e => {
+    const data = JSON.parse(e.data);
+    log.textContent += data.line;
+    log.scrollTop = log.scrollHeight;
+  });
+  evtSource.addEventListener('status', e => {
+    const data = JSON.parse(e.data);
+    if (data.status !== 'running') {
+      jobRunning = false;
+      setButtonsDisabled(false);
+      const ok = data.status === 'done';
+      setJobPill(ok ? 'done' : 'err', ok ? '완료' : '실패');
+      document.getElementById('jobStatus').textContent = ok
+        ? '✅ 완료됐어요 — 아래 목록에서 받아보세요.'
+        : '❌ 실패했거나 도중에 멈췄어요(아래 로그 참고).';
+      refreshReports();
+      document.getElementById('loginHelp').style.display = 'none';
+      document.getElementById('confirmLoginBtn').style.display = 'none';
+      refreshStatus();
+    } else {
+      setJobPill('run', '실행 중');
+      document.getElementById('jobStatus').textContent = '⏳ 실행 중...';
+    }
+  });
+}
+
+// 화면 파일만 새로 받고 도구(검은 창)를 재시작하지 않으면, 새 화면이 부르는 주소가 옛날
+// 서버엔 아직 없어서 JSON 대신 "Cannot POST /api/…" HTML 오류 페이지가 돌아옴. 그걸 그대로
+// JSON으로 읽으면 "Unexpected token '<'"라는 정체불명 메시지만 떠서 원인을 알 수가 없음
+// (실제로 팀에서 이 메시지를 받고 막힘). 여기서 가로채 무엇을 하면 되는지 알려줌.
+async function readJson(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const err = new Error(
+      '도구(검은 창)가 옛날 버전으로 돌고 있어요.\n\n' +
+      '검은 창을 완전히 닫고 start-dashboard.bat을 다시 실행한 뒤,\n' +
+      '이 화면에서 Ctrl+Shift+R로 새로고침해주세요.\n\n' +
+      '(업데이트는 화면 파일만 바꿔주고 도구를 껐다 켜주지는 않아서 생기는 문제예요)'
+    );
+    err.friendly = true;
+    throw err;
+  }
+}
+
+async function runOrAlert(fn) {
+  try {
+    const res = await fn();
+    const data = await readJson(res);
+    if (!res.ok) { alert(data.error || '요청이 실패했어요.'); return; }
+    jobRunning = true;
+    setButtonsDisabled(true);
+    setJobPill('run', '실행 중');
+    document.getElementById('jobStatus').textContent = '⏳ 실행 중...';
+    startEventStream();
+  } catch (e) {
+    alert(e.friendly ? e.message : '요청 중 오류: ' + e.message);
+  }
+}
+
+function collectOptions() {
+  const chk = document.getElementById('withStock');
+  return {
+    platform: document.getElementById('collectPlatform').value || undefined,
+    withStock: chk ? chk.checked : true,
+    stockMode: document.getElementById('stockMode').value,
+    keyword: (document.getElementById('collectKeyword').value || '').trim() || undefined,
+  };
+}
+
+// [수집 시작] 하나로 모든 기간 선택지를 처리
+function collectFromChoice() {
+  const sel = selectedPeriod();
+  if (!sel) { alert('기간을 먼저 골라주세요.'); return; }
+  if (sel.id === 'today') return collect('today');
+  if (sel.id === 'since-last') return collect('since-last');
+  if (sel.id === 'custom') return collect('range');
+  // 기간 프리셋(최근 2주/2개월 등) — 오늘 기준으로 날짜를 계산해서 기간 수집으로 보냄
+  const end = new Date();
+  const start = new Date(end.getTime() - (sel.days - 1) * 86400000);
+  const fmt = d => d.toISOString().slice(0, 10);
+  document.getElementById('rangeStart').value = fmt(start);
+  document.getElementById('rangeEnd').value = fmt(end);
+  collect('range');
+}
+
+function collect(mode) {
+  const body = withBrand(Object.assign({ mode }, collectOptions()));
+  if (mode === 'range') {
+    body.startDate = document.getElementById('rangeStart').value;
+    body.endDate = document.getElementById('rangeEnd').value;
+    if (!body.startDate || !body.endDate) { alert('시작일/종료일을 입력해주세요.'); return; }
+  }
+  runOrAlert(() => fetch('/api/collect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
+}
+
+// 재생성은 별도 화면이 아니라 같은 화면의 두 번째 버튼 — 키워드·재고 표시를 두 번
+// 입력할 일이 없게 위 설정을 그대로 씀
+function rebuild() {
+  const body = withBrand({
+    stockMode: document.getElementById('stockMode').value,
+    keyword: (document.getElementById('collectKeyword').value || '').trim() || undefined,
+  });
+  runOrAlert(() => fetch('/api/rebuild', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
+}
+
+function stockSnapshot() {
+  runOrAlert(() => fetch('/api/stock-snapshot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withBrand()) }));
+}
+
+function exportNotion() {
+  runOrAlert(() => fetch('/api/export-notion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withBrand()) }));
+}
+
+async function copyMarkdownForNotion() {
+  try {
+    const res = await fetch('/api/export-markdown' + brandQuery());
+    const data = await readJson(res);
+    if (!res.ok) { alert('실패: ' + (data.error || '알 수 없는 오류')); return; }
+    await navigator.clipboard.writeText(data.markdown);
+    alert('복사됐어요! 노션 페이지로 가서 Ctrl+V로 붙여넣으세요.');
+  } catch (e) {
+    alert(e.friendly ? e.message : '복사 중 문제가 생겼어요: ' + e.message);
+  }
+}
+
+function comparePeriods() {
+  const raw = document.getElementById('periodsInput').value.trim();
+  const periods = raw.split('\n').map(s => s.trim()).filter(Boolean);
+  if (periods.length < 2) { alert('기간을 2개 이상 적어주세요.'); return; }
+  runOrAlert(() => fetch('/api/compare-periods', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withBrand({ periods })) }));
+}
+
+function collectAccount() {
+  const handle = document.getElementById('acctHandle').value.trim().replace(/^@/, '');
+  const startDate = document.getElementById('acctStart').value;
+  const endDate = document.getElementById('acctEnd').value;
+  const plaintext = document.getElementById('acctPlaintext').checked;
+  if (!handle || !startDate || !endDate) { alert('핸들/시작일/종료일을 모두 입력해주세요.'); return; }
+  runOrAlert(() => fetch('/api/collect-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle, startDate, endDate, plaintext }) }));
+}
+
+// ⚔️ 게시글 맞대결 — 이벤트 하나를 비교하는 게 보통이라 기본은 한 쌍만 보여주고,
+// 더 필요하면 늘림. 빈 쌍은 서버가 알아서 건너뛰므로 지우는 버튼까지는 두지 않음.
+//
+// 입력한 이름·링크·쌍 개수는 이 브라우저에 저장해둠(localStorage). 링크를 손으로
+// 붙여넣는 작업인데 새로고침 한 번에 다 날아가면 다시 붙여넣어야 해서.
+// 저장은 이 컴퓨터의 브라우저 안에만 있고 어디로도 전송되지 않음. [초기화]로 지움.
+const MATCHUP_DRAFT_KEY = 'snsMatchupDraft';
+
+function addMatchupPair(pw, bh) {
+  const box = document.getElementById('matchupPairs');
+  const n = box.children.length + 1;
+  const row = document.createElement('div');
+  row.className = 'matchup-pair';
+  row.innerHTML =
+    '<div class="mp-num">' + n + '</div>' +
+    '<label>당사 글 링크<input type="text" class="mp-pw" placeholder="https://x.com/... 또는 https://www.instagram.com/p/..."></label>' +
+    '<label>경쟁사 글 링크<input type="text" class="mp-bh" placeholder="https://x.com/... 또는 https://www.instagram.com/p/..."></label>';
+  box.appendChild(row);
+  if (pw) row.querySelector('.mp-pw').value = pw;
+  if (bh) row.querySelector('.mp-bh').value = bh;
+  saveMatchupDraft();
+}
+
+function readMatchupInputs() {
+  return {
+    title: document.getElementById('matchupTitle').value,
+    pairs: [...document.querySelectorAll('#matchupPairs .matchup-pair')].map(el => ({
+      pw: el.querySelector('.mp-pw').value,
+      bh: el.querySelector('.mp-bh').value,
+    })),
+  };
+}
+
+function saveMatchupDraft() {
+  try {
+    const draft = readMatchupInputs();
+    localStorage.setItem(MATCHUP_DRAFT_KEY, JSON.stringify(draft));
+    const filled = draft.pairs.filter(p => p.pw.trim() || p.bh.trim()).length;
+    document.getElementById('matchupSaved').textContent = draft.pairs.length + '쌍' +
+      ((draft.title.trim() || filled) ? ' · 입력한 내용은 이 브라우저에 저장돼요 (새로고침해도 남아요)' : '');
+  } catch (e) { /* 시크릿 창 등에서 저장이 막혀 있으면 그냥 저장만 안 됨 */ }
+}
+
+function restoreMatchupDraft() {
+  let draft = null;
+  try {
+    draft = JSON.parse(localStorage.getItem(MATCHUP_DRAFT_KEY) || 'null');
+  } catch (e) { draft = null; }
+  const pairs = draft && Array.isArray(draft.pairs) && draft.pairs.length ? draft.pairs : [{ pw: '', bh: '' }];
+  if (draft && draft.title) document.getElementById('matchupTitle').value = draft.title;
+  pairs.forEach(p => addMatchupPair(p.pw, p.bh));
+}
+
+function resetMatchup() {
+  try { localStorage.removeItem(MATCHUP_DRAFT_KEY); } catch (e) { /* 무시 */ }
+  document.getElementById('matchupTitle').value = '';
+  document.getElementById('matchupPairs').innerHTML = '';
+  addMatchupPair();
+}
+
+function runMatchup() {
+  const raw = readMatchupInputs();
+  const title = raw.title.trim();
+  if (!title) { alert('이 맞대결의 이름을 적어주세요.'); return; }
+  const pairs = raw.pairs
+    .map(p => ({ pw: p.pw.trim(), bh: p.bh.trim() }))
+    .filter(p => p.pw || p.bh);
+  if (pairs.length === 0) { alert('비교할 글 링크를 최소 한 개는 넣어주세요.'); return; }
+  runOrAlert(() => fetch('/api/matchup', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(withBrand({ title, pairs })),
+  }));
+}
+
+// ── 나머지 입력칸도 새로고침 후 남게 저장 ──
+// 계정 핸들·기간 목록·키워드는 손으로 적는 값인데 새로고침 한 번에 날아갔음
+// (맞대결만 저장되고 있었음). 기간 선택지(라디오)는 브랜드 기본값이 정해주므로 제외.
+const REMEMBER_IDS = ['collectPlatform', 'collectKeyword', 'stockMode', 'withStock',
+  'rangeStart', 'rangeEnd', 'acctHandle', 'acctStart', 'acctEnd', 'acctPlaintext', 'periodsInput'];
+
+function bindRememberedInputs() {
+  REMEMBER_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const key = 'snsInput:' + id;
+    try {
+      const saved = localStorage.getItem(key);
+      if (saved !== null) {
+        if (el.type === 'checkbox') el.checked = saved === '1';
+        else el.value = saved;
+      }
+    } catch (e) { /* 저장이 막혀 있어도 화면은 정상 동작 */ }
+    const save = () => {
+      try { localStorage.setItem(key, el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value); } catch (e) {}
+    };
+    el.addEventListener('input', save);
+    el.addEventListener('change', save);
+  });
+}
+
+function startLogin(platform) {
+  document.getElementById('loginBox').style.display = '';
+  document.getElementById('loginHelp').style.display = '';
+  document.getElementById('confirmLoginBtn').style.display = '';
+  runOrAlert(() => fetch('/api/login-session/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ platform }) }));
+}
+
+function confirmLogin() {
+  fetch('/api/login-session/confirm', { method: 'POST' });
+}
+
+function cancelJob() {
+  fetch('/api/jobs/cancel', { method: 'POST' });
+}
+
+// 리포트가 여러 종류(기간 리포트·엑셀·맞대결·기간 비교)라 파일명만으론 구분이 안 돼서
+// 종류를 배지로 앞에 붙임
+function reportKind(f) {
+  if (f.name.endsWith('.xlsx')) return { label: '엑셀', cls: 'xls' };
+  if (f.name.startsWith('matchup')) return { label: '맞대결', cls: 'vs' };
+  if (f.name.startsWith('period-comparison')) return { label: '기간비교', cls: '' };
+  if (f.name.startsWith('account-')) return { label: '계정단독', cls: '' };
+  return { label: '리포트', cls: '' };
+}
+
+function whenText(ms) {
+  const diff = Date.now() - ms;
+  const h = diff / 3600000;
+  if (h < 1) return Math.max(1, Math.round(diff / 60000)) + '분 전';
+  if (h < 24) return Math.round(h) + '시간 전';
+  const d = Math.round(h / 24);
+  return d === 1 ? '어제' : d + '일 전';
+}
+
+async function refreshReports() {
+  const seq = brandRequestSeq;
+  const res = await fetch('/api/reports' + brandQuery());
+  const files = await readJson(res);
+  if (seq !== brandRequestSeq) return; // 위와 같은 이유(늦게 온 이전 브랜드 응답 무시)
+  const ul = document.getElementById('reportList');
+  document.getElementById('reportCount').textContent = files.length;
+  ul.innerHTML = files.length === 0 ? '<li class="meta">아직 만들어진 리포트가 없어요.</li>' : '';
+  files.forEach(f => {
+    const li = document.createElement('li');
+    const kind = reportKind(f);
+    const sizeKb = Math.round(f.size / 1024).toLocaleString();
+    const date = new Date(f.mtime).toLocaleString('ko-KR');
+    const href = '/reports/' + (f.path || f.name).split('/').map(encodeURIComponent).join('/');
+    // reports/ 바로 아래 있는 파일 중 sns-report*는 브랜드 폴더 도입 전에 만든 것이고,
+    // account-report/period-comparison 등은 브랜드와 무관한 별도 기능 산출물이라 구분해서 표기.
+    const legacyNote = !f.legacy ? ''
+      : f.name.startsWith('sns-report') ? ' (브랜드 폴더 도입 전 파일)'
+      : ' (브랜드 무관)';
+    li.innerHTML =
+      '<span class="kind ' + (f.legacy ? 'old' : kind.cls) + '">' + kind.label + '</span>' +
+      '<a href="' + href + '" download title="' + f.name + legacyNote + ' · ' + sizeKb + 'KB · ' + date + '">' + f.name + '</a>' +
+      '<span class="when">' + whenText(f.mtime) + '</span>';
+    ul.appendChild(li);
+  });
+}
+
+// ── 화면이 바뀌었다는 안내 ──
+// 만료일이 지나면 저절로 안 뜸(나중에 지우러 다시 들어올 필요 없게). 저장하는 값은
+// "봤음"이 아니라 **다시 보여줄 시각**이라, 하루만 그만보기/영영 그만보기가 값 하나로 해결됨.
+const WHATS_NEW_UNTIL = '2026-10-31'; // 이 날짜가 지나면 안내를 아예 안 띄움
+const WHATS_NEW_KEY = 'snsWhatsNewHideUntil:2026-09-10';
+
+function dismissWhatsNew(days) {
+  try { localStorage.setItem(WHATS_NEW_KEY, String(Date.now() + days * 86400000)); } catch (e) {}
+  document.getElementById('whatsNew').style.display = 'none';
+}
+
+function maybeShowWhatsNew() {
+  if (Date.now() > new Date(WHATS_NEW_UNTIL + 'T23:59:59+09:00').getTime()) return;
+  let hideUntil = 0;
+  try { hideUntil = Number(localStorage.getItem(WHATS_NEW_KEY) || 0); } catch (e) {}
+  if (Date.now() < hideUntil) return;
+  document.getElementById('whatsNew').style.display = '';
+}
+
+// ── 시작 ──
+maybeShowWhatsNew();
+loadBrands();
+bindRememberedInputs();
+restoreMatchupDraft(); // 저장해둔 이름·링크·쌍 개수를 되살림(없으면 빈 한 쌍)
+// 입력할 때마다 저장 — 칸이 나중에 늘어나도 걸리게 컨테이너에 한 번만 붙임
+document.getElementById('matchupPairs').addEventListener('input', saveMatchupDraft);
+document.getElementById('matchupTitle').addEventListener('input', saveMatchupDraft);
+// 접힌 설명은 접은 상태를 기억 — 처음 쓰는 사람은 펼쳐 보고, 아는 사람은 계속 접힌 채
+document.querySelectorAll('details.more').forEach(d => {
+  const key = 'snsMore:' + d.dataset.key;
+  try { d.open = localStorage.getItem(key) === '1'; } catch (e) {}
+  d.addEventListener('toggle', () => { try { localStorage.setItem(key, d.open ? '1' : '0'); } catch (e) {} });
+});
+// 마지막으로 보던 작업 화면으로 복귀
+try {
+  const saved = localStorage.getItem('snsReportPane');
+  if (saved) showPaneByKey(saved);
+} catch (e) {}
+</script>
+</body>
+</html>

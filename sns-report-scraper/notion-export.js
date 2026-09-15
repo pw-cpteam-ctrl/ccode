@@ -1,0 +1,326 @@
+/**
+ * 리포트 랭킹표를 스크린샷이 아니라 진짜 노션 표로 직접 만들어서 지정한 노션 페이지 밑에
+ * 하위 페이지로 생성함. 노션 안에서 그대로 검색/정렬/편집까지 가능해짐.
+ *
+ * 처음 실행할 때만 새 페이지를 만들고, 그 페이지/표 블록 ID를 notion-config.json에 저장해둠
+ * — 그다음부터는 같은 페이지의 내용(문단/표의 행)만 갱신함(표 블록 자체는 안 건드려서, 노션에서
+ * 손으로 맞춘 칸 너비가 계속 유지됨). "매번 새 페이지가 쌓이는" 게 싫으면 이 방식이 나음.
+ *
+ * 사전 준비 (한 번만, 배포-패키지-만들기.md 참고):
+ *  1. https://www.notion.so/my-integrations 에서 연동 만들고 "Internal Integration Secret" 복사
+ *  2. 표를 넣을 노션 페이지 열어서 "···" → "연결(Connections)" → 방금 만든 연동 추가
+ *  3. 이 폴더에 notion-config.json 파일을 새로 만들고 아래 형식으로 채우기(이 파일은 git에
+ *     안 올라가게 이미 .gitignore에 등록돼 있음 — 토큰이 든 파일이라 절대 커밋하면 안 됨):
+ *     { "token": "ntn_...", "parentPageId": "노션 페이지 URL 끝의 32자리 ID" }
+ *
+ * 사용법: node notion-export.js
+ */
+const fs = require('fs');
+const { buildComparisonReport, applyManualPosts } = require('./aggregate');
+
+const CONFIG_PATH = './notion-config.json';
+// 캐시/수동매칭 파일 위치는 브랜드별로 갈림(brand-config.js) — 아래에서 선택된 브랜드 기준으로 읽음
+const { prepareBrand, parseBrandArg } = require('./brand-config');
+const { brandKey: NOTION_BRAND_KEY } = parseBrandArg(process.argv.slice(2));
+const BRAND = prepareBrand(NOTION_BRAND_KEY);
+const CACHE_PATH = BRAND.paths.cache;
+const MANUAL_MATCHES_PATH = BRAND.paths.manualMatches;
+const IGNORE_POSTS_PATH = BRAND.paths.ignorePosts;
+const MANUAL_POSTS_PATH = BRAND.paths.manualPosts;
+const NOTION_VERSION = '2022-06-28';
+
+// html-report.js의 FIELD_ICONS와 동일한 이모지 — 노션 표는 칸이 넓어지기 쉬워서 텍스트
+// 대신 이모지 1자로 압축(예: "PW 좋아요" → "PW ♥️")해서 칸 너비 부담을 줄임.
+const FIELD_LABELS = { likes: '♥️', retweets: '♻️', comments: '💬' };
+const PLATFORM_TITLES = { twitter: 'X(트위터)', instagram: '인스타그램' };
+
+function loadJson(p, fallback) {
+  return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf-8')) : fallback;
+}
+
+// 노션 표 셀은 리치 텍스트 배열만 담을 수 있음(이미지/버튼/막대그래프 불가) — url을 주면
+// 그 텍스트가 클릭 가능한 링크가 되고, color를 주면 셀 배경색이 칠해짐(html-report.js와
+// 같은 규칙: PW=파랑, BH=빨강 — 노션 공식 배경색 이름만 써야 함, 예: "blue_background").
+function richText(content, url, color) {
+  const text = { content: String(content ?? '') };
+  if (url) text.link = { url };
+  const item = { type: 'text', text };
+  if (color) item.annotations = { color };
+  return [item];
+}
+
+const VERDICT_COLOR = { 우세: 'green_background', 경합: 'yellow_background', 약세: 'red_background' };
+const BAR_WIDTH = 10;
+
+// html-report.js의 분할 막대(.metricbar-pw/.metricbar-bh)와 같은 개념을 노션 표 셀 안에서
+// 색깔 있는 블록 문자(█)로 흉내냄 — 셀 하나에 파란 글자 런 + 빨간 글자 런을 이어붙이는 방식
+// (richText 하나가 아니라 리치 텍스트 "배열"을 직접 만듦, 셀 하나에 여러 색 허용됨).
+function buildBarCell(pw, bh) {
+  const total = pw + bh;
+  if (total <= 0) return richText('-');
+  let pwChars = Math.round((pw / total) * BAR_WIDTH);
+  let bhChars = BAR_WIDTH - pwChars;
+  // 값이 있는데 비율상 0칸이 되면(예: 355:1) 있다는 사실 자체가 안 보이니 최소 1칸은
+  // 보장 — 그만큼을 반대쪽에서 가져와서 합이 항상 BAR_WIDTH를 넘지 않게 함.
+  if (pw > 0 && pwChars === 0) { pwChars = 1; bhChars = BAR_WIDTH - 1; }
+  else if (bh > 0 && bhChars === 0) { bhChars = 1; pwChars = BAR_WIDTH - 1; }
+  const runs = [];
+  if (pwChars > 0) runs.push({ type: 'text', text: { content: '█'.repeat(pwChars) }, annotations: { color: 'blue' } });
+  if (bhChars > 0) runs.push({ type: 'text', text: { content: '█'.repeat(bhChars) }, annotations: { color: 'red' } });
+  return runs;
+}
+
+// 표 헤더/행만 따로 만듦 — 표 블록을 새로 만들 때(buildPlatformTable)와 기존 표의 행만
+// 교체할 때(갱신 모드, 표 블록 자체는 유지해서 칸 너비가 안 날아가게) 둘 다 이걸 씀.
+function buildTableRows(platformReport) {
+  const { fields, productComparison } = platformReport;
+  const products = productComparison.products;
+  const headers = [
+    '순위', 'IP', '시리즈',
+    ...fields.flatMap(f => [`PW ${FIELD_LABELS[f] || f}`, `BH ${FIELD_LABELS[f] || f}`, `${FIELD_LABELS[f] || f}📊`]),
+    '결과', 'PW🔗', 'BH🔗',
+  ];
+
+  const headerRow = { object: 'block', type: 'table_row', table_row: { cells: headers.map(h => richText(h)) } };
+
+  const rows = products.map((p, i) => {
+    const cells = [richText(i + 1), richText(p.ip), richText(p.line || '-')];
+    fields.forEach(f => {
+      const pw = p.own[`total_${f}`] ?? 0;
+      const bh = p.competitor[`total_${f}`] ?? 0;
+      cells.push(richText(pw, null, 'blue_background'));
+      cells.push(richText(bh, null, 'red_background'));
+      cells.push(buildBarCell(pw, bh));
+    });
+    cells.push(richText(p.verdict + (p.needsReview ? ' ⚠️확인필요' : ''), null, VERDICT_COLOR[p.verdict]));
+    const pwLink = p.ownPosts && p.ownPosts[0] ? p.ownPosts[0].link : null;
+    const bhLink = p.competitorPosts && p.competitorPosts[0] ? p.competitorPosts[0].link : null;
+    cells.push(pwLink ? richText('보기', pwLink, 'blue_background') : richText('-'));
+    cells.push(bhLink ? richText('보기', bhLink, 'red_background') : richText('-'));
+    return { object: 'block', type: 'table_row', table_row: { cells } };
+  });
+
+  return { width: headers.length, children: [headerRow, ...rows] };
+}
+
+function buildPlatformTable(platformReport) {
+  const { width, children } = buildTableRows(platformReport);
+  return {
+    object: 'block',
+    type: 'table',
+    table: { table_width: width, has_column_header: true, has_row_header: false, children },
+  };
+}
+
+async function notionRequest(method, urlPath, token, body) {
+  const res = await fetch(`https://api.notion.com/v1${urlPath}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, 'Notion-Version': NOTION_VERSION, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = res.status === 204 ? {} : await res.json();
+  if (!res.ok) throw new Error(`노션 API 오류(${res.status}): ${json.message || JSON.stringify(json)}`);
+  return json;
+}
+
+// rebuild-report.js와 동일한 방식으로 최근 수집 캐시를 읽어서 report 객체로 취합.
+// API 방식(main)과 복사-붙여넣기용 마크다운 방식(buildMarkdownExport) 둘 다 여기서 시작함.
+function loadReport() {
+  if (!fs.existsSync(CACHE_PATH)) {
+    throw new Error(`캐시 파일이 없음: ${CACHE_PATH} — 먼저 수집을 한 번 해야 함`);
+  }
+  const cached = JSON.parse(fs.readFileSync(CACHE_PATH, 'utf-8'));
+  const manualMatches = loadJson(MANUAL_MATCHES_PATH, {});
+  const ignorePosts = loadJson(IGNORE_POSTS_PATH, {});
+  const manualPosts = loadJson(MANUAL_POSTS_PATH, {});
+  const { own, competitors } = applyManualPosts(cached.own, cached.competitors, manualPosts);
+  return buildComparisonReport({ startDate: cached.startDate, endDate: cached.endDate, own, competitors, manualMatches, ignorePosts });
+}
+
+// 표준 마크다운 표(파이프 구분)로 변환 — 노션에 붙여넣으면(Ctrl+V) 자동으로 진짜 표로
+// 바뀜(연동/토큰/관리자 승인 전혀 필요 없는 방식). "|"가 본문에 섞이면 표가 깨지므로 이스케이프.
+function escapeMdCell(v) {
+  return String(v ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+}
+
+function buildPlatformMarkdown(platformReport) {
+  const { fields, productComparison } = platformReport;
+  const products = productComparison.products;
+  const headers = ['순위', 'IP', '시리즈', ...fields.flatMap(f => [`PW ${FIELD_LABELS[f] || f}`, `BH ${FIELD_LABELS[f] || f}`]), '결과'];
+  const lines = [
+    `| ${headers.join(' | ')} |`,
+    `|${headers.map(() => '---').join('|')}|`,
+  ];
+  products.forEach((p, i) => {
+    const cells = [i + 1, p.ip, p.line || '-'];
+    fields.forEach(f => {
+      cells.push(p.own[`total_${f}`] ?? 0);
+      cells.push(p.competitor[`total_${f}`] ?? 0);
+    });
+    cells.push(p.verdict + (p.needsReview ? ' ⚠️확인필요' : ''));
+    lines.push(`| ${cells.map(escapeMdCell).join(' | ')} |`);
+  });
+  return lines.join('\n');
+}
+
+function buildMarkdownExport(report) {
+  const parts = [`**수집 기간**: ${report.startDate} ~ ${report.endDate} · 생성: ${report.generatedAt} · PW=자사, BH=경쟁사`];
+  for (const platformKey of Object.keys(report.platforms)) {
+    const title = PLATFORM_TITLES[platformKey] || platformKey;
+    parts.push(`\n### [${title}] 상품별 비교\n`);
+    parts.push(buildPlatformMarkdown(report.platforms[platformKey]));
+  }
+  return parts.join('\n');
+}
+
+function saveConfig(config) {
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+}
+
+/**
+ * 노션 페이지/표 블록 ID를 **브랜드별로** 따로 보관 — 브랜드가 여러 개인데 한 군데에만
+ * 저장하면, 나중에 실행한 브랜드가 앞선 브랜드의 노션 페이지를 그 브랜드 데이터로
+ * 덮어써버림(엉뚱한 브랜드 숫자가 남의 페이지에 들어감). 그래서 config.brands[브랜드키]
+ * 아래로 분리하고, 브랜드 개념 없던 시절의 최상위 pageId는 기본 브랜드 것으로 옮겨줌
+ * (기존에 쓰던 노션 페이지가 계속 갱신되도록 — 새 페이지가 또 생기면 안 되니까).
+ */
+function brandState(config, brandKey) {
+  config.brands = config.brands || {};
+  if (!config.brands[brandKey]) {
+    const isDefault = brandKey === BRAND.key && config.pageId;
+    config.brands[brandKey] = isDefault
+      ? { pageId: config.pageId, paragraphBlockId: config.paragraphBlockId, tableBlockIds: config.tableBlockIds || {} }
+      : { tableBlockIds: {} };
+    if (isDefault) {
+      delete config.pageId;
+      delete config.paragraphBlockId;
+      delete config.tableBlockIds;
+      saveConfig(config);
+      console.log(`ℹ️ 예전에 쓰던 노션 페이지를 [${BRAND.label}] 브랜드 것으로 옮겨 기록했습니다(같은 페이지를 계속 갱신합니다).`);
+    }
+  }
+  return config.brands[brandKey];
+}
+
+function summaryText(report) {
+  return `수집 기간: ${report.startDate} ~ ${report.endDate} · 생성: ${report.generatedAt} · PW=자사, BH=경쟁사`;
+}
+
+function pageTitle(report) {
+  // 브랜드명을 제목에 넣어둠 — 노션에 페이지가 브랜드별로 하나씩 생기므로 목록에서 구분돼야 함
+  const brandPrefix = BRAND.label ? `[${BRAND.label}] ` : '';
+  return `${brandPrefix}SNS 성과 비교 (${report.startDate}~${report.endDate})`;
+}
+
+// 최초 1회: 새 페이지를 만들고, 다음부터 갱신할 수 있게 문단/표 블록 ID를 config에 저장해둠
+// (표 블록 자체는 이후로 다시 안 만들어서, 사람이 노션에서 손으로 맞춘 칸 너비가 안 날아감).
+async function createPage(config, report) {
+  const children = [{ object: 'block', type: 'paragraph', paragraph: { rich_text: richText(summaryText(report)) } }];
+  const platformKeys = Object.keys(report.platforms);
+  for (const platformKey of platformKeys) {
+    const title = PLATFORM_TITLES[platformKey] || platformKey;
+    children.push({ object: 'block', type: 'heading_2', heading_2: { rich_text: richText(`[${title}] 상품별 비교`) } });
+    children.push(buildPlatformTable(report.platforms[platformKey]));
+  }
+
+  console.log('노션에 페이지 생성 중...');
+  const page = await notionRequest('POST', '/pages', config.token, {
+    parent: { page_id: config.parentPageId },
+    icon: { type: 'emoji', emoji: '📊' },
+    properties: { title: { title: richText(pageTitle(report)) } },
+    children,
+  });
+
+  // 방금 만든 블록들의 실제 ID를 순서대로 가져옴(노션은 보낸 순서 그대로 반환함) — 다음
+  // 갱신 때 "표 블록 자체는 그대로 두고 안의 행만 교체"하려면 이 ID들이 필요함.
+  const created = await notionRequest('GET', `/blocks/${page.id}/children?page_size=100`, config.token);
+  const state = brandState(config, BRAND.key);
+  state.pageId = page.id;
+  state.paragraphBlockId = created.results[0].id;
+  state.tableBlockIds = {};
+  let idx = 1;
+  for (const platformKey of platformKeys) {
+    idx++; // heading_2 블록 — 건너뜀
+    state.tableBlockIds[platformKey] = created.results[idx].id;
+    idx++;
+  }
+  saveConfig(config);
+  console.log(`✅ 노션 페이지 생성 완료: ${page.url}`);
+  console.log('ℹ️ 이제부터는 이 페이지를 계속 갱신합니다 — 칸 너비를 한 번 맞춰두면 계속 유지돼요.');
+}
+
+// 두 번째부터: 페이지/표 블록은 그대로 두고 내용(요약 문단, 표의 행)만 최신으로 교체.
+async function updatePage(config, report) {
+  const state = brandState(config, BRAND.key);
+  console.log(`기존 노션 페이지 갱신 중... [${BRAND.label}]`);
+  await notionRequest('PATCH', `/pages/${state.pageId}`, config.token, {
+    properties: { title: { title: richText(pageTitle(report)) } },
+  });
+  if (state.paragraphBlockId) {
+    await notionRequest('PATCH', `/blocks/${state.paragraphBlockId}`, config.token, {
+      paragraph: { rich_text: richText(summaryText(report)) },
+    });
+  }
+
+  state.tableBlockIds = state.tableBlockIds || {};
+  let configChanged = false;
+  for (const platformKey of Object.keys(report.platforms)) {
+    const { width, children: newRows } = buildTableRows(report.platforms[platformKey]);
+    let tableBlockId = state.tableBlockIds[platformKey];
+
+    if (!tableBlockId) {
+      // 이전엔 없던 플랫폼이 새로 생긴 경우 — 페이지 맨 끝에 새로 추가
+      const title = PLATFORM_TITLES[platformKey] || platformKey;
+      const appended = await notionRequest('PATCH', `/blocks/${state.pageId}/children`, config.token, {
+        children: [
+          { object: 'block', type: 'heading_2', heading_2: { rich_text: richText(`[${title}] 상품별 비교`) } },
+          { object: 'block', type: 'table', table: { table_width: width, has_column_header: true, has_row_header: false, children: newRows } },
+        ],
+      });
+      state.tableBlockIds[platformKey] = appended.results[1].id;
+      configChanged = true;
+      continue;
+    }
+
+    // 기존 표는 그대로 두고, 안의 행(헤더+데이터)만 지웠다가 새로 채움 — 표 블록 자체를
+    // 안 건드리니 사람이 손으로 맞춘 칸 너비가 유지됨.
+    const existingRows = await notionRequest('GET', `/blocks/${tableBlockId}/children?page_size=100`, config.token);
+    for (const row of existingRows.results) {
+      await notionRequest('DELETE', `/blocks/${row.id}`, config.token);
+    }
+    await notionRequest('PATCH', `/blocks/${tableBlockId}/children`, config.token, { children: newRows });
+  }
+  if (configChanged) saveConfig(config);
+  console.log(`✅ 노션 페이지 갱신 완료: https://notion.so/${String(state.pageId).replace(/-/g, '')}`);
+}
+
+async function main() {
+  if (!fs.existsSync(CONFIG_PATH)) {
+    console.error(`❌ ${CONFIG_PATH} 파일이 없음 — 파일 맨 위 주석의 사전 준비 단계부터 먼저 해야 함.`);
+    process.exit(1);
+  }
+  const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+  if (!config.token || !config.parentPageId) {
+    console.error('❌ notion-config.json 안에 token과 parentPageId가 둘 다 있어야 함');
+    process.exit(1);
+  }
+
+  const report = loadReport();
+  const state = brandState(config, BRAND.key);
+
+  if (state.pageId) {
+    await updatePage(config, report);
+  } else {
+    console.log(`ℹ️ [${BRAND.label}] 브랜드용 노션 페이지가 아직 없어서 새로 만듭니다(브랜드마다 페이지가 따로 생깁니다).`);
+    await createPage(config, report);
+  }
+}
+
+if (require.main === module) {
+  main().catch(err => {
+    console.error('❌ 실패:', err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { buildPlatformTable, buildTableRows, richText, loadReport, buildMarkdownExport };

@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { applyStealth, STEALTH_LAUNCH_ARGS, STEALTH_CONTEXT_OPTIONS } = require('./browser-stealth');
 
 /**
  * 인스타그램 프로필 게시물 수집 초안. 아직 실제 로그인 세션으로 테스트 못 해봤음.
@@ -13,23 +14,49 @@ const { chromium } = require('playwright');
  * @param {boolean} [opts.headless] 기본 false
  */
 async function collectInstagram({ account, sessionFile, startDate, endDate, headless = false }) {
-  const browser = await chromium.launch({ headless });
-  const context = await browser.newContext({ storageState: sessionFile });
+  const browser = await chromium.launch({ headless, args: STEALTH_LAUNCH_ARGS });
+  const context = await browser.newContext({ storageState: sessionFile, ...STEALTH_CONTEXT_OPTIONS });
+  // navigator.webdriver 하나만으론 부족해서 플러그인/WebGL 등 다른 지문도 같이 위장
+  // (browser-stealth.js 참고) — 인스타(메타)가 이런 신호들을 보고 세션이 정상인데도
+  // 재로그인을 요구하는 경우가 있어서 적용.
+  await applyStealth(context);
   const page = await context.newPage();
   const startTime = new Date();
 
   const rangeStart = new Date(`${startDate}T00:00:00+09:00`);
   const rangeEnd = new Date(`${endDate}T23:59:59+09:00`);
 
+  // 그리드에 보이는 링크만으론 날짜를 알 수 없어서, 새로 발견한 링크 중 가장 나중 것(=그리드
+  // 순서상 가장 오래됐을 가능성이 큰 것) 하나를 별도 탭으로 슬쩍 열어 날짜만 확인. 메인 page의
+  // 스크롤 위치는 그대로 유지됨 (별도 탭이라 프로필 새로고침/재스크롤이 필요 없음).
+  async function peekPostDate(url) {
+    const probePage = await context.newPage();
+    try {
+      await probePage.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await probePage.waitForTimeout(1000);
+      const iso = await probePage.evaluate(() => {
+        const t = document.querySelector('time[datetime]');
+        return t ? t.getAttribute('datetime') : null;
+      });
+      return iso ? new Date(iso) : null;
+    } catch {
+      return null; // 프로브 실패는 무시하고 스크롤 계속 (다음 패스에서 다시 시도됨)
+    } finally {
+      await probePage.close();
+    }
+  }
+
   // ── Step 1: 프로필 그리드에서 게시물 링크 수집 ──
   await page.goto(`https://www.instagram.com/${account}/`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(3000);
 
   const links = new Set();
+  const orderedLinks = []; // 발견 순서 보존 (그리드는 최신→과거 순으로 쌓임)
   let stallCount = 0;
   const MAX_STALL = 3; // 스크롤해도 새 링크가 안 늘어나는 게 3번 연속이면 그리드 끝으로 판단
+  let reachedRangeStart = false;
 
-  while (stallCount < MAX_STALL) {
+  while (stallCount < MAX_STALL && !reachedRangeStart) {
     const found = await page.evaluate(() => {
       return [...document.querySelectorAll('a[href*="/p/"]')]
         .map(a => a.href.split('?')[0])
@@ -37,21 +64,52 @@ async function collectInstagram({ account, sessionFile, startDate, endDate, head
     });
 
     const before = links.size;
-    found.forEach(l => links.add(l));
+    found.forEach(l => {
+      if (!links.has(l)) { links.add(l); orderedLinks.push(l); }
+    });
     stallCount = links.size === before ? stallCount + 1 : 0;
+
+    if (orderedLinks.length > 0) {
+      const probeDate = await peekPostDate(orderedLinks[orderedLinks.length - 1]);
+      if (probeDate && probeDate < rangeStart) {
+        console.log(`[instagram:${account}] 그리드에서 범위 시작일 이전 게시물 발견 → 스크롤 중단`);
+        reachedRangeStart = true;
+        continue;
+      }
+    }
 
     await page.mouse.wheel(0, 2500);
     await page.waitForTimeout(1500);
   }
 
   // ── Step 2: 각 게시물 개별 파싱 ──
+  // (2026-07-13: "좋아요 null이면 재시도" + Esc키 모달 닫기를 시도해봤는데, 실제로 돌려보니
+  // 전체 게시물 100%가 3번 다 실패 — 가끔 뜨는 모달 때문이라는 가설이 틀렸고 시간만
+  // 3배로 늘렸음. 원인이 다른 곳(세션 자체 문제 또는 좋아요 표시 위치/방식 변경)일 가능성이
+  // 커서 재시도 코드는 되돌림 — 원인 재확인 후 다시 접근할 것, TROUBLESHOOTING 문서 참고.)
+  const MAX_ATTEMPTS = 3;
   const results = [];
   for (const url of links) {
     let parsed = null;
-    for (let attempt = 0; attempt < 3 && !parsed; attempt++) {
+    for (let attempt = 0; attempt < MAX_ATTEMPTS && !parsed; attempt++) {
       try {
         await page.goto(url, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(2000);
+        // ⚠️ 예전엔 여기서 무조건 2초 고정으로 기다린 뒤 바로 읽었음 — 인스타는 페이지
+        // 뼈대(사진·캡션)를 먼저 그리고 좋아요/댓글 숫자는 뒤늦게 비동기로 채우는 방식이라,
+        // 2초 안에 그 숫자가 실제로 그려졌는지는 그때그때 네트워크 상황에 따라 달랐음(레이스
+        // 컨디션). 같은 계정·같은 세션인데도 게시물마다 성공/실패가 갈렸던 게 그 증거
+        // (TROUBLESHOOTING 07-13 참고). "숫자가 나타날 때까지" 기다리는 걸로 바꿔서 이
+        // 타이밍 문제 자체를 없앰 — 최대 6초까지 기다리되, 그래도 안 나타나면(진짜로 그
+        // 게시물엔 숫자가 없는 경우 등) 포기하고 그대로 진행해 기존 동작(null)과 같아짐.
+        await page.waitForFunction(() => {
+          const numeric = /^[\d,.]+[만천KM]?$/;
+          const hasCoordCandidate = [...document.querySelectorAll('span')].some(el => {
+            const r = el.getBoundingClientRect();
+            return r.x > 700 && r.y > 400 && r.y < 580 && numeric.test(el.innerText.trim());
+          });
+          if (hasCoordCandidate) return true;
+          return [...document.querySelectorAll('span')].some(el => /명이 좋아합니다|likes$/.test(el.innerText));
+        }, { timeout: 6000 }).catch(() => {}); // 6초 넘게 안 나타나도 에러로 죽지 않고 그냥 진행
 
         parsed = await page.evaluate((acct) => {
           const timeEl = document.querySelector('time[datetime]');
@@ -75,21 +133,27 @@ async function collectInstagram({ account, sessionFile, startDate, endDate, head
             }
           }
 
-          // 본문 캡션: 계정명 뒤에 오는 텍스트 블록에서 추출
+          // 본문 캡션: 계정명 뒤에 오는 텍스트 블록에서 추출.
+          // "가장 긴 span[dir=auto]"이 항상 캡션이라는 보장이 없음 — 팬 댓글 등에 같은 단어가
+          // 여러 번 반복된 긴 댓글이 있으면 그게 캡션보다 길어져서 잘못 뽑힐 수 있음(실제 사례:
+          // 캡션 대신 댓글의 "신지"만 반복된 텍스트가 캡션으로 잘못 추출됨). 그래서 가장 긴
+          // 순서대로 후보를 훑으며 "계정명으로 시작하는" 진짜 캡션 패턴에 매칭되는 첫 번째
+          // 후보만 채택하고, 어느 것도 매칭 안 되면(패턴이 달라진 경우 등) 최후 수단으로만
+          // 가장 긴 span의 원문을 그대로 씀.
           const spans = [...document.querySelectorAll('span[dir="auto"]')]
             .sort((a, b) => b.innerText.length - a.innerText.length);
+          const re = new RegExp(`${acct}\\s*\\n\\s*\\n?\\s*(?:수정됨\\s*)?(?:•\\s*)?\\d+[\\w가-힣]+\\s*\\n([\\s\\S]+)`);
           let caption = '';
-          if (spans[0]) {
-            const raw = spans[0].innerText;
-            const re = new RegExp(`${acct}\\s*\\n\\s*\\n?\\s*(?:수정됨\\s*)?(?:•\\s*)?\\d+[\\w가-힣]+\\s*\\n([\\s\\S]+)`);
-            const m = raw.match(re);
-            caption = m ? m[1] : raw;
+          for (const span of spans) {
+            const m = span.innerText.match(re);
+            if (m) { caption = m[1]; break; }
           }
+          if (!caption && spans[0]) caption = spans[0].innerText;
 
           return { datetime: timeEl.getAttribute('datetime'), likes, comments, caption };
         }, account);
       } catch (e) {
-        console.warn(`[instagram] 재시도 ${attempt + 1}/3 (${url}): ${e.message}`);
+        console.warn(`[instagram] 재시도 ${attempt + 1}/${MAX_ATTEMPTS} (${url}): ${e.message}`);
         await page.waitForTimeout(3000 + attempt * 2000);
       }
     }
@@ -102,7 +166,7 @@ async function collectInstagram({ account, sessionFile, startDate, endDate, head
   });
 
   const endTime = new Date();
-  console.log(`[instagram:${account}] 수집 완료: ${((endTime - startTime) / 1000 / 60).toFixed(1)}분, ${filtered.length}건`);
+  console.log(`[instagram:${account}] 수집 완료: ${((endTime - startTime) / 1000 / 60).toFixed(1)}분, 링크 ${links.size}개 → 파싱 성공 ${results.length}건 → 기간 필터링 후 ${filtered.length}건`);
 
   await browser.close();
   return filtered;
