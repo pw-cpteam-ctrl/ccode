@@ -431,7 +431,13 @@ const SLOT_KEY = 'event-raffle-slots-v1';
 const SLOT_MAX = 5;
 
 function loadSlots() {
-  try { return JSON.parse(localStorage.getItem(SLOT_KEY) || '[]'); } catch (e) { return []; }
+  // 저장된 값이 배열이 아닐 수도 있다(다른 도구가 같은 이름으로 덮어썼거나 내용이 깨진 경우).
+  // 그대로 돌려주면 목록에 새 항목을 추가하는 순간 오류가 나서, 파일 업로드 자체가
+  // "파일을 읽지 못했어요"로 실패한다 — 배열이 아니면 빈 목록으로 취급한다.
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SLOT_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed.filter(s => s && typeof s === 'object') : [];
+  } catch (e) { return []; }
 }
 function saveSlots(list) {
   const trimmed = list.slice(0, SLOT_MAX);
@@ -489,8 +495,21 @@ function slotLabel(s) {
   return `${s.fileName || '(파일명 없음)'} · ${count}명 · ${date}`;
 }
 function applySlot(s) {
-  if (!s.participants || !s.participants.length) return;
-  participants = JSON.parse(JSON.stringify(s.participants));
+  // 캐시는 이 PC의 저장소에서 그대로 읽어오는 값이라, 저장 도중 브라우저가 꺼지거나
+  // 다른 이유로 내용이 망가져 있을 수 있다. 모양이 기대와 다르면 화면을 깨뜨리지 말고
+  // 이유를 알려준다 — 예전에는 여기서 그냥 조용히 멈춰서 "눌러도 아무 반응이 없는"
+  // 상태가 됐다(용량이 모자라 참가자만 비워진 캐시가 대표적인 경우).
+  if (!s) { $('#uploadStatus').textContent = '그 캐시를 찾지 못했어요. 목록을 새로고침해주세요.'; return; }
+  const rows = Array.isArray(s.participants)
+    ? s.participants.filter(r => r && typeof r === 'object' && !Array.isArray(r))
+    : [];
+  if (!rows.length) {
+    $('#uploadStatus').textContent = s.participants && !Array.isArray(s.participants)
+      ? '이 캐시는 내용이 손상돼서 불러올 수 없어요. ✕로 지우고 파일을 다시 올려주세요.'
+      : '이 캐시에는 참가자 데이터가 남아있지 않아요 (저장 공간이 부족해 목록만 남은 경우예요). 파일을 다시 올려주세요.';
+    return;
+  }
+  participants = JSON.parse(JSON.stringify(rows));
   lastFileName = s.fileName || lastFileName;
   const allColumns = Object.keys(participants[0]);
   $('#fileName').textContent = s.fileName || '(파일명 없음)';
@@ -527,8 +546,16 @@ function applySlot(s) {
 }
 /* 최근 파일 5개를 전부 세로로 깔면 위쪽을 불필요하게 많이 먹어서, 자동으로 불러온
    최신 1개만 항상 보여주고 나머지는 접어둔다. 펼치면 2열로 깔아 세로를 덜 쓰게 함.
-   펼침 여부는 삭제 등으로 목록을 다시 그려도 유지된다. */
+   펼침 여부는 삭제 등으로 목록을 다시 그려도 유지된다.
+
+   버튼이 가리키는 캐시는 "몇 번째"가 아니라 저장 시각(ts)으로 찾는다 — 화면에 목록이
+   떠 있는 동안에도 저장이 일어나서(탭을 잠깐 다른 데로 옮기거나 창을 닫을 때 현재
+   상태가 목록 맨 앞에 추가된다) 번호가 한 칸씩 밀릴 수 있기 때문이다. 예전에는 번호로
+   찾아서, 그 사이 저장이 한 번 일어나면 "B 파일" 버튼을 눌러도 A가 열리고 ✕를 누르면
+   엉뚱한 캐시가 지워졌다. */
 let slotsExpanded = false;
+function slotKey(s) { return `${s.ts}|${s.fileName || ''}`; }
+function findSlotIndexByKey(key) { return loadSlots().findIndex(s => slotKey(s) === key); }
 function renderSlots() {
   const list = loadSlots();
   const wrap = $('#slotListWrap');
@@ -536,9 +563,9 @@ function renderSlots() {
   wrap.style.display = '';
   const rowHtml = (s, i) => `
     <div class="slot-row${i === 0 ? ' latest' : ''}">
-      <button type="button" class="secondary slot-load" data-i="${i}" title="${escapeHtml(slotLabel(s))}">${
+      <button type="button" class="secondary slot-load" data-key="${escapeHtml(slotKey(s))}" title="${escapeHtml(slotLabel(s))}">${
         i === 0 ? '<span class="slot-badge">자동 불러옴</span>' : ''}${escapeHtml(slotLabel(s))}</button>
-      <button type="button" class="secondary slot-delete" data-i="${i}" title="이 캐시 삭제">✕</button>
+      <button type="button" class="secondary slot-delete" data-key="${escapeHtml(slotKey(s))}" title="이 캐시 삭제">✕</button>
     </div>`;
   const rest = list.slice(1);
   $('#slotList').innerHTML = rowHtml(list[0], 0) + (rest.length ? `
@@ -555,10 +582,19 @@ function renderSlots() {
     });
   }
   $('#slotList').querySelectorAll('.slot-load').forEach((btn) => {
-    btn.addEventListener('click', () => applySlot(loadSlots()[+btn.dataset.i]));
+    btn.addEventListener('click', () => {
+      const i = findSlotIndexByKey(btn.dataset.key);
+      if (i < 0) { renderSlots(); applySlot(null); return; }
+      applySlot(loadSlots()[i]);
+      renderSlots();
+    });
   });
   $('#slotList').querySelectorAll('.slot-delete').forEach((btn) => {
-    btn.addEventListener('click', () => deleteSlot(+btn.dataset.i));
+    btn.addEventListener('click', () => {
+      const i = findSlotIndexByKey(btn.dataset.key);
+      if (i < 0) { renderSlots(); return; }
+      deleteSlot(i);
+    });
   });
 }
 window.addEventListener('beforeunload', () => { pushSlot(snapshotState(), true); });
@@ -620,7 +656,12 @@ $('#inFile').addEventListener('change', async (e) => {
 // 따라 "의미 있는 컬럼"이 달라질 수 있어 호출할 때마다 새로 계산한다.
 function getMeaningfulColumns(rows, columns, threshold = 0.1) {
   if (!rows.length) return columns;
+  // 사용자가 직접 지정한 컬럼(본문·닉네임·링크·조회수)은 값이 거의 비어 있어도 표에서
+  // 빼지 않는다 — 예전에는 본문이 드문드문 있는 파일에서 정작 지정한 본문 컬럼이
+  // 후보 표에서 사라져, 무엇을 보고 고른 건지 확인할 수 없었다.
+  const keep = new Set([contentColumn, nicknameColumn, postLinkColumn, viewCountColumn].filter(Boolean));
   return columns.filter(col => {
+    if (keep.has(col)) return true;
     const filled = rows.filter(r => String(r[col] ?? '').trim() !== '').length;
     return filled / rows.length > threshold;
   });
@@ -777,7 +818,11 @@ function normalizeRow(row) {
 function computeLengthStats(rows) {
   if (!rows.length) return null;
   const lengths = rows.map(r => String(r[contentColumn] ?? '').trim().length);
-  const max = Math.max(...lengths);
+  // Math.max(...배열)은 배열 값을 전부 인자로 펼쳐 넘기는 방식이라 참가자가 많으면
+  // (실측: 15만 명) "Maximum call stack size exceeded"로 터지면서 파일 전체가
+  // "읽지 못했어요"로 실패했다. 하나씩 훑는 방식은 개수와 상관없이 안전하다.
+  let max = 0;
+  for (const len of lengths) if (len > max) max = len;
   const sorted = [...lengths].sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)];
   const mean = lengths.reduce((a, b) => a + b, 0) / lengths.length;
@@ -1149,8 +1194,13 @@ async function runFilter() {
     });
     const data = await filterRes.json().catch(() => ({}));
     if (!filterRes.ok) throw new Error(data.error || `서버 오류 (${filterRes.status})`);
-    candidates = (data.matches || []).map(m => ({ row: preCandidateRows[m.index], reason: m.reason }));
+    // 서버가 돌려준 번호가 실제 명단 범위를 벗어나면(응답 오류) 빈 후보가 섞여
+    // 후보 표·추첨·다운로드가 통째로 깨지므로, 실제로 존재하는 사람만 남긴다
+    const matched = (data.matches || []).map(m => ({ row: preCandidateRows[m.index], reason: m.reason }));
+    const dropped = matched.filter(c => !c.row).length;
+    candidates = matched.filter(c => c.row);
     applyCandidates(true);
+    if (dropped) console.warn(`서버 응답에 명단 범위를 벗어난 번호가 ${dropped}건 있어 제외했어요.`);
     $('#filterStatus').textContent = usedCodeRule
       ? `"${condition}" 조건으로 ${candidates.length}명 선정됨 (규칙으로 ${preCandidateRows.length}명 추린 뒤 AI가 나머지 판단)`
       : `"${condition}" 조건으로 ${candidates.length}명 선정됨`;
@@ -1231,6 +1281,8 @@ function scheduleSlotSave() {
 
 function applyCandidates(withReason) {
   lastWithReason = withReason;
+  // 어떤 경로로든 행이 빠진 후보가 섞이면 여기서 화면 전체가 멈춰버리므로 미리 걸러낸다
+  candidates = candidates.filter(c => c && c.row && typeof c.row === 'object');
   const rawRows = candidates.map(c => c.row);
   const allColumns = candidates.length ? Object.keys(candidates[0].row) : [];
   const cols = getMeaningfulColumns(rawRows, allColumns).concat(withReason ? ['__판단근거'] : []);
@@ -1382,7 +1434,8 @@ function downloadCandidates() {
 /* ── 3단계: 추첨 (LLM 관여 없이 코드가 실제 난수로 뽑음) ── */
 function drawWinners() {
   if (!candidates.length) { alert('먼저 후보 명단을 만들어주세요 (필터링 실행 또는 전체 참가자로 진행).'); return; }
-  const n = Math.max(1, Math.min(candidates.length, +$('#inWinnerCount').value || 1));
+  // 소수점을 넣으면(예: 2.7) 반복이 한 번 더 돌아 3명이 뽑히므로 정수로 내린다
+  const n = Math.floor(Math.max(1, Math.min(candidates.length, +$('#inWinnerCount').value || 1)));
   const pool = [...candidates];
   const winners = [];
   for (let i = 0; i < n; i++) {
