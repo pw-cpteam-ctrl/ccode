@@ -273,6 +273,8 @@ button.danger{background:var(--ui-warn);color:#fff;}
   padding:9px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
   box-shadow:0 -6px 20px rgba(0,0,0,.18);}
 .dock-stat{font-size:12px;color:#d6cfc2;margin-right:auto;}
+.dock-warn{font-size:12px;font-weight:800;color:#2b2620;background:#ffb968;
+  border-radius:6px;padding:5px 10px;}
 .dock-stat b{color:#fff;}
 .dock-stat .warn{color:#ffb968;font-weight:800;}
 .dockbar button{background:#f0ede7;color:#252018;border:1px solid transparent;}
@@ -362,6 +364,7 @@ button.danger{background:var(--ui-warn);color:#fff;}
   <!-- 하단 고정 바 — 결과물과 진행 상태를 어디까지 스크롤했든 손 닿는 자리에 둔다.
        아래 "오늘 작업 전체 내려받기" 블록은 그대로 두고, 같은 동작을 여기서도 부른다. -->
   <div class="dockbar" id="dockBar">
+    <div class="dock-warn" id="saveWarn" hidden></div>
     <div class="dock-stat" id="dockStat"></div>
     <button class="sm secondary" id="dockCopyX">📋 X 원고 전체 복사</button>
     <button class="sm secondary" id="dockCopyIns">📋 인스타용 복사</button>
@@ -940,17 +943,46 @@ function stripForStorage(p) {
   const { ...rest } = p; // images는 메타(key/scale/ox/oy)만 들어있어 그대로 저장해도 가벼움
   return rest;
 }
+// 저장에 실패하면 반드시 알린다. 예전에는 조용히 넘어갔는데, 그러면 사용자는 저장된
+// 줄 알고 탭을 닫아 그날 작업을 통째로 잃는다. 실패 사유는 대부분 브라우저 저장 공간이
+// 가득 찬 경우다(사진은 따로 저장되지만 상품·원고는 여기에 쌓인다).
+function setSaveWarning(msg) {
+  const el = $('#saveWarn');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.hidden = !msg;
+}
 function saveProducts() {
-  try { localStorage.setItem(PRODUCTS_KEY, JSON.stringify(PRODUCTS.map(stripForStorage))); } catch (e) { /* 용량 초과 시 무시 */ }
+  try {
+    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(PRODUCTS.map(stripForStorage)));
+    setSaveWarning('');
+  } catch (e) {
+    setSaveWarning('⚠ 저장 공간이 가득 차서 이 브라우저에 저장되지 않았어요 — 완성본을 먼저 내려받고 "상품 초기화"로 정리해주세요');
+  }
 }
 function loadProductsFromStorage() {
   try { return JSON.parse(localStorage.getItem(PRODUCTS_KEY) || '[]'); } catch { return []; }
 }
-let _saveSoonT;
+let _saveSoonT = null;
 function saveProductsSoon() {
   clearTimeout(_saveSoonT);
-  _saveSoonT = setTimeout(saveProducts, 350);
+  _saveSoonT = setTimeout(() => { _saveSoonT = null; saveProducts(); }, 350);
 }
+// 사진을 드래그하거나 슬라이더를 만지면 저장이 0.35초 미뤄진다(조작 중에 매번 저장하면
+// 버벅이므로). 그 사이에 탭을 닫거나 새로고침하면 마지막 조작이 그대로 날아간다 —
+// 실제로 드래그 직후 새로고침하면 위치가 되돌아가는 것을 확인했다.
+// 화면이 사라지는 순간 남은 저장을 즉시 끝낸다. pagehide와 visibilitychange를 같이 거는 건
+// 브라우저·기기에 따라 둘 중 하나만 불리는 경우가 있어서다.
+function flushPendingSave() {
+  if (!_saveSoonT) return;
+  clearTimeout(_saveSoonT);
+  _saveSoonT = null;
+  saveProducts();
+}
+window.addEventListener('pagehide', flushPendingSave);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushPendingSave();
+});
 
 /* ── IndexedDB: 업로드한 사진 원본 Blob 저장 (키 = product.images[].key) ── */
 function idbOpen() {
