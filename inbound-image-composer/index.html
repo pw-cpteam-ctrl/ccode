@@ -90,6 +90,15 @@
   .step2-card.group-selected { outline: 2px solid var(--accent); background: #eef4ff; }
   .bulk-edit-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: #eef4ff; border: 1px solid var(--accent); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 12px; }
   .step2-card .thumb img, .step2-card .thumb canvas { width: 56px; height: 56px; object-fit: cover; border-radius: 5px; border: 1px solid var(--line); flex: none; }
+  .step2-card .thumb { position: relative; flex: none; }
+  .step2-card .thumb img { cursor: grab; touch-action: none; } /* touch-action:none — 안 그러면 모바일에서 드래그가 화면 스크롤로 씹힘 */
+  .step2-card .thumb img:active, .step2-card .thumb img.dragging { cursor: grabbing; }
+  .step2-card .thumb .photo-reset-btn {
+    position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; line-height: 16px;
+    border-radius: 50%; background: #fff; border: 1px solid var(--line2); font-size: 11px;
+    padding: 0; cursor: pointer; display: none;
+  }
+  .step2-card .thumb.photo-adjusted .photo-reset-btn { display: block; } /* 기본값(줌1·위치0)일 땐 누를 게 없으니 숨김 */
   .step2-card .fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
   @media (max-width: 480px) { .step2-card { flex-direction: column; gap: 8px; } .step2-card .thumb { align-self: flex-start; } }
   .step2-card .fields-row { display: flex; gap: 6px; }
@@ -326,6 +335,11 @@
             같은 IP명을 가진 항목끼리는 왼쪽 테두리 색으로 묶어서 표시됩니다.
             빈 배경을 드래그하면 여러 행을 한 번에 선택해 태그·클러스터를 일괄 변경할 수 있습니다.
             <button class="link-btn" data-open-dict="ip">IP명 사전 열기</button></p>
+          <p>왼쪽 사진이 카피라이트 표기나 상품 일부가 잘려서 나오면, 사진 위에서
+            <b>Ctrl(맥은 ⌘)을 누른 채 마우스 휠</b>로 확대/축소하고 <b>드래그</b>로 위치를
+            옮겨서 원하는 부분이 보이게 조정할 수 있습니다. 여러 행을 선택한 상태면 선택된
+            사진에 한꺼번에 적용됩니다. 사진 오른쪽 위 ↺ 버튼을 누르면 자동 인식했던
+            원래 크롭으로 되돌립니다.</p>
         </div>
       </details>
       <div class="row" style="margin-bottom:10px;">

@@ -528,6 +528,13 @@ function confirmSourceCrop(srcId) {
       state.items.push({
         id: itemId, photoId, ip: '', tag: '', price: '', ship: '무료배송',
         subGrade: 'other', pushToEnd: false, aiUncertain: false,
+        // 사진 확대/축소·위치 조정(휠/드래그)이 "다시 원본에서 잘라야" 잘린 부분을
+        // 실제로 되살릴 수 있어서(이미 잘라낸 캔버스 안에서는 그 바깥 픽셀이 아예
+        // 없다), 원본 소스(cropSrcId)와 이 사진의 기준 크롭 범위(cropBase)를 같이
+        // 기억해둔다 — photoZoom/photoOffsetX/photoOffsetY는 이 기준을 얼마나
+        // 벗어났는지를 나타내는 값(기본 확대 1배, 위치 이동 없음).
+        cropSrcId: src.id, cropBase: { x: mx, y: my, w: mw, h: mh },
+        photoZoom: 1, photoOffsetX: 0, photoOffsetY: 0,
       });
     });
   });
@@ -960,8 +967,11 @@ function renderDataTable() {
       .concat(tagWhitelistForActiveStore().map((t) => `<option value="${t}" ${item.tag === t ? 'selected' : ''}>${t}</option>`))
       .join('');
     const dis = locked ? 'disabled' : '';
+    const photoAdjusted = (item.photoZoom && item.photoZoom !== 1) || item.photoOffsetX || item.photoOffsetY;
     card.innerHTML = `
-      <div class="thumb"></div>
+      <div class="thumb${photoAdjusted ? ' photo-adjusted' : ''}">
+        <button type="button" class="photo-reset-btn" title="자동 인식했던 원래 크롭으로 되돌리기">↺</button>
+      </div>
       <div class="fields">
         <div class="fields-row">
           <textarea class="ip-input" placeholder="IP명 (Enter로 줄바꿈)" rows="1" ${dis}>${item.ip}</textarea>
@@ -980,8 +990,9 @@ function renderDataTable() {
         </div>
       </div>
     `;
-    card.querySelector('.thumb').appendChild(scaledThumb(state.photos[item.photoId]));
+    card.querySelector('.thumb').prepend(scaledThumb(state.photos[item.photoId]));
     grid.appendChild(card);
+    bindPhotoAdjust(card, item);
 
     card.querySelector('.ip-input').addEventListener('change', (e) => { item.ip = e.target.value.trim(); item.aiUncertain = false; renderDataTable(); });
     card.querySelector('.tag-select').addEventListener('change', (e) => { item.tag = e.target.value; });
@@ -996,6 +1007,7 @@ function renderDataTable() {
 
   attachMarqueeSelection(grid, '.step2-card', (idSet) => { step2SelectedIds = idSet; renderBulkEditBar(); });
   renderBulkEditBar();
+  bindPhotoWheelZoomOnce();
 }
 
 // 2단계에서 빈 배경을 드래그로 여러 행을 묶어 선택하면(step2SelectedIds), 태그나
@@ -1045,6 +1057,167 @@ function renderBulkEditBar() {
     step2SelectedIds = new Set();
     renderDataTable();
   });
+}
+
+// ============================================================
+// 사진 확대/축소·위치 조정 (Ctrl/⌘+휠, 드래그) — 카피라이트 표기나 상품 일부가
+// 자동 크롭 경계에 걸려 잘려 보이는 문제(부시로드 카피라이트, 굿스마일 상품사진
+// 등 실사용 중 신고됨)를 직접 눈으로 보면서 고칠 수 있게 하는 기능.
+//
+// 이미 잘라둔 사진(state.photos[photoId])이 아니라 항상 원본 스크린샷(item.cropSrcId로
+// 찾는 src.img)에서 item.cropBase(자동 인식 당시 크롭 범위) 기준으로 다시 자른다 —
+// 한 번 잘라낸 캔버스 안에서만 확대/축소하면 크롭 경계 바깥으로 이미 잘려나간
+// 픽셀(워터마크·상품 모서리 등)은 애초에 데이터 자체가 없어서 절대 되살릴 수 없기
+// 때문이다. 그래서 photoZoom/photoOffsetX/photoOffsetY는 매번 cropBase에 다시
+// 적용하는 "누적값"으로 저장해둔다.
+//
+// 원본(src.img)은 이번 세션에만 메모리에 남아있고 작업 슬롯에는 저장되지 않는다
+// (state.sources 자체가 슬롯 저장 대상이 아님 — snapshotState() 참고). 슬롯을
+// 복원한 뒤에는 item.cropSrcId로 찾아도 src가 없으므로, 그 경우는 조정 자체를
+// 막고 이유를 알려준다(예전처럼 조용히 아무 반응 없는 상태를 만들지 않기 위해).
+const PHOTO_ZOOM_STEP = 1.07;
+const PHOTO_ZOOM_MAX = 3;
+const PHOTO_ZOOM_MIN = 0.3;
+
+function clampOffset(v) { return Math.max(-1, Math.min(1, v)); }
+
+function applyPhotoTransform(item) {
+  const src = state.sources.find((s) => s.id === item.cropSrcId);
+  if (!src) return false;
+  const base = item.cropBase;
+  const zoom = item.photoZoom || 1;
+  const w = base.w / zoom;
+  const h = base.h / zoom;
+  const cx = base.x + base.w / 2 + (item.photoOffsetX || 0) * base.w;
+  const cy = base.y + base.h / 2 + (item.photoOffsetY || 0) * base.h;
+  const x = Math.max(0, Math.min(src.img.width - w, cx - w / 2));
+  const y = Math.max(0, Math.min(src.img.height - h, cy - h / 2));
+  const cw = Math.min(w, src.img.width - x);
+  const ch = Math.min(h, src.img.height - y);
+  state.photos[item.photoId] = GridDetect.cropCell(src.img, x, y, cw, ch);
+  return true;
+}
+
+function refreshThumbUi(item) {
+  const thumbEl = document.querySelector(`.step2-card[data-item-id="${item.id}"] .thumb`);
+  if (!thumbEl) return;
+  const adjusted = (item.photoZoom && item.photoZoom !== 1) || item.photoOffsetX || item.photoOffsetY;
+  thumbEl.classList.toggle('photo-adjusted', !!adjusted);
+  const oldImg = thumbEl.querySelector('img.pthumb');
+  const newImg = scaledThumb(state.photos[item.photoId]);
+  if (oldImg) oldImg.replaceWith(newImg); else thumbEl.prepend(newImg);
+  bindPhotoDrag(newImg, item);
+}
+
+// 여러 행이 선택된 상태에서 그중 하나를 조정하면 선택된 전체에 같이 적용하고,
+// 선택 안 된 카드를 조정하면 그 카드만 바뀐다 — 사전 저장 없이 이 한 함수로 판단한다.
+function photoAdjustTargets(item) {
+  if (step2SelectedIds.has(item.id) && step2SelectedIds.size > 1) {
+    return state.items.filter((it) => step2SelectedIds.has(it.id));
+  }
+  return [item];
+}
+
+function resetPhotoTransform(item) {
+  item.photoZoom = 1;
+  item.photoOffsetX = 0;
+  item.photoOffsetY = 0;
+  applyPhotoTransform(item);
+}
+
+function bindPhotoAdjust(card, item) {
+  card.querySelector('.photo-reset-btn').addEventListener('click', () => {
+    const targets = photoAdjustTargets(item).filter((t) => t.cropSrcId);
+    targets.forEach(resetPhotoTransform);
+    targets.forEach(refreshThumbUi);
+  });
+  const img = card.querySelector('.thumb img.pthumb');
+  if (img) bindPhotoDrag(img, item);
+}
+
+// 카드 순서 드래그(마우스 mousedown/move/up 직접 구현)와 같은 이유로 이 기능도
+// Pointer Events를 직접 다룬다 — 마우스/터치를 같은 코드로 처리할 수 있고,
+// setPointerCapture로 손가락/커서가 썸네일 밖으로 나가도 드래그가 안 끊긴다.
+function bindPhotoDrag(imgEl, item) {
+  let dragging = false;
+  let startX = 0, startY = 0;
+  let startOffsets = null; // Map<itemId, {x, y}> — 선택된 항목마다 시작 시점 오프셋을 따로 기억
+  imgEl.addEventListener('pointerdown', (e) => {
+    if (!item.cropSrcId) return; // 원본 소스가 없는 사진(슬롯 복원 등)은 위치 조정 불가
+    dragging = true;
+    startX = e.clientX; startY = e.clientY;
+    // 여러 장이 선택된 상태로 드래그하면, 전부 같은 절대 위치로 "스냅"시키는 게 아니라
+    // 각자 원래 있던 위치에서 같은 만큼만 이동해야 한다 — 그래서 대상마다 시작 오프셋을
+    // 따로 기록해둔다(모두 드래그 시작 항목의 오프셋으로 덮어쓰면, 이미 서로 다르게
+    // 조정해둔 사진들이 드래그 한 번에 전부 같은 위치로 뭉개지는 버그가 된다).
+    const targets = photoAdjustTargets(item).filter((t) => t.cropSrcId);
+    startOffsets = new Map(targets.map((t) => [t.id, { x: t.photoOffsetX || 0, y: t.photoOffsetY || 0 }]));
+    imgEl.setPointerCapture(e.pointerId);
+    imgEl.classList.add('dragging');
+    e.preventDefault();
+  });
+  imgEl.addEventListener('pointermove', (e) => {
+    if (!dragging || !startOffsets) return;
+    const rect = imgEl.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const dx = (e.clientX - startX) / rect.width;
+    const dy = (e.clientY - startY) / rect.height;
+    // 화면에서 오른쪽으로 끌면 사진이 그 방향으로 따라와야 자연스러우니, 크롭 중심은
+    // 반대 방향으로 옮긴다(부호 반전). 확대된 상태일수록 같은 화면 이동량이 원본에서는
+    // 더 좁은 범위에 대응해야 체감 이동 속도가 자연스럽다(zoom으로 나눔).
+    const zoom = item.photoZoom || 1;
+    const changed = [];
+    startOffsets.forEach((start, id) => {
+      const t = state.items.find((it) => it.id === id);
+      if (!t) return;
+      t.photoOffsetX = clampOffset(start.x - dx / zoom);
+      t.photoOffsetY = clampOffset(start.y - dy / zoom);
+      applyPhotoTransform(t);
+      changed.push(t);
+    });
+    changed.forEach(refreshThumbUi);
+  });
+  const endDrag = () => { dragging = false; startOffsets = null; imgEl.classList.remove('dragging'); };
+  imgEl.addEventListener('pointerup', endDrag);
+  imgEl.addEventListener('pointercancel', endDrag);
+}
+
+// 휠 리스너는 카드마다 달지 않고 목록 컨테이너 하나에만 한 번 단다 — 카드가 다시
+// 그려질 때마다(renderDataTable 호출마다) 중복으로 쌓이는 걸 막기 위해서다.
+let _photoWheelBound = false;
+let _photoZoomHintAt = 0;
+function bindPhotoWheelZoomOnce() {
+  if (_photoWheelBound) return;
+  _photoWheelBound = true;
+  document.getElementById('dataTableBody').addEventListener('wheel', (e) => {
+    const cardEl = e.target.closest('.step2-card');
+    if (!cardEl) return;
+    // 휠은 원래 페이지 스크롤이다. 항상 확대로 뺏으면 목록이 길 때 스크롤을 못 하게
+    // 되므로, Ctrl(맥은 Cmd)을 누르고 있을 때만 확대/축소로 다룬다 — 다루는 사진이
+    // 많아서 의도치 않은 확대가 나기 쉬운 화면이라 이 한 단계 안전장치를 둔다.
+    if (!(e.ctrlKey || e.metaKey)) {
+      if (Date.now() - _photoZoomHintAt > 2000) {
+        _photoZoomHintAt = Date.now();
+        console.info('사진 확대/축소는 Ctrl(⌘)을 누른 채 휠을 굴려야 동작해요.');
+      }
+      return; // preventDefault 하지 않음 = 스크롤은 평소대로 동작
+    }
+    e.preventDefault();
+    const itemId = cardEl.dataset.itemId;
+    const item = state.items.find((it) => it.id === itemId);
+    if (!item) return;
+    if (!item.cropSrcId) {
+      alert('이 사진은 원본이 이번 세션에 없어서(작업 슬롯 복원 등) 확대/축소를 할 수 없어요.');
+      return;
+    }
+    const factor = e.deltaY < 0 ? PHOTO_ZOOM_STEP : 1 / PHOTO_ZOOM_STEP;
+    const targets = photoAdjustTargets(item).filter((t) => t.cropSrcId);
+    targets.forEach((t) => {
+      t.photoZoom = Math.max(PHOTO_ZOOM_MIN, Math.min(PHOTO_ZOOM_MAX, (t.photoZoom || 1) * factor));
+      applyPhotoTransform(t);
+    });
+    targets.forEach(refreshThumbUi);
+  }, { passive: false });
 }
 
 function scaledThumb(canvas) {
@@ -1649,7 +1822,11 @@ function renderExportBar() {
 function pagesSignature() {
   const headerSelect = document.getElementById('headerSelect');
   return JSON.stringify({
-    items: state.items.map((i) => [i.id, i.ip, i.price, i.ship, i.tag]),
+    // 사진 확대/축소·위치(photoZoom/photoOffsetX/Y)도 포함해야, 페이지를 만든 뒤에
+    // 사진 크롭만 다시 조정했을 때도 "다시 생성하세요" 안내가 뜬다 — 안 넣으면
+    // 화면엔 바뀐 사진이 보이는데 실제 만들어둔 페이지는 예전 크롭 그대로인 채
+    // stale 표시가 안 뜨는 불일치가 생긴다.
+    items: state.items.map((i) => [i.id, i.ip, i.price, i.ship, i.tag, i.photoZoom || 1, i.photoOffsetX || 0, i.photoOffsetY || 0]),
     ship: state.showShipping,
     header: headerSelect ? headerSelect.value : '',
     copyright: state.copyrightText,
