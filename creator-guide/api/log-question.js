@@ -6,10 +6,13 @@
 //   구멍이다.
 //
 // 어디에 쌓이나:
-//   비공개 저장소(ccode-private)의  creator-logs/questions-YYYY-MM.jsonl
+//   로그 전용 비공개 저장소의  creator-logs/questions-YYYY-MM.jsonl
+//   (어느 저장소인지는 환경변수 GITHUB_OWNER/GITHUB_REPO가 정한다)
 //   크리에이터가 대화 중에 계정명이나 연락처를 적을 수 있어, 공개 저장소에
 //   두지 않는다. 배포 프로젝트가 붙어 있지 않아 배포 횟수도 쓰지 않는다.
-//   2026-09-04 이전 기록은 공개 저장소(ccode)의 main·chatbot-logs 브랜치에 남아 있다.
+//   ⚠️ 가이드 소스가 있는 저장소를 가리키면 안 된다. 문의 한 건마다 커밋이
+//   생기는데, 그 저장소에 배포가 붙어 있으면 커밋마다 배포가 돌아 하루 한도를
+//   갉아먹는다(TROUBLESHOOTING A-7). 배포가 붙지 않은 저장소여야 한다.
 //
 // 환경변수(없으면 기록을 조용히 건너뛴다 — 챗봇 기능 자체엔 전혀 영향 없음):
 //   GITHUB_TOKEN / GITHUB_OWNER / GITHUB_REPO / GITHUB_LOG_BRANCH(비공개 저장소의 main)

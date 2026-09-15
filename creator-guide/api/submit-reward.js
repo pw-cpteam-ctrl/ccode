@@ -7,7 +7,8 @@
 //   담당자는 타이핑 없이 옮기기만 하면 된다.
 //
 // 어디에 쌓이나:
-//   비공개 저장소(ccode-private)의  creator-logs/rewards-YYYY-MM.jsonl
+//   로그 전용 비공개 저장소의  creator-logs/rewards-YYYY-MM.jsonl
+//   (어느 저장소인지는 환경변수 GITHUB_OWNER/GITHUB_REPO가 정한다)
 //   가이드 소스가 있는 저장소는 공개라, 크리에이터의 계정 같은 개인정보를 거기
 //   두면 주소만 아는 사람이 목록째로 볼 수 있다. 그래서 접수 기록은 비공개
 //   저장소에만 쌓는다. 배포 프로젝트가 붙어 있지 않아 배포 횟수도 쓰지 않는다.
