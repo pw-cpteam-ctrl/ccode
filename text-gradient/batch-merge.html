@@ -123,19 +123,9 @@ button:disabled{opacity:.4;cursor:default;}
 .folderHead .fname{max-width:34%;}
 /* 폴더 통째로 지우기 — 되돌릴 수 있지만 영향 범위가 크므로 색으로 구분해둔다 */
 /* 이 폴더에만 사진을 보태는 + — 폴더 이름 바로 옆에 붙는 작은 정사각 버튼 */
-/* ⋯ 메뉴 — 가끔 쓰는 폴더 동작을 모아둔다 */
+/* 폴더 이름을 눌러도 그 폴더가 전부 선택된다 */
 .folderHead .fname.clickable{cursor:pointer;}
 .folderHead .fname.clickable:hover{text-decoration:underline;}
-.fmore{position:relative;flex:none;}
-.fmoreBtn{font-size:13px;line-height:1;padding:4px 9px;}
-.fmenu{display:none;position:absolute;right:0;top:calc(100% + 5px);z-index:30;background:#fff;
-  border:1px solid #ccc4b4;border-radius:9px;padding:5px;min-width:190px;
-  box-shadow:0 8px 20px rgba(37,32,24,.16);flex-direction:column;gap:2px;}
-.fmore.open .fmenu{display:flex;}
-.fmenu button{width:100%;text-align:left;font-size:12px;padding:7px 10px;border:none;background:#fff;border-radius:6px;}
-.fmenu button:hover{background:#eef3ff;}
-.fmenu button.danger{color:#b33;}
-.fmenu button.danger:hover{background:#ffe9e9;}
 .folderHead button.addBtn{padding:0;width:20px;height:20px;line-height:1;font-size:14px;font-weight:800;
   border-radius:5px;flex:none;color:#1a3d8f;}
 .folderHead button.addBtn:hover{background:#eef3ff;border-color:#4a7cff;}
@@ -2765,13 +2755,6 @@ function makeFolderHead(folder){
 }
 // 칸에서 한 장만 바꿔도 폴더 머리의 "제목 n/n"과 드롭다운이 따라오게 한다
 // (예전에는 폴더 머리가 그릴 때 값을 한 번 읽고 끝이라, 칸에서 바꾸면 머리와 어긋났음)
-// 열린 폴더 메뉴는 하나뿐이어야 한다 (다른 곳을 누르면 닫힘)
-function closeFolderMenus(){
-  document.querySelectorAll('.fmore.open').forEach(m => m.classList.remove('open'));
-}
-document.addEventListener('mousedown', (e) => {
-  if (!e.target.closest || !e.target.closest('.fmore')) closeFolderMenus();
-});
 function refreshFolderHeads(){
   document.querySelectorAll('.folderHead').forEach(head => {
     const folder = head.dataset.folder || '';
@@ -3588,7 +3571,16 @@ window.addEventListener('mouseup', () => {
 $('#btnExportAll').addEventListener('click', async () => {
   const statusEl = $('#exportStatus');
   const btn = $('#btnExportAll');
+  // 압축 라이브러리는 바깥에서 받아오므로, 인터넷이 끊겼거나 차단되면 없을 수 있다.
+  // 예전에는 확인 없이 바로 써서 버튼만 잠긴 채 아무 안내도 없이 멈췄다
+  if (typeof JSZip === 'undefined') {
+    statusEl.textContent = '압축 기능을 불러오지 못했습니다 (인터넷 연결 확인 후 새로고침)';
+    log('압축 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침해 주세요. 급하면 폴더 머리의 ⬇로 폴더별 개별 저장이 가능합니다.');
+    return;
+  }
+  if (!items.length) { statusEl.textContent = '내보낼 사진이 없습니다'; return; }
   btn.disabled = true;
+  try {
   const zip = new JSZip();
   const exportCanvas = document.createElement('canvas');
   exportCanvas.width = CW; exportCanvas.height = CH;
@@ -3642,8 +3634,17 @@ $('#btnExportAll').addEventListener('click', async () => {
   a.href = URL.createObjectURL(zipBlob);
   a.download = '합성결과_' + items.length + '장.zip';
   a.click();
+  // 압축 파일은 수백 MB까지 가므로 다 쓴 주소는 놓아준다 (안 놓으면 내보낼 때마다 메모리에 쌓임)
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   statusEl.textContent = `완료 (${items.length}장)`;
-  btn.disabled = false;
+  } catch (err) {
+    // 사진 한 장이 깨져 있어도 여기서 멈추는데, 예전에는 버튼이 잠긴 채로 남아 새로고침 전까지
+    // 다시 시도할 수 없었다
+    statusEl.textContent = '내보내기 실패 — 다시 시도해 주세요';
+    log('ZIP 내보내기 실패: ' + ((err && err.message) || err));
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 // ---------- 부팅: 저장된 작업 있으면 자동 복원 ----------
