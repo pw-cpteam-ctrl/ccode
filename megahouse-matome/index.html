@@ -867,6 +867,7 @@ function computeRows(n) {
 function renderGrid(pg) {
   const items = pages[pg - 1];
   const gridEl = $(`#grid${pg}`);
+  if (!gridEl) return; // 위와 같은 이유 — 사라진 페이지를 그리려 할 때 대비
   gridEl.innerHTML = '';
   const counts = computeRows(items.length);
   let idx = 0;
@@ -1340,7 +1341,10 @@ function fitCellNames() {
 }
 
 function applyRowHeights(pg) {
+  // 다음 화면 갱신 때 실행하도록 예약해두는 함수라, 그 사이에 실행취소·페이지 삭제·
+  // 불러오기로 이 페이지가 통째로 사라져 있을 수 있음 (없으면 그냥 건너뜀)
   const gridEl = $(`#grid${pg}`);
+  if (!gridEl) return;
   const rows = gridEl.querySelectorAll('.p-row');
   if (rows.length > 1) {
     const fr = firstRowFlex[pg-1] != null ? firstRowFlex[pg-1] : 100;
@@ -1664,7 +1668,8 @@ function makeItemRow(it, i, pg) {
 function renderItemList() {
   const list = $('#itemList');
   list.innerHTML = '';
-  pages[curPage-1].forEach((it, i) => list.appendChild(makeItemRow(it, i, curPage)));
+  // 보고 있던 페이지가 없어진 뒤(불러오기로 페이지 수가 줄어든 경우 등) 목록이 통째로 깨지지 않게
+  (pages[curPage-1] || []).forEach((it, i) => list.appendChild(makeItemRow(it, i, curPage)));
 }
 
 function mkbtn(t, fn) {
@@ -2115,6 +2120,8 @@ let _refreshing = false;
 function refresh(noUndo) {
   if (!noUndo && !_refreshing) pushUndo();
   _refreshing = true;
+  // 페이지 수가 줄어든 뒤에도 예전 번호를 보고 있으면 목록·그리드가 빈 채로 굳어버림
+  curPage = Math.min(Math.max(1, curPage), pages.length || 1);
   ensurePageFlags();
   syncOpenBtn();
   renderTabs();
