@@ -45,6 +45,12 @@
   }
   .btn:disabled { opacity: .5; cursor: default; }
   .msg { font-size: 12.5px; min-height: 18px; margin-top: 8px; color: var(--red); }
+  /* 차단 안내 — 평소엔 아예 안 나온다. 나왔다는 것 자체가 봐야 할 일이라
+     표 아래에서도 눈에 띄도록 붉은 테두리를 두른다. */
+  .blocked { margin-top: 18px; padding: 12px 14px; border: 1px solid var(--red); border-radius: 8px; font-size: 13px; }
+  .blocked-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+  .blocked-at { color: #777; font-size: 12px; }
+  .blocked-note { margin: 10px 0 0; font-size: 12px; color: #777; }
 
   /* ─── 목록 ─── */
   .head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
@@ -108,6 +114,7 @@
   var code = '';
   var rows = [];
   var confirmed = {};
+  var blocked = {};   // 코드를 너무 여러 번 틀려 차단된 접속 지점
   var keyword = '';
 
   function esc(s) {
@@ -185,11 +192,22 @@
           rememberCode(v);
           rows = r.data.rows || [];
           confirmed = r.data.confirmed || {};
+          blocked = r.data.blocked || {};
           renderList();
         } else if (r.status === 401) {
           go.disabled = false;
           forgetCode();   // 코드가 바뀐 경우 — 기억해 둔 값을 버린다
-          renderGate('코드가 맞지 않습니다.');
+          // 남은 횟수를 알려준다. 모르고 계속 틀리다 갑자기 잠기면
+          // 코드를 잊은 담당자가 영문도 모르고 막히기 때문이다.
+          var left = r.data.left;
+          renderGate('코드가 맞지 않습니다.' + (left ? ' (' + left + '번 더 틀리면 잠시 잠깁니다)' : ''));
+        } else if (r.status === 429) {
+          go.disabled = false;
+          renderGate('여러 번 틀려서 잠시 잠겼습니다. 약 ' + (r.data.minutes || 10) + '분 후에 다시 시도해 주세요.');
+        } else if (r.status === 403) {
+          go.disabled = false;
+          forgetCode();
+          renderGate('너무 여러 번 틀려서 접근이 차단되었습니다. 관리자에게 문의해 주세요.');
         } else if (r.data.reason === 'unconfigured') {
           go.disabled = false;
           renderGate('아직 설정이 끝나지 않았습니다. 개발 담당자에게 문의해 주세요.');
@@ -291,6 +309,21 @@
   }
 
   // ─── 목록 화면 ───
+  // 차단된 접속 지점 — 있을 때만 나온다. 시간이 지나도 저절로 안 풀리므로
+  // 담당자가 여기서 직접 풀어줘야 한다. 본인이 코드를 잊어 차단됐다면 그
+  // 기기에서는 못 들어오니, 다른 기기(예: 휴대폰)로 들어와 풀면 된다.
+  function blockedBox() {
+    var keys = Object.keys(blocked);
+    if (!keys.length) return '';
+    return '<div class="blocked"><b>접근이 차단된 곳 ' + keys.length + '건</b>' +
+      keys.map(function (ip) {
+        return '<div class="blocked-row"><span>' + esc(ip) + '</span>' +
+          '<span class="blocked-at">' + esc(fmtAt(blocked[ip].lastAt)) + ' · ' + esc(String(blocked[ip].fails)) + '회 실패</span>' +
+          '<button class="mini" data-unblock="' + esc(ip) + '">차단 해제</button></div>';
+      }).join('') +
+      '<p class="blocked-note">모르는 곳이라면 누군가 코드를 찔러본 것입니다. 풀지 말고 그대로 두세요.</p></div>';
+  }
+
   function renderList() {
     var list = visibleRows();
     var latestCount = list.filter(function (r) { return r.latest; }).length;
@@ -328,6 +361,7 @@
           '<th>활동명</th><th>네이버 아이디</th><th>초안 공유 예정일</th><th>보상 수령 방식</th><th>보상 형태</th><th>희망 상품</th><th>제출 시각</th><th>확정</th>' +
           '</tr></thead><tbody>' + body + '</tbody></table></div>'
         : '<div class="empty">아직 접수된 내용이 없습니다.</div>') +
+      blockedBox() +
       '<p class="foot">‘표 전체 복사’는 최신 제출만 담습니다. 노션 표에 그대로 붙여넣을 수 있어요.<br />' +
       '이 기기에서는 2일간 코드를 다시 묻지 않습니다. 공용 PC라면 ‘잠그기’를 눌러주세요.<br />' +
       '‘확정하기’는 담당자가 확인을 마쳤다는 표시입니다. 크리에이터가 다시 내는 것을 막지는 않으니, 확정 뒤에 새 제출이 보이면 다시 확인해 주세요.</p>' +
@@ -343,8 +377,18 @@
       try { nq.setSelectionRange(pos, pos); } catch (e) { /* 무시 */ }
     });
     document.getElementById('copy').addEventListener('click', function () { copyTable(this); });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-unblock]'), function (b) {
+      b.addEventListener('click', function () {
+        var who = b.getAttribute('data-unblock');
+        b.disabled = true; b.textContent = '해제 중…';
+        api({ code: code, action: 'unblock', ip: who }).then(function (r) {
+          if (r.status === 200 && r.data.ok) { blocked = r.data.blocked || {}; renderList(); }
+          else { b.disabled = false; b.textContent = '다시 시도'; }
+        }).catch(function () { b.disabled = false; b.textContent = '다시 시도'; });
+      });
+    });
     document.getElementById('lock').addEventListener('click', function () {
-      forgetCode(); code = ''; rows = []; confirmed = {}; keyword = '';
+      forgetCode(); code = ''; rows = []; confirmed = {}; blocked = {}; keyword = '';
       renderGate('');
     });
     document.getElementById('reload').addEventListener('click', function () {
@@ -372,7 +416,15 @@
         code = saved;
         rows = r.data.rows || [];
         confirmed = r.data.confirmed || {};
+        blocked = r.data.blocked || {};
         renderList();
+      } else if (r.status === 429) {
+        // 기억해 둔 코드는 맞을 가능성이 높다. 잠금이 풀리면 그대로 들어갈 수
+        // 있으므로 여기서는 지우지 않는다.
+        renderGate('여러 번 틀린 기록이 있어 잠시 잠겼습니다. 약 ' + (r.data.minutes || 10) + '분 후에 다시 열어주세요.');
+      } else if (r.status === 403) {
+        forgetCode();
+        renderGate('너무 여러 번 틀려서 접근이 차단되었습니다. 관리자에게 문의해 주세요.');
       } else {
         forgetCode();
         renderGate(r.status === 401 ? '접속 코드가 변경되었습니다. 새 코드를 입력해 주세요.' : '');

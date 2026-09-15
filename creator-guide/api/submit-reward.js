@@ -97,7 +97,7 @@ export default async function handler(req, res) {
     token: process.env.GITHUB_TOKEN,
     owner: process.env.GITHUB_OWNER,
     repo: process.env.GITHUB_REPO,
-    branch: process.env.GITHUB_LOG_BRANCH || 'chatbot-logs',
+    branch: process.env.GITHUB_LOG_BRANCH || 'main',
   };
   // 접수할 곳이 없으면 성공했다고 말하지 않는다. 화면은 이 응답을 보고
   // 예전처럼 "복사해서 보내주세요" 안내로 되돌아간다.

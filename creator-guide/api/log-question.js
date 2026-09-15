@@ -62,7 +62,7 @@ export default async function handler(req, res) {
     token: process.env.GITHUB_TOKEN,
     owner: process.env.GITHUB_OWNER,
     repo: process.env.GITHUB_REPO,
-    branch: process.env.GITHUB_LOG_BRANCH || 'chatbot-logs',
+    branch: process.env.GITHUB_LOG_BRANCH || 'main',
   };
   if (!gh.token || !gh.owner || !gh.repo) {
     res.status(200).json({ ok: false, skipped: true });
