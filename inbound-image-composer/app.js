@@ -1798,9 +1798,16 @@ async function downloadAllPages() {
 // 함수를 새로 만들 필요 없이 TOOL/MEMO_API/MEMO_KEY 세 줄만 바꿔서 프론트 코드를
 // 복사하면 된다.
 // ============================================================
-const MEMO_TOOL = '입고안내 이미지 자동 제작 툴';
+// 서버에 보내는 이름 — 이 값이 그대로 저장 폴더명이 된다
+// (`{이 값}/improvement-notes.md`). 예전엔 한글에 공백까지 든 이름을 보내고 있어서,
+// 메모가 처음 들어오는 순간 "입고안내 이미지 자동 제작 툴/" 같은 폴더가 생길 뻔했다.
+// 이 레포는 예전에 경로 문제로 윈도우 checkout이 실패한 적이 있어(9ff8591) 영문으로 맞춘다.
+// 다른 도구들도 insta-gen, megahouse-matome처럼 폴더명을 쓰고 있어 기준도 같아진다.
+const MEMO_TOOL = 'inbound-image-composer';
 const MEMO_API = '/api/save-memo';
-const MEMO_KEY = `${MEMO_TOOL}:memos`;
+// 브라우저에 저장할 때 쓰는 이름 — 예전 이름 그대로 둔다. 위 MEMO_TOOL을 따라가게
+// 두면 이름이 바뀌는 순간, 팀원 브라우저에 이미 저장돼 있던 메모를 못 찾아 사라진 것처럼 된다.
+const MEMO_KEY = '입고안내 이미지 자동 제작 툴:memos';
 
 function escapeHtmlForMemo(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
