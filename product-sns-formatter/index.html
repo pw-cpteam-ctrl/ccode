@@ -1691,9 +1691,17 @@ function clampSlideOffset(slide, pw, ph, frame) {
   slide.ox = Math.max(-maxOx, Math.min(maxOx, slide.ox || 0));
   slide.oy = Math.max(-maxOy, Math.min(maxOy, slide.oy || 0));
 }
+// 캔버스 드래그용으로 창(window)에 붙인 리스너를 떼는 함수. 상세 화면은 상품을 바꿀
+// 때마다 통째로 다시 그려지는데, 그때마다 새 리스너를 붙이기만 하고 떼지 않으면 창에
+// 리스너가 계속 쌓인다(전환 20번이면 40개). 마우스를 움직일 때마다 그 전부가 호출되고,
+// 각 리스너가 그때의 상품을 붙잡고 있어서 메모리도 같이 남는다.
+// 썸네일 드래그(startThumbDrag)는 이미 같은 방식으로 떼고 있어서 그쪽을 기준으로 맞춘다.
+let composerDragCleanup = null;
 function wireComposerInteraction(p) {
   const canvas = $('#composerCanvas');
   if (!canvas) return;
+  // 이전 화면에서 붙여둔 것을 먼저 뗀다 — 이게 없으면 전환할 때마다 두 개씩 쌓인다.
+  if (composerDragCleanup) composerDragCleanup();
   canvas.addEventListener('wheel', e => {
     const slide = p.images[editingIdx]; if (!slide) return;
     e.preventDefault();
@@ -1710,7 +1718,7 @@ function wireComposerInteraction(p) {
     const slide = p.images[editingIdx]; if (!slide) return;
     drag = { sx: e.clientX, sy: e.clientY, sox: slide.ox || 0, soy: slide.oy || 0 };
   });
-  window.addEventListener('mousemove', e => {
+  const onMove = e => {
     if (!drag) return;
     const slide = p.images[editingIdx]; if (!slide) return;
     const scale = composerScale || (420 / CW);
@@ -1719,11 +1727,18 @@ function wireComposerInteraction(p) {
     const img = imgCache.get(slide.key);
     if (img) clampSlideOffset(slide, img.naturalWidth, img.naturalHeight, frameOf(p));
     drawComposer(p);
-  });
-  window.addEventListener('mouseup', () => {
+  };
+  const onUp = () => {
     if (drag) { drawAllThumbs($activeProductSafe()); saveProductsSoon(); }
     drag = null;
-  });
+  };
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+  composerDragCleanup = () => {
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    composerDragCleanup = null;
+  };
 }
 function $activeProductSafe() { return getActiveProduct() || { images: [] }; }
 
