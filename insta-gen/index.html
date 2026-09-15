@@ -887,7 +887,11 @@ function parseJP(txt){
   // 공백을 지운 값으로 KR_WORKS와 대조해, 이미 등록된 작품이면 사전의 정확한 표기(공백 포함)로 바꿔치기한다.
   const stripSp=s=>s.replace(/\s+/g,'');
   const canonWork = workJP ? KR_WORKS.find(w=>stripSp(w)===stripSp(workJP)) : null;
+  // 해시태그로 뽑은 값이 한글 약칭(히트맨 리본 등)과 일치할 수도 있다 — 그대로 쓰면 약칭이
+  // 정식명으로 안 바뀐 채 박제되므로, 한글이라고 바로 확정 짓기 전에 약칭인지부터 확인한다.
+  const aliasKey = (workJP && typeof KR_ALIAS!=='undefined') ? Object.keys(KR_ALIAS).find(a=>stripSp(a)===stripSp(workJP)) : null;
   if(canonWork){ r.work=canonWork; r.jp=''; r.workRaw=workJP; }
+  else if(aliasKey){ r.work=KR_ALIAS[aliasKey]; r.jp=''; r.workRaw=workJP; }
   else if(workJP && /[가-힣]/.test(workJP)){ r.work=workJP; r.jp=''; r.workRaw=workJP; }
   else if(bw){ r.work=DICT.works[bw]; r.jp=bw; r.workRaw=bw; }
   else if(kw2){ r.work=kw2; r.jp=''; r.workRaw=kw2; }     // 한국어 자유입력 작품(정식명)
@@ -908,7 +912,10 @@ function parseJP(txt){
   const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
   const CTX=['初公開','公開','決定','受付','開始','新作','登場','シリーズ','プロジェクト',
              '최초공개','최초','공개','결정','시작','신작','등장','시리즈','프로젝트','フィギュア','うしろ姿','原型'];
+  // workRaw는 해시태그 원문(공백이 빠진 채일 때가 많음)이라, 본문에 있는 정식 표기(공백 포함,
+  // 예: "진격의 거인")와 글자가 달라서 안 지워질 수 있다 — 확정된 정식명(r.work)도 같이 지운다.
   const STRIPKW=[]; if(r.workRaw) STRIPKW.push(r.workRaw);
+  if(r.work && r.work!==r.workRaw) STRIPKW.push(r.work);
   if(r.headline) STRIPKW.push(r.headline);   // 감지된 헤드라인 전체 문구 ("재판매 결정"이 "매"로 남는 것 방지)
   if(r.line) STRIPKW.push(r.line);
   for(const l of LINES) for(const k of l.kw) STRIPKW.push(k);
@@ -1172,6 +1179,9 @@ function loadImageInto(which, src, keepView){
       }
       renderPhotoSlots(); syncControlsUI(); render(); runValidation(); res(im);
     };
+    // 손상됐거나 지원하지 않는 이미지 파일이면 onload가 영영 안 불려서 그냥 멈춰버렸다 —
+    // 실패도 반드시 Promise를 풀어주고 사용자에게 알린다(무한 대기 방지).
+    im.onerror=()=>{ showToast('⚠ 사진을 불러오지 못했습니다(손상됐거나 지원하지 않는 형식)', true); res(null); };
     im.src=src;
   });
 }
