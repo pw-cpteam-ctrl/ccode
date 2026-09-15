@@ -1803,8 +1803,8 @@ async function classifyIpsForSort() {
 // 그리고 안내가 유효한 기간이 지나면 아무도 신경 안 써도 저절로 사라져야 하므로,
 // 노출 마감일을 코드에 못 박아 둔다. 다음에 또 큰 변경이 있으면 아래 키와 마감일을
 // 새로 잡고 본문만 바꾸면 된다.
-const NOTICE_KEY = 'inbound-image-composer-notice-2026-08-20';
-const NOTICE_UNTIL = new Date('2026-08-23T00:00:00+09:00').getTime(); // 이 시각 이후로는 아무에게도 안 뜸
+const NOTICE_KEY = 'inbound-image-composer-notice-2026-09-15';
+const NOTICE_UNTIL = new Date('2026-09-22T00:00:00+09:00').getTime(); // 이 시각 이후로는 아무에게도 안 뜸
 function setupNotice() {
   const dlg = document.getElementById('noticeDialog');
   if (!dlg) return;
@@ -1819,8 +1819,8 @@ function setupNotice() {
     } catch (e) { /* 기억만 못 할 뿐 동작엔 지장 없음 */ }
     if (dlg.open) dlg.close();
   };
-  document.getElementById('noticeHide1d').addEventListener('click', () => hideFor(24));
-  document.getElementById('noticeHide3d').addEventListener('click', () => hideFor(72));
+  document.getElementById('noticeHideToday').addEventListener('click', () => hideFor(24));
+  document.getElementById('noticeHideAll').addEventListener('click', () => hideFor(24 * 7)); // 노출 기간(7일)만큼 숨김 = 사실상 다시 안 뜸
   if (Date.now() > hiddenUntil) dlg.showModal();
 }
 
