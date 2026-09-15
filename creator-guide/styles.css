@@ -1131,10 +1131,11 @@ body {
 
 /* 네이버 아이디 오기재 주의 — 입력칸 바로 밑.
    되돌릴 수 없는 유일한 항목이라, 회색 힌트로 두면 다른 안내에 묻힌다.
-   옅은 붉은 바탕을 깔되 테두리는 왼쪽만 남겨 '입력칸'으로 보이지 않게 한다. */
+   다만 붉은 바탕까지 깔면 경고문처럼 읽혀 부담스러웠다. 앞 장의 .reply-warn과
+   같은 회색 바탕에 붉은 글씨로 맞춰, 눈에는 띄되 톤은 튀지 않게 둔다. */
 .reply-caution {
   margin-top: 7px; padding: 9px 11px;
-  background: var(--danger-bg, #fdf2f2);
+  background: var(--ink-50);
   border-left: 3px solid var(--danger-accent);
   border-radius: 0 8px 8px 0;
   font-size: 11.5px; line-height: 1.55; color: var(--danger-fg);
