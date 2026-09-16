@@ -1,0 +1,5 @@
+# 로그인 정보 — 절대 깃허브에 올리면 안 됨 (내 인스타 계정 접근 권한이 들어있음)
+instagram-session.json
+chrome-profile/
+node_modules/
+node/

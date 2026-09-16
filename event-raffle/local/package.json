@@ -1,0 +1,14 @@
+{
+  "name": "event-raffle-local",
+  "private": true,
+  "version": "0.1.0",
+  "description": "이벤트 추첨기 로컬 실행기 — 인스타 댓글 수집 + 추첨을 한 창에서",
+  "scripts": {
+    "start": "node server.js",
+    "login": "node login-session.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "playwright": "^1.55.0"
+  }
+}
