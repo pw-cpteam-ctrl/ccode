@@ -98,6 +98,9 @@ schema change)을 기본으로 한다. 마이그레이션 스크립트 없이도
 `handoff-behavior-guide.md`는 "작업 진행 방식(소통, 검증, git 습관 등)"
 관점의 행동 지침이다. 둘은 다루는 범위가 다르므로 새 프로젝트를 시작할
 때든 기존 프로젝트를 이어서 작업할 때든 두 문서를 같이 확인한다.
+`CLAUDE.md`에는 맨 위에 `@handoff-behavior-guide.md` import가 걸려 있어, 그 문서를
+읽는 세션이면 별도 훅(SessionStart hook) 실행 성공 여부와 무관하게 handoff 문서
+내용도 항상 같이 로드된다 — 훅과 import 둘 다 걸어둔 이중 안전장치다.
 
 ---
 
