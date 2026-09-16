@@ -290,13 +290,30 @@ async function 전부불러오기(page, 옵션) {
   }
 }
 
+
+/* 인스타그램 게시물 주소가 맞는지 제대로 확인한다.
+   "주소 안에 instagram.com/p/ 라는 글자가 있나"로만 보면
+   https://남의사이트.com/?x=instagram.com/p/ 같은 주소도 통과해버린다 —
+   그 상태로 열면 내 인스타 로그인이 붙은 브라우저로 엉뚱한 사이트에 들어가게 된다. */
+function 인스타게시물주소인가(값) {
+  try {
+    const u = new URL(String(값));
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    if (!['instagram.com', 'www.instagram.com'].includes(u.hostname.toLowerCase())) return false;
+    const 조각 = u.pathname.split('/').filter(Boolean);
+    // /p/XXXX/ · /reel/XXXX/ · /계정/p/XXXX/ · /계정/reel/XXXX/
+    return (['p', 'reel'].includes(조각[0]) && Boolean(조각[1]))
+        || (['p', 'reel'].includes(조각[1]) && Boolean(조각[2]));
+  } catch (e) { return false; }
+}
+
 async function main() {
   const 주소 = process.argv[2];
   const 옵션 = Object.assign(
     { 대댓글포함: false, 주인댓글제외: true, 멘션2배: false },
     JSON.parse(process.argv[3] || '{}'),
   );
-  if (!주소 || !/instagram\.com\/(p|reel)\//.test(주소)) {
+  if (!인스타게시물주소인가(주소)) {
     console.error('❌ 인스타그램 게시물 주소를 넣어주세요 (예: https://www.instagram.com/p/XXXX/)');
     process.exit(1);
   }

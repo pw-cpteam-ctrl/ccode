@@ -22,6 +22,28 @@ const 원격API = 'https://ccode-delta.vercel.app';          // AI 판단을 대
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
+// 잘못된 형식의 요청이 와도 화면이 읽을 수 있는 형태로 답한다(기본값은 HTML이라 화면이 못 읽음)
+app.use((err, req, res, next) => {
+  if (err) return res.status(400).json({ error: '요청 형식이 잘못됐어요.' });
+  next();
+});
+
+/* 인스타그램 게시물 주소가 맞는지 제대로 확인한다.
+   "주소 안에 instagram.com/p/ 라는 글자가 있나"로만 보면
+   https://남의사이트.com/?x=instagram.com/p/ 같은 주소도 통과해버린다 —
+   그 상태로 열면 내 인스타 로그인이 붙은 브라우저로 엉뚱한 사이트에 들어가게 된다. */
+function 인스타게시물주소인가(값) {
+  try {
+    const u = new URL(String(값));
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    if (!['instagram.com', 'www.instagram.com'].includes(u.hostname.toLowerCase())) return false;
+    const 조각 = u.pathname.split('/').filter(Boolean);
+    // /p/XXXX/ · /reel/XXXX/ · /계정/p/XXXX/ · /계정/reel/XXXX/
+    return (['p', 'reel'].includes(조각[0]) && Boolean(조각[1]))
+        || (['p', 'reel'].includes(조각[1]) && Boolean(조각[2]));
+  } catch (e) { return false; }
+}
+
 
 /* ── 지금 돌고 있는 작업 하나만 관리 (동시에 두 개 돌리면 브라우저가 엉킴) ── */
 const 작업 = { 진행중: null, 종류: '', 로그: [], 결과: null, 듣는이: [] };
@@ -44,16 +66,25 @@ function 실행(파일, 인자들, 종류) {
   });
   작업.진행중 = 자식;
 
+  // 자식이 내보내는 글은 덩어리로 끊겨서 온다 — 한 줄이 두 덩어리에 걸쳐 오는 일이 흔하다.
+  // 특히 수집 결과는 댓글이 많으면 수십만 글자라 반드시 쪼개져서, 그대로 읽으면 결과를
+  // 통째로 못 읽는다. 그래서 줄바꿈이 나올 때까지 모았다가 완성된 줄만 처리한다.
   let 결과줄 = '';
-  const 받기 = (덩어리) => {
-    for (const 줄 of String(덩어리).split(/\r?\n/)) {
-      if (!줄.trim()) continue;
-      if (줄.startsWith('__RESULT__')) { 결과줄 = 줄.slice('__RESULT__'.length); continue; }
-      알림(줄);
-    }
+  const 줄모으기 = () => {
+    let 남은것 = '';
+    return (덩어리) => {
+      남은것 += String(덩어리);
+      const 줄들 = 남은것.split(/\r?\n/);
+      남은것 = 줄들.pop();            // 마지막 조각은 아직 안 끝난 줄일 수 있으니 남겨둔다
+      for (const 줄 of 줄들) {
+        if (!줄.trim()) continue;
+        if (줄.startsWith('__RESULT__')) { 결과줄 = 줄.slice('__RESULT__'.length); continue; }
+        알림(줄);
+      }
+    };
   };
-  자식.stdout.on('data', 받기);
-  자식.stderr.on('data', 받기);
+  자식.stdout.on('data', 줄모으기());
+  자식.stderr.on('data', 줄모으기());
 
   자식.on('close', (코드) => {
     작업.진행중 = null;
@@ -113,7 +144,7 @@ app.post('/api/local/login', (req, res) => {
 app.post('/api/local/collect', (req, res) => {
   if (작업.진행중) return res.status(409).json({ error: '다른 작업이 진행 중이에요.' });
   const { 주소, 옵션 } = req.body || {};
-  if (!주소 || !/instagram\.com\/(p|reel)\//.test(String(주소))) {
+  if (!인스타게시물주소인가(주소)) {
     return res.status(400).json({ error: '인스타그램 게시물 주소를 확인해주세요 (…/p/… 또는 …/reel/…).' });
   }
   if (!fs.existsSync(세션파일)) {
@@ -154,10 +185,15 @@ for (const 길 of ['/api/plan-filter', '/api/filter', '/api/save-result']) {
   });
 }
 
-/* ── 추첨기 폴더의 다른 파일들(있으면) ── */
-app.use(express.static(추첨기폴더, { index: false }));
+/* ── 그 밖의 주소는 열어주지 않는다 ──
+   예전엔 추첨기 폴더를 통째로 공개했는데, 그러면 이 폴더 안의 인스타 로그인 정보
+   (instagram-session.json)까지 주소만 알면 내려받아졌다. 추첨기 화면은 자기 파일 하나로
+   완결돼 있어서 폴더를 공개할 이유가 없다. */
+app.use((req, res) => res.status(404).type('text').send('없는 주소예요.'));
 
-app.listen(포트, () => {
+// 내 컴퓨터에서만 열리게 한다 — 이렇게 안 하면 같은 와이파이를 쓰는 다른 사람도
+// 이 주소로 들어올 수 있고, 그건 곧 내 인스타 로그인으로 댓글을 긁을 수 있다는 뜻이다.
+app.listen(포트, '127.0.0.1', () => {
   console.log(`\n추첨기가 준비됐어요 → http://localhost:${포트}`);
   console.log('이 창을 닫으면 프로그램도 같이 꺼집니다. 다 쓸 때까지 열어두세요.\n');
 });
