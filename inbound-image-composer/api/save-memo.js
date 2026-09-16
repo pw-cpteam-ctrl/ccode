@@ -32,7 +32,15 @@ export default async function handler(req, res) {
   }
 
   const { memo, tool } = req.body || {};
-  const TOOL = String(tool || '알 수 없는 도구').slice(0, 40);
+  // tool은 요청에 담겨 오는 값이고 그대로 파일 경로가 되므로, 경로를 벗어나게 만드는
+  // 문자는 반드시 털어낸다 — CORS를 열어둬서 아무 사이트에서나 부를 수 있기 때문에,
+  // "../" 같은 값이 들어오면 저장소의 엉뚱한 파일에 글이 붙을 수 있다.
+  // 한글/영문 폴더명은 이미 쓰고 있으므로 막지 않고, 경로 구분자와 상위 이동만 없앤다.
+  const TOOL = String(tool || '알 수 없는 도구')
+    .slice(0, 40)
+    .replace(/[\\/]/g, '')
+    .replace(/\.{2,}/g, '')
+    .trim() || '알 수 없는 도구';
   if (!memo || !memo.trim()) { res.status(400).json({ error: '저장할 메모 내용이 비어 있어요.' }); return; }
   if (memo.length > 2000) { res.status(400).json({ error: '메모가 너무 길어요(2000자 이내).' }); return; } // 실수로 원고를 통째로 붙여넣는 경우 방지
 

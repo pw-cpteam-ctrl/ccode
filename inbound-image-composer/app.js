@@ -219,15 +219,23 @@ function loadSlots() {
   try { return JSON.parse(localStorage.getItem(SLOT_KEY) || '[]'); } catch (e) { return []; }
 }
 
+// 저장에 끝내 실패했는지 기억해뒀다가 슬롯 목록에 표시한다 — 자동 백업이라 실패해도
+// 지금 작업엔 지장이 없지만, "저장돼 있겠지" 하고 믿고 있다가 나중에 없는 걸 발견하는
+// 게 제일 나쁘다. 탭을 닫는 순간에는 안내를 띄울 방법이 없으므로 화면에 남겨둔다.
+let slotSaveFailed = false;
+
 function saveSlots(list) {
   const trimmed = list.slice(0, SLOT_MAX);
-  try { localStorage.setItem(SLOT_KEY, JSON.stringify(trimmed)); return; } catch (e) { /* 용량 초과 — 아래에서 재시도 */ }
+  try { localStorage.setItem(SLOT_KEY, JSON.stringify(trimmed)); slotSaveFailed = false; return true; } catch (e) { /* 용량 초과 — 아래에서 재시도 */ }
   // 용량 초과 시 오래된 슬롯부터 사진 데이터를 비우고(텍스트만 남김) 재시도한다.
   const stripped = trimmed.map((s) => ({ ...s }));
   for (let i = stripped.length - 1; i >= 0; i--) {
     stripped[i] = { ...stripped[i], photos: {}, headers: [] };
-    try { localStorage.setItem(SLOT_KEY, JSON.stringify(stripped)); return; } catch (e) { /* 계속 다음 슬롯도 비우기 */ }
+    try { localStorage.setItem(SLOT_KEY, JSON.stringify(stripped)); slotSaveFailed = false; return true; } catch (e) { /* 계속 다음 슬롯도 비우기 */ }
   }
+  slotSaveFailed = true;
+  console.warn('작업 슬롯 저장 실패 — 저장 공간이 부족합니다.');
+  return false;
 }
 
 // 캔버스를 축소 JPEG로 압축해서 저장 용량을 아낀다 (사진은 이미 176px 안팎이라 화질
@@ -327,8 +335,11 @@ function renderSlots() {
   const box = document.getElementById('slots');
   if (!box) return;
   const list = loadSlots();
-  if (!list.length) { box.innerHTML = '<div class="slot-empty">아직 저장된 이전 작업이 없습니다.</div>'; return; }
-  box.innerHTML = '';
+  const warn = slotSaveFailed
+    ? '<div class="slot-empty" style="color:#b3261e;font-weight:700;">⚠ 저장 공간이 부족해 최근 작업을 저장하지 못했습니다. 예전 작업을 ✕로 지우면 다시 저장됩니다.</div>'
+    : '';
+  if (!list.length) { box.innerHTML = warn + '<div class="slot-empty">아직 저장된 이전 작업이 없습니다.</div>'; return; }
+  box.innerHTML = warn;
   list.forEach((s, i) => {
     const row = document.createElement('div');
     row.className = 'slot';
@@ -954,6 +965,29 @@ function colorForIp(ip) {
   return IP_COLOR_PALETTE[hash % IP_COLOR_PALETTE.length];
 }
 
+// IP명이 바뀐 카드 하나의 안내 문구(사전 표기 제안 / 확인 필요 배지)만 다시 그린다.
+function refreshCardSuggest(item) {
+  const card = document.querySelector(`.step2-card[data-item-id="${item.id}"]`);
+  if (!card) return;
+  const slot = card.querySelector('.suggest-slot');
+  if (!slot) return;
+  slot.innerHTML = `${item.aiUncertain ? '<span class="warn-badge">⚠ AI 추정 - 확인 필요</span> ' : ''}${ipDictSuggestionHtml(item.ip)}`;
+  const suggestBtn = slot.querySelector('[data-apply-suggest]');
+  if (suggestBtn) suggestBtn.addEventListener('click', () => {
+    item.ip = state.dict.ipNameMap[item.ip];
+    renderDataTable();
+  });
+}
+
+// 같은 IP끼리 묶어 보이게 하는 카드 왼쪽 테두리 색만 전체 갱신한다 — 입력칸은 건드리지
+// 않으므로 타이핑 중이던 포커스가 살아 있다.
+function refreshCardColors() {
+  document.querySelectorAll('.step2-card[data-item-id]').forEach((card) => {
+    const it = state.items.find((i) => i.id === card.dataset.itemId);
+    if (it) card.style.borderLeftColor = colorForIp(it.ip);
+  });
+}
+
 function renderDataTable() {
   const grid = document.getElementById('dataTableBody');
   grid.innerHTML = '';
@@ -997,7 +1031,17 @@ function renderDataTable() {
     grid.appendChild(card);
     bindPhotoAdjust(card, item);
 
-    card.querySelector('.ip-input').addEventListener('change', (e) => { item.ip = e.target.value.trim(); item.aiUncertain = false; renderDataTable(); });
+    // IP명을 고쳤을 때 화면 전체를 다시 그리면, 방금 사용자가 클릭해서 넘어가려던
+    // 입력칸(가격 등)까지 새 요소로 교체돼서 포커스가 풀리고 입력이 안 들어간다
+    // (IP명을 고친 직후 곧바로 가격을 치면 값이 안 들어가는 문제로 실제 확인됨).
+    // 그래서 전체 렌더 대신 실제로 달라지는 것(이 카드의 안내 문구, 카드 테두리 색)만
+    // 갱신한다 — 입력칸은 그대로 두므로 포커스가 유지된다.
+    card.querySelector('.ip-input').addEventListener('change', (e) => {
+      item.ip = e.target.value.trim();
+      item.aiUncertain = false;
+      refreshCardSuggest(item);
+      refreshCardColors();
+    });
     card.querySelector('.tag-select').addEventListener('change', (e) => { item.tag = e.target.value; });
     card.querySelector('.price-input').addEventListener('change', (e) => { item.price = e.target.value.trim(); });
     card.querySelector('.subgrade-select').addEventListener('change', (e) => { item.subGrade = e.target.value; });
@@ -1921,13 +1965,31 @@ function updateHeaderPreview() {
   img.src = header ? header.canvas.toDataURL('image/png') : '';
 }
 
+// 한 장에 몇 개를 넣었는지 사람에게 알려준다 — 안내가 없으면 "왜 갑자기 장수가
+// 늘었지?"를 알 방법이 없다(기본 20개인데 넘침 때문에 15개로 내려간 경우).
+function showPageSizeNote(perPage) {
+  const note = document.getElementById('pageSizeNote');
+  if (!note) return;
+  if (perPage >= RenderPage.PAGE_SIZE_FULL) { note.style.display = 'none'; return; }
+  note.style.display = 'block';
+  note.textContent = `헤더 배너가 크거나 상품명이 두 줄인 카드가 있어서, 20개를 한 장에 넣으면 맨 아랫줄의 상품명·가격이 페이지 밖으로 잘립니다. 그래서 이번에는 한 장에 ${perPage}개씩 나눴습니다. 20개로 채우고 싶으면 1단계에서 헤더 높이를 줄여보세요.`;
+}
+
 async function generatePages() {
   const btn = document.getElementById('generatePagesBtn');
   if (btn) { btn.disabled = true; btn.textContent = '생성 중...'; }
   try {
     const headerId = document.getElementById('headerSelect').value;
     const header = state.headers.find((h) => h.id === headerId);
-    const groups = chunk(state.items, 20);
+    const headerCanvas = header ? header.canvas : null;
+
+    // 몇 개씩 나눌지는 "20개로 채웠을 때 페이지를 넘치는가"로 정한다. 헤더 배너가 크거나
+    // IP명이 2줄인 카드가 있으면 4번째 줄이 페이지 밖으로 밀려서 그 줄의 상품명·가격·
+    // 배송비가 통째로 사라지는데, 그럴 땐 한 장에 15개(3줄)로 낮춰서 다 보이게 한다.
+    // 글자 폭을 재서 판단하므로 폰트가 로드된 뒤에 계산해야 정확하다.
+    await RenderPage.ensureFontsLoaded();
+    const perPage = RenderPage.itemsPerPage(state.items, headerCanvas);
+    const groups = chunk(state.items, perPage);
     const cardGroups = groups.map((g) => g.map((item) => ({
       photo: state.photos[item.photoId], ip: item.ip, price: item.price, ship: item.ship, tag: item.tag,
     })));
@@ -1935,12 +1997,13 @@ async function generatePages() {
     // 페이지별 renderPage 호출은 서로 독립적이므로 Promise.all로 병렬 렌더 (순차 대비 체감상 빠름)
     const copyrightText = formatCopyright(state.copyrightText);
     const canvases = await Promise.all(cardGroups.map((cards) => RenderPage.renderPage(
-      cards, header ? header.canvas : null,
+      cards, headerCanvas,
       { cols: 5, rows: 4, pageW: 1080, pageH: 1350, scale: 2, showShipping: state.showShipping, copyrightText },
     )));
 
     state.finalPages = canvases.map((canvas, i) => ({ canvas, index: i }));
     state.finalPagesSig = pagesSignature();
+    showPageSizeNote(perPage);
     document.getElementById('pagesArea').style.display = 'block';
     const container = document.getElementById('pagesContainer');
     container.innerHTML = '';

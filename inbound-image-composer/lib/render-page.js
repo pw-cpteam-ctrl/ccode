@@ -14,23 +14,31 @@ const FONT = '"Paperlogy","Apple SD Gothic Neo",sans-serif';
 // Load a Google Font before rendering to canvas — canvas text silently falls back
 // to a system font if the webfont isn't ready yet, so always await a short delay +
 // document.fonts.ready (with a timeout fallback; font loading over network can hang).
+//
+// 한 번 끝난 결과는 재사용한다 — 페이지마다, 그리고 페이지 분할을 계산할 때마다
+// 매번 700ms씩 다시 기다리면 "페이지 생성"이 그만큼 느려진다(폰트는 한 번만 받으면 됨).
+let fontsReadyPromise = null;
 async function ensureFontsLoaded() {
-  if (!document.getElementById('paperlogy-font-link')) {
-    const link = document.createElement('link');
-    link.id = 'paperlogy-font-link';
-    link.rel = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=Paperlogy:wght@500;700;800&display=swap';
-    document.head.appendChild(link);
-  }
-  await new Promise((r) => setTimeout(r, 700));
-  try {
-    await Promise.race([
-      document.fonts.ready,
-      new Promise((_, rej) => setTimeout(rej, 3000)),
-    ]);
-  } catch (e) {
-    /* proceed anyway with fallback font */
-  }
+  if (fontsReadyPromise) return fontsReadyPromise;
+  fontsReadyPromise = (async () => {
+    if (!document.getElementById('paperlogy-font-link')) {
+      const link = document.createElement('link');
+      link.id = 'paperlogy-font-link';
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Paperlogy:wght@200;500;700;800&display=swap';
+      document.head.appendChild(link);
+    }
+    await new Promise((r) => setTimeout(r, 700));
+    try {
+      await Promise.race([
+        document.fonts.ready,
+        new Promise((_, rej) => setTimeout(rej, 3000)),
+      ]);
+    } catch (e) {
+      /* proceed anyway with fallback font */
+    }
+  })();
+  return fontsReadyPromise;
 }
 
 function drawCartIcon(ctx, x, y, color) {
@@ -390,55 +398,53 @@ function drawCopyright(ctx, text, pageW, pageH) {
 }
 
 /**
- * 3단계(분할 전 전체 미리보기)용 — 페이지 높이 제약 없이 5열 그리드로 계속
- * 이어지는 긴 세로 캔버스 1장을 그린다. 카드 하나하나의 그리기는 renderPage와
- * 완전히 동일한 drawCard()를 쓰므로 최종 결과물과 시각적으로 동일하다.
+ * 3단계(분할 전 전체 미리보기)용으로 만들었던 renderContinuousStrip()은 화면 단계가
+ * 3단계로 합쳐지면서 호출하는 곳이 없어져 제거했다(기록은 git에 남아 있다).
  */
-async function renderContinuousStrip(items, options = {}) {
-  await ensureFontsLoaded();
-  const { cols = 5, pageW = 1080, scale = 2, padTop = 24, padBottom = 24, showShipping = true } = options;
 
-  const { photo, colGap, padX, cardBlock, rowGap } = LAYOUT;
-  const usedRows = Math.ceil(items.length / cols) || 1;
-
-  // 실제 출력 캔버스의 세로 길이가 행별 실제 높이(2줄 IP명 포함)에 달려있어서, 캔버스를
-  // 만들기 전에 폭 측정만 가능한 임시 컨텍스트로 행 높이부터 계산한다.
+// ── 페이지 넘침 판정 ────────────────────────────────────────
+// 한 페이지에 들어갈 상품을 렌더했을 때 마지막 줄이 페이지 아래로 얼마나 넘치는지
+// 계산한다. 넘치면 그만큼 마지막 줄의 상품명/가격/배송비가 통째로 잘려서 안 보인다
+// (실제로 헤더 배너가 216px이고 IP명이 2줄인 카드가 있으면 68px 넘쳤다 — 마지막 줄
+// 글자 영역 73px이 거의 다 사라지는 수준).
+//
+// 계산식은 renderPage()의 행 배치와 정확히 같아야 의미가 있으므로, 같은 상수(LAYOUT)와
+// 같은 행 높이 계산(rowExtraHeight)을 그대로 쓴다.
+//
+// 주의: rowExtraHeight는 글자 폭을 재서 2줄 여부를 판단하므로, 폰트가 로드되기 전에
+// 부르면 결과가 부정확하다. 호출 전에 ensureFontsLoaded()를 먼저 기다려야 한다.
+function pageOverflowPx(items, headerImg, options = {}) {
+  const { cols = 5, rows = 4, pageW = 1080, pageH = 1350, padTop = 24 } = options;
   const measureCtx = document.createElement('canvas').getContext('2d');
-  const rowHeights = [];
+  const headerH = headerImg ? Math.round(headerImg.height * (pageW / headerImg.width)) : 0;
+  const usedRows = Math.min(rows, Math.ceil(items.length / cols));
+
+  let y = headerH + padTop;
   for (let r = 0; r < usedRows; r++) {
     const rowItems = items.slice(r * cols, r * cols + cols);
-    rowHeights.push(cardBlock + rowExtraHeight(measureCtx, rowItems));
+    y += LAYOUT.cardBlock + rowExtraHeight(measureCtx, rowItems);
+    if (r < usedRows - 1) y += LAYOUT.rowGap;
   }
-  const height = padTop + rowHeights.reduce((a, b) => a + b, 0) + (usedRows - 1) * rowGap + padBottom;
+  return Math.max(0, Math.round(y) - pageH);
+}
 
-  const canvas = document.createElement('canvas');
-  canvas.width = pageW * scale;
-  canvas.height = height * scale;
-  const ctx = canvas.getContext('2d');
-  ctx.scale(scale, scale);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, pageW, height);
+const PAGE_SIZE_FULL = 20;    // 5열 x 4행
+const PAGE_SIZE_REDUCED = 15; // 5열 x 3행 — 넘칠 때만 쓴다
 
-  let yCursor = padTop;
-  for (let r = 0; r < usedRows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const i = r * cols + c;
-      if (i >= items.length) continue;
-      const cx = padX + c * (photo + colGap);
-      drawCard(ctx, items[i], cx, yCursor, showShipping);
-    }
-    yCursor += rowHeights[r] + rowGap;
+// 한 장에 몇 개를 넣을지 정한다. 기본은 20개(4행)지만, 그렇게 나눴을 때 한 장이라도
+// 넘치면 배치 전체를 15개(3행)로 낮춘다 — 장마다 개수가 달라지면 결과물이 들쭉날쭉해
+// 보이므로 배치 단위로 통일한다.
+function itemsPerPage(allItems, headerImg, options = {}) {
+  for (let i = 0; i < allItems.length; i += PAGE_SIZE_FULL) {
+    const group = allItems.slice(i, i + PAGE_SIZE_FULL);
+    if (pageOverflowPx(group, headerImg, options) > 0) return PAGE_SIZE_REDUCED;
   }
-
-  return canvas;
+  return PAGE_SIZE_FULL;
 }
 
 if (typeof window !== 'undefined') {
   window.RenderPage = {
     renderPage,
-    renderContinuousStrip,
     ensureFontsLoaded,
     fitFont,
     wrapTextByWord,
@@ -447,6 +453,10 @@ if (typeof window !== 'undefined') {
     drawCard,
     ipTextPlan,
     rowExtraHeight,
+    pageOverflowPx,
+    itemsPerPage,
+    PAGE_SIZE_FULL,
+    PAGE_SIZE_REDUCED,
     LAYOUT,
   };
 }
