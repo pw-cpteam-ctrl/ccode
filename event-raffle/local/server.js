@@ -18,10 +18,9 @@ const { spawn } = require('child_process');
 const 포트 = Number(process.env.PORT) || 4850;
 const 추첨기폴더 = path.join(__dirname, '..');            // event-raffle/
 const 세션파일 = path.join(__dirname, 'instagram-session.json');
-const 프로필폴더 = path.join(__dirname, 'chrome-profile', 'instagram');   // 로그인해둔 크롬 프로필
 // 로그인 흔적이 있는지 — "있다"가 곧 "지금도 유효하다"는 뜻은 아니다. 진짜 유효한지는
 // 인스타에 실제로 들어가 봐야 알 수 있어서, 화면 문구도 단정하지 않게 적어뒀다.
-const 로그인흔적있음 = () => fs.existsSync(세션파일) || fs.existsSync(프로필폴더);
+const 로그인흔적있음 = () => fs.existsSync(세션파일);
 const 원격API = 'https://ccode-delta.vercel.app';          // AI 판단을 대신 물어볼 주소
 
 const app = express();

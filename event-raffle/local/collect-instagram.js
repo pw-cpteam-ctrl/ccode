@@ -20,7 +20,6 @@ const { chromium } = require('playwright');
 const { applyStealth, STEALTH_LAUNCH_ARGS, STEALTH_CONTEXT_OPTIONS } = require('./browser-stealth');
 
 const 세션파일 = path.join(__dirname, 'instagram-session.json');
-const 프로필폴더 = path.join(__dirname, 'chrome-profile', 'instagram');   // 로그인할 때 쓴 바로 그 폴더
 const 최대대기_분 = 20;        // 이 시간이 지나면 그때까지 모은 것만 들고 끝냄
 const 정체판정_횟수 = 6;       // 몇 번 연속으로 댓글 수가 안 늘면 "다 불러왔다"고 봄
 
@@ -210,7 +209,7 @@ function 화면에서읽기(옵션) {
 /* ────────────────────────────────────────────────────────────────
    화면을 조작해 댓글을 끝까지 불러오는 부분
    ──────────────────────────────────────────────────────────────── */
-async function 전부불러오기(page, 옵션) {
+async function 전부불러오기(page, 옵션, 스냅찍기) {
   const 시작 = Date.now();
   let 이전개수 = -1, 정체 = 0, 회차 = 0;
 
@@ -286,6 +285,11 @@ async function 전부불러오기(page, 옵션) {
     } else {
       정체 = 0;
       로그(`  · ${회차}회차 — 지금까지 ${현재}개 불러옴`);
+      /* 지금까지 읽은 걸 계속 저장해둔다 — 뒤에서 창이 닫혀도 여기까지는 건진다.
+         초반에는 매 회차 찍는다. 창을 닫아버리는 일은 대개 시작 직후에 벌어지고
+         (실제로 1회차에서 끊긴 적이 있다) 그때는 화면이 작아서 비용도 거의 없다.
+         뒤로 갈수록 화면이 커지니 간격을 벌린다. */
+      if (스냅찍기 && (회차 <= 10 || 회차 % 5 === 0)) await 스냅찍기();
     }
     이전개수 = 현재;
   }
@@ -308,35 +312,50 @@ function 인스타게시물주소인가(값) {
   } catch (e) { return false; }
 }
 
-/* 로그인할 때 열었던 것과 "똑같은" 브라우저를 연다.
-   이게 왜 중요하냐면 — 예전엔 로그인은 이 컴퓨터의 진짜 크롬을 전용 프로필로 열고,
-   수집은 전혀 다른 내장 브라우저를 빈 프로필로 열면서 쿠키만 베껴 넣었다. 그러면
-   인스타 입장에선 "갑자기 다른 기기에서 같은 계정이 접속했다"로 보여서, 로그인 정보가
-   멀쩡한데도 화면에 로그인 벽이 덮인다(댓글이 앞부분만 보이고 더 안 불러와짐).
-   사람 눈에도 북마크 하나 없는 맨 창이라 시크릿창처럼 보인다.
-   그래서 아예 로그인해둔 그 프로필을 그대로 다시 연다 — 쿠키를 옮길 일 자체가 없어진다. */
+/* 브라우저를 연다 — 저장해둔 로그인 정보(세션 파일)를 물려주는 방식.
+   같은 저장소 `sns-report-scraper/instagram.js`가 쓰는 것과 같은 구조이고, 그쪽에서
+   실사용으로 검증된 방식이라 그대로 따른다. 한때 "로그인은 진짜 크롬 프로필, 수집은
+   내장 브라우저라서 인스타가 다른 기기로 본다"고 판단해 프로필을 공유하도록 바꿨었는데,
+   그건 틀린 진단이었다(그 구조로 잘 돌아가는 실제 사례가 있었음). 프로필 공유는 오히려
+   "폴더를 한 프로세스만 열 수 있다"는 제약 때문에 로그인 창이 떠 있으면 아예 못 여는
+   새 문제를 만든다. 그래서 되돌렸다.
+
+   중요한 건 로그인할 때와 수집할 때 ①세션 ②화면 크기·언어·시간대 ③navigator 위장
+   세 가지를 똑같이 맞추는 것이다. */
 async function 브라우저열기() {
-  try {
-    const context = await chromium.launchPersistentContext(프로필폴더, {
-      channel: 'chrome',
-      headless: false,
-      args: STEALTH_LAUNCH_ARGS,
-      viewport: STEALTH_CONTEXT_OPTIONS.viewport,
-      locale: STEALTH_CONTEXT_OPTIONS.locale,
-      timezoneId: STEALTH_CONTEXT_OPTIONS.timezoneId,
-    });
-    로그('로그인해둔 크롬 프로필로 엽니다.');
-    return { context, browser: null };
-  } catch (err) {
-    // 여기로 오는 경우는 둘 중 하나다 — 이 컴퓨터에 진짜 크롬이 없거나(팀원 PC 등),
-    // 로그인 창이 아직 떠 있어서 같은 프로필을 두 번 못 여는 경우.
-    로그(`ℹ️ 로그인해둔 프로필을 못 열어서 내장 브라우저로 대신합니다: ${err.message}`);
-    로그('   (로그인 창이 아직 떠 있으면 닫고 다시 시도하면 원래 방식으로 열려요)');
-    if (!fs.existsSync(세션파일)) throw new Error('로그인 정보가 없어요. "인스타 로그인"을 먼저 해주세요.');
-    const browser = await chromium.launch({ headless: false, args: STEALTH_LAUNCH_ARGS });
-    const context = await browser.newContext({ ...STEALTH_CONTEXT_OPTIONS, storageState: 세션파일 });
-    return { context, browser };
-  }
+  const browser = await chromium.launch({ headless: false, args: STEALTH_LAUNCH_ARGS });
+  const context = await browser.newContext({ ...STEALTH_CONTEXT_OPTIONS, storageState: 세션파일 });
+  return { context, browser };
+}
+
+/* 지금 화면이 어떤 상태인지 "추측하지 말고" 그대로 기록한다.
+   예전엔 멈췄을 때 원인을 사람이 짐작해야 했고, 그래서 엉뚱한 곳을 고치느라 시간을
+   버렸다. 로그인 벽인지, 그냥 더 불러올 게 없는 건지는 화면을 보면 구분할 수 있다. */
+async function 화면상태(page) {
+  return page.evaluate(() => {
+    const 글자 = (document.body.innerText || '').slice(0, 4000);
+    const 로그인링크 = [...document.querySelectorAll('a[href*="/accounts/login"]')]
+      .filter((a) => a.getBoundingClientRect().width > 0);
+    return {
+      주소: location.pathname,
+      로그인입력칸: Boolean(document.querySelector('input[name="username"]')),
+      로그인유도: 로그인링크.length > 0 || /로그인하여|Log in to like|계정이 있으신가요/.test(글자),
+      댓글줄수: document.querySelectorAll('time[datetime]').length,
+      // 인스타가 게시물 설명에 "댓글 N개"를 넣어준다 — 몇 개 중 몇 개를 읽었는지 대조용
+      설명: (document.querySelector('meta[property="og:description"]') || {}).content || '',
+    };
+  });
+}
+
+/* 위 설명 글에서 댓글 수를 뽑아낸다. 못 뽑으면 null — 모르면 모른다고 둔다.
+   한국어는 "댓글 89개"(숫자가 뒤), 영어는 "567 comments"(숫자가 앞)라 둘 다 본다. */
+function 설명속댓글수(설명) {
+  const 글 = String(설명 || '').replace(/,/g, '');
+  const 한국어 = 글.match(/댓글\s*(\d+)\s*개/);
+  if (한국어) return Number(한국어[1]);
+  const 영어 = 글.match(/(\d+)\s*comments?\b/i);
+  if (영어) return Number(영어[1]);
+  return null;
 }
 
 async function main() {
@@ -349,38 +368,58 @@ async function main() {
     console.error('❌ 인스타그램 게시물 주소를 넣어주세요 (예: https://www.instagram.com/p/XXXX/)');
     process.exit(1);
   }
-  if (!fs.existsSync(세션파일) && !fs.existsSync(프로필폴더)) {
+  if (!fs.existsSync(세션파일)) {
     console.error('❌ 인스타 로그인 정보가 없어요. 먼저 "인스타 로그인" 버튼을 눌러 로그인해주세요.');
     process.exit(1);
   }
 
   로그(`인스타 게시물을 엽니다: ${주소}`);
+  로그('※ 곧 뜨는 창은 이 프로그램 전용 브라우저예요. 북마크도 없고 낯설어 보이지만 로그인은');
+  로그('  되어 있는 상태입니다. 수집이 끝나면 저절로 닫히니 그때까지 건드리지 말아주세요.');
   const { context, browser } = await 브라우저열기();
   await applyStealth(context);
-  // 프로필로 열면 빈 탭이 하나 딸려 오므로 그걸 그대로 쓴다 (탭을 두 개 띄우지 않기 위해)
-  const page = context.pages()[0] || await context.newPage();
+  const page = await context.newPage();
+
+  /* 중간 결과를 계속 들고 있는다.
+     20분짜리 수집이 막판에 브라우저가 닫혀서 통째로 날아가는 일을 막기 위해서다.
+     (실제로 사용자가 창을 닫아 그때까지 읽은 게 전부 사라진 적이 있다) */
+  let 마지막스냅 = null;
+  const 스냅찍기 = async () => {
+    try { 마지막스냅 = await page.evaluate(화면에서읽기, 옵션); } catch (e) { /* 닫혔으면 직전 것 유지 */ }
+  };
 
   try {
     await page.goto(주소, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForTimeout(2500);
 
-    /* 로그인이 풀렸는지 확인 — 풀린 채로 긁으면 앞부분 댓글만 보이다 멈춘다.
-       주소만 보면 안 된다. 인스타는 주소를 그대로 둔 채 화면 위에 로그인 창을 덮어씌우는
-       경우가 있어서(실제로 그 상태로 17개만 읽히고 멈춘 적 있음), 브라우저가 들고 있는
-       로그인 쿠키까지 같이 본다 — 이게 제일 확실한 신호다. */
+    /* 지금 화면이 어떤 상태인지 확인 — 추측하지 않고 화면을 그대로 본다.
+       "로그인 벽"과 "그냥 더 불러올 게 없음"은 완전히 다른 문제인데, 예전엔 둘을 구분
+       못 해서 엉뚱한 곳을 고쳤다. 여기서 갈라놓는다. */
+    const 첫상태 = await 화면상태(page);
     const 쿠키들 = await context.cookies('https://www.instagram.com');
     const 쿠키있음 = 쿠키들.some((c) => c.name === 'sessionid' && c.value);
-    const 화면정상 = await page.evaluate(() =>
-      !/\/accounts\/login/.test(location.pathname) && !document.querySelector('input[name="username"]'));
-    if (!쿠키있음 || !화면정상) {
-      throw new Error('인스타 로그인이 풀렸어요. "인스타 로그인"을 다시 눌러 로그인해주세요.');
+    if (!쿠키있음) {
+      throw new Error('저장된 로그인 정보에 인스타 세션이 없어요. "인스타 로그인"을 다시 해주세요.');
+    }
+    if (첫상태.로그인입력칸 || /\/accounts\/login/.test(첫상태.주소)) {
+      throw new Error('인스타 로그인이 풀렸어요(로그인 화면으로 넘어감). "인스타 로그인"을 다시 해주세요.');
+    }
+    if (첫상태.로그인유도) {
+      로그('⚠️ 화면에 로그인을 권하는 안내가 보여요. 이 상태면 댓글이 앞부분만 보일 수 있어요.');
+      로그('   결과가 실제 댓글 수보다 적으면 "인스타 로그인"을 다시 하고 시도해주세요.');
     }
 
+    const 예상댓글수 = 설명속댓글수(첫상태.설명);
+    if (예상댓글수 !== null) 로그(`이 게시물의 댓글 수: ${예상댓글수}개 (인스타가 알려준 값)`);
+
     로그('댓글을 불러오는 중입니다. 댓글이 많으면 몇 분 걸릴 수 있어요...');
-    await 전부불러오기(page, 옵션);
+    await 스냅찍기();   // 첫 화면 것부터 챙겨둔다 (바로 창이 닫혀도 빈손이 되지 않게)
+    await 전부불러오기(page, 옵션, 스냅찍기);
 
     로그('화면에서 댓글을 읽는 중...');
-    const 결과 = await page.evaluate(화면에서읽기, 옵션);
+    await 스냅찍기();
+    const 결과 = 마지막스냅;
+    if (!결과) throw new Error('화면에서 댓글을 읽지 못했어요.');
     로그(`✅ ${결과.행들.length}명 읽었어요 (화면에 보이는 댓글 줄 ${결과.화면속댓글줄수}개 기준)`);
     const ㄱ = 결과.건너뜀 || {};
     if (ㄱ.주인댓글) 로그(`  · 게시물 주인 댓글 ${ㄱ.주인댓글}개는 뺐어요 (설정대로)`);
@@ -390,10 +429,39 @@ async function main() {
     }
     if (ㄱ.본문못읽음 || ㄱ.작성자못찾음) {
       로그(`  ⚠️ 읽지 못해 건너뛴 줄: 본문 ${ㄱ.본문못읽음 || 0}개, 작성자 ${ㄱ.작성자못찾음 || 0}개`);
-      로그('     — 인스타 화면 구조가 바뀌었을 수 있어요. 인스타의 댓글 수와 위 인원을 꼭 비교해보세요.');
     }
-    console.log('__RESULT__' + JSON.stringify({ ...결과, 주소, 옵션 }));
+
+    /* 추첨에 쓸 명단이라 "몇 개 중 몇 개"를 반드시 대조한다. 일부만 가져왔는데 전부인 줄
+       알고 추첨하면 그 추첨 자체가 불공정해진다. 그래서 조용히 넘어가지 않는다. */
+    const 끝상태 = await 화면상태(page).catch(() => 첫상태);
+    if (예상댓글수 !== null && 결과.화면속댓글줄수 < 예상댓글수 * 0.9) {
+      로그('');
+      로그(`  🚨 인스타는 댓글이 ${예상댓글수}개라는데 화면엔 ${결과.화면속댓글줄수}개까지만 나왔어요.`);
+      로그('     일부만 수집된 상태입니다. 이대로 추첨하면 빠진 사람이 생겨요.');
+      if (끝상태.로그인유도) 로그('     화면에 로그인 안내가 떠 있어요 → "인스타 로그인"을 다시 해보세요.');
+      else 로그('     로그인 문제는 아니에요 → "더 보기" 버튼을 못 찾은 쪽에 가깝습니다. 이 메시지를 알려주세요.');
+    }
+    console.log('__RESULT__' + JSON.stringify({
+      ...결과, 주소, 옵션, 예상댓글수, 로그인유도: 끝상태.로그인유도,
+    }));
+  } catch (err) {
+    /* 도중에 창이 닫혀도, 그때까지 읽어둔 게 있으면 버리지 않고 넘긴다 —
+       20분 긁은 걸 통째로 날리는 것보다 "일부만 받았다"고 알려주는 쪽이 낫다. */
+    if (마지막스냅 && 마지막스냅.행들.length) {
+      로그(`⚠️ 도중에 멈췄지만, 그때까지 읽어둔 ${마지막스냅.행들.length}명은 살려뒀어요.`);
+      로그(`   사유: ${읽을수있게(err.message)}`);
+      로그('   ‼️ 전부가 아닙니다. 인스타 댓글 수와 꼭 비교하고, 모자라면 다시 수집해주세요.');
+      console.log('__RESULT__' + JSON.stringify({
+        ...마지막스냅, 주소, 옵션, 중간에멈춤: true, 멈춘사유: 읽을수있게(err.message),
+      }));
+      return;
+    }
+    throw err;
   } finally {
+    /* 브라우저를 닫는 건 오직 여기 한 곳뿐이다. 이 줄을 남기는 이유는, "창이 닫혔다"는
+       오류가 났을 때 우리가 닫은 건지 밖에서 닫힌 건지 바로 구분하기 위해서다.
+       이 줄 없이 "창이 닫혔다"가 나오면 우리가 닫은 게 아니다. */
+    로그('브라우저를 정리합니다.');
     await Promise.race([context.close(), new Promise(r => setTimeout(r, 5000))]);
     if (browser) await Promise.race([browser.close(), new Promise(r => setTimeout(r, 5000))]);
   }
@@ -437,4 +505,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { 화면에서읽기, 전부불러오기, 인스타게시물주소인가, 읽을수있게 };
+module.exports = { 화면에서읽기, 전부불러오기, 인스타게시물주소인가, 읽을수있게, 설명속댓글수 };
