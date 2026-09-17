@@ -18,6 +18,10 @@ const { spawn } = require('child_process');
 const 포트 = Number(process.env.PORT) || 4850;
 const 추첨기폴더 = path.join(__dirname, '..');            // event-raffle/
 const 세션파일 = path.join(__dirname, 'instagram-session.json');
+const 프로필폴더 = path.join(__dirname, 'chrome-profile', 'instagram');   // 로그인해둔 크롬 프로필
+// 로그인 흔적이 있는지 — "있다"가 곧 "지금도 유효하다"는 뜻은 아니다. 진짜 유효한지는
+// 인스타에 실제로 들어가 봐야 알 수 있어서, 화면 문구도 단정하지 않게 적어뒀다.
+const 로그인흔적있음 = () => fs.existsSync(세션파일) || fs.existsSync(프로필폴더);
 const 원격API = 'https://ccode-delta.vercel.app';          // AI 판단을 대신 물어볼 주소
 
 const app = express();
@@ -154,7 +158,7 @@ app.get('/local/inject-collect-ui.js', (req, res) =>
 app.get('/api/local/status', (req, res) => {
   res.json({
     로컬: true,
-    로그인됨: fs.existsSync(세션파일),
+    로그인됨: 로그인흔적있음(),
     진행중: Boolean(작업.진행중),
     종류: 작업.종류,
     결과있음: Boolean(작업.결과),
@@ -192,7 +196,7 @@ app.post('/api/local/collect', (req, res) => {
   if (!인스타게시물주소인가(주소)) {
     return res.status(400).json({ error: '인스타그램 게시물 주소를 확인해주세요 (…/p/… 또는 …/reel/…).' });
   }
-  if (!fs.existsSync(세션파일)) {
+  if (!로그인흔적있음()) {
     return res.status(400).json({ error: '먼저 "인스타 로그인"을 해주세요.' });
   }
   작업.결과 = null;

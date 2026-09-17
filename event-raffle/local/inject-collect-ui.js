@@ -89,8 +89,11 @@
   async function 상태확인() {
     try {
       const s = await (await fetch('/api/local/status')).json();
+      // 단정하지 않는다 — 여기서 알 수 있는 건 "로그인해둔 게 있다"까지고, 지금도
+      // 유효한지는 실제로 인스타에 들어가 봐야 안다. 단정했다가 막상 벽에 막히면
+      // 사용자는 프로그램이 거짓말했다고 느낀다.
       $$('#igLoginState').textContent = s.로그인됨
-        ? '로그인되어 있어요 (풀리면 다시 눌러주세요)'
+        ? '로그인해둔 게 있어요 — 풀려 있으면 수집 시작할 때 알려드려요'
         : '아직 로그인 안 했어요 — 먼저 로그인해주세요';
       $$('#igLoginState').style.color = s.로그인됨 ? 'var(--draw)' : 'var(--warn)';
       진행표시(s.진행중);

@@ -20,6 +20,7 @@ const { chromium } = require('playwright');
 const { applyStealth, STEALTH_LAUNCH_ARGS, STEALTH_CONTEXT_OPTIONS } = require('./browser-stealth');
 
 const 세션파일 = path.join(__dirname, 'instagram-session.json');
+const 프로필폴더 = path.join(__dirname, 'chrome-profile', 'instagram');   // 로그인할 때 쓴 바로 그 폴더
 const 최대대기_분 = 20;        // 이 시간이 지나면 그때까지 모은 것만 들고 끝냄
 const 정체판정_횟수 = 6;       // 몇 번 연속으로 댓글 수가 안 늘면 "다 불러왔다"고 봄
 
@@ -307,6 +308,37 @@ function 인스타게시물주소인가(값) {
   } catch (e) { return false; }
 }
 
+/* 로그인할 때 열었던 것과 "똑같은" 브라우저를 연다.
+   이게 왜 중요하냐면 — 예전엔 로그인은 이 컴퓨터의 진짜 크롬을 전용 프로필로 열고,
+   수집은 전혀 다른 내장 브라우저를 빈 프로필로 열면서 쿠키만 베껴 넣었다. 그러면
+   인스타 입장에선 "갑자기 다른 기기에서 같은 계정이 접속했다"로 보여서, 로그인 정보가
+   멀쩡한데도 화면에 로그인 벽이 덮인다(댓글이 앞부분만 보이고 더 안 불러와짐).
+   사람 눈에도 북마크 하나 없는 맨 창이라 시크릿창처럼 보인다.
+   그래서 아예 로그인해둔 그 프로필을 그대로 다시 연다 — 쿠키를 옮길 일 자체가 없어진다. */
+async function 브라우저열기() {
+  try {
+    const context = await chromium.launchPersistentContext(프로필폴더, {
+      channel: 'chrome',
+      headless: false,
+      args: STEALTH_LAUNCH_ARGS,
+      viewport: STEALTH_CONTEXT_OPTIONS.viewport,
+      locale: STEALTH_CONTEXT_OPTIONS.locale,
+      timezoneId: STEALTH_CONTEXT_OPTIONS.timezoneId,
+    });
+    로그('로그인해둔 크롬 프로필로 엽니다.');
+    return { context, browser: null };
+  } catch (err) {
+    // 여기로 오는 경우는 둘 중 하나다 — 이 컴퓨터에 진짜 크롬이 없거나(팀원 PC 등),
+    // 로그인 창이 아직 떠 있어서 같은 프로필을 두 번 못 여는 경우.
+    로그(`ℹ️ 로그인해둔 프로필을 못 열어서 내장 브라우저로 대신합니다: ${err.message}`);
+    로그('   (로그인 창이 아직 떠 있으면 닫고 다시 시도하면 원래 방식으로 열려요)');
+    if (!fs.existsSync(세션파일)) throw new Error('로그인 정보가 없어요. "인스타 로그인"을 먼저 해주세요.');
+    const browser = await chromium.launch({ headless: false, args: STEALTH_LAUNCH_ARGS });
+    const context = await browser.newContext({ ...STEALTH_CONTEXT_OPTIONS, storageState: 세션파일 });
+    return { context, browser };
+  }
+}
+
 async function main() {
   const 주소 = process.argv[2];
   const 옵션 = Object.assign(
@@ -317,25 +349,32 @@ async function main() {
     console.error('❌ 인스타그램 게시물 주소를 넣어주세요 (예: https://www.instagram.com/p/XXXX/)');
     process.exit(1);
   }
-  if (!fs.existsSync(세션파일)) {
+  if (!fs.existsSync(세션파일) && !fs.existsSync(프로필폴더)) {
     console.error('❌ 인스타 로그인 정보가 없어요. 먼저 "인스타 로그인" 버튼을 눌러 로그인해주세요.');
     process.exit(1);
   }
 
   로그(`인스타 게시물을 엽니다: ${주소}`);
-  const browser = await chromium.launch({ headless: false, args: STEALTH_LAUNCH_ARGS });
-  const context = await browser.newContext({ ...STEALTH_CONTEXT_OPTIONS, storageState: 세션파일 });
+  const { context, browser } = await 브라우저열기();
   await applyStealth(context);
-  const page = await context.newPage();
+  // 프로필로 열면 빈 탭이 하나 딸려 오므로 그걸 그대로 쓴다 (탭을 두 개 띄우지 않기 위해)
+  const page = context.pages()[0] || await context.newPage();
 
   try {
     await page.goto(주소, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForTimeout(2500);
 
-    // 로그인이 풀렸는지 확인 — 풀린 채로 긁으면 댓글이 거의 안 보여서 "0명"으로 끝나버림
-    const 로그인상태 = await page.evaluate(() =>
+    /* 로그인이 풀렸는지 확인 — 풀린 채로 긁으면 앞부분 댓글만 보이다 멈춘다.
+       주소만 보면 안 된다. 인스타는 주소를 그대로 둔 채 화면 위에 로그인 창을 덮어씌우는
+       경우가 있어서(실제로 그 상태로 17개만 읽히고 멈춘 적 있음), 브라우저가 들고 있는
+       로그인 쿠키까지 같이 본다 — 이게 제일 확실한 신호다. */
+    const 쿠키들 = await context.cookies('https://www.instagram.com');
+    const 쿠키있음 = 쿠키들.some((c) => c.name === 'sessionid' && c.value);
+    const 화면정상 = await page.evaluate(() =>
       !/\/accounts\/login/.test(location.pathname) && !document.querySelector('input[name="username"]'));
-    if (!로그인상태) throw new Error('인스타 로그인이 풀렸어요. "인스타 로그인"을 다시 해주세요.');
+    if (!쿠키있음 || !화면정상) {
+      throw new Error('인스타 로그인이 풀렸어요. "인스타 로그인"을 다시 눌러 로그인해주세요.');
+    }
 
     로그('댓글을 불러오는 중입니다. 댓글이 많으면 몇 분 걸릴 수 있어요...');
     await 전부불러오기(page, 옵션);
@@ -356,8 +395,25 @@ async function main() {
     console.log('__RESULT__' + JSON.stringify({ ...결과, 주소, 옵션 }));
   } finally {
     await Promise.race([context.close(), new Promise(r => setTimeout(r, 5000))]);
-    await Promise.race([browser.close(), new Promise(r => setTimeout(r, 5000))]);
+    if (browser) await Promise.race([browser.close(), new Promise(r => setTimeout(r, 5000))]);
   }
+}
+
+/* Playwright가 내는 영어 오류를 사람이 읽을 수 있는 말로 바꾼다.
+   특히 "창이 닫혔다"는 대부분 사용자가 뜬 창을 직접 닫은 경우인데, 원문만 보면
+   프로그램이 고장 난 줄 알게 된다. */
+function 읽을수있게(메시지) {
+  const m = String(메시지 || '');
+  if (/Target page, context or browser has been closed|Target closed/i.test(m)) {
+    return '수집하던 브라우저 창이 닫혔어요. 수집이 끝날 때까지 그 창은 그대로 두세요 (자동으로 닫힙니다).';
+  }
+  if (/ProcessSingleton|profile.*in use|SingletonLock/i.test(m)) {
+    return '크롬 프로필을 이미 다른 창이 쓰고 있어요. 떠 있는 크롬 창을 닫고 다시 시도해주세요.';
+  }
+  if (/net::ERR_|Timeout.*exceeded.*goto|navigating to/i.test(m)) {
+    return `인스타 게시물을 여는 데 실패했어요. 주소와 인터넷 연결을 확인해주세요. (${m})`;
+  }
+  return m;
 }
 
 /* 내보낼 글이 다 빠져나간 것을 확인하고 프로그램을 확실히 끝낸다.
@@ -376,9 +432,9 @@ if (require.main === module) {
   main()
     .then(() => 내보낸뒤종료(0))
     .catch((err) => {
-      console.error(`❌ 수집 실패: ${err.message}`);
+      console.error(`❌ 수집 실패: ${읽을수있게(err.message)}`);
       내보낸뒤종료(1);
     });
 }
 
-module.exports = { 화면에서읽기, 전부불러오기, 인스타게시물주소인가 };
+module.exports = { 화면에서읽기, 전부불러오기, 인스타게시물주소인가, 읽을수있게 };
