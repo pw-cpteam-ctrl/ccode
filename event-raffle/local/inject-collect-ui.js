@@ -47,6 +47,10 @@
       <div class="btn-row">
         <button type="button" id="btnIgCollect">댓글 수집 시작</button>
         <button type="button" class="secondary" id="btnIgCancel" style="display:none;">중지</button>
+        <button type="button" class="secondary" id="btnIgRecover" style="display:none;">직전 수집 결과 불러오기</button>
+        <span class="status" id="igRecoverNote" style="margin-top:0;display:none;">
+          수집은 끝났는데 화면이 못 받았어요 — 다시 수집하지 않아도 됩니다
+        </span>
       </div>
       <div class="warn-box" id="igError"></div>
       <div id="igLogWrap" style="display:none;margin-top:12px;">
@@ -90,6 +94,13 @@
         : '아직 로그인 안 했어요 — 먼저 로그인해주세요';
       $$('#igLoginState').style.color = s.로그인됨 ? 'var(--draw)' : 'var(--warn)';
       진행표시(s.진행중);
+      // 수집 도중에 탭을 닫았거나 새로고침하면, 다 끝난 결과가 서버에만 남고 화면은
+      // 그걸 모른 채로 열린다. 그 경우 다시 수집하지 않아도 되도록 되찾기 버튼을 띄운다.
+      const 못받은결과 = s.결과있음 && !s.진행중 && s.결과id && s.결과id !== 받아간결과();
+      $$('#btnIgRecover').style.display = 못받은결과 ? '' : 'none';
+      // 안내 문구는 진행 로그 칸이 아니라 버튼 옆에 둔다 — 로그 칸은 다시 연결될 때
+      // 서버가 보내주는 지난 기록으로 통째로 바뀌어서, 거기 적으면 지워진다.
+      $$('#igRecoverNote').style.display = 못받은결과 ? '' : 'none';
     } catch (e) { /* 로컬 서버가 아니면 이 패널 자체가 안 뜸 */ }
   }
   상태확인();
@@ -98,6 +109,14 @@
   const 흐름 = new EventSource('/api/local/stream');
   흐름.onmessage = async (e) => {
     const d = JSON.parse(e.data);
+    // 연결이 다시 붙을 때 서버가 지금까지의 로그를 한 덩어리로 보내준다.
+    // 이어 붙이지 않고 통째로 갈아끼워야 같은 줄이 두 벌씩 쌓이지 않는다.
+    if (d.지난로그) {
+      $$('#igLogWrap').style.display = '';
+      로그칸.textContent = d.지난로그.join('\n');
+      로그칸.scrollTop = 로그칸.scrollHeight;
+      return;
+    }
     if (d.줄) 로그(d.줄);
     if (d.끝) {
       진행표시(false);
@@ -109,14 +128,21 @@
 
   /* 수집 결과를 추첨기에 밀어넣기 — 파일을 올린 것과 똑같은 상태로 만든다.
      같은 결과를 두 번 넣지 않는다 — 넣을 때 아래 단계(후보 목록·당첨자)가 초기화되므로,
-     연결이 잠깐 끊겼다 붙는 것만으로 작업 중이던 후보가 날아가면 안 되기 때문. */
-  let 이미넣은결과 = null;
+     연결이 잠깐 끊겼다 붙는 것만으로 작업 중이던 후보가 날아가면 안 되기 때문.
+     새로고침하거나 탭을 닫았다 열어도 "이미 받아갔다"는 사실은 남아야 해서 이 브라우저에
+     적어둔다 — 안 그러면 되찾기 버튼이 매번 뜬다. */
+  const 받아간키 = 'eventRaffle.local.받아간결과id';
+  const 받아간결과 = () => { try { return localStorage.getItem(받아간키) || ''; } catch (e) { return ''; } };
+  const 받아감표시 = (id) => { try { localStorage.setItem(받아간키, id || ''); } catch (e) { /* 저장 못해도 동작엔 지장 없음 */ } };
+
   async function 결과불러오기() {
     const r = await fetch('/api/local/result');
     if (!r.ok) return 보이기오류('수집 결과를 가져오지 못했어요.');
     const 결과 = await r.json();
-    if (결과.수집id && 결과.수집id === 이미넣은결과) return;   // 같은 결과 재투입 방지
-    이미넣은결과 = 결과.수집id || null;
+    if (결과.수집id && 결과.수집id === 받아간결과()) return;   // 같은 결과 재투입 방지
+    받아감표시(결과.수집id);
+    $$('#btnIgRecover').style.display = 'none';
+    $$('#igRecoverNote').style.display = 'none';
     const 행들 = 결과.행들 || [];
     if (!행들.length) return 보이기오류('읽어온 댓글이 없어요.');
 
@@ -155,12 +181,28 @@
     패널.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  /* 버튼 동작 */
+  /* 버튼 동작
+     서버에 말이 안 통할 때(검은 창을 닫았다든지)를 반드시 받아둔다 — 안 그러면 버튼이
+     눌린 채로 잠겨서, 사용자 눈에는 "눌렀는데 아무 반응도 없는" 상태가 된다. */
+  async function 서버에요청(길, 보낼것) {
+    try {
+      const r = await fetch(길, 보낼것
+        ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(보낼것) }
+        : { method: 'POST' });
+      if (r.ok) return true;
+      const 답 = await r.json().catch(() => ({}));
+      보이기오류(답.error || '요청을 처리하지 못했어요.');
+    } catch (e) {
+      보이기오류('추첨기 프로그램과 연결이 끊겼어요. 검은 창이 닫혔는지 확인하고, 닫혔다면 start.bat을 다시 실행해주세요.');
+    }
+    진행표시(false);
+    return false;
+  }
+
   $$('#btnIgLogin').addEventListener('click', async () => {
     보이기오류(''); 로그칸.textContent = '';
     진행표시(true);
-    const r = await fetch('/api/local/login', { method: 'POST' });
-    if (!r.ok) { 보이기오류((await r.json()).error); 진행표시(false); }
+    await 서버에요청('/api/local/login');
   });
 
   $$('#btnIgCollect').addEventListener('click', async () => {
@@ -168,22 +210,24 @@
     const 주소 = $$('#igPostUrl').value.trim();
     if (!주소) return 보이기오류('게시물 주소를 넣어주세요.');
     진행표시(true);
-    const r = await fetch('/api/local/collect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        주소,
-        옵션: {
-          대댓글포함: $$('#igOptReplies').checked,
-          주인댓글제외: $$('#igOptSkipOwner').checked,
-          멘션2배: $$('#igOptMention').checked,
-        },
-      }),
+    await 서버에요청('/api/local/collect', {
+      주소,
+      옵션: {
+        대댓글포함: $$('#igOptReplies').checked,
+        주인댓글제외: $$('#igOptSkipOwner').checked,
+        멘션2배: $$('#igOptMention').checked,
+      },
     });
-    if (!r.ok) { 보이기오류((await r.json()).error); 진행표시(false); }
   });
 
   $$('#btnIgCancel').addEventListener('click', async () => {
-    await fetch('/api/local/cancel', { method: 'POST' });
+    try { await fetch('/api/local/cancel', { method: 'POST' }); } catch (e) { 진행표시(false); }
+  });
+
+  // 수집은 끝났는데 화면이 그걸 못 받은 경우(수집 중 탭을 닫았다 다시 연 경우) 되찾기
+  $$('#btnIgRecover').addEventListener('click', async () => {
+    보이기오류('');
+    try { await 결과불러오기(); }
+    catch (e) { 보이기오류('결과를 불러오지 못했어요. 다시 수집해야 할 수도 있어요.'); }
   });
 })();

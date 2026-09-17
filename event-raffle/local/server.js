@@ -47,14 +47,32 @@ function 인스타게시물주소인가(값) {
 
 /* ── 지금 돌고 있는 작업 하나만 관리 (동시에 두 개 돌리면 브라우저가 엉킴) ── */
 const 작업 = { 진행중: null, 종류: '', 로그: [], 결과: null, 듣는이: [] };
+const 결과후_최대대기_초 = 20;   // 결과를 다 받은 뒤 이만큼 지나도 안 꺼지면 우리가 정리한다
 
+// 듣는 쪽이 이미 끊긴 뒤에 보내면 오류가 나면서 프로그램 전체가 꺼질 수 있어서 감싼다
+function 보내기(res, 내용) {
+  try { res.write(`data: ${JSON.stringify(내용)}\n\n`); } catch (e) { /* 끊긴 연결 — 무시 */ }
+}
 function 알림(줄) {
   작업.로그.push(줄);
   if (작업.로그.length > 500) 작업.로그.shift();
-  for (const res of 작업.듣는이) res.write(`data: ${JSON.stringify({ 줄 })}\n\n`);
+  for (const res of 작업.듣는이) 보내기(res, { 줄 });
 }
 function 끝알림(정보) {
-  for (const res of 작업.듣는이) res.write(`data: ${JSON.stringify({ 끝: true, ...정보 })}\n\n`);
+  for (const res of 작업.듣는이) 보내기(res, { 끝: true, ...정보 });
+}
+
+/* 작업을 멈춘다. 윈도우에서는 kill()이 이 프로그램만 끄고 그 아래 열려 있는 크롬 창은
+   그대로 남는다(윈도우엔 "정리하고 꺼져라" 신호가 없어서 크롬이 스스로 닫힐 틈이 없다).
+   그래서 윈도우에서는 딸린 창까지 같이 정리한다. */
+function 작업중지(자식) {
+  if (process.platform === 'win32') {
+    try {
+      spawn('taskkill', ['/pid', String(자식.pid), '/T', '/F']).on('error', () => 자식.kill());
+      return;
+    } catch (e) { /* 아래 기본 방법으로 */ }
+  }
+  자식.kill();
 }
 
 function 실행(파일, 인자들, 종류) {
@@ -66,10 +84,18 @@ function 실행(파일, 인자들, 종류) {
   });
   작업.진행중 = 자식;
 
+  // 실행 자체가 안 되는 경우(파일이 없는 등). 이걸 안 받아두면 프로그램 전체가 꺼진다.
+  자식.on('error', (err) => {
+    작업.진행중 = null;
+    알림(`프로그램을 실행하지 못했어요: ${err.message}`);
+    끝알림({ 성공: false, 코드: -1, 사람수: 0 });
+  });
+
   // 자식이 내보내는 글은 덩어리로 끊겨서 온다 — 한 줄이 두 덩어리에 걸쳐 오는 일이 흔하다.
   // 특히 수집 결과는 댓글이 많으면 수십만 글자라 반드시 쪼개져서, 그대로 읽으면 결과를
   // 통째로 못 읽는다. 그래서 줄바꿈이 나올 때까지 모았다가 완성된 줄만 처리한다.
   let 결과줄 = '';
+  let 마무리감시 = null;
   const 줄모으기 = () => {
     let 남은것 = '';
     return (덩어리) => {
@@ -78,7 +104,18 @@ function 실행(파일, 인자들, 종류) {
       남은것 = 줄들.pop();            // 마지막 조각은 아직 안 끝난 줄일 수 있으니 남겨둔다
       for (const 줄 of 줄들) {
         if (!줄.trim()) continue;
-        if (줄.startsWith('__RESULT__')) { 결과줄 = 줄.slice('__RESULT__'.length); continue; }
+        if (줄.startsWith('__RESULT__')) {
+          결과줄 = 줄.slice('__RESULT__'.length);
+          // 결과는 다 받았는데 프로그램이 안 꺼지는 경우가 있다(크롬 창이 안 닫히는 상황).
+          // 그냥 두면 댓글을 다 읽어놓고도 화면은 영원히 "진행 중"이라 결과가 통째로 날아간다.
+          // 그래서 잠시 기다려보고 그래도 안 꺼지면 결과만 챙기고 우리가 정리한다.
+          clearTimeout(마무리감시);
+          마무리감시 = setTimeout(() => {
+            알림('수집은 끝났는데 크롬 창이 안 닫히네요. 결과만 챙기고 정리할게요.');
+            작업중지(자식);
+          }, 결과후_최대대기_초 * 1000);
+          continue;
+        }
         알림(줄);
       }
     };
@@ -87,6 +124,7 @@ function 실행(파일, 인자들, 종류) {
   자식.stderr.on('data', 줄모으기());
 
   자식.on('close', (코드) => {
+    clearTimeout(마무리감시);
     작업.진행중 = null;
     if (결과줄) {
       try {
@@ -94,7 +132,9 @@ function 실행(파일, 인자들, 종류) {
         작업.결과 = { ...JSON.parse(결과줄), 수집id: `${Date.now()}` };
       } catch (e) { 알림(`결과를 읽지 못했어요: ${e.message}`); }
     }
-    끝알림({ 성공: 코드 === 0, 코드, 사람수: 작업.결과?.행들?.length ?? 0 });
+    // 결과를 제대로 받았으면 성공으로 본다 — 위처럼 우리가 정리해서 끈 경우엔 종료 코드가
+    // 0이 아니지만, 읽어온 댓글은 멀쩡하므로 그걸 버리면 안 된다.
+    끝알림({ 성공: 코드 === 0 || Boolean(작업.결과), 코드, 사람수: 작업.결과?.행들?.length ?? 0 });
   });
   return 자식;
 }
@@ -118,6 +158,9 @@ app.get('/api/local/status', (req, res) => {
     진행중: Boolean(작업.진행중),
     종류: 작업.종류,
     결과있음: Boolean(작업.결과),
+    // 화면이 "이 결과를 이미 받아갔는지" 판단하는 데 쓴다 (수집 도중 탭을 닫았다 다시 연 경우
+    // 결과가 서버에만 남아 있는데, 화면이 그걸 알아채고 되찾아올 수 있어야 한다)
+    결과id: 작업.결과?.수집id || '',
   });
 });
 
@@ -125,7 +168,9 @@ app.get('/api/local/status', (req, res) => {
 app.get('/api/local/stream', (req, res) => {
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
   res.flushHeaders?.();
-  for (const 줄 of 작업.로그) res.write(`data: ${JSON.stringify({ 줄 })}\n\n`);
+  // 지금까지의 진행 상황은 "한 덩어리"로 따로 표시해서 보낸다. 한 줄씩 보내면 탭이 잠시
+  // 멈췄다 깨어나면서 연결이 다시 붙을 때마다 화면에 같은 로그가 한 벌씩 더 쌓인다.
+  if (작업.로그.length) 보내기(res, { 지난로그: 작업.로그.slice() });
   작업.듣는이.push(res);
   req.on('close', () => {
     const i = 작업.듣는이.indexOf(res);
@@ -157,7 +202,7 @@ app.post('/api/local/collect', (req, res) => {
 
 app.post('/api/local/cancel', (req, res) => {
   if (!작업.진행중) return res.json({ ok: true });
-  작업.진행중.kill();
+  작업중지(작업.진행중);
   알림('사용자가 중지했어요.');
   res.json({ ok: true });
 });
@@ -193,7 +238,19 @@ app.use((req, res) => res.status(404).type('text').send('없는 주소예요.'))
 
 // 내 컴퓨터에서만 열리게 한다 — 이렇게 안 하면 같은 와이파이를 쓰는 다른 사람도
 // 이 주소로 들어올 수 있고, 그건 곧 내 인스타 로그인으로 댓글을 긁을 수 있다는 뜻이다.
-app.listen(포트, '127.0.0.1', () => {
+const 서버 = app.listen(포트, '127.0.0.1', () => {
   console.log(`\n추첨기가 준비됐어요 → http://localhost:${포트}`);
   console.log('이 창을 닫으면 프로그램도 같이 꺼집니다. 다 쓸 때까지 열어두세요.\n');
+});
+
+// 실수로 두 번 실행하는 일이 흔한데, 그대로 두면 검은 창에 영어 오류 뭉치가 쏟아진다.
+서버.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error('\n추첨기가 이미 켜져 있어요. 새로 켤 필요 없이 브라우저에서');
+    console.error(`  http://localhost:${포트}`);
+    console.error('를 열면 됩니다. (안 열리면 먼저 떠 있는 검은 창을 닫고 다시 실행해주세요)\n');
+  } else {
+    console.error(`\n추첨기를 켜지 못했어요: ${err.message}\n`);
+  }
+  process.exit(1);
 });
