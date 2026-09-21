@@ -1784,15 +1784,46 @@ function wireThumbMarquee(p) {
     // 빈 곳을 그냥 클릭한 경우(끌지 않음) = 선택 해제. 눈에 보이는 빈 곳을 눌렀는데
     // 아무 일도 안 일어나면 선택을 푸는 방법을 버튼에서만 찾아야 한다.
     if (!mq.moved) { selectedKeys.clear(); paintThumbSelection(row); updateBulkUi(p); }
-    else saveProductsSoon();
+    else {
+      // 고른 것들 중에 지금 큰 미리보기에 떠 있는 사진이 없으면, 첫 장으로 옮긴다.
+      // 안 옮기면 큰 화면엔 고르지도 않은 사진이 떠 있고, 거기서 끌면 "고른 것 위에서
+      // 조작할 때만 전부" 규칙에 걸려 엉뚱한 한 장만 움직인다 — 고른 게 안 움직이니
+      // 이동 자체가 고장난 것처럼 보인다.
+      const cur = p.images[editingIdx];
+      if (!cur || !selectedKeys.has(cur.key)) {
+        const first = p.images.findIndex(s => selectedKeys.has(s.key));
+        if (first >= 0) editingIdx = first;
+      }
+      drawAllThumbs(p); drawComposer(p); updateBulkUi(p); saveProductsSoon();
+    }
     mq = null;
   };
 
+  /* 썸네일 위에서도 휠로 확대된다. 큰 미리보기에만 달려 있었는데, 썸네일에서 여러 장을
+     골라놓고 손이 그 자리에 있는 채로 휠을 돌리면 아무 일도 안 일어나서 "안 된다"고
+     느껴진다. 고른 것들 위에서 돌리면 고른 전부가, 아니면 그 한 장만 바뀐다. */
+  const onWheel = e => {
+    const wrap = e.target.closest('.thumbwrap');
+    if (!wrap) return;
+    const slide = (p.images || []).find(s => s.key === wrap.dataset.key);
+    if (!slide) return;
+    e.preventDefault();   // 페이지가 같이 스크롤되지 않게
+    const delta = e.deltaY < 0 ? 0.06 : -0.06;
+    for (const t of targetsForBulk(p, slide)) {
+      t.scale = Math.max(1, Math.min(3, (t.scale || 1) + delta));
+      const img = imgCache.get(t.key);
+      if (img) clampSlideOffset(t, img.naturalWidth, img.naturalHeight, frameOf(p));
+    }
+    drawAllThumbs(p); drawComposer(p); updateBulkUi(p); saveProductsSoon();
+  };
+
   row.addEventListener('mousedown', onDown);
+  row.addEventListener('wheel', onWheel, { passive: false });
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
   marqueeCleanup = () => {
     row.removeEventListener('mousedown', onDown);
+    row.removeEventListener('wheel', onWheel);
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
     marqueeCleanup = null;
@@ -1919,6 +1950,33 @@ function drawComposer(p) {
   drawSlide(canvas.getContext('2d'), slide, editingIdx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p), formatCopyright(p.copyrightText));
   const rect = canvas.getBoundingClientRect();
   composerScale = (rect.width || canvas.clientWidth || 315) / CW;
+  updateComposerHint(p, slide);
+}
+
+/* 사진을 어느 쪽으로 움직일 수 있는지 지금 상태를 그대로 알려준다.
+   이 페이지는 사진이 틀을 꽉 채워야 하고 흰 여백이 보이면 안 된다는 규칙이라, 배율
+   100%에서는 짧은 쪽 여유가 0이 된다(정사각·가로 사진이면 위아래가 딱 0). 그래서
+   "위아래로 드래그해도 아무 반응이 없다"가 고장처럼 느껴지는데, 실제로는 움직일 공간이
+   없는 것이다. 확대하면 그만큼 여유가 생긴다는 걸 화면에서 바로 읽히게 한다. */
+function updateComposerHint(p, slide) {
+  const el = $('#composerHint');
+  if (!el) return;
+  if (!p.images.length) { el.textContent = '아직 사진 없음 — 틀·문구 먼저 미리보기 중. 사진 올리면 자동으로 채워져요.'; return; }
+  const base = '휠: 확대/축소 · 드래그: 사진 위치 이동 · 사진 줄 빈 곳을 끌면 여러 장 선택(Ctrl+클릭으로 하나씩 추가)';
+  const img = slide && imgCache.get(slide.key);
+  if (!img) { el.textContent = base; return; }
+  const fit = fitRectFor(slide, frameOf(p));
+  const eff = coverFitBase(img.naturalWidth, img.naturalHeight, fit.w, fit.h) * (slide.scale || 1);
+  // 2px 이하는 사실상 못 움직이는 것으로 본다 — 계산 오차 수준이라 잡아끌어도 반응이 없다.
+  const freeX = (img.naturalWidth * eff - fit.w) / 2 > 2;
+  const freeY = (img.naturalHeight * eff - fit.h) / 2 > 2;
+  const pct = Math.round((slide.scale || 1) * 100);
+  let move;
+  if (freeX && freeY) move = `지금 ${pct}% · 상하좌우 모두 이동 가능`;
+  else if (freeX) move = `지금 ${pct}% · 좌우로만 이동 가능 — 위아래로 움직이려면 휠로 확대하세요`;
+  else if (freeY) move = `지금 ${pct}% · 위아래로만 이동 가능 — 좌우로 움직이려면 휠로 확대하세요`;
+  else move = `지금 ${pct}% · 사진이 틀에 딱 맞아 움직일 여유가 없어요 — 휠로 확대하세요`;
+  el.textContent = base + ' · ' + move;
 }
 // 사진이 기준 영역(틀 켜짐: 그 브랜드 틀의 투명 창 / 틀 꺼짐: 캔버스 전체 CW x CH)을 항상
 // 꽉 채우도록 ox/oy(드래그 이동량)를 그 여유분 안으로 붙잡아둔다 — 여유가 없는 축(예: 최소
