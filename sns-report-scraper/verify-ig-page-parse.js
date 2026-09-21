@@ -83,14 +83,36 @@ check('응답 JSON — 이 글이 없으면 아무거나 집지 말고 null (실
     assert.strictEqual(reel.account, ACCOUNT, '릴스 링크에서도 계정을 읽어야 함');
   });
 
-  // 겹친 span — 실제 릴스에서 좋아요·댓글이 같은 값으로 나오던 원인
+  // 릴스 액션 막대 — 실제로 받아온 덤프(_debug-ig-DWqrF7zk2p0.html)에서 확인한 구조를 옮김.
+  // ⚠️ 핵심: 릴스 페이지에는 **다음 릴스가 같이 실려 있다.** 실제 덤프에서 우리 릴스(295·100)
+  //    바로 아래에 남의 릴스(5689·13)가 있었다. 좌표로 주우면 이걸 우리 것으로 읽는다.
+  const reelRail = (like, cmt) => `
+    <div><span><svg><title>좋아요</title></svg></span><div>${like}</div></div>
+    <div><span><svg><title>댓글</title></svg></span><div>${cmt}</div></div>`;
   await page.setContent(`<!doctype html><meta charset="utf-8"><body style="margin:0">
-    <div style="position:absolute;left:760px;top:430px"><span><span>295</span></span></div>
+    <section>${reelRail(295, 100)}</section>
+    <section>${reelRail(5689, 13)}</section>
     <a href="/${ACCOUNT}/reel/${CODE}/">릴스</a></body>`);
-  const dup = await page.evaluate(readInstagramInPage);
-  check('화면 읽기 — 숫자 하나를 좋아요·댓글로 두 번 세지 않음(모르면 null)', () => {
-    assert.strictEqual(dup.likes, '295');
-    assert.strictEqual(dup.comments, null, '후보가 하나뿐이면 댓글은 모르는 것 — 같은 값을 넣으면 안 됨');
+  const reel2 = await page.evaluate(readInstagramInPage);
+  check('화면 읽기 — 릴스 액션 막대에서 좋아요·댓글을 각각 제대로 읽음', () => {
+    assert.strictEqual(reel2.likes, '295');
+    assert.strictEqual(reel2.comments, '100', '같은 숫자를 두 번 세거나 엉뚱한 값을 넣으면 안 됨');
+  });
+  check('화면 읽기 — 아래에 딸려온 다음 릴스의 숫자를 우리 것으로 읽지 않음', () => {
+    assert.notStrictEqual(reel2.likes, '5689');
+    assert.notStrictEqual(reel2.comments, '13');
+  });
+
+  // 일반 게시물 액션 줄 — 덤프(_debug-ig-Dcc6cK7FHWv.html)의 "좋아요805댓글 달기450리포스트39" 구조
+  await page.setContent(`<!doctype html><meta charset="utf-8"><body><div>
+    <span><svg><title>좋아요</title></svg></span><span>805</span>
+    <span><svg><title>댓글 달기</title></svg></span><span>450</span>
+    <span><svg><title>리포스트</title></svg></span><span>39</span>
+  </div></body>`);
+  const post = await page.evaluate(readInstagramInPage);
+  check('화면 읽기 — 일반 게시물 액션 줄도 같은 방식으로 읽음(리포스트 수를 댓글로 착각 금지)', () => {
+    assert.strictEqual(post.likes, '805');
+    assert.strictEqual(post.comments, '450');
   });
 
   // og:title이 한국어 형태일 때 계정명

@@ -422,23 +422,45 @@ function readInstagramInPage() {
     const timeEl = document.querySelector('time[datetime]');
 
     const numeric = /^[\d,.]+[만천KM]?$/;
-    let candidates = [...document.querySelectorAll('span')]
-      .map(el => ({ el, rect: el.getBoundingClientRect() }))
-      .filter(({ el, rect }) => rect.x > 700 && rect.y > 400 && rect.y < 580 && numeric.test(el.innerText.trim()));
-    // ⚠️ 같은 숫자를 감싼 바깥 span과 안쪽 span이 **둘 다** 걸려서, 좋아요와 댓글에 같은 값이
-    //   들어가던 문제(릴스에서 295·295, 255·255로 나왔음). 다른 것을 품고 있는 span은 버리고
-    //   가장 안쪽 것만 남긴다 — 숫자 하나를 두 지표로 세면 틀린 값이 조용히 정답 행세를 한다.
-    candidates = candidates.filter(({ el }) => !candidates.some(o => o.el !== el && el.contains(o.el)));
-    let likes = candidates[0] ? candidates[0].el.innerText.trim() : null;
-    // 후보가 하나뿐이면 그건 좋아요일 뿐 댓글이 아니다. 없는 값을 지어내느니 모른다고 둔다.
-    const comments = candidates[1] ? candidates[1].el.innerText.trim() : null;
 
-    if (!likes) {
-      const el = [...document.querySelectorAll('span')].find(s => /명이 좋아합니다|likes$/.test(s.innerText));
-      if (el) {
-        const m = el.innerText.match(/[\d,]+/);
-        if (m) likes = m[0];
+    // ── 액션 줄(좋아요·댓글 아이콘과 숫자 묶음)을 아이콘 기준으로 찾는다 ──
+    // ⚠️ 예전엔 화면 좌표(x>700, y 400~580)로 숫자를 주웠다. 일반 게시물에선 우연히 맞았지만
+    //    릴스는 세로 막대라 엉뚱한 걸 집었고, 무엇보다 **릴스 페이지엔 다음 릴스가 같이 실려
+    //    있어서** 좌표가 조금만 어긋나면 남의 릴스 숫자를 우리 것으로 읽는다(실제 덤프에
+    //    우리 릴스 295·100 바로 아래에 다른 릴스 5689·13이 있었음).
+    //    아이콘의 <title>(좋아요/댓글)은 레이아웃이 바뀌어도 그대로라 이걸 기준점으로 쓴다.
+    //    실제로 받아온 덤프 2개(일반 게시물 /p/, 릴스 /reel/)로 검증함.
+    const titleText = t => (t.textContent || '').trim();
+    const isLikeIcon = t => /^(좋아요|Like)$/i.test(titleText(t));
+    const isCmtIcon = t => /^(댓글\s*달기|댓글|Comment)$/i.test(titleText(t));
+    const leafNums = root => [...root.querySelectorAll('*')]
+      .filter(e => !e.children.length && numeric.test((e.textContent || '').trim()))
+      .map(e => (e.textContent || '').trim());
+
+    let likes = null, comments = null;
+    const svgTitles = [...document.querySelectorAll('svg title')];
+    for (const t of svgTitles) {
+      if (!isLikeIcon(t)) continue;
+      // 좋아요 아이콘에서 위로 올라가며 **댓글 아이콘까지 함께 품는 가장 좁은 칸**을 찾는다.
+      // 가장 좁은 칸이라야 아래에 붙은 다른 릴스가 섞여 들어오지 않는다.
+      let node = t.closest('svg');
+      for (let up = 0; up < 10 && node; up++) {
+        node = node.parentElement;
+        if (!node) break;
+        const hasCmt = [...node.querySelectorAll('svg title')].some(isCmtIcon);
+        if (!hasCmt) continue;
+        const nums = leafNums(node);
+        if (nums.length) { likes = nums[0]; comments = nums[1] || null; }
+        break;
       }
+      if (likes) break; // 댓글창의 하트처럼 숫자가 안 붙는 좋아요는 그냥 다음 후보로 넘어감
+    }
+
+    // 좋아요를 숨긴 게시물 등 — 문장으로만 적힌 경우
+    if (!likes) {
+      const el = [...document.querySelectorAll('span')].find(s => /명이 좋아합니다|likes$/.test(s.textContent || ''));
+      const m = el && (el.textContent || '').match(/[\d,]+/);
+      if (m) likes = m[0];
     }
 
     // 링크만 받았을 땐 계정 핸들을 주소에서 알 수 없어서(…/p/코드 형태) 페이지에서 읽어냄.
@@ -458,11 +480,14 @@ function readInstagramInPage() {
     if (!account) {
       // og:title은 언어에 따라 "계정 on Instagram: …" 또는 "Instagram의 계정님: …" 두 형태다.
       // 예전엔 맨 앞 단어를 그냥 집어서 한국어 페이지에서 계정명이 "Instagram의"로 나왔음.
+      // 한국어 표기의 이름에는 띄어쓰기가 들어간다("Instagram의 메가하우스 공식몰님 : …") —
+      // 공백에서 끊으면 이름이 잘리거나 아예 못 잡는다. 님 앞까지 통째로 가져온다.
       const og = document.querySelector('meta[property="og:title"]');
       const c = og ? (og.getAttribute('content') || '') : '';
-      const ko = c.match(/Instagram의\s+([^\s(•|]+?)님/);
+      const ko = c.match(/Instagram의\s+(.+?)님\s*[:：]/);
       const en = c.match(/^([^\s(•|]+)\s+on\s+Instagram/i);
-      const pick = (ko && ko[1]) || (en && en[1]) || '';
+      const pick = ((ko && ko[1]) || (en && en[1]) || '').trim();
+      // 여기서 나오는 건 핸들이 아니라 표시 이름일 수 있지만, 빈칸보다는 낫다.
       if (pick && !/^Instagram/i.test(pick)) account = pick.replace(/^@/, '');
     }
 
@@ -563,7 +588,7 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
         if (parsed.exactMatch === false) {
           results[i].warning = '주소의 글을 정확히 못 집어서 페이지 첫 번째 글을 읽었음 — 숫자가 맞는지 확인 필요';
         }
-        console.log(`[link] ✅ ${t.platform} ${t.url} — 좋아요 ${parsed.likes ?? '-'} · 리트윗 ${parsed.retweets ?? '-'} · 인용 ${parsed.quotes ?? '-'} · 댓글 ${parsed.comments ?? '-'}${parsed.countsFrom ? ` (출처: ${parsed.countsFrom === 'api' ? 'X 원본 응답' : '화면'})` : ''}`);
+        console.log(`[link] ✅ ${t.platform} ${t.url} — 좋아요 ${parsed.likes ?? '-'} · 리트윗 ${parsed.retweets ?? '-'} · 인용 ${parsed.quotes ?? '-'} · 댓글 ${parsed.comments ?? '-'}${parsed.countsFrom ? ` (출처: ${parsed.countsFrom === 'api' ? `${t.platform === 'instagram' ? '인스타' : 'X'} 원본 응답` : '화면'})` : ''}`);
 
         // 인용을 못 읽었으면 **추측을 반복하지 않기 위해** 그 페이지를 파일로 남긴다.
         // 그 파일만 있으면 실제 구조를 보고 한 번에 고칠 수 있음(지금까지 실제 X 화면을
