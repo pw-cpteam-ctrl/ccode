@@ -1,6 +1,6 @@
 {
  "note": "작품(시리즈)의 한국 정식 제목 사전. 원고작성페이지에서 사람이 확인한 표기가 쌓인다.",
- "updatedAt": "2026-09-21T01:16:59.584Z",
+ "updatedAt": "2026-09-21T01:35:41.065Z",
  "entries": [
   {
    "work": "Racing Miku",
@@ -26,6 +26,11 @@
    "work": "Umamusume: Cinderella Gray",
    "workJa": "",
    "ko": "우마무스메 신데렐라 그레이"
+  },
+  {
+   "work": "Character Vocal Series 01: Hatsune Miku",
+   "workJa": "",
+   "ko": "캐릭터 보컬 시리즈 01: 하츠네 미쿠"
   },
   {
    "work": "To Love-Ru Darkness",
