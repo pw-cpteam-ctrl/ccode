@@ -231,7 +231,11 @@ button.danger{background:var(--ui-warn);color:#fff;}
 .dropzone input{display:none;}
 .thumbrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
 .thumbwrap{position:relative;cursor:grab;}
-.thumbwrap canvas{width:60px;height:75px;border-radius:5px;cursor:pointer;display:block;background:var(--ui-card);}
+/* 68x85 = 4:5. 상세 영역 폭이 774px이고 간격이 8px이라, 한 줄에 10개면 752px로 들어가고
+   11개면 828px이 되어 둘째 줄로 내려간다. 예전 60x75에서는 11개가 한 줄에 들어갔다.
+   숫자를 바꿀 땐 아래 drawAllThumbs의 THUMB_W/THUMB_H도 같이 바꿔야 한다(그려지는
+   해상도라, 한쪽만 바꾸면 흐릿해지거나 잘린다). */
+.thumbwrap canvas{width:68px;height:85px;border-radius:5px;cursor:pointer;display:block;background:var(--ui-card);}
 .thumbwrap canvas.sel{outline:2px solid var(--ui-accent);outline-offset:1px;}
 .thumbwrap .th-star{position:absolute;top:-5px;left:-5px;font-size:11px;background:#fff;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--ui-border);}
 .thumbwrap .th-star.on{color:#f07d1e;}
@@ -253,6 +257,9 @@ button.danger{background:var(--ui-warn);color:#fff;}
 .ctl-block .cl{font-size:11px;font-weight:800;margin-bottom:6px;}
 .ctl-block input[type=range]{width:100%;}
 .grad4-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;}
+/* 슬라이더 지금 값. 라벨 오른쪽 끝에 붙여서 라벨 줄을 하나 더 쓰지 않게 한다 —
+   조작칸이 좁아서 줄이 늘면 아래 내용이 그만큼 밀린다. */
+.sval{float:right;font-weight:800;color:var(--ui-accent);font-variant-numeric:tabular-nums;}
 .copy-preview{margin-top:6px;font-size:12px;font-weight:700;color:var(--ui-text);
   background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:6px;padding:6px 9px;
   word-break:break-all;}
@@ -1391,20 +1398,20 @@ function imageStageHtml(p) {
               </select>
               ${p.badgeKind === 'custom' ? `<textarea id="badgeCustomInput" rows="1" placeholder="직접 입력" style="margin-top:6px;">${escapeHtml(p.badgeCustomText || '')}</textarea>` : ''}
             </div>
-            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">자간 <span style="font-weight:400;">(공통)</span></label>
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">자간 <span style="font-weight:400;">(공통)</span><b class="sval" id="badgeLetterSpacingVal"></b></label>
               <input type="range" id="badgeLetterSpacingRange" min="-50" max="50" value="${GLOBAL_GRAD.badgeLetterSpacing}"/></div>
           </div>
         </div>
         <div class="ctl-block">
           <div class="cl">검정 그라데이션 <span style="font-weight:400;color:var(--ui-sub);">(상품 개별 아님 — 전체 공통 적용)</span></div>
           <div class="grad4-grid">
-            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">시작점 %</label>
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">시작점 <b class="sval" id="gradStartVal"></b></label>
               <input type="range" id="gradStartRange" min="0" max="90" value="${GLOBAL_GRAD.start}"/></div>
-            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">퍼짐 %</label>
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">퍼짐 <b class="sval" id="gradWidthVal"></b></label>
               <input type="range" id="gradWidthRange" min="5" max="200" value="${GLOBAL_GRAD.width}"/></div>
-            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">농도 %</label>
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">농도 <b class="sval" id="gradIntensityVal"></b></label>
               <input type="range" id="gradIntensityRange" min="0" max="200" value="${GLOBAL_GRAD.intensity}"/></div>
-            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">압축 %</label>
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">압축 <b class="sval" id="gradCompressVal"></b></label>
               <input type="range" id="gradCompressRange" min="0" max="60" value="${GLOBAL_GRAD.compress}"/></div>
           </div>
         </div>
@@ -1413,13 +1420,13 @@ function imageStageHtml(p) {
           <div class="txtrow">
             <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">제목 (큰 글자)</label>
               <textarea id="textTitleInput" rows="2">${escapeHtml(p.textTitle || '')}</textarea></div>
-            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">글자크기 <span style="font-weight:400;">(공통)</span></label>
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">글자크기 <span style="font-weight:400;">(공통)</span><b class="sval" id="titleFontSizeVal"></b></label>
               <input type="range" id="titleFontSizeRange" min="24" max="60" value="${GLOBAL_GRAD.titleFontSize}"/></div>
           </div>
           <div class="txtrow" style="margin-top:6px;">
             <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">부제 (작은 글자)</label>
               <textarea id="textSubInput" rows="1">${escapeHtml(p.textSub || '')}</textarea></div>
-            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">글자크기 <span style="font-weight:400;">(공통)</span></label>
+            <div><label class="flabel" style="font-size:11px;color:var(--ui-sub);">글자크기 <span style="font-weight:400;">(공통)</span><b class="sval" id="subFontSizeVal"></b></label>
               <input type="range" id="subFontSizeRange" min="16" max="40" value="${GLOBAL_GRAD.subFontSize}"/></div>
           </div>
         </div>
@@ -1449,11 +1456,10 @@ function wireImageStage(p) {
     handleFiles(p, Array.from(e.dataTransfer.files).filter(f => /^image\//.test(f.type)));
   });
 
-  const gs = $('#gradStartRange'), gw = $('#gradWidthRange'), gi = $('#gradIntensityRange'), gc = $('#gradCompressRange');
-  if (gs) gs.addEventListener('input', () => { GLOBAL_GRAD.start = Number(gs.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
-  if (gw) gw.addEventListener('input', () => { GLOBAL_GRAD.width = Number(gw.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
-  if (gi) gi.addEventListener('input', () => { GLOBAL_GRAD.intensity = Number(gi.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
-  if (gc) gc.addEventListener('input', () => { GLOBAL_GRAD.compress = Number(gc.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
+  wireGradRange(p, 'gradStart', 'start', '%');
+  wireGradRange(p, 'gradWidth', 'width', '%');
+  wireGradRange(p, 'gradIntensity', 'intensity', '%');
+  wireGradRange(p, 'gradCompress', 'compress', '%');
   const tt = $('#textTitleInput'), ts = $('#textSubInput');
   if (tt) tt.addEventListener('input', () => { p.textTitle = tt.value; drawComposer(p); drawAllThumbs(p); saveProductsSoon(); });
   if (ts) ts.addEventListener('input', () => {
@@ -1478,9 +1484,8 @@ function wireImageStage(p) {
     drawComposer(p); drawAllThumbs(p); saveProductsSoon();
   });
   paintCopyPreview();
-  const titleFs = $('#titleFontSizeRange'), subFs = $('#subFontSizeRange');
-  if (titleFs) titleFs.addEventListener('input', () => { GLOBAL_GRAD.titleFontSize = Number(titleFs.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
-  if (subFs) subFs.addEventListener('input', () => { GLOBAL_GRAD.subFontSize = Number(subFs.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
+  wireGradRange(p, 'titleFontSize', 'titleFontSize', 'px');
+  wireGradRange(p, 'subFontSize', 'subFontSize', 'px');
 
   const badgeSelect = $('#badgeKindSelect');
   if (badgeSelect) badgeSelect.addEventListener('change', () => {
@@ -1493,8 +1498,7 @@ function wireImageStage(p) {
     p.badgeCustomText = badgeCustomInput.value;
     drawComposer(p); drawAllThumbs(p); saveProductsSoon();
   });
-  const badgeLs = $('#badgeLetterSpacingRange');
-  if (badgeLs) badgeLs.addEventListener('input', () => { GLOBAL_GRAD.badgeLetterSpacing = Number(badgeLs.value); drawComposer(p); drawAllThumbs(p); saveGradSettings(); });
+  wireGradRange(p, 'badgeLetterSpacing', 'badgeLetterSpacing', '');
 
   const btnReset = $('#btnResetSlide');
   if (btnReset) btnReset.addEventListener('click', () => {
@@ -1635,6 +1639,9 @@ async function exportProductZip(p) {
   if (statusEl) statusEl.textContent = '완료';
 }
 
+// 썸네일이 그려지는 해상도. 화면에 보이는 크기(.thumbwrap canvas의 CSS width/height)와
+// 반드시 같은 값이어야 한다 — 다르면 흐릿하게 늘어나거나 잘린다.
+const THUMB_W = 68, THUMB_H = 85;
 function drawAllThumbs(p) {
   const row = $('#thumbRow');
   if (!row) return;
@@ -1644,10 +1651,10 @@ function drawAllThumbs(p) {
     wrap.className = 'thumbwrap';
     wrap.dataset.key = slide.key;
     const canvas = document.createElement('canvas');
-    canvas.width = 60; canvas.height = 75;
+    canvas.width = THUMB_W; canvas.height = THUMB_H;
     if (idx === editingIdx) canvas.classList.add('sel');
     const ctx = canvas.getContext('2d');
-    ctx.scale(60 / CW, 75 / CH);
+    ctx.scale(THUMB_W / CW, THUMB_H / CH);
     drawSlide(ctx, slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p), formatCopyright(p.copyrightText));
     canvas.addEventListener('click', () => { editingIdx = idx; drawAllThumbs(p); drawComposer(p); });
     const star = document.createElement('div');
@@ -1737,6 +1744,27 @@ function clampSlideOffset(slide, pw, ph, frame) {
 // 리스너가 계속 쌓인다(전환 20번이면 40개). 마우스를 움직일 때마다 그 전부가 호출되고,
 // 각 리스너가 그때의 상품을 붙잡고 있어서 메모리도 같이 남는다.
 // 썸네일 드래그(startThumbDrag)는 이미 같은 방식으로 떼고 있어서 그쪽을 기준으로 맞춘다.
+/* 전체 공통 슬라이더(그라데이션 4종 · 배지 자간 · 글자크기 2종) 배선.
+   원래는 슬라이더마다 같은 네 줄(값 넣기 → 캔버스 다시 그리기 → 썸네일 다시 그리기 →
+   저장)을 복사해 쓰고 있었는데, 거기엔 "지금 값이 얼마인지" 보여주는 부분이 아예 없었다.
+   그래서 슬라이더 손잡이 위치로 눈대중해야 했고, 다른 상품에 갔다 오거나 새로고침한 뒤엔
+   저장된 값이 몇인지 알 방법이 없었다. 일곱 군데에 같은 코드를 또 붙이는 대신 여기로 묶는다.
+   id 규칙: 슬라이더는 `<이름>Range`, 수치 표시는 `<이름>Val`. */
+function wireGradRange(p, id, key, suffix) {
+  const input = $('#' + id + 'Range');
+  if (!input) return;
+  const valEl = $('#' + id + 'Val');
+  // 화면을 다시 그릴 때마다 저장값으로 한 번 찍어둔다 — 이게 없으면 상품을 바꾼 직후
+  // 수치 칸이 빈 채로 남는다.
+  const paint = () => { if (valEl) valEl.textContent = input.value + (suffix || ''); };
+  paint();
+  input.addEventListener('input', () => {
+    GLOBAL_GRAD[key] = Number(input.value);
+    paint();
+    drawComposer(p); drawAllThumbs(p); saveGradSettings();
+  });
+}
+
 let composerDragCleanup = null;
 function wireComposerInteraction(p) {
   const canvas = $('#composerCanvas');
