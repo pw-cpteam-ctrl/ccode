@@ -406,8 +406,11 @@ async function readInstagramPostInner(page, target, seen) {
     out.countsFrom = 'dom';
   }
   out.apiUrls = seen.apiUrls.slice(0, 20);
-  // 지표를 끝내 하나도 못 읽었으면 그 페이지를 남겨서 다음에 추측 말고 실물로 고치게 함.
-  out.pageHtml = (out.likes === null && out.comments === null) ? await page.content() : null;
+  // 원본 응답을 못 받았으면(화면 읽기로 때웠으면) 무조건 페이지를 남긴다.
+  // ⚠️ 예전엔 "좋아요·댓글 둘 다 null일 때만" 남겼는데, 화면 읽기가 **틀린 숫자를 성공처럼**
+  //   돌려주는 경우엔(실제로 릴스에서 좋아요 295·댓글 295로 같은 값이 나왔음) 조건에 안 걸려서
+  //   진단 재료가 하나도 안 남았다. 값이 나왔는지가 아니라 **어디서 나왔는지**로 판단해야 한다.
+  out.pageHtml = out.countsFrom === 'api' ? null : await page.content();
   return out;
 }
 
@@ -419,10 +422,15 @@ function readInstagramInPage() {
     const timeEl = document.querySelector('time[datetime]');
 
     const numeric = /^[\d,.]+[만천KM]?$/;
-    const candidates = [...document.querySelectorAll('span')]
+    let candidates = [...document.querySelectorAll('span')]
       .map(el => ({ el, rect: el.getBoundingClientRect() }))
       .filter(({ el, rect }) => rect.x > 700 && rect.y > 400 && rect.y < 580 && numeric.test(el.innerText.trim()));
+    // ⚠️ 같은 숫자를 감싼 바깥 span과 안쪽 span이 **둘 다** 걸려서, 좋아요와 댓글에 같은 값이
+    //   들어가던 문제(릴스에서 295·295, 255·255로 나왔음). 다른 것을 품고 있는 span은 버리고
+    //   가장 안쪽 것만 남긴다 — 숫자 하나를 두 지표로 세면 틀린 값이 조용히 정답 행세를 한다.
+    candidates = candidates.filter(({ el }) => !candidates.some(o => o.el !== el && el.contains(o.el)));
     let likes = candidates[0] ? candidates[0].el.innerText.trim() : null;
+    // 후보가 하나뿐이면 그건 좋아요일 뿐 댓글이 아니다. 없는 값을 지어내느니 모른다고 둔다.
     const comments = candidates[1] ? candidates[1].el.innerText.trim() : null;
 
     if (!likes) {
@@ -448,9 +456,14 @@ function readInstagramInPage() {
       if (permalink) account = permalink;
     }
     if (!account) {
+      // og:title은 언어에 따라 "계정 on Instagram: …" 또는 "Instagram의 계정님: …" 두 형태다.
+      // 예전엔 맨 앞 단어를 그냥 집어서 한국어 페이지에서 계정명이 "Instagram의"로 나왔음.
       const og = document.querySelector('meta[property="og:title"]');
-      const m = og && (og.getAttribute('content') || '').match(/^([^\s(•|]+)/);
-      if (m) account = m[1].replace(/^@/, '');
+      const c = og ? (og.getAttribute('content') || '') : '';
+      const ko = c.match(/Instagram의\s+([^\s(•|]+?)님/);
+      const en = c.match(/^([^\s(•|]+)\s+on\s+Instagram/i);
+      const pick = (ko && ko[1]) || (en && en[1]) || '';
+      if (pick && !/^Instagram/i.test(pick)) account = pick.replace(/^@/, '');
     }
 
     const spans = [...document.querySelectorAll('span[dir="auto"]')].sort((a, b) => b.innerText.length - a.innerText.length);
@@ -555,9 +568,12 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
         // 인용을 못 읽었으면 **추측을 반복하지 않기 위해** 그 페이지를 파일로 남긴다.
         // 그 파일만 있으면 실제 구조를 보고 한 번에 고칠 수 있음(지금까지 실제 X 화면을
         // 볼 수 없어서 셀렉터를 추측으로 짰고 그래서 두 번 틀렸음).
-        // 인스타도 지표를 못 읽었으면 같은 이유로 페이지를 남긴다.
-        if (t.platform === 'instagram' && parsed.likes === null && parsed.comments === null) {
-          console.log(`[link] ⓘ 좋아요/댓글을 못 읽었음 — 받아온 응답: ${JSON.stringify(parsed.apiUrls || [])}`);
+        // 인스타 지표를 원본 응답에서 못 받고 화면 읽기로 때웠으면 페이지를 남긴다.
+        // 화면 읽기는 레이아웃이 조금만 달라도 **틀린 숫자를 성공처럼** 내놓기 때문에
+        // (릴스에서 좋아요·댓글이 같은 값으로 나온 적 있음) 값의 유무가 아니라 출처로 판단한다.
+        if (t.platform === 'instagram' && parsed.countsFrom !== 'api') {
+          console.log(`[link] ⚠️ 인스타 지표를 원본 응답이 아니라 화면에서 읽었음 — 숫자가 틀릴 수 있음`);
+          console.log(`[link] ⓘ 받아온 응답 주소: ${JSON.stringify(parsed.apiUrls || [])}`);
           dumpPage(debugDir, `_debug-ig-${t.postId}.html`, pageHtml);
         }
 

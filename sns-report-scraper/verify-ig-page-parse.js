@@ -83,6 +83,25 @@ check('응답 JSON — 이 글이 없으면 아무거나 집지 말고 null (실
     assert.strictEqual(reel.account, ACCOUNT, '릴스 링크에서도 계정을 읽어야 함');
   });
 
+  // 겹친 span — 실제 릴스에서 좋아요·댓글이 같은 값으로 나오던 원인
+  await page.setContent(`<!doctype html><meta charset="utf-8"><body style="margin:0">
+    <div style="position:absolute;left:760px;top:430px"><span><span>295</span></span></div>
+    <a href="/${ACCOUNT}/reel/${CODE}/">릴스</a></body>`);
+  const dup = await page.evaluate(readInstagramInPage);
+  check('화면 읽기 — 숫자 하나를 좋아요·댓글로 두 번 세지 않음(모르면 null)', () => {
+    assert.strictEqual(dup.likes, '295');
+    assert.strictEqual(dup.comments, null, '후보가 하나뿐이면 댓글은 모르는 것 — 같은 값을 넣으면 안 됨');
+  });
+
+  // og:title이 한국어 형태일 때 계정명
+  await page.setContent(`<!doctype html><meta charset="utf-8">
+    <meta property="og:title" content="Instagram의 ${ACCOUNT}님: &quot;이벤트&quot;">
+    <body><span dir="auto">본문</span></body>`);
+  const kacct = await page.evaluate(readInstagramInPage);
+  check('화면 읽기 — 한국어 og:title에서 "Instagram의"가 아니라 계정명을 뽑음', () => {
+    assert.strictEqual(kacct.account, ACCOUNT);
+  });
+
   // 진짜로 아무것도 없는 페이지(로그인 벽 등)는 여전히 null이어야 함
   await page.setContent('<!doctype html><meta charset="utf-8"><body><div>로그인하세요</div></body>');
   const empty = await page.evaluate(readInstagramInPage);
