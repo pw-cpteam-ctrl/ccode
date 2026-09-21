@@ -849,13 +849,49 @@ check('stock-report: matchPwBhStockProducts — 후보가 여럿이어도 점수
   assert.strictEqual(pairs[0].pw.productId, 'P2', '키워드가 BH와 완전히 겹치는 재판 쪽이 선택돼야 함');
 });
 
-check('stock-report: matchPwBhStockProducts — 점수가 완전히 동률이면(진짜 구분 불가) 매칭 안 시킴', () => {
+check('stock-report: matchPwBhStockProducts — 자사 세트는 경쟁사 "박스"와 짝지어야 함(같은 작품 "단품 랜덤"과 묶으면 안 됨)', () => {
+  // BH는 같은 상품을 "1BOX N개 구성"(박스 하나)과 "N종 단품 랜덤"(낱개 하나) 두 SKU로 올린다.
+  // 키워드만 보면 둘 다 PW 세트와 점수가 같아서(구성 표기는 일반어로 걸러짐) 예전엔 동점
+  // 처리로 아예 매칭을 포기했는데, 실제로는 박스 쪽이 명백한 짝이다 — 실데이터에서 토비마스
+  // 2건·유라코레 1건이 하필 **단품** 쪽과 묶여서 6개들이 박스와 낱개 1개를 1:1로 비교 중이었음.
   const pw = [{ productId: 'P1', name: '은혼 룩업 미니어처 컬렉션 (4종세트)' }];
   const bh = [
     { productId: 'B1', name: '룩업 미니어처 컬렉션 은혼 (1BOX 4개 구성)' },
     { productId: 'B2', name: '룩업 미니어처 컬렉션 은혼 (4종 단품 랜덤)' },
   ];
-  assert.strictEqual(matchPwBhStockProducts(pw, bh).length, 0, '어느 쪽인지 확정할 수 없으니 매칭하면 안 됨');
+  const pairs = matchPwBhStockProducts(pw, bh);
+  assert.strictEqual(pairs.length, 1, '박스 쪽과 한 짝이 확정돼야 함');
+  assert.strictEqual(pairs[0].bh.productId, 'B1', '낱개(단품 랜덤)가 아니라 박스와 짝지어야 함');
+});
+
+check('stock-report: matchPwBhStockProducts — 진짜로 구분이 안 되면(구성까지 같은 후보 2개) 여전히 매칭 안 시킴', () => {
+  // 위 보완이 "동점이면 아무거나 고른다"로 번지면 안 됨 — 구성까지 똑같은 후보가 둘이면
+  // (발매월만 다른 중복 등록 등) 확정할 근거가 없으니 그대로 넘겨야 한다.
+  const pw = [{ productId: 'P1', name: '은혼 룩업 미니어처 컬렉션 (4종세트)' }];
+  const bh = [
+    { productId: 'B1', name: '룩업 미니어처 컬렉션 은혼 (1BOX 4개 구성) 27.02' },
+    { productId: 'B2', name: '룩업 미니어처 컬렉션 은혼 (1BOX 4개 구성) 27.04' },
+  ];
+  assert.strictEqual(matchPwBhStockProducts(pw, bh).length, 0, '구성이 같은 후보가 둘이면 확정 불가');
+});
+
+check('stock-report: matchPwBhStockProducts — 특전판은 특전판끼리만 짝지어야 함(구분어가 키워드에서 사라져 동점으로 통째 누락되던 문제)', () => {
+  // `[특전]`은 브라켓 태그라 키워드 추출 때 통째로 지워져서, 특전판과 일반판의 키워드가
+  // 완전히 똑같아졌음 → 동점으로 걸려 네 상품 모두 짝짓기 실패. 실데이터(사이키 쿠스오의
+  // 재난)에서 양사 6개씩 중 확정된 짝이 단품 2개뿐이라 점유율 합계가 71:29 대신 86:14로
+  // 나왔던 사례.
+  const pw = [
+    { productId: 'P1', name: '[예약][특전] 사이키 쿠스오 룩업 l 사이키 쿠스오의 재난' },
+    { productId: 'P2', name: '[예약] 사이키 쿠스오 룩업 l 사이키 쿠스오의 재난' },
+  ];
+  const bh = [
+    { productId: 'B1', name: '[예약] [특전] 룩업 사이키 쿠스오 l 사이키 쿠스오의 재난 27.02' },
+    { productId: 'B2', name: '[예약] 룩업 사이키 쿠스오 l 사이키 쿠스오의 재난 27.02' },
+  ];
+  const byPw = new Map(matchPwBhStockProducts(pw, bh).map(p => [p.pw.productId, p.bh.productId]));
+  assert.strictEqual(byPw.size, 2, '특전판/일반판 두 짝 모두 확정돼야 함');
+  assert.strictEqual(byPw.get('P1'), 'B1', '특전판끼리');
+  assert.strictEqual(byPw.get('P2'), 'B2', '일반판끼리');
 });
 
 check('stock-report: 초기 판매한도는 스토어별 고정값(PW 10000 / BH 5000) — 1000개 넘게 팔려도 기준선이 내려앉으면 안 됨', () => {

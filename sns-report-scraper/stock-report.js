@@ -327,16 +327,38 @@ function stockDeltaText(p) {
 // 우연히 겹치는 경우에 점수가 낮아짐), PW/BH가 서로를 1순위로 고를 때만("상호 최선")
 // 확정 짝으로 인정. 점수가 동률인 후보가 있으면(예: 같은 상품의 "박스 구성"/"단품 랜덤"
 // 버전처럼 진짜 구분이 안 되는 경우) 그 상품은 짝짓지 않고 넘어감 — 잘못 짝짓는 것보다 안전.
+/**
+ * 같은 피규어라도 "특전 포함/미포함"과 "세트/단품"은 가격이 다른 **별개 상품**인데, 이 구분어가
+ * 키워드 추출 과정에서 통째로 사라진다 — `[특전]`은 브라켓 태그라 `\[[^\]]*\]`로 지워지고,
+ * "세트"·"일반품"은 GENERIC_KEYWORDS라 지워짐. 그 결과 특전판과 일반판의 키워드 집합이 **완전히
+ * 똑같아져서**, 아래 "상호 최선" 판정이 동점(tie)으로 걸려 둘 다 짝짓기를 포기해버렸다.
+ * 실제 사례(사이키 쿠스오의 재난): 양사 6개씩 있는데 확정된 짝이 단품 2개뿐이었고, 매출 대부분을
+ * 차지하는 특전판·세트 4개가 점유율 표에서 통째로 빠져 합계가 71:29 대신 86:14로 나왔음.
+ * → 키워드와 별개의 "구분 속성"으로 뽑아서, 같은 속성끼리만 후보로 올린다. 잘못된 짝(특전판을
+ *   일반판과 비교)을 막는 동시에 동점도 풀린다.
+ */
+function variantKey(name) {
+  const t = String(name || '').normalize('NFC');
+  const hasBonus = /특전/.test(t) && !/특전\s*미포함/.test(t); // "[특전미포함]"은 특전 없는 쪽
+  // ⚠️ "세트"라는 단어만 보면 안 됨 — 경쟁사는 묶음을 "(1BOX 6개 구성)"으로도 적는데, 같은
+  // 작품에 "(N종 단품 랜덤)"(낱개 하나를 랜덤으로 받는 상품)이 나란히 올라와 있어서, BOX를
+  // 세트로 안 보면 자사 세트가 경쟁사 **단품**과 짝지어짐(실제로 토비마스·유라코레 3건이
+  // 그렇게 묶여 있었음 — 6개들이 박스와 낱개 1개를 1:1로 비교하던 상태).
+  const isSet = /세트/.test(t) || /BOX/i.test(t);
+  return `${hasBonus ? 'B' : '-'}${isSet ? 'S' : '-'}`;
+}
+
 function matchPwBhStockProducts(pwProducts, bhProducts) {
   const MIN_SHARED_KEYWORDS = 2;
-  const pwEntries = pwProducts.map(p => ({ product: p, keywords: extractKeywords(p.name), line: detectProductLine(p.name) }));
-  const bhEntries = bhProducts.map(p => ({ product: p, keywords: extractKeywords(p.name), line: detectProductLine(p.name) }));
+  const pwEntries = pwProducts.map(p => ({ product: p, keywords: extractKeywords(p.name), line: detectProductLine(p.name), variant: variantKey(p.name) }));
+  const bhEntries = bhProducts.map(p => ({ product: p, keywords: extractKeywords(p.name), line: detectProductLine(p.name), variant: variantKey(p.name) }));
 
   const scored = [];
   pwEntries.forEach((pw, i) => {
     if (pw.keywords.length === 0) return;
     bhEntries.forEach((bh, j) => {
       if (bh.keywords.length === 0 || pw.line !== bh.line) return;
+      if (pw.variant !== bh.variant) return; // 특전판 ↔ 일반판, 세트 ↔ 단품은 애초에 다른 상품
       const overlap = pw.keywords.filter(k => bh.keywords.includes(k));
       if (overlap.length < MIN_SHARED_KEYWORDS) return;
       scored.push({ i, j, score: overlap.length / Math.max(pw.keywords.length, bh.keywords.length) });
