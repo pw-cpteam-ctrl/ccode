@@ -8,8 +8,9 @@
  * 그보다 훨씬 큰데, 우리 관측 시작점이 늦었다는 이유로 축소돼 보이는 문제.
  *
  * 그래서 이제 totalSold는 실제 과거 스냅샷 유무와 무관하게 **항상** 메가하우스 예약판매 관행
- * (9999/10000 같은 "깔끔한" 숫자로 판매 한도를 걸어둠)을 이용해 현재 재고 위의 가장 가까운
- * 1000단위를 "초기 한도"로 가정하고 역산(estimateInitialCap)한다 — `초기한도 - 현재재고`.
+ * (깔끔한 숫자로 판매 한도를 걸어둠)을 이용해 "초기 한도"에서 역산(estimateInitialCap)한다 —
+ * `초기한도 - 현재재고`. 초기 한도는 **스토어별 고정값**(PW 10000 / BH 5000)이다
+ * (2026-09-21 수정 — 그 전까지 쓰던 "1000단위 올림" 추측이 왜 틀렸는지는 estimateInitialCap 참고).
  * 예약 시작 시점부터의 총 판매를 더 잘 반영하지만 여전히 추정치이므로 totalSoldIsEstimated는
  * 항상 true, 화면엔 "*"로 표시해서 정확도 한계를 숨기지 않음.
  *
@@ -45,11 +46,28 @@ function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// 현재 재고를 가장 가까운 1000단위로 올려서 "초기 판매한도였을 것"으로 가정하고 역산 —
+// 스토어별 예약 초기 한도(고정값). 자사(PW)는 10000, 경쟁사(BH)는 5000으로 걸어두는 게
+// 처음부터의 운영 규칙이라 추측할 필요가 없다.
+const INITIAL_CAP_BY_STORE = { PW: 10000, BH: 5000 };
+const DEFAULT_INITIAL_CAP = 10000; // 스토어를 모를 때(테스트/구버전 호출)의 안전값
+
+// "초기 판매한도 - 현재 재고"로 총 판매를 역산할 때 쓸 초기 한도 —
 // **예약 상품에만** 적용한다(입고 상품엔 쓰면 안 됨 — 파일 헤더의 세 번째 방향 전환 참고).
-function estimateInitialCap(stock) {
+//
+// ⚠️ 네 번째 방향 전환(2026-09-21): 예전엔 "현재 재고를 가장 가까운 1000단위로 올림"
+// (Math.ceil(stock/1000)*1000)으로 초기 한도를 **추측**했는데, 이러면 1000개 넘게 팔리는
+// 순간 기준선이 한 칸 통째로 내려앉아서 **잘 팔릴수록 적게 팔린 것처럼** 보였다.
+// 실제 사례: 사이키 쿠스오 룩업(특전) 재고 8974 → 초기한도를 9000으로 보고 "26개 판매",
+// 실제로는 10000에서 시작했으니 1026개. 그 결과 점유율이 PW 70% : BH 30%에서
+// PW 6% : BH 94%로 정반대로 찍혔다. 히스토리를 뒤져보니 9000선을 실제로 통과한 PW 상품이
+// 7개 더 있어서(예: 히로아카냥코 9544 → 9464 → 8904) 같은 방식으로 1000개씩 증발 중이었음.
+// 추이 그래프도 재고가 1000단위 선을 지날 때마다 누적 판매가 거꾸로 꺾이는 톱니가 생겼음.
+// → 스토어별 고정값을 쓴다. 재고가 한도를 넘는 상품(재판 물량을 2배로 잡는 경우가 있음)은
+//   그 한도의 다음 배수로 올림해서, 고정값이 음수 판매량을 만들지 않게 한다.
+function estimateInitialCap(stock, storeLabel) {
   if (typeof stock !== 'number') return null;
-  return Math.max(1000, Math.ceil(stock / 1000) * 1000);
+  const unit = INITIAL_CAP_BY_STORE[storeLabel] ?? DEFAULT_INITIAL_CAP;
+  return Math.max(unit, Math.ceil(stock / unit) * unit);
 }
 
 // 예약판매 중인 상품으로 볼 재고 하한선. 이 아래는 예약 한도가 아니라 실제 물리 재고로 본다.
@@ -122,7 +140,7 @@ function buildStockComparison(history) {
 
       // 예약 상품만 초기한도 역산. 입고 상품은 총 판매량을 알 방법이 없으므로 null —
       // 지어낸 숫자를 넣지 않는다(입고 상품의 실제 판매는 stockDelta로 확인 가능).
-      const estimatedCap = preorder ? estimateInitialCap(r.stock) : null;
+      const estimatedCap = preorder ? estimateInitialCap(r.stock, label) : null;
       const totalSold = preorder && typeof r.stock === 'number' ? perSet(estimatedCap - r.stock) : null;
 
       return {
@@ -349,12 +367,14 @@ function matchPwBhStockProducts(pwProducts, bhProducts) {
   return pairs;
 }
 
-// productId 하나의 스토어별 전체 스냅샷 재고 이력 — [{takenAt, stock}, ...] (오래된 순).
+// productId 하나의 스토어별 전체 스냅샷 재고 이력 — [{takenAt, stock, store}, ...] (오래된 순).
+// store를 각 점에 같이 담아두는 이유: 추이/증가율 계산이 estimateInitialCap을 다시 부르는데,
+// 초기 한도가 스토어별로 다른 고정값이라 시리즈만 받아도 어느 쪽인지 알 수 있어야 함.
 function stockSeries(snapshots, storeLabel, productId) {
   const series = [];
   for (const snap of snapshots) {
     const rec = (snap.stores[storeLabel] || []).find(r => r.productId === productId);
-    if (rec && typeof rec.stock === 'number') series.push({ takenAt: snap.takenAt, stock: rec.stock });
+    if (rec && typeof rec.stock === 'number') series.push({ takenAt: snap.takenAt, stock: rec.stock, store: storeLabel });
   }
   return series;
 }
@@ -455,7 +475,7 @@ function stockTrendChart(pwSeries, bhSeries, pwName, bhName, opts = {}) {
 
   // 각 시점의 재고를 그 시점 기준 총판매추정치(estimateInitialCap 역산)로 환산.
   function toSoldSeries(series) {
-    return series.map(p => ({ takenAt: p.takenAt, stock: p.stock, totalSold: estimateInitialCap(p.stock) - p.stock }));
+    return series.map(p => ({ takenAt: p.takenAt, stock: p.stock, totalSold: estimateInitialCap(p.stock, p.store) - p.stock }));
   }
 
   // 그래프에 실제로 찍을 값(value)과 점 툴팁 문구(tip)를 여기서 확정함.
@@ -625,7 +645,7 @@ function renderStoreTable(label, products) {
  */
 function deltaRatePairText(pwSeries, bhSeries, stepsBack) {
   const rate = series => {
-    const sold = (series || []).map(p => estimateInitialCap(p.stock) - p.stock);
+    const sold = (series || []).map(p => estimateInitialCap(p.stock, p.store) - p.stock);
     if (sold.length <= stepsBack) return null; // 비교할 과거 시점이 아직 없음
     const now = sold[sold.length - 1];
     const prev = sold[sold.length - 1 - stepsBack];

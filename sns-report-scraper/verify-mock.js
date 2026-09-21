@@ -850,16 +850,46 @@ check('stock-report: matchPwBhStockProducts — 후보가 여럿이어도 점수
 });
 
 check('stock-report: matchPwBhStockProducts — 점수가 완전히 동률이면(진짜 구분 불가) 매칭 안 시킴', () => {
-  // 실제로 있었던 패턴: BH가 같은 상품을 "박스 구성"/"단품 랜덤" 두 SKU로 중복 등록해서,
-  // PW의 단일 상품이 BH 두 후보 모두와 동점으로 겹침 — 이 경우는 점수로도 구분이 안 되니
-  // 안전하게 매칭하지 않아야 함.
   const pw = [{ productId: 'P1', name: '은혼 룩업 미니어처 컬렉션 (4종세트)' }];
   const bh = [
     { productId: 'B1', name: '룩업 미니어처 컬렉션 은혼 (1BOX 4개 구성)' },
     { productId: 'B2', name: '룩업 미니어처 컬렉션 은혼 (4종 단품 랜덤)' },
   ];
-  const pairs = matchPwBhStockProducts(pw, bh);
-  assert.strictEqual(pairs.length, 0, 'BH 두 후보가 동점이면(박스/단품 구성 차이만) 어느 쪽인지 확정할 수 없으니 매칭하면 안 됨');
+  assert.strictEqual(matchPwBhStockProducts(pw, bh).length, 0, '어느 쪽인지 확정할 수 없으니 매칭하면 안 됨');
+});
+
+check('stock-report: 초기 판매한도는 스토어별 고정값(PW 10000 / BH 5000) — 1000개 넘게 팔려도 기준선이 내려앉으면 안 됨', () => {
+  // 예전 규칙(현재 재고를 1000단위로 올림)은 1000개 넘게 팔리는 순간 기준선이 한 칸
+  // 내려앉아서 **잘 팔릴수록 적게 팔린 것처럼** 보였음. 실데이터: 사이키 쿠스오 룩업(특전)이
+  // 재고 8974 → "26개 판매"(초기한도를 9000으로 추측)로 찍혀서, 점유율이 PW 70%:BH 30%가
+  // 아니라 PW 6%:BH 94%로 정반대가 됐음.
+  const history = { snapshots: [{ takenAt: '2026-09-21T00:00:00.000Z', stores: {
+    PW: [{ productId: 'P1', name: '[예약][특전] 사이키 쿠스오 룩업 l 사이키 쿠스오의 재난', price: 55000, stock: 8974 }],
+    BH: [{ productId: 'B1', name: '[예약] [특전] 룩업 사이키 쿠스오 l 사이키 쿠스오의 재난 27.02', price: 55000, stock: 4570 }],
+  } }] };
+  const compared = buildStockComparison(history);
+  assert.strictEqual(compared.stores.PW[0].estimatedCap, 10000, 'PW 초기한도는 항상 10000');
+  assert.strictEqual(compared.stores.PW[0].totalSold, 1026, '10000 - 8974 = 1026 (예전 규칙이면 26으로 축소됐음)');
+  assert.strictEqual(compared.stores.BH[0].estimatedCap, 5000, 'BH 초기한도는 항상 5000');
+  assert.strictEqual(compared.stores.BH[0].totalSold, 430, '5000 - 4570 = 430');
+
+  const rows = buildIntegratedStockRows(compared);
+  assert.strictEqual(rows.length, 1, '특전판끼리 짝지어져야 함');
+  assert.ok(renderStockSectionHtml(compared).includes('70% : 30%'),
+    '점유율이 1026:430 → 70% : 30%로 나와야 함(예전 규칙이면 26:430 → 6% : 94%)');
+});
+
+check('stock-report: 재고가 스토어 한도를 넘는 상품(재판 물량 2배 등)은 그 한도의 다음 배수로 올려서 음수 판매량이 안 나와야 함', () => {
+  // 고정값을 그대로 빼면 재고 19992짜리 PW 상품이 "-9992개 판매"가 됨.
+  const history = { snapshots: [{ takenAt: '2026-09-21T00:00:00.000Z', stores: {
+    PW: [{ productId: 'P1', name: '[예약] 하이큐 룩업 판초 재판', price: 50000, stock: 19992 }],
+    BH: [{ productId: 'B1', name: '[예약] 룩업 판쵸 하이큐 재판 27.01', price: 50000, stock: 9998 }],
+  } }] };
+  const compared = buildStockComparison(history);
+  assert.strictEqual(compared.stores.PW[0].estimatedCap, 20000, 'PW 10000의 다음 배수');
+  assert.strictEqual(compared.stores.PW[0].totalSold, 8, '20000 - 19992 = 8');
+  assert.strictEqual(compared.stores.BH[0].estimatedCap, 10000, 'BH 5000의 다음 배수');
+  assert.strictEqual(compared.stores.BH[0].totalSold, 2, '10000 - 9998 = 2');
 });
 
 check('stock-report: 종합표 — PW/BH 매칭 + 점유율 + 직전/전전 스냅샷 대비 + 추이 그래프(스냅샷 2개 이상)', () => {
