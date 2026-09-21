@@ -229,7 +229,12 @@ button.danger{background:var(--ui-warn);color:#fff;}
 .dropzone{border:2px dashed var(--ui-border);border-radius:10px;padding:14px;text-align:center;font-size:12.5px;color:var(--ui-sub);cursor:pointer;}
 .dropzone:hover{border-color:var(--ui-accent);color:var(--ui-accent);}
 .dropzone input{display:none;}
-.thumbrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+/* position:relative — 아래 마퀴(선택 사각형)를 이 안에 절대좌표로 그리기 때문이다.
+   padding-bottom은 '틀' 배지(bottom:-6px)가 잘리지 않게 하면서, 동시에 사진이 한 줄을
+   꽉 채웠을 때도 마퀴를 시작할 빈 공간이 남게 해준다. */
+.thumbrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;position:relative;padding-bottom:18px;}
+.thumbrow .marquee{position:absolute;border:1px solid #f07d1e;background:rgba(240,125,30,.14);
+  pointer-events:none;z-index:5;border-radius:2px;}
 .thumbwrap{position:relative;cursor:grab;}
 /* 68x85 = 4:5. 상세 영역 폭이 774px이고 간격이 8px이라, 한 줄에 10개면 752px로 들어가고
    11개면 828px이 되어 둘째 줄로 내려간다. 예전 60x75에서는 11개가 한 줄에 들어갔다.
@@ -1400,7 +1405,7 @@ function imageStageHtml(p) {
           <button class="sm" id="btnExportSlide">PNG 저장</button>
           <button class="sm secondary" id="btnExportProductZip">전체 ZIP</button>
         </div>
-        <div class="status" id="composerHint" style="margin-top:6px;">${p.images.length ? '휠: 확대/축소 · 드래그: 사진 위치 이동 · Ctrl(⌘)+클릭 또는 Shift+클릭으로 여러 장 골라 한꺼번에' : '아직 사진 없음 — 틀·문구 먼저 미리보기 중. 사진 올리면 자동으로 채워져요.'}</div>
+        <div class="status" id="composerHint" style="margin-top:6px;">${p.images.length ? '휠: 확대/축소 · 드래그: 사진 위치 이동 · 사진 줄 빈 곳을 끌면 여러 장 선택(Ctrl+클릭으로 하나씩 추가)' : '아직 사진 없음 — 틀·문구 먼저 미리보기 중. 사진 올리면 자동으로 채워져요.'}</div>
       </div>
       <div class="composer-ctl">
         <div class="ctl-block" id="mainOnlyBlock">
@@ -1497,9 +1502,10 @@ function wireImageStage(p) {
   });
   const bc = $('#bulkClear');
   if (bc) bc.addEventListener('click', () => {
-    selectedKeys.clear(); _lastSelIdx = null;
+    selectedKeys.clear();
     drawAllThumbs(p); updateBulkUi(p);
   });
+  wireThumbMarquee(p);
   updateBulkUi(p);
 
   wireGradRange(p, 'gradStart', 'start', '%');
@@ -1699,7 +1705,6 @@ const THUMB_W = 68, THUMB_H = 85;
    되돌리기는 넣지 않았다(이 페이지에 원래 없는 기능이라 같이 만들면 일이 커진다).
    대신 실수로 여러 장을 망치는 걸 줄이려고 아래 targetsForBulk 규칙을 둔다. */
 const selectedKeys = new Set();
-let _lastSelIdx = null;   // Shift 범위 선택의 기준점
 let _bulkThumbT = null;   // 일괄 슬라이더용 썸네일 다시그리기 지연 타이머
 
 function selectedSlidesOf(p) {
@@ -1717,6 +1722,93 @@ function pruneSelection(p) {
   const live = new Set((p.images || []).map(s => s.key));
   for (const k of [...selectedKeys]) if (!live.has(k)) selectedKeys.delete(k);
 }
+/* 썸네일 줄의 빈 곳에서 끌면 사각형(마퀴)이 그려지고, 그 사각형에 닿는 사진이 선택된다.
+   Shift+클릭 대신 이 방식을 쓴다 — 여러 장을 고를 때 어디부터 어디까지인지 눈으로
+   보면서 고를 수 있고, 두 손을 쓰지 않아도 된다.
+
+   창(window)에 붙이는 리스너는 상세 화면을 다시 그릴 때마다 쌓이므로, 캔버스 드래그와
+   같은 방식으로 이전 것을 먼저 떼고 붙인다. */
+let marqueeCleanup = null;
+function wireThumbMarquee(p) {
+  const row = $('#thumbRow');
+  if (!row) return;
+  if (marqueeCleanup) marqueeCleanup();
+  let mq = null;
+
+  const onDown = e => {
+    if (e.button !== 0) return;
+    // 사진 위에서 시작한 건 클릭이거나 순서 재정렬이라 마퀴가 끼어들면 안 된다.
+    if (e.target.closest('.thumbwrap')) return;
+    e.preventDefault();
+    const r = row.getBoundingClientRect();
+    mq = { x0: e.clientX, y0: e.clientY, rowRect: r, box: null, moved: false,
+           // Ctrl을 누른 채 끌면 기존 선택에 더한다. 그냥 끌면 새로 고른다.
+           add: e.ctrlKey || e.metaKey,
+           before: new Set(selectedKeys) };
+  };
+  const onMove = e => {
+    if (!mq) return;
+    // 클릭인지 끌기인지 먼저 가른다 — 빈 곳을 그냥 한 번 누른 것까지 마퀴로 잡으면
+    // 손이 1px만 떨려도 선택이 통째로 바뀐다.
+    if (!mq.moved) {
+      if (Math.hypot(e.clientX - mq.x0, e.clientY - mq.y0) < 5) return;
+      mq.moved = true;
+      mq.box = document.createElement('div');
+      mq.box.className = 'marquee';
+      row.appendChild(mq.box);
+    }
+    const left = Math.min(mq.x0, e.clientX), right = Math.max(mq.x0, e.clientX);
+    const top = Math.min(mq.y0, e.clientY), bottom = Math.max(mq.y0, e.clientY);
+    // 화면 좌표 → 썸네일 줄 기준 좌표 (사각형을 줄 안에 그리기 위해)
+    mq.box.style.left = (left - mq.rowRect.left) + 'px';
+    mq.box.style.top = (top - mq.rowRect.top) + 'px';
+    mq.box.style.width = (right - left) + 'px';
+    mq.box.style.height = (bottom - top) + 'px';
+
+    // 사각형에 조금이라도 겹치면 선택. 완전히 감싸야 선택되게 하면 썸네일이 커서
+    // 한 줄을 다 훑어야 해 오히려 불편하다.
+    const hit = new Set();
+    row.querySelectorAll('.thumbwrap').forEach(w => {
+      const b = w.getBoundingClientRect();
+      if (b.right >= left && b.left <= right && b.bottom >= top && b.top <= bottom) hit.add(w.dataset.key);
+    });
+    selectedKeys.clear();
+    if (mq.add) for (const k of mq.before) selectedKeys.add(k);
+    for (const k of hit) selectedKeys.add(k);
+    paintThumbSelection(row);
+    updateBulkUi(p);
+  };
+  const onUp = () => {
+    if (!mq) return;
+    if (mq.box) mq.box.remove();
+    // 빈 곳을 그냥 클릭한 경우(끌지 않음) = 선택 해제. 눈에 보이는 빈 곳을 눌렀는데
+    // 아무 일도 안 일어나면 선택을 푸는 방법을 버튼에서만 찾아야 한다.
+    if (!mq.moved) { selectedKeys.clear(); paintThumbSelection(row); updateBulkUi(p); }
+    else saveProductsSoon();
+    mq = null;
+  };
+
+  row.addEventListener('mousedown', onDown);
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+  marqueeCleanup = () => {
+    row.removeEventListener('mousedown', onDown);
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    marqueeCleanup = null;
+  };
+}
+
+/* 끄는 도중에는 썸네일을 통째로 다시 그리지 않고 테두리만 바꾼다 — drawAllThumbs는
+   사진을 전부 다시 그려서, 마우스를 움직이는 내내 부르면 뚝뚝 끊긴다. */
+function paintThumbSelection(row) {
+  const multi = selectedKeys.size > 1;
+  row.querySelectorAll('.thumbwrap').forEach(w => {
+    const c = w.querySelector('canvas');
+    if (c) c.classList.toggle('msel', multi && selectedKeys.has(w.dataset.key));
+  });
+}
+
 function updateBulkUi(p) {
   const bar = $('#bulkBar');
   if (!bar) return;
@@ -1748,16 +1840,11 @@ function drawAllThumbs(p) {
     ctx.scale(THUMB_W / CW, THUMB_H / CH);
     drawSlide(ctx, slide, idx === p.mainIndex, p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing, GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p), formatCopyright(p.copyrightText));
     canvas.addEventListener('click', e => {
-      if (e.shiftKey && _lastSelIdx !== null) {
-        // 기준점부터 여기까지 사이를 전부 더한다 (기준점은 그대로 둬서 범위를 늘렸다 줄였다 할 수 있게)
-        const [a, b] = [_lastSelIdx, idx].sort((x, y) => x - y);
-        for (let i = a; i <= b; i++) if (p.images[i]) selectedKeys.add(p.images[i].key);
-      } else if (e.ctrlKey || e.metaKey) {
+      if (e.ctrlKey || e.metaKey) {
         selectedKeys.has(slide.key) ? selectedKeys.delete(slide.key) : selectedKeys.add(slide.key);
-        _lastSelIdx = idx;
       } else {
         // 그냥 클릭 = 지금까지 하던 대로 그 사진 하나만 편집 (선택은 전부 풀린다)
-        selectedKeys.clear(); selectedKeys.add(slide.key); _lastSelIdx = idx;
+        selectedKeys.clear(); selectedKeys.add(slide.key);
       }
       editingIdx = idx;
       drawAllThumbs(p); drawComposer(p); updateBulkUi(p);
@@ -1816,9 +1903,9 @@ function drawAllThumbs(p) {
     wrap.addEventListener('mousedown', e => {
       if (e.button !== 0) return;
       if (e.target.closest('.th-star') || e.target.closest('.th-del') || e.target.closest('.th-frame')) return;
-      // Ctrl/Shift로 고르는 중이면 순서 재정렬을 시작하지 않는다 — 안 그러면 여러 장
+      // Ctrl로 고르는 중이면 순서 재정렬을 시작하지 않는다 — 안 그러면 여러 장
       // 고르려고 누르는 동작이 매번 드래그로 잡혀서 선택이 안 된다.
-      if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.ctrlKey || e.metaKey) return;
       e.preventDefault();
       startThumbDrag(p, slide.key);
     });
