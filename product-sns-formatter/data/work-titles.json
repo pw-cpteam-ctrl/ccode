@@ -1,6 +1,6 @@
 {
  "note": "작품(시리즈)의 한국 정식 제목 사전. 원고작성페이지에서 사람이 확인한 표기가 쌓인다.",
- "updatedAt": "2026-09-21T01:16:27.870Z",
+ "updatedAt": "2026-09-21T01:16:59.584Z",
  "entries": [
   {
    "work": "Racing Miku",
@@ -16,6 +16,11 @@
    "work": "The Melancholy of Haruhi Suzumiya",
    "workJa": "",
    "ko": "스즈미야 하루히"
+  },
+  {
+   "work": "OVERLORD",
+   "workJa": "",
+   "ko": "오버로드"
   },
   {
    "work": "Umamusume: Cinderella Gray",
