@@ -72,7 +72,23 @@ function detectAnomaly(productText, result) {
       message: `AI가 입력에 없던 일본어 문자(${newJapanese.join(', ')})를 결과에 만들어냈어요.`,
     };
   }
+
+  // 입력에 구매 링크가 없는데 결과에 링크 줄이 생기는 사고가 실제로 있었다
+  // ("🛒: https://" — 주소가 비어 있는 채로). 없는 링크를 있는 것처럼 내보내는 건
+  // 단순 서식 실수가 아니라 잘못된 정보라서, 지어낸 수식어와 달리 기계로 확실히
+  // 판별되는 항목이니 여기서 막는다.
+  if (!hasUrl(productText) && hasUrl(result)) {
+    return {
+      reason: 'fabricated-url',
+      message: 'AI가 입력에 없던 구매 링크를 결과에 만들어냈어요.',
+    };
+  }
   return null;
+}
+
+// "https://" 같은 껍데기만 있고 주소가 없는 경우도 링크로 친다 — 오히려 그쪽이 문제다.
+function hasUrl(text) {
+  return /(https?:\/\/|www\.)/i.test(String(text || ''));
 }
 
 // 히라가나/가타카나는 한국어 표기에 등장할 일이 없으므로, 결과에 있는데 원문엔 없다면
