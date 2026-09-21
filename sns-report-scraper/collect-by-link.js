@@ -18,6 +18,22 @@ const X_SESSION = './x-session.json';
 const IG_SESSION = './instagram-session.json';
 
 /**
+ * 못 읽은 페이지를 파일로 남김. 실제 화면을 볼 수 없는 상태에서 셀렉터를 추측으로 고치다가
+ * 여러 번 틀린 적이 있어서, 실패하면 실물을 남겨 다음에 한 번에 고치게 하려는 목적.
+ */
+function dumpPage(debugDir, fileName, html) {
+  if (!debugDir || !html) return;
+  try {
+    fs.mkdirSync(debugDir, { recursive: true });
+    const dumpPath = path.join(debugDir, fileName);
+    fs.writeFileSync(dumpPath, html);
+    console.log(`[link] ⓘ 원인을 정확히 짚을 수 있게 이 페이지를 파일로 남겼습니다: ${dumpPath}`);
+  } catch (e) {
+    console.warn(`[link] 페이지 저장 실패: ${e.message}`);
+  }
+}
+
+/**
  * 주소만 보고 어느 플랫폼 글인지 판단. 여기서 못 알아보는 주소는 수집 대상에서 빼고
  * "왜 못 읽었는지"를 리포트에 그대로 남김 — 조용히 빠지면 사람이 링크를 잘못 넣은 건지
  * 도구가 실패한 건지 구분할 수 없음.
@@ -282,7 +298,78 @@ async function readTwitterPost(page, target) {
   }
 }
 
+/**
+ * 인스타가 자기 서버에서 받아오는 원본 응답(JSON)에서 이 글의 지표를 찾아낸다.
+ * X에서 인용 수를 세 번 연속 못 읽다가 이 방식으로 바꿔서 해결한 것과 같은 접근 —
+ * 화면을 긁는 방식은 레이아웃이 바뀌면 그대로 깨지지만, 이 JSON은 화면과 무관하다.
+ *
+ * ⚠️ 릴스(/reel/)가 통째로 실패하던 이유가 정확히 그 화면 의존성이었음: 아래 화면 읽기는
+ * `time[datetime]`이 없으면 무조건 null을 돌려주는데, 릴스 화면엔 그 요소가 없다.
+ * 실데이터로 확인함 — 일반 게시물(/p/) 10건은 전부 성공, 릴스 2건은 전부 실패.
+ * (그때 뜬 "삭제됐거나 비공개일 수 있음"은 틀린 안내였다. 글은 멀쩡히 공개돼 있었고,
+ *  우리 쪽이 그 화면 구조를 몰랐을 뿐이다.)
+ *
+ * 응답의 키 경로는 인스타가 자주 바꾸므로 고정하지 않고 객체 전체를 훑는다. 다만 **이 글이
+ * 확실한 것만** 채택한다(code/shortcode가 주소의 코드와 일치). 화면에는 추천 릴스 등 다른
+ * 글의 지표도 같이 실려 오기 때문에, 아무거나 집으면 조용히 남의 숫자가 들어간다.
+ */
+function findInstagramCountsInJson(root, code) {
+  const num = (...vals) => { for (const v of vals) if (typeof v === 'number') return v; return null; };
+  const captionOf = node => {
+    if (node.caption && typeof node.caption.text === 'string') return node.caption.text;
+    const edges = node.edge_media_to_caption && node.edge_media_to_caption.edges;
+    if (Array.isArray(edges) && edges[0] && edges[0].node) return edges[0].node.text || '';
+    return null;
+  };
+  const stack = [root];
+  let steps = 0;
+  while (stack.length && steps < 200000) {
+    const node = stack.pop(); steps++;
+    if (!node || typeof node !== 'object') continue;
+    if (Array.isArray(node)) { for (const v of node) stack.push(v); continue; }
+    const codeMatches = node.code === code || node.shortcode === code;
+    const likes = num(node.like_count,
+      node.edge_media_preview_like && node.edge_media_preview_like.count,
+      node.edge_liked_by && node.edge_liked_by.count);
+    const comments = num(node.comment_count,
+      node.edge_media_to_comment && node.edge_media_to_comment.count,
+      node.edge_media_to_parent_comment && node.edge_media_to_parent_comment.count);
+    if (codeMatches && (likes !== null || comments !== null)) {
+      const ts = num(node.taken_at, node.taken_at_timestamp);
+      return {
+        likes, comments,
+        datetime: ts ? new Date(ts * 1000).toISOString() : null,
+        caption: captionOf(node),
+        account: (node.user && node.user.username) || (node.owner && node.owner.username) || null,
+      };
+    }
+    for (const k of Object.keys(node)) stack.push(node[k]);
+  }
+  return null;
+}
+
 async function readInstagramPost(page, target) {
+  // ⚠️ goto 전에 붙여야 함 — 페이지를 여는 순간 오가는 응답을 놓치면 의미가 없음.
+  const seen = { counts: null, apiUrls: [] };
+  const onResponse = async (res) => {
+    const url = res.url();
+    if (!/\/(graphql|api\/v1)\//.test(url)) return;
+    seen.apiUrls.push(url.split('?')[0]);
+    try {
+      if (!/json/.test(res.headers()['content-type'] || '')) return;
+      const found = findInstagramCountsInJson(await res.json(), target.postId);
+      if (found) seen.counts = found;
+    } catch (e) { /* 응답 본문을 못 읽는 경우가 있어 조용히 넘어감 */ }
+  };
+  page.on('response', onResponse);
+  try {
+    return await readInstagramPostInner(page, target, seen);
+  } finally {
+    page.off('response', onResponse);
+  }
+}
+
+async function readInstagramPostInner(page, target, seen) {
   await page.goto(target.url, { waitUntil: 'domcontentloaded' });
   // 인스타는 사진·캡션을 먼저 그리고 좋아요/댓글 숫자를 뒤늦게 채움 — 고정 대기로 읽으면
   // 게시물마다 성공/실패가 갈림(instagram.js에서 같은 문제를 겪고 대기 조건으로 바꿨음).
@@ -296,9 +383,40 @@ async function readInstagramPost(page, target) {
     return [...document.querySelectorAll('span')].some(el => /명이 좋아합니다|likes$/.test(el.innerText));
   }, { timeout: 8000 }).catch(() => {}); // 안 나타나도 죽지 않고 그대로 진행(좋아요 숨긴 글 등)
 
-  return page.evaluate(() => {
+  // 원본 응답이 화면보다 늦게 도착하는 경우가 있어 조금 더 기다려줌(X와 같은 처리).
+  for (let i = 0; i < 10 && !seen.counts; i++) await page.waitForTimeout(400);
+
+  const parsed = await page.evaluate(readInstagramInPage);
+
+  // 화면에서 하나도 못 건졌고 원본 응답도 못 받았으면 그때만 실패로 본다.
+  if (!parsed && !seen.counts) {
+    return { failed: true, apiUrls: seen.apiUrls.slice(0, 20), pageHtml: await page.content() };
+  }
+
+  const out = parsed || { exactMatch: true, account: '', datetime: null, text: '', likes: null, comments: null, retweets: null };
+  if (seen.counts) {
+    // 원본 응답이 있으면 그쪽을 씀 — 화면 숫자는 "1.2만"처럼 반올림돼 있고 릴스에선 아예 없음.
+    if (seen.counts.likes !== null) out.likes = String(seen.counts.likes);
+    if (seen.counts.comments !== null) out.comments = String(seen.counts.comments);
+    if (seen.counts.datetime) out.datetime = out.datetime || seen.counts.datetime;
+    if (seen.counts.account) out.account = out.account || seen.counts.account;
+    if (seen.counts.caption) out.text = out.text || seen.counts.caption;
+    out.countsFrom = 'api';
+  } else {
+    out.countsFrom = 'dom';
+  }
+  out.apiUrls = seen.apiUrls.slice(0, 20);
+  // 지표를 끝내 하나도 못 읽었으면 그 페이지를 남겨서 다음에 추측 말고 실물로 고치게 함.
+  out.pageHtml = (out.likes === null && out.comments === null) ? await page.content() : null;
+  return out;
+}
+
+// 화면(DOM)에서 읽기 — 원본 응답을 못 받았을 때의 대비책.
+// ⚠️ 예전엔 `time[datetime]`이 없으면 통째로 null을 돌려줬는데, 릴스엔 그 요소가 없어서
+//    릴스가 전부 "못 읽음"으로 떨어졌다. 이제 없는 항목은 null로 두고 나머지는 살린다 —
+//    "하나라도 없으면 전부 버린다"가 실패 원인을 숨기던 지점이었음.
+function readInstagramInPage() {
     const timeEl = document.querySelector('time[datetime]');
-    if (!timeEl) return null;
 
     const numeric = /^[\d,.]+[만천KM]?$/;
     const candidates = [...document.querySelectorAll('span')]
@@ -322,8 +440,10 @@ async function readInstagramPost(page, target) {
     const headerLink = document.querySelector('header a[href^="/"]');
     if (headerLink) account = headerLink.getAttribute('href').replace(/\//g, '');
     if (!account) {
-      const permalink = [...document.querySelectorAll('a[href*="/p/"]')]
-        .map(a => (a.getAttribute('href').match(/^\/([^/]+)\/p\//) || [])[1])
+      // /p/ 만 보던 것을 릴스(/reel/)·IGTV(/tv/)까지 넓힘 — 릴스 화면엔 /p/ 링크가 없어서
+      // 이 경로가 통째로 헛돌고 계정명이 빈칸으로 나갔음.
+      const permalink = [...document.querySelectorAll('a[href*="/p/"], a[href*="/reel/"], a[href*="/tv/"]')]
+        .map(a => (a.getAttribute('href').match(/^\/([^/]+)\/(?:p|reel|tv)\//) || [])[1])
         .find(Boolean);
       if (permalink) account = permalink;
     }
@@ -344,8 +464,15 @@ async function readInstagramPost(page, target) {
     }
     if (!caption && spans[0]) caption = spans[0].innerText;
 
-    return { exactMatch: true, account, datetime: timeEl.getAttribute('datetime'), text: caption, likes, comments, retweets: null };
-  });
+    // 아무것도 못 건졌으면 null — 있지도 않은 값을 빈 껍데기로 돌려주면 "성공했는데 다 빈칸"이
+    // 돼서 실패 원인을 숨긴다(X 인용 수 때 겪은 것과 같은 함정).
+    if (!timeEl && likes === null && comments === null && !caption) return null;
+
+    return {
+      exactMatch: true, account,
+      datetime: timeEl ? timeEl.getAttribute('datetime') : null,
+      text: caption, likes, comments, retweets: null,
+    };
 }
 
 /**
@@ -405,6 +532,14 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
           parsed = await readInstagramPost(instagramPage, t);
         }
 
+        // 인스타는 실패해도 진단 재료(받아온 응답 주소·페이지)를 같이 돌려줌 — 예전엔 그냥
+        // null이라 "삭제됐거나 비공개"라고 단정했는데, 실제 원인은 릴스 화면 구조였다.
+        if (parsed && parsed.failed) {
+          results[i].error = '페이지는 열렸는데 게시물 내용을 못 읽음 (로그인이 풀렸거나, 삭제·비공개일 수 있음)';
+          console.warn(`[link] ❌ ${t.url} — 내용을 못 읽음 / 받아온 응답: ${JSON.stringify(parsed.apiUrls || [])}`);
+          dumpPage(debugDir, `_debug-ig-${t.postId}.html`, parsed.pageHtml);
+          continue;
+        }
         if (!parsed) {
           results[i].error = '페이지는 열렸는데 게시물 내용을 못 읽음 (삭제됐거나 비공개일 수 있음)';
           continue;
@@ -420,6 +555,12 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
         // 인용을 못 읽었으면 **추측을 반복하지 않기 위해** 그 페이지를 파일로 남긴다.
         // 그 파일만 있으면 실제 구조를 보고 한 번에 고칠 수 있음(지금까지 실제 X 화면을
         // 볼 수 없어서 셀렉터를 추측으로 짰고 그래서 두 번 틀렸음).
+        // 인스타도 지표를 못 읽었으면 같은 이유로 페이지를 남긴다.
+        if (t.platform === 'instagram' && parsed.likes === null && parsed.comments === null) {
+          console.log(`[link] ⓘ 좋아요/댓글을 못 읽었음 — 받아온 응답: ${JSON.stringify(parsed.apiUrls || [])}`);
+          dumpPage(debugDir, `_debug-ig-${t.postId}.html`, pageHtml);
+        }
+
         if (t.platform === 'twitter' && parsed.quotes === null) {
           console.log(`[link] ⓘ 인용 수를 못 읽었음 — 통계 링크: ${JSON.stringify(parsed.statHrefs || [])} / 통계 문구: ${JSON.stringify(parsed.statTexts || [])}`);
           console.log(`[link] ⓘ 받아온 X 응답 주소: ${JSON.stringify(parsed.graphqlUrls || [])}`);
@@ -447,4 +588,8 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
   return results;
 }
 
-module.exports = { collectPostsByLink, classifyUrl, readTwitterInPage, findTweetCountsInJson, readTwitterPost };
+module.exports = {
+  collectPostsByLink, classifyUrl,
+  readTwitterInPage, findTweetCountsInJson, readTwitterPost,
+  readInstagramInPage, findInstagramCountsInJson, readInstagramPost,
+};
