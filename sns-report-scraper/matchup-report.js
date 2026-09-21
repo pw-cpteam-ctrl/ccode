@@ -31,7 +31,17 @@ function metricApplies(key, platform) {
   return platform !== 'instagram';
 }
 
+/**
+ * 이 쌍에서 X 전용 지표(리트윗·인용)를 보여줄지 정하는 기준 플랫폼.
+ *
+ * ⚠️ 예전엔 **당사 쪽 플랫폼만** 보고 정했다(`pw.platform || bh.platform`). 그래서 당사는
+ * 인스타 글, 경쟁사는 X 글로 짝을 지으면 인스타 기준이 돼서 리트윗·인용 칸이 통째로 사라지고,
+ * **경쟁사 X 글의 인용 수가 멀쩡히 수집됐는데도 리포트에서 증발**했다(실제로 9/17 건이 그랬음).
+ * 한쪽이라도 X면 그 지표는 존재하는 값이므로 보여준다 — 인스타 쪽은 칸에서 "해당 없음"으로
+ * 표시되고, 비교가 안 되는 것과 값이 없어지는 것은 전혀 다른 문제다.
+ */
 function platformOf(pair) {
+  if ((pair.pw && pair.pw.platform === 'twitter') || (pair.bh && pair.bh.platform === 'twitter')) return 'twitter';
   return (pair.pw && pair.pw.platform) || (pair.bh && pair.bh.platform) || null;
 }
 
@@ -111,7 +121,7 @@ function metricRow(label, icon, pwRaw, bhRaw, extra) {
  * 쌍 하나가 화면 한 장을 잡아먹어서, 같은 이벤트의 X/인스타를 나란히 훑을 수 없었음.
  * 좁은 열에서는 숫자를 막대 좌우에 두면 자리가 안 나와서 막대 위에 올림.
  */
-function metricCell(m, pwRaw, bhRaw, extra) {
+function metricCell(m, pwRaw, bhRaw, extra, oneSidedNote) {
   const pw = pwRaw === null || pwRaw === undefined || pwRaw === '' ? null : parseCount(pwRaw);
   const bh = bhRaw === null || bhRaw === undefined || bhRaw === '' ? null : parseCount(bhRaw);
   const head = `<div class="mhead">${m.icon} ${escapeHtml(m.label)}</div>`;
@@ -132,7 +142,7 @@ function metricCell(m, pwRaw, bhRaw, extra) {
     ${head}
     <div class="mvals"><span class="v pw">${fmt(pw)}</span><span class="v bh">${fmt(bh)}</span></div>
     ${track}
-    <div class="mnote">${oneSided ? '한쪽만 읽혀서 비교 불가' : escapeHtml(extra || '')}</div>
+    <div class="mnote">${oneSided ? escapeHtml(oneSidedNote || '한쪽만 읽혀서 비교 불가') : escapeHtml(extra || '')}</div>
   </div>`;
 }
 
@@ -292,6 +302,11 @@ function renderPair(pair, index, collectedAt) {
   // 제목이 똑같이 두 번 나옴 — 어느 쪽 얘기인지 제목에서 바로 알게 플랫폼을 붙여줌.
   const platform = (pw && pw.platform) || (bh && bh.platform) || null;
   const platformTag = platform ? ` <span class="ptag">${escapeHtml(PLATFORM_LABEL[platform] || platform)}</span>` : '';
+  // ⚠️ 제목에 붙는 플랫폼과 "어떤 지표 칸을 그릴지"는 기준이 달라야 함. 여기서 위의 platform을
+  //    그대로 쓰면 당사가 인스타·경쟁사가 X인 쌍에서 인스타 기준이 돼 리트윗·인용 칸이 통째로
+  //    사라진다(실제로 9/17 건의 인용 수가 수집됐는데도 리포트에서 증발했음). 한쪽이라도 X면
+  //    그 값은 존재하므로 platformOf로 따로 판단한다.
+  const metricPlatform = platformOf({ pw, bh });
   const verdict = verdictOf(pw, bh);
 
   return `
@@ -308,7 +323,14 @@ function renderPair(pair, index, collectedAt) {
       ${sideHead('경쟁사 (BH)', 'bh', bh, collectedAt)}
     </div>
     <div class="metric-cols">
-      ${METRICS.filter(m => metricApplies(m.key, platform)).map(m => metricCell(m, pw && pw[m.key], bh && bh[m.key], avgText(pw && pw[m.key], bh && bh[m.key]))).join('\n      ')}
+      ${METRICS.filter(m => metricApplies(m.key, metricPlatform)).map(m => {
+        // X 전용 지표인데 한쪽이 인스타면 "못 읽은 것"이 아니라 "그 플랫폼에 없는 것" —
+        // 같은 빈칸이라도 원인이 달라서 문구를 구분함(수집 실패로 오해하면 엉뚱한 데를 고침).
+        const crossPlatform = X_ONLY_METRICS.has(m.key)
+          && ((pw && pw.platform === 'instagram') || (bh && bh.platform === 'instagram'));
+        const note = crossPlatform ? '인스타에는 없는 지표라 한쪽 값만 있음' : null;
+        return metricCell(m, pw && pw[m.key], bh && bh[m.key], avgText(pw && pw[m.key], bh && bh[m.key]), note);
+      }).join('\n      ')}
     </div>
     <div class="embeds">
       <div class="embed-col"><h4 class="pw">당사 (PW)</h4>${bodyPreview(pw, '당사')}<div class="embed-shrink">${embedBlock(pw)}</div></div>
