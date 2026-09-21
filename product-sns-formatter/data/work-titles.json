@@ -1,7 +1,12 @@
 {
  "note": "작품(시리즈)의 한국 정식 제목 사전. 원고작성페이지에서 사람이 확인한 표기가 쌓인다.",
- "updatedAt": "2026-09-03T00:44:37.954Z",
+ "updatedAt": "2026-09-21T01:16:27.870Z",
  "entries": [
+  {
+   "work": "Racing Miku",
+   "workJa": "",
+   "ko": "레이싱 미쿠"
+  },
   {
    "work": "Azur Lane",
    "workJa": "",
