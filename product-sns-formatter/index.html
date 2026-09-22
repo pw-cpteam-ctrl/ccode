@@ -300,6 +300,10 @@ button.danger{background:var(--ui-warn);color:#fff;}
 .slide-actions{display:flex;gap:6px;margin-top:8px;}
 .slide-actions button{flex:1;padding:7px 4px;font-size:11px;white-space:nowrap;}
 /* 하단 고정 바 */
+.paste-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:64px;z-index:60;
+  background:#2b2620;color:#fff;font-size:12.5px;font-weight:700;padding:9px 16px;border-radius:999px;
+  box-shadow:0 6px 24px rgba(0,0,0,.28);pointer-events:none;}
+.paste-toast[hidden]{display:none;}
 .dockbar{position:fixed;left:0;right:0;bottom:0;z-index:40;background:#2b2620;
   padding:9px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
   box-shadow:0 -6px 20px rgba(0,0,0,.18);}
@@ -394,6 +398,9 @@ button.danger{background:var(--ui-warn);color:#fff;}
 
   <!-- 하단 고정 바 — 결과물과 진행 상태를 어디까지 스크롤했든 손 닿는 자리에 둔다.
        아래 "오늘 작업 전체 내려받기" 블록은 그대로 두고, 같은 동작을 여기서도 부른다. -->
+  <!-- 붙여넣기 알림. 캐러셀 영역이 화면 밖으로 밀려 있어도 "들어갔다"를 알 수 있어야
+       해서 화면에 고정해 띄운다. 상세 화면을 다시 그려도 사라지지 않도록 그 바깥에 둔다. -->
+  <div class="paste-toast" id="pasteToast" hidden></div>
   <div class="dockbar" id="dockBar">
     <div class="dock-warn" id="saveWarn" hidden></div>
     <div class="dock-stat" id="dockStat"></div>
@@ -1388,7 +1395,7 @@ function imageStageHtml(p) {
   const doneChip = (p.mainIndex != null && p.images[p.mainIndex]) ? '<span class="chip done">✓ 대표 슬라이드 지정됨</span>' : '<span class="chip pending">대표 슬라이드 없음</span>';
   return `
     <div class="stage-h"><span class="snum o">③</span> 캐러셀 이미지 <span class="chip">4:5 자동크롭</span> ${doneChip}</div>
-    <div class="dropzone" id="dropZone">＋ 사진 올리기 (여러 장 가능) · 올리면 1080×1350(4:5)로 꽉 채워 자동 크롭됩니다
+    <div class="dropzone" id="dropZone">＋ 사진 올리기 (여러 장 가능 · <b>Ctrl+V로 붙여넣기도 돼요</b>) · 올리면 1080×1350(4:5)로 꽉 채워 자동 크롭됩니다
       <input type="file" id="fileInput" accept="image/*" multiple/>
     </div>
     <div class="thumbrow" id="thumbRow"></div>
@@ -3028,6 +3035,51 @@ $('#dayLabel').textContent = new Date().toLocaleDateString('ko-KR', { month: 'lo
 // 띄우면 화면이 번잡해지고 잘못된 입구에 넣기도 쉬워서, 위에서 고른 브랜드의 것만 보여준다.
 
 $('#btnAddProduct').addEventListener('click', addProduct);
+
+/* ── Ctrl+V로 사진 추가 ───────────────────────────────────────────────────────
+   캡처 도구나 탐색기에서 복사한 이미지를 파일로 저장하지 않고 바로 넣기 위한 것이다.
+   사진 한두 장을 따로 넣을 때 "저장 → 파일 선택창 → 찾기"가 매번 번거로웠다.
+
+   페이지 전체에서 받는다. 입력칸에 글자를 붙여넣을 때와 부딪히지 않는 이유는, 클립보드에
+   이미지가 들어 있을 때만 동작하기 때문이다(글자를 복사했으면 아래 목록이 비어서 그냥 나간다).
+   반대로 이미지를 복사한 상태라면 글자 붙여넣기는 어차피 아무 일도 안 하므로 뺏을 것이 없다.
+
+   리스너는 여기(초기화)에서 문서에 한 번만 붙인다 — 상세 화면을 그릴 때마다 붙이면
+   화면을 다시 그린 횟수만큼 쌓여서 한 번 붙여넣기에 사진이 여러 장 들어간다. */
+function imagesFromClipboard(dt) {
+  if (!dt) return [];
+  // 탐색기에서 파일을 복사한 경우엔 files에, 캡처 도구처럼 그림 자체를 복사한 경우엔
+  // items에 들어온다. 둘 다 볼 수 있어야 하고, 같은 것이 양쪽에 잡히면 중복되므로
+  // files가 있으면 그쪽만 쓴다.
+  const fromFiles = [...(dt.files || [])].filter(f => f && /^image\//.test(f.type));
+  if (fromFiles.length) return fromFiles;
+  return [...(dt.items || [])]
+    .filter(i => i.kind === 'file' && /^image\//.test(i.type))
+    .map(i => i.getAsFile())
+    .filter(Boolean);
+}
+let _pasteToastT = null;
+function showPasteToast(msg) {
+  const el = $('#pasteToast');
+  if (!el) return;
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(_pasteToastT);
+  _pasteToastT = setTimeout(() => { el.hidden = true; }, 2600);
+}
+document.addEventListener('paste', async e => {
+  const imgs = imagesFromClipboard(e.clipboardData);
+  if (!imgs.length) return;          // 글자 붙여넣기 등은 건드리지 않는다
+  e.preventDefault();
+  // 담긴 상품이 하나도 없으면 만들어준다 — 붙여넣기만으로 시작할 수 있어야 한다.
+  if (!getActiveProduct()) addProduct();
+  const p = getActiveProduct();
+  if (!p) return;
+  showPasteToast(`사진 ${imgs.length}장 넣는 중…`);
+  await handleFiles(p, imgs);
+  const label = (p.title || '').trim();
+  showPasteToast(`✓ 사진 ${imgs.length}장을 추가했어요${label ? ` — ${label}` : ''}`);
+});
 $('#btnB2BImport').addEventListener('click', () => $('#b2bImportInput').click());
 $('#b2bImportInput').addEventListener('change', () => importB2BFiles(Array.from($('#b2bImportInput').files)));
 
