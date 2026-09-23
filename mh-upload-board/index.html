@@ -355,6 +355,35 @@ body[data-cur-stage=d30]{--stage-c:#dc2626;--stage-c2:#fb7185}
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dcard textarea{background:var(--card)} }
 @media (max-width:1000px){ .cols{grid-template-columns:minmax(0,1fr)} }
 @media (max-width:560px){ .row{grid-template-columns:14px 24px minmax(0,1fr) 18px} .pside{justify-content:flex-start} }
+
+/* 리뉴얼: 지금 할 일 배너 · 보기 전용 목록 · 할 일 칩 */
+.next{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:12px;background:linear-gradient(135deg,color-mix(in srgb,var(--stage-c) 11%,var(--card)),var(--card) 70%);border:1px solid color-mix(in srgb,var(--stage-c) 28%,var(--line))}
+.next.is-done{background:linear-gradient(135deg,var(--ok-soft),var(--card) 70%);border-color:color-mix(in srgb,var(--ok) 30%,var(--line))}
+.next-txt{flex:1;min-width:0;display:grid;gap:3px}
+.next-k{font-size:12px;font-weight:800;color:var(--stage-c);letter-spacing:.2px}
+.next.is-done .next-k{color:var(--ok)}
+.next-t{font-size:16.5px;font-weight:800;letter-spacing:-.02em;text-wrap:balance}
+.next-s{font-size:12.5px;color:var(--sub)}
+.next-acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.next .btn.primary{background:linear-gradient(135deg,var(--stage-c),var(--stage-c2))}
+.btn.big{padding:9px 16px;font-size:14px;border-radius:10px}
+.tchips{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px}
+.tc{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 10px 4px 8px;background:var(--card);font-size:12.5px}
+.tc input{width:15px;height:15px;margin:0;accent-color:var(--c-task)}
+.tc label{cursor:pointer}
+.tc.checked{background:var(--line-soft);border-color:transparent}
+.tc.checked label{color:var(--faint);text-decoration:line-through}
+.tc-h{color:var(--warn);font-weight:700;font-size:11.5px}
+.tc-link{font-size:11.5px;font-weight:700;color:var(--c-task);text-decoration:none;border-left:1px solid var(--line);padding-left:6px}
+.tc-link:hover{text-decoration:underline}
+.hintline{font-size:12px;color:var(--sub)}
+.row.view{grid-template-columns:26px minmax(0,1fr) auto;padding:5px 8px}
+.row.view .pline{gap:8px}
+.row.view .pmeta{font-size:11.5px;flex:none;max-width:45%}
+.issues{display:flex;gap:4px}
+.nodraft.soft{padding:18px;text-align:center;color:var(--faint);border:1.5px dashed var(--line);border-radius:10px}
+#listCol .col-head h2{font-size:14.5px}
+@media (max-width:560px){ .next{flex-direction:column;align-items:stretch} .row.view{grid-template-columns:24px minmax(0,1fr)} .issues{grid-column:2} }
 </style>
 </head>
 <body>
@@ -377,20 +406,7 @@ body[data-cur-stage=d30]{--stage-c:#dc2626;--stage-c2:#fb7185}
 
   <main class="cols">
     <section class="col" id="listCol" aria-label="상품 목록">
-      <div class="col-head">
-        <div class="row-flex">
-          <h2>상품 목록</h2><span class="sp"></span>
-          <button class="btn small" data-g="paste" title="본사 프리뷰 리스트(번역본) 붙여넣기">D-7 붙여넣기</button>
-          <button class="btn small" data-g="order">발주서 엑셀</button>
-          <button class="btn small" data-g="links" title="스마트스토어 링크 한번에 붙여넣기">링크 일괄</button>
-        </div>
-        <div class="stats" id="stats"></div>
-        <div class="row-flex">
-          <div class="seg" id="filterSeg" role="group" aria-label="목록 거르기"></div>
-          <span class="sp"></span>
-          <button class="btn small" data-g="copyMatome">마토메용 작품명 복사</button>
-        </div>
-      </div>
+      <div class="col-head" id="listHead"></div>
       <div id="plist"></div>
     </section>
 

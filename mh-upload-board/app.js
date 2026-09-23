@@ -212,6 +212,9 @@ function taskHint(id){
 let stageKey = 'd0', filter = 'all';
 const chBy = {d0:'tw', d14:'tw', d30:'tw'};
 let onlyOpen = false;
+// 목록은 평소엔 보기 전용, 순위를 정리하는 시점(D-7·D-1)이나 '순위 편집'을 눌렀을 때만 조작 버튼을 띄운다
+let editMode = false;
+const EDIT_STAGES = ['d7','d1'];
 const openEdit = new Set();
 let armedDelete = null;
 let dragId = null;
@@ -263,25 +266,42 @@ function editPanel(p){
   </div>`;
 }
 
+function issueBadges(p){
+  if (p.status === 'removed') return '<span class="b b-bad">빠짐</span>';
+  return (p.status === 'new' ? '<span class="b b-new">신규</span>' : '')
+       + (p.tier === '미정' ? '<span class="b b-warn">등급 미정</span>' : '')
+       + (!p.link ? '<span class="b b-warn">링크 없음</span>' : '');
+}
+
 function renderList(){
   const a = active(), r = ranks();
   const nolink = a.filter(p => !p.link).length, unsorted = a.filter(p => p.tier === '미정').length;
   const nNew = P().filter(p => p.status === 'new').length, nRem = P().filter(p => p.status === 'removed').length;
-  $('#stats').innerHTML = !P().length ? '<span>아직 상품이 없어요</span>' : [
+  const stats = !P().length ? '' : [
     `<span><b class="num">${a.length}</b>개</span>`,
-    `<span>재판 <b class="num">${a.filter(p => p.reprint).length}</b> · 초판 <b class="num">${a.filter(p => !p.reprint).length}</b></span>`,
-    `<span class="${nolink ? 'warn' : 'ok'}">링크 <b class="num">${a.length - nolink}/${a.length}</b></span>`,
     unsorted ? `<span class="warn">등급 미정 <b class="num">${unsorted}</b></span>` : '',
-    R().orderChecked ? `<span class="ok">발주서 신규 <b class="num">${nNew}</b></span><span class="bad">빠짐 <b class="num">${nRem}</b></span>` : `<span class="warn"><b>발주서 대조 전</b> · D-7 기준 목록</span>`,
-  ].join('');
+    nolink ? `<span class="warn">링크 없음 <b class="num">${nolink}</b></span>` : '<span class="ok">링크 모두 있음</span>',
+    R().orderChecked ? `<span>발주서 반영됨 · 신규 <b class="num">${nNew}</b> · 빠짐 <b class="num">${nRem}</b></span>` : '',
+  ].filter(Boolean).join('');
 
   const F = [['all','전체'],['nolink',`링크 없음 ${nolink}`],['diff','발주서 변동'],['unsecured','미확보']];
-  $('#filterSeg').innerHTML = F.map(([k,l]) => `<button data-filter="${k}" aria-pressed="${filter === k}">${l}</button>`).join('');
+  $('#listHead').innerHTML = editMode && P().length ? `
+      <div class="row-flex"><h2>순위 편집</h2><span class="sp"></span><button class="btn small primary" data-g="editOff">편집 끝내기</button></div>
+      <div class="hintline">끌어다 놓거나 ▲▼로 순서를 바꾸고, 상품을 누르면 이름·링크를 고칠 수 있어요.</div>
+      <div class="row-flex">
+        <button class="btn small" data-g="paste">D-7 붙여넣기</button>
+        <button class="btn small" data-g="order">발주서 엑셀</button>
+        <button class="btn small" data-g="links">링크 일괄</button>
+        <span class="sp"></span>
+        <div class="seg" role="group" aria-label="목록 거르기">${F.map(([k,l]) => `<button data-filter="${k}" aria-pressed="${filter === k}">${l}</button>`).join('')}</div>
+      </div>`
+    : `<div class="row-flex"><h2>상품 순위</h2><span class="sp"></span>
+        ${P().length ? '<button class="btn small" data-g="copyMatome" title="마토메 메이커에 붙여넣을 작품명을 순위순으로 복사">마토메용 복사</button><button class="btn small primary" data-g="editOn">순위 편집</button>' : ''}</div>
+      ${stats ? `<div class="stats">${stats}</div>` : ''}`;
 
   if (!P().length){
     $('#plist').innerHTML = `<div class="emptyst"><b>이번 회차 상품이 비어 있어요</b>
-      <span>본사 프리뷰 리스트(번역본)를 붙여넣으면 시작됩니다. 등급과 순위는 그다음에 정합니다.</span>
-      <div class="row-flex"><button class="btn primary" data-g="paste">D-7 리스트 붙여넣기</button><button class="btn" data-g="sample">예시 데이터로 둘러보기</button></div></div>`;
+      <span>오른쪽 '지금 할 일'에서 본사 프리뷰 리스트를 붙여넣으면 시작됩니다.</span></div>`;
     return;
   }
 
@@ -289,19 +309,30 @@ function renderList(){
   for (const t of TIERS){
     const all = P().filter(p => p.tier === t);
     if (t === '미정' && !all.length) continue;
-    const items = all.filter(passFilter);
-    if (filter !== 'all' && !items.length) continue;
+    const items = editMode ? all.filter(passFilter) : all;
+    if (editMode && filter !== 'all' && !items.length) continue;
+    if (!editMode && !items.length) continue;
     html += `<div class="tier-h ${t === '미정' ? 'U' : ''}" data-tier="${t}"><span class="tchip ${TCLS(t)}">${t === '미정' ? '?' : t}</span>${TIER_NAME[t]} <span class="cnt num">${all.filter(p => p.status !== 'removed').length}개</span>${REMIND_TIERS.includes(t) ? '<span class="note">리마인드 대상</span>' : ''}</div>`;
     if (!items.length){ html += `<div class="empty-drop" data-tier="${t}">여기로 끌어다 놓으면 ${t} 등급이 됩니다</div>`; continue; }
     html += '<div class="rows">';
     for (const p of items){
       const rem = p.status === 'removed';
+      if (!editMode){
+        html += `<div class="row view ${rem ? 'removed' : ''}" data-id="${p.id}">
+          <span class="rank">${r[p.id] ?? '—'}</span>
+          <button class="pname-btn" data-act="edit" title="눌러서 이 상품 고치기">
+            <div class="pline"><span class="pname">${esc(p.name || '(이름 없음)')} ${esc(p.emoji)}</span><span class="pmeta">${esc(p.ip)}</span></div>
+          </button>
+          <div class="issues">${issueBadges(p)}</div>
+        </div>`;
+        continue;
+      }
       html += `<div class="row ${rem ? 'removed' : ''} ${p.status === 'new' ? 'is-new' : ''}" draggable="true" data-id="${p.id}">
         <span class="grip" aria-hidden="true">⋮⋮</span>
         <span class="rank">${r[p.id] ?? '—'}</span>
         <button class="pname-btn" data-act="edit" aria-expanded="${openEdit.has(p.id)}" title="눌러서 상품 정보 고치기">
           <div class="pmeta">${esc([p.ip, p.series].filter(Boolean).join(' · ') || '작품명·시리즈 비어 있음')}</div>
-          <div class="pline"><span class="pname">${esc(p.name || '(이름 없음)')} ${esc(p.emoji)}</span>${p.reprint ? '<span class="b b-re">재판</span>' : '<span class="b b-first">초판</span>'}${p.status === 'new' ? '<span class="b b-new">신규</span>' : ''}${rem ? '<span class="b b-bad">빠짐 · 원고 제외</span>' : ''}</div>
+          <div class="pline"><span class="pname">${esc(p.name || '(이름 없음)')} ${esc(p.emoji)}</span><span class="b b-re">${p.reprint ? '재판' : '초판'}</span>${p.status === 'new' ? '<span class="b b-new">신규</span>' : ''}${rem ? '<span class="b b-bad">빠짐 · 원고 제외</span>' : ''}</div>
         </button>
         <div class="pside">
           <select class="tiersel" data-act="tier" aria-label="${esc(p.name)} 등급">${TIERS.map(x => `<option value="${x}" ${x === p.tier ? 'selected' : ''}>${x}</option>`).join('')}</select>
@@ -314,7 +345,7 @@ function renderList(){
     }
     html += '</div>';
   }
-  html += `<div class="addrow"><button class="btn small" data-g="addProduct">+ 상품 직접 추가</button></div>`;
+  if (editMode) html += `<div class="addrow"><button class="btn small" data-g="addProduct">+ 상품 직접 추가</button></div>`;
   $('#plist').innerHTML = html;
 }
 
@@ -340,24 +371,59 @@ function draftCard(d){
   </article>`;
 }
 
+function nextStage(){ const i = STAGES.findIndex(x => x.key === stageKey); return STAGES[i + 1]; }
+function nextAction(){
+  const a = active(), s = STAGES.find(x => x.key === stageKey);
+  if (!P().length) return {t:'본사 프리뷰 리스트를 붙여넣어 이번 회차를 시작하세요', s:'번역본을 한 줄에 한 상품씩 붙여넣으면 상품 목록이 만들어져요.', btn:{label:'D-7 리스트 붙여넣기', g:'paste'}, alt:{label:'예시로 둘러보기', g:'sample'}};
+  const unsorted = a.filter(p => p.tier === '미정').length, nolink = a.filter(p => !p.link).length;
+  if (stageKey === 'd7'){
+    if (unsorted) return {t:`등급이 안 정해진 상품 ${unsorted}개 — 인기도 순으로 정리하세요`, s:'끌어다 놓거나 ▲▼로 순위를 정해요. S·A 등급은 나중에 리마인드 대상이 됩니다.', btn:{label:'순위 편집 열기', g:'editOn'}};
+    if (!isDone('d7:notice')) return {t:'프리뷰 공지 원고를 확인하고 확정하세요', s:'순위 상위 6개가 자동으로 들어가 있어요.', btn:{label:'공지 원고로 이동', g:'gotoDraft'}};
+  }
+  if (stageKey === 'd1'){
+    if (!R().orderChecked) return {t:'발주서 엑셀이 도착했으면 올려서 목록과 맞춰보세요', s:'새로 생긴 상품과 빠진 상품을 먼저 보여주고, 확인을 눌러야 반영돼요.', btn:{label:'발주서 올리기', g:'order'}};
+    const nn = P().filter(p => p.status === 'new' && p.tier === '미정').length;
+    if (nn) return {t:`발주서에서 새로 생긴 상품 ${nn}개의 등급을 정하세요`, s:'목록 맨 아래 "정렬 필요"에 모여 있어요.', btn:{label:'순위 편집 열기', g:'editOn'}};
+    if (nolink) return {t:`스마트스토어 링크가 없는 상품이 ${nolink}개 있어요`, s:'링크를 넣으면 트위터 원고에 바로 들어가요.', btn:{label:'링크 한번에 붙여넣기', g:'links'}};
+  }
+  if (DRAFT_STAGES.includes(stageKey)){
+    for (const c of [chBy[stageKey], ...CHANNELS.filter(x => x !== chBy[stageKey])]){
+      const left = draftList(stageKey, c).filter(d => !isDone(d.key)).length;
+      if (left) return {t:`${CH_NAME[c]} 원고 ${left}개가 남았어요 — 순위 높은 것부터 확정하세요`,
+        s: nolink && c === 'tw' ? `링크 없는 상품 ${nolink}개는 원고에 '(링크 없음)'으로 들어가 있어요.` : '복사해서 올린 뒤 [확정]을 누르면 다음 원고로 넘어가요.',
+        btn:{label:'다음 원고로 이동', g:'gotoDraft', ch:c}, alt: nolink && c === 'tw' ? {label:'링크 채우기', g:'links'} : null};
+    }
+  }
+  const t = s.tasks.find(x => !R().tasks[x.id]);
+  if (t) return {t:`남은 할 일: ${t.label}`, s:`이 시점 할 일 ${s.tasks.filter(x => R().tasks[x.id]).length}/${s.tasks.length} 완료 — 끝낸 일은 아래에서 체크해 주세요.`,
+    btn: t.act ? {label:t.act.label, g:t.act.g} : {label:'끝냈어요 ✓', g:'checkTask', task:t.id}};
+  const n = nextStage();
+  return {done:true, t:'이 시점 할 일을 모두 끝냈어요', s: n ? `다음은 ${n.d} ${n.title} (${stageDate(n)})` : '이번 회차가 끝났어요. 다음 달 프리뷰가 뜨면 새 회차를 만드세요.',
+    btn: n ? {label:`${n.d} ${n.title}로`, g:'gotoStage', stage:n.key} : {label:'새 회차 만들기', g:'newRound'}};
+}
+const actBtn = (b, cls) => b ? `<button class="btn ${cls}" data-g="${b.g}"${b.ch ? ` data-goch="${b.ch}"` : ''}${b.task ? ` data-gotask="${b.task}"` : ''}${b.stage ? ` data-gostage="${b.stage}"` : ''}>${b.label}</button>` : '';
+
 function renderStage(){
   const col = $('#stageCol'), sc = col.scrollTop;
   const s = STAGES.find(x => x.key === stageKey);
+  const na = nextAction();
   let html = `<div class="stage-body">
-    <div><div class="stage-title"><span class="dd">${s.d}</span><h2>${s.title}</h2><span class="date">${stageDate(s)}</span></div>
-    <p class="stage-desc">${s.desc}</p></div>`;
+    <div class="next ${na.done ? 'is-done' : ''}">
+      <div class="next-txt"><div class="next-k">${s.d} ${s.title} · 지금 할 일</div><div class="next-t">${na.done ? '✓ ' : ''}${na.t}</div><div class="next-s">${na.s}</div></div>
+      <div class="next-acts">${actBtn(na.alt, '')}${actBtn(na.btn, 'primary big')}</div>
+    </div>`;
 
   const orphan = P().filter(p => p.status === 'removed' && CHANNELS.some(c => isDone(`${stageKey}:${c}:${p.id}`)));
   if (orphan.length) html += `<div class="alert bad"><b>확정해 둔 원고 중 발주서에서 빠진 상품 ${orphan.length}개</b> ${orphan.map(p => esc(p.name)).join(', ')} — 올리지 마세요. 목록에서는 자동으로 뺐습니다.</div>`;
 
-  html += `<div class="box box-tasks"><div class="box-h">할 일 <span class="sub num">${s.tasks.filter(t => R().tasks[t.id]).length}/${s.tasks.length}</span></div><div class="tasks">`;
+  html += `<div class="box box-tasks"><div class="box-h">할 일 체크 <span class="sub num">${s.tasks.filter(t => R().tasks[t.id]).length}/${s.tasks.length}</span></div><div class="tchips">`;
   for (const t of s.tasks){
     const h = taskHint(t.id), on = !!R().tasks[t.id];
     const url = t.tool && TOOL_URL[t.tool];
-    html += `<div class="task ${on ? 'checked' : ''}">
+    html += `<div class="tc ${on ? 'checked' : ''}">
       <input type="checkbox" id="tk-${t.id}" data-task="${t.id}" ${on ? 'checked' : ''}>
-      <label for="tk-${t.id}">${t.label}</label>
-      <div class="acts">${h ? `<span class="hint ${h.c}">${h.t}</span>` : ''}${t.act ? `<button class="btn small ${t.act.primary && !R().orderChecked ? 'primary' : ''}" data-g="${t.act.g}">${t.act.label}</button>` : ''}${url ? `<a class="btn small" href="${url}" target="_blank" rel="noopener">${t.tool} ↗</a>` : ''}</div>
+      <label for="tk-${t.id}">${t.label}${h && !on && h.c === 'warn' ? ` <span class="tc-h">${h.t}</span>` : ''}</label>
+      ${url ? `<a class="tc-link" href="${url}" target="_blank" rel="noopener" title="${t.tool} 새 탭으로 열기">${t.tool} ↗</a>` : ''}
     </div>`;
   }
   html += '</div></div>';
@@ -373,7 +439,7 @@ function renderStage(){
         </div>
         <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--sub)"><input type="checkbox" id="onlyOpen" ${onlyOpen ? 'checked' : ''}> 확정 안 한 것만</label>
         <span class="sp"></span>
-        <span style="font-size:12px;color:var(--faint)">${ch === 'ig' ? '인스타는 링크 대신 "프로필 링크 참고" 문구가 들어갑니다' : '트위터 140자 기준'}</span>
+        <span style="font-size:12px;color:var(--faint)">${ch === 'ig' ? '링크 대신 "프로필 링크 참고" 문구' : '140자 기준'}</span>
       </div>
       ${!draftList(s.key, ch).length ? `<div class="nodraft">${s.key === 'd0' ? '상품 목록이 비어 있어요.' : 'S·A 등급 상품이 없어요. 목록에서 주요 상품의 등급을 정해 주세요.'}</div>`
         : l.length ? `<div class="dgrid">${l.map(draftCard).join('')}</div>` : '<div class="nodraft">남은 원고가 없어요. 전부 확정했습니다.</div>'}</div>`;
@@ -381,7 +447,7 @@ function renderStage(){
     html += `<div class="box box-drafts"><div class="box-h">원고 <span class="sub">전체 공지 1건 · 임시 틀</span></div>
       <div class="dgrid">${draftList('d7').map(draftCard).join('')}</div></div>`;
   } else {
-    html += `<div class="box"><div class="nodraft">이 시점에 올릴 원고는 없습니다. 여기서 정리한 목록·링크가 D-0 원고에 그대로 들어갑니다.</div></div>`;
+    html += `<div class="nodraft soft">이 시점엔 올릴 원고가 없어요. 여기서 정리한 순위·링크가 D-0 원고에 그대로 들어갑니다.</div>`;
   }
   html += '</div>';
   col.innerHTML = html;
@@ -635,11 +701,21 @@ $('#restoreFile').addEventListener('change', async e => {
     }}]);
 });
 
-const G = { paste:doPaste, order:doOrder, links:doLinks, copyMatome, copyAll, sample:loadSample, addProduct, newRound, backup, restore: () => $('#restoreFile').click() };
+function gotoDraft(el){
+  if (el?.dataset.goch) chBy[stageKey] = el.dataset.goch;
+  onlyOpen = false; renderStage(); renderBar();
+  const c = $('#stageCol .dcard:not(.done)') || $('#stageCol .dcard');
+  if (c){ c.scrollIntoView({behavior:'smooth', block:'center'}); c.querySelector('textarea')?.focus({preventScroll:true}); }
+}
+function setEdit(on){ editMode = on; if (!on){ openEdit.clear(); filter = 'all'; } renderList(); }
+const G = { editOn: () => setEdit(true), editOff: () => setEdit(false), gotoDraft,
+  checkTask: el => { R().tasks[el.dataset.gotask] = true; commit(); },
+  gotoStage: el => { stageKey = el.dataset.gostage; editMode = EDIT_STAGES.includes(stageKey); onlyOpen = false; $('#stageCol').scrollTop = 0; renderAll(); },
+  paste:doPaste, order:doOrder, links:doLinks, copyMatome, copyAll, sample:loadSample, addProduct, newRound, backup, restore: () => $('#restoreFile').click() };
 
 document.addEventListener('click', e => {
-  const g = e.target.closest('[data-g]'); if (g){ G[g.dataset.g](); return; }
-  const st = e.target.closest('[data-stage]'); if (st){ stageKey = st.dataset.stage; onlyOpen = false; $('#stageCol').scrollTop = 0; renderAll(); return; }
+  const g = e.target.closest('[data-g]'); if (g){ G[g.dataset.g](g); return; }
+  const st = e.target.closest('[data-stage]'); if (st){ stageKey = st.dataset.stage; editMode = EDIT_STAGES.includes(stageKey); openEdit.clear(); onlyOpen = false; $('#stageCol').scrollTop = 0; renderAll(); return; }
   const fl = e.target.closest('[data-filter]'); if (fl){ filter = fl.dataset.filter; renderList(); return; }
   const chb = e.target.closest('button[data-ch]'); if (chb){ chBy[stageKey] = chb.dataset.ch; renderStage(); renderBar(); return; }
 
@@ -652,7 +728,7 @@ document.addEventListener('click', e => {
     if (a !== 'del') armedDelete = null;
     if (a === 'up' || a === 'down'){ nudge(id, a === 'up' ? -1 : 1); commit(); document.querySelector(`.row[data-id="${id}"] [data-act="${a}"]`)?.focus(); }
     else if (a === 'secure'){ p.secured = !p.secured; commit(); }
-    else if (a === 'edit'){ openEdit.has(id) ? openEdit.delete(id) : openEdit.add(id); renderList(); if (openEdit.has(id)) $(`#e-${p.link || act.classList.contains('pname-btn') ? 'name' : 'link'}-${id}`)?.focus(); }
+    else if (a === 'edit'){ editMode = true; openEdit.has(id) ? openEdit.delete(id) : openEdit.add(id); renderList(); if (openEdit.has(id)) $(`#e-${p.link || act.classList.contains('pname-btn') ? 'name' : 'link'}-${id}`)?.focus(); }
     else if (a === 'close'){ openEdit.delete(id); renderList(); }
     else if (a === 'del'){
       if (armedDelete !== id){ armedDelete = id; renderList(); return; }
@@ -664,7 +740,7 @@ document.addEventListener('click', e => {
     const key = card.dataset.key;
     const d = [...draftList(stageKey), ...draftList('d0')].find(x => x.key === key); if (!d) return;
     if (a === 'copy') copyText(dText(d), '원고 복사됨');
-    else if (a === 'done'){ R().drafts[key] = {...R().drafts[key], done: !isDone(key)}; commit(); }
+    else if (a === 'done'){ const now = !isDone(key); R().drafts[key] = {...R().drafts[key], done: now}; commit(); if (now){ const n = $('#stageCol .dcard:not(.done)'); n && n.scrollIntoView({behavior:'smooth', block:'center'}); } }
     else if (a === 'regen'){ if (R().drafts[key]) delete R().drafts[key].text; commit(); toast('기본 틀로 다시 만들었어요'); }
   }
 });
@@ -743,5 +819,6 @@ window.addEventListener('storage', e => {
 
 loadStore();
 stageKey = currentStageKey();
+editMode = EDIT_STAGES.includes(stageKey);
 save();
 renderAll();
