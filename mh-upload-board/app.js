@@ -301,8 +301,7 @@ function renderList(){
         <span class="rank">${r[p.id] ?? '—'}</span>
         <button class="pname-btn" data-act="edit" aria-expanded="${openEdit.has(p.id)}" title="눌러서 상품 정보 고치기">
           <div class="pmeta">${esc([p.ip, p.series].filter(Boolean).join(' · ') || '작품명·시리즈 비어 있음')}</div>
-          <div class="pname">${esc(p.name || '(이름 없음)')} ${esc(p.emoji)}</div>
-          <div class="badges">${p.reprint ? '<span class="b b-re">재판</span>' : '<span class="b b-first">초판</span>'}${p.status === 'new' ? '<span class="b b-new">발주서에서 새로 생김</span>' : ''}${rem ? '<span class="b b-bad">발주서에서 빠짐 · 원고 제외</span>' : ''}</div>
+          <div class="pline"><span class="pname">${esc(p.name || '(이름 없음)')} ${esc(p.emoji)}</span>${p.reprint ? '<span class="b b-re">재판</span>' : '<span class="b b-first">초판</span>'}${p.status === 'new' ? '<span class="b b-new">신규</span>' : ''}${rem ? '<span class="b b-bad">빠짐 · 원고 제외</span>' : ''}</div>
         </button>
         <div class="pside">
           <select class="tiersel" data-act="tier" aria-label="${esc(p.name)} 등급">${TIERS.map(x => `<option value="${x}" ${x === p.tier ? 'selected' : ''}>${x}</option>`).join('')}</select>
@@ -351,7 +350,7 @@ function renderStage(){
   const orphan = P().filter(p => p.status === 'removed' && CHANNELS.some(c => isDone(`${stageKey}:${c}:${p.id}`)));
   if (orphan.length) html += `<div class="alert bad"><b>확정해 둔 원고 중 발주서에서 빠진 상품 ${orphan.length}개</b> ${orphan.map(p => esc(p.name)).join(', ')} — 올리지 마세요. 목록에서는 자동으로 뺐습니다.</div>`;
 
-  html += `<div class="box"><div class="box-h">할 일 <span class="sub num">${s.tasks.filter(t => R().tasks[t.id]).length}/${s.tasks.length}</span></div><div class="tasks">`;
+  html += `<div class="box box-tasks"><div class="box-h">할 일 <span class="sub num">${s.tasks.filter(t => R().tasks[t.id]).length}/${s.tasks.length}</span></div><div class="tasks">`;
   for (const t of s.tasks){
     const h = taskHint(t.id), on = !!R().tasks[t.id];
     const url = t.tool && TOOL_URL[t.tool];
@@ -367,7 +366,7 @@ function renderStage(){
     const ch = chBy[s.key];
     const l = draftList(s.key, ch).filter(d => !onlyOpen || !isDone(d.key));
     const sub = s.key === 'd0' ? '순위순 · 상품별' : `S·A 등급만 · 순위순 · 비인기 제외 · 임시 틀`;
-    html += `<div class="box"><div class="box-h">원고 <span class="sub">${sub}</span></div>
+    html += `<div class="box box-drafts"><div class="box-h">원고 <span class="sub">${sub}</span></div>
       <div class="dtools">
         <div class="seg" role="group" aria-label="채널">
           ${CHANNELS.map(c => { const all = draftList(s.key, c); return `<button data-ch="${c}" aria-pressed="${ch === c}">${CH_NAME[c]} ${all.filter(d => isDone(d.key)).length}/${all.length}</button>`; }).join('')}
@@ -379,15 +378,18 @@ function renderStage(){
       ${!draftList(s.key, ch).length ? `<div class="nodraft">${s.key === 'd0' ? '상품 목록이 비어 있어요.' : 'S·A 등급 상품이 없어요. 목록에서 주요 상품의 등급을 정해 주세요.'}</div>`
         : l.length ? `<div class="dgrid">${l.map(draftCard).join('')}</div>` : '<div class="nodraft">남은 원고가 없어요. 전부 확정했습니다.</div>'}</div>`;
   } else if (s.key === 'd7'){
-    html += `<div class="box"><div class="box-h">원고 <span class="sub">전체 공지 1건 · 임시 틀</span></div>
+    html += `<div class="box box-drafts"><div class="box-h">원고 <span class="sub">전체 공지 1건 · 임시 틀</span></div>
       <div class="dgrid">${draftList('d7').map(draftCard).join('')}</div></div>`;
   } else {
     html += `<div class="box"><div class="nodraft">이 시점에 올릴 원고는 없습니다. 여기서 정리한 목록·링크가 D-0 원고에 그대로 들어갑니다.</div></div>`;
   }
   html += '</div>';
   col.innerHTML = html;
+  col.querySelectorAll('.dcard textarea').forEach(fitTa);
   col.scrollTop = sc;
 }
+
+const fitTa = t => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 2 + 'px'; };
 
 function renderBar(){
   const a = active(), nolink = a.filter(p => !p.link).length;
@@ -411,7 +413,7 @@ function renderBar(){
   $('#bar').innerHTML = `${sum}<span class="sp"></span>${acts}`;
 }
 
-function renderAll(){ renderHeader(); renderTimeline(); renderList(); renderStage(); renderBar(); }
+function renderAll(){ document.body.dataset.curStage = stageKey; renderHeader(); renderTimeline(); renderList(); renderStage(); renderBar(); }
 function commit(){ renderAll(); saveSoon(); }
 
 /* ---------- 도우미 ---------- */
@@ -686,7 +688,7 @@ document.addEventListener('input', e => {
   if (!t.matches('textarea[data-key]')) return;
   const key = t.dataset.key;
   R().drafts[key] = {...R().drafts[key], text: t.value};
-  saveSoon();
+  saveSoon(); fitTa(t);
   const cardEl = t.closest('.dcard'), cnt = cardEl.querySelector('[data-cnt]');
   const L = lenInfo(t.dataset.ch, t.value);
   cnt.textContent = `${L.len}/${L.lim}${L.unit}`; cnt.classList.toggle('over', L.len > L.lim);
