@@ -237,6 +237,62 @@ button{cursor:pointer}
 @media (max-width:1000px){.cols{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:560px){.pedit{grid-template-columns:1fr;padding-left:8px}}
 </style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+<style>
+/* 밝은 테마 — 이벤트 추첨기(event-raffle)의 화이트 + 인디고→바이올렛 포인트 그라데이션 톤에 맞춤 */
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --card:#ffffff; --line:#e7e9ee; --line-soft:#eef0f4;
+  --text:#111827; --sub:#4b5563; --faint:#8b91a1;
+  --accent:#4f46e5; --accent-soft:#eef0fe; --accent-ink:#ffffff;
+  --grad:linear-gradient(135deg,#4f46e5,#8b5cf6);
+  --ok:#059669; --ok-soft:#e3f7ef; --warn:#b45309; --warn-soft:#fef5e6; --bad:#dc2626; --bad-soft:#fdeceb;
+  --tS:#4f46e5; --tA:#8b5cf6; --tB:#2563eb; --tC:#9aa1b1; --tU:#b45309;
+  --shadow:0 1px 3px rgba(16,24,40,.08),0 1px 2px rgba(16,24,40,.04);
+  --shadow-lg:0 8px 24px rgba(16,24,40,.08),0 2px 6px rgba(16,24,40,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1117; --panel:#161922; --card:#1b1f2a; --line:#2a2f3c; --line-soft:#222733;
+    --text:#e8eaf0; --sub:#a8aebd; --faint:#737a8c;
+    --accent:#8b8cf8; --accent-soft:#23254a; --accent-ink:#ffffff;
+    --grad:linear-gradient(135deg,#6366f1,#a78bfa);
+    --ok:#34d399; --ok-soft:#10302a; --warn:#fbbf24; --warn-soft:#352a12; --bad:#f87171; --bad-soft:#3a1c1c;
+    --tS:#8b8cf8; --tA:#a78bfa; --tB:#60a5fa; --tC:#5c6375; --tU:#fbbf24;
+  }
+}
+body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic',sans-serif;letter-spacing:-.01em;-webkit-font-smoothing:antialiased}
+.top h1{display:flex;align-items:center;gap:10px}
+.top h1::before{content:"";width:30px;height:30px;border-radius:9px;background:var(--grad);box-shadow:0 4px 12px rgba(79,70,229,.28);flex:none}
+.col,.timeline,.box,.bar{box-shadow:var(--shadow)}
+.col,.timeline{border-radius:16px}
+.col-head{background:linear-gradient(180deg,var(--accent-soft),var(--panel) 85%)}
+.btn.primary{background:var(--grad);border-color:transparent;box-shadow:0 2px 8px rgba(79,70,229,.25)}
+.btn:hover{border-color:var(--accent)}
+.today{background:var(--grad)}
+/* 시점마다 고유 색 — 어느 단계를 보고 있는지 색으로도 구분 */
+.st[data-stage=d7]{--sc:#2563eb;--sc2:#60a5fa}
+.st[data-stage=prep]{--sc:#0891b2;--sc2:#22d3ee}
+.st[data-stage=d1]{--sc:#d97706;--sc2:#fbbf24}
+.st[data-stage=d0]{--sc:#4f46e5;--sc2:#8b5cf6}
+.st[data-stage=d14]{--sc:#db2777;--sc2:#f472b6}
+.st[data-stage=d30]{--sc:#dc2626;--sc2:#fb7185}
+.st .meter i{background:linear-gradient(90deg,var(--sc),var(--sc2))}
+.st.sel{background:linear-gradient(180deg,color-mix(in srgb,var(--sc) 9%,var(--card)),var(--card))}
+.st.sel .d{color:var(--sc)}
+.st.sel::after{background:linear-gradient(90deg,var(--sc),var(--sc2))}
+.stage-title .dd{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.box-h{background:linear-gradient(180deg,var(--accent-soft),transparent)}
+.tchip.tS{background:var(--grad)}
+.dcard{background:var(--card)}
+.dcard textarea{background:#fcfcfe}
+.confirm[aria-pressed="true"]{background:linear-gradient(135deg,#059669,#10b981);border-color:transparent}
+.row:hover{background:var(--accent-soft)}
+a.btn{text-decoration:none;color:var(--text);display:inline-block}
+.st .d{color:var(--sc)}
+.st .meter{background:color-mix(in srgb,var(--sc) 12%,var(--line-soft))}
+.seg button[aria-pressed="true"]{color:var(--accent)}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .dcard textarea{background:var(--card)} }
+</style>
 </head>
 <body>
 <div class="app">
