@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { UPDATE_API } = require('./update-source');
+const { computeLocalVersion } = require('./local-version');
 
 const VERSION_FILE = path.join(__dirname, '.local-version');
 const TIMEOUT_MS = 30000; // 파일 전체를 받으므로 버전 확인보다 넉넉하게
@@ -80,10 +81,17 @@ async function main() {
   const payload = await fetchPayload();
   validate(payload);
 
-  const local = (readIfExists(VERSION_FILE) || '').trim();
+  /* "이미 최신"인지는 적어둔 기록이 아니라 실제 파일로 판단한다.
+     전에는 .local-version만 봤는데, 그 값이 실제 파일과 어긋나는 일이 있었다(손으로
+     복사해 넣은 낡은 폴더에 최신 도장이 찍힌 경우 — local-version.js 주석 참고).
+     그러면 파일이 두 달 낡았는데도 여기서 "갱신할 게 없어요" 하고 그냥 끝나버린다.
+     받아온 묶음 자체가 이름과 내용을 다 갖고 있으니, 그걸로 직접 재는 게 가장 정확하다. */
+  const local = computeLocalVersion(__dirname, payload.files.map(f => f.name));
   if (local && local === payload.version) {
     console.log('');
     console.log('이미 최신 버전입니다. 갱신할 게 없어요.');
+    // 기록이 어긋나 있었을 수 있으니 여기서 맞춰둔다.
+    fs.writeFileSync(VERSION_FILE, payload.version, 'utf-8');
     return;
   }
 

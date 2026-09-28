@@ -34,6 +34,10 @@ const EXCLUDE = new Set([
   'vercel.json',    // 배포 설정
   'update.bat',     // 실행 중 자기 자신을 덮어쓰면 CMD가 오작동한다 (아래 주석 참고)
   '.local-version', // 팀원 PC의 로컬 상태
+  // 작업 기록은 내부 문서다. 팀원 폴더에 있어도 쓸 일이 없고, 어떤 판단으로 무엇을
+  // 고쳤는지가 그대로 적혀 있어서 내보낼 이유가 없다.
+  'CHANGELOG-b2b-scraper.md',
+  'WORKLOG-b2b-scraper.md',
 ]);
 
 // update.bat을 제외하는 이유: CMD는 배치 파일을 줄 단위로 읽으면서 실행해서, 실행 중에
@@ -110,7 +114,15 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const payload = { version: versionOf(files), generatedAt: new Date().toISOString(), count: files.length };
+    // names를 같이 내려보내는 이유: 팀원 PC가 "지금 깔려 있는 버전"을 파일에서 직접
+    // 계산하려면(local-version.js 참고) 어떤 파일을 재야 하는지 알아야 한다. 그 목록을
+    // 팀원 쪽에 또 적어두면 여기와 어긋나는 순간 계산이 영영 안 맞으므로, 서버가 알려준다.
+    const payload = {
+      version: versionOf(files),
+      generatedAt: new Date().toISOString(),
+      count: files.length,
+      names: files.map(f => f.name),
+    };
 
     // 원본을 매번 다시 읽지 않도록 잠깐 캐시 — GitHub 쪽 요청 횟수를 아낀다.
     res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=120, stale-while-revalidate=600');

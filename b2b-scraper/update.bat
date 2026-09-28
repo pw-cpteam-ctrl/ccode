@@ -33,11 +33,22 @@ pause
 exit /b
 
 :missing
+REM ASCII only here (see the note above). The Korean version of this warning is printed
+REM by check-update.js on every run.bat launch, which is where a teammate actually sees it -
+REM nobody opens update.bat unless something already looks broken.
 echo.
-echo [Setup incomplete]
-echo This updater needs 3 files together: update.bat, update.js, update-source.js
-echo Please ask the administrator for the missing files.
-echo Meanwhile you can keep using the tool as usual (run.bat).
+echo ===============================================================
+echo  CANNOT UPDATE - required files are missing
+echo.
+echo  update.js and/or update-source.js are not in this folder.
+echo  These 3 files must always be together:
+echo      update.bat / update.js / update-source.js
+echo.
+echo  ^>^> Tell the administrator: "update files are missing"  ^<^<
+echo     Until then this tool can NEVER receive any update.
+echo.
+echo  You can keep working as usual with run.bat.
+echo ===============================================================
 echo.
 pause
 exit /b 1
