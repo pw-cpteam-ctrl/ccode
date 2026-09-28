@@ -39,6 +39,42 @@ const TODAY_LIST_URL = 'https://www.goodsmile.com/b2b/en';
 // 로그인 필요 시 이 사이트가 실제로 튕기는 경로 (recon.js로 확인: response.redirected → /login).
 const LOGIN_URL_PATTERN = /\/login/i;
 
+/* 페이지 열기 — 실패하면 몇 번 다시 시도한다.
+   예전엔 한 번 실패하면 그대로 끝이었다. 실제로 33건짜리 날짜를 받다가 첫 상품에서
+   net::ERR_ABORTED가 나는 바람에 나머지 32건까지 통째로 날아간 적이 있다. 사이트가
+   잠깐 흔들린 것뿐인데 처음부터 다시 받아야 하는 건 말이 안 된다.
+
+   첫 시도는 지금까지와 똑같이 networkidle(요청이 다 끝날 때까지)로 기다린다. 다시
+   시도할 때는 domcontentloaded(화면 뼈대까지만)로 낮추고 필요한 요소가 나타나길 따로
+   기다린다 — 광고·분석 스크립트가 계속 통신하는 페이지는 "요청이 다 끝나는" 순간이
+   영영 안 와서, 같은 조건으로 다시 걸어봐야 똑같이 실패하기 때문이다. */
+const GOTO_TRIES = 3;
+const KEY_SELECTOR = '.b-product-info__title'; // 상품 페이지가 제대로 열렸는지 판단하는 기준
+async function gotoWithRetry(page, url, { timeout = 30000 } = {}) {
+  let lastErr = null;
+  for (let attempt = 1; attempt <= GOTO_TRIES; attempt += 1) {
+    try {
+      if (attempt === 1) {
+        await page.goto(url, { waitUntil: 'networkidle', timeout });
+      } else {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
+        // 뼈대만 왔을 수 있으니 실제로 쓸 요소가 붙을 때까지 기다린다. 없더라도 여기서
+        // 실패로 치지 않는다 — 상품에 따라 이 요소가 없을 수도 있어서, 판단은 뒤의
+        // 추출 단계에 맡긴다.
+        await page.waitForSelector(KEY_SELECTOR, { timeout: 10000 }).catch(() => {});
+      }
+      return true;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < GOTO_TRIES) {
+        console.log(`   …페이지를 여는 데 실패해서 다시 시도합니다 (${attempt}/${GOTO_TRIES - 1})`);
+        await page.waitForTimeout(1500 * attempt); // 잠깐 쉬었다 — 연달아 때리면 같은 이유로 또 막힌다
+      }
+    }
+  }
+  throw lastErr;
+}
+
 // 실행 인자 해석: --pick(목록에서 고르기), --date=20260730(직접 지정)
 function parseArgs(argv) {
   const wantPick = argv.includes('--pick');
@@ -51,7 +87,7 @@ function parseArgs(argv) {
 // 이미 데이터로 박혀있어서, 별도 검색 없이 여기서 바로 날짜 목록을 만들 수 있다.
 // 홈 화면엔 최근 며칠~몇 주치가 섞여 있으므로, 이 중 한 날짜만 골라 쓴다.
 async function collectDateOptions(page) {
-  await page.goto(TODAY_LIST_URL, { waitUntil: 'networkidle' });
+  await gotoWithRetry(page, TODAY_LIST_URL);
   const items = await page.$$eval('li.p-top__products__item', els =>
     els
       .map(li => ({
@@ -93,7 +129,7 @@ async function extractJapaneseNames(page, enUrl) {
   const jaUrl = enUrl.replace('/b2b/en/', '/b2b/ja/');
   if (jaUrl === enUrl) return { titleJa: '', workJa: '' };
   try {
-    await page.goto(jaUrl, { waitUntil: 'networkidle', timeout: 20000 });
+    await gotoWithRetry(page, jaUrl, { timeout: 20000 });
     const titleJa = ((await page.locator('.b-product-info__title').first().textContent().catch(() => '')) || '').trim();
     const pairs = await page.locator('#section_spec .b-text-group__unit').evaluateAll(units =>
       units.map(u => ({
@@ -110,7 +146,7 @@ async function extractJapaneseNames(page, enUrl) {
 }
 
 async function extractProductFromDetailPage(page, url) {
-  await page.goto(url, { waitUntil: 'networkidle' });
+  await gotoWithRetry(page, url);
 
   const id = (url.match(/\/product\/(\d+)/) || [])[1] || url;
 
@@ -187,9 +223,21 @@ async function main() {
 
   const detailUrls = target.urls;
   const products = [];
+  const failedUrls = [];
   let jaMissing = 0;
   for (const url of detailUrls) {
-    const raw = await extractProductFromDetailPage(page, url);
+    // 상품 하나가 실패해도 여기서 멈추지 않는다. 예전엔 이 줄에 try가 없어서, 33건 중
+    // 첫 상품이 열리지 않자 나머지 32건까지 한 번도 시도해보지 못하고 끝났다. 몇 건
+    // 빠진 결과라도 손에 쥐는 쪽이, 아무것도 못 받고 처음부터 다시 하는 것보다 낫다.
+    let raw;
+    try {
+      raw = await extractProductFromDetailPage(page, url);
+    } catch (err) {
+      failedUrls.push(url);
+      console.warn(`⚠️ 이 상품은 건너뜁니다 (${url}): ${err.message}`);
+      await page.waitForTimeout(600);
+      continue;
+    }
     if (!raw) continue;
 
     if (raw.isAdult) {
@@ -221,6 +269,14 @@ async function main() {
 
   const outPath = writeOutputFile(products, OUT_DIR, { guidanceDate: target.date });
   console.log(`\n완료: ${formatDateLabel(target.date)} 발표분 ${products.length}건 -> ${outPath}`);
+  if (failedUrls.length) {
+    // 몇 건이 빠졌는지 끝에 한 번 더 모아서 알려준다. 중간 경고는 로그에 묻혀서 못 보고
+    // 지나치기 쉬운데, 빠진 걸 모르고 원고를 넘기면 그게 더 큰 문제가 된다.
+    console.log('');
+    console.log(`⚠️ ${failedUrls.length}건은 페이지가 열리지 않아 못 받았어요 (${detailUrls.length}건 중):`);
+    failedUrls.forEach(u => console.log(`   - ${u}`));
+    console.log('   같은 날짜로 한 번 더 실행하면 처음부터 다시 받습니다 (이 폴더를 새로 채움).');
+  }
   if (jaMissing) {
     // 일본어 원제는 "있으면 좋은" 참고 정보라 없어도 작업은 그대로 된다 — 다만 몇 건이
     // 비었는지는 알려줘야 사이트 구조가 바뀐 걸 눈치챌 수 있다.
