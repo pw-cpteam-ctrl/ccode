@@ -383,6 +383,12 @@ body[data-cur-stage=d30]{--stage-c:#dc2626;--stage-c2:#fb7185}
 .issues{display:flex;gap:4px}
 .nodraft.soft{padding:18px;text-align:center;color:var(--faint);border:1.5px dashed var(--line);border-radius:10px}
 #listCol .col-head h2{font-size:14.5px}
+/* '순위 편집 열기'를 눌렀을 때 이미 편집 상태라 화면이 그대로여도, 정리할 자리를 잠깐 강조해서 반응이 보이게 함 */
+.row.flash,.tier-h.flash{animation:needs-work-flash 1.4s ease-out}
+@keyframes needs-work-flash{
+  0%,100%{background:transparent;box-shadow:none}
+  15%{background:color-mix(in srgb, var(--stage-c, var(--accent)) 22%, transparent);box-shadow:0 0 0 2px color-mix(in srgb, var(--stage-c, var(--accent)) 45%, transparent)}
+}
 @media (max-width:560px){ .next{flex-direction:column;align-items:stretch} .row.view{grid-template-columns:24px minmax(0,1fr)} .issues{grid-column:2} }
 </style>
 </head>

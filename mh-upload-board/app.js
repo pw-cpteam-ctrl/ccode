@@ -707,7 +707,20 @@ function gotoDraft(el){
   const c = $('#stageCol .dcard:not(.done)') || $('#stageCol .dcard');
   if (c){ c.scrollIntoView({behavior:'smooth', block:'center'}); c.querySelector('textarea')?.focus({preventScroll:true}); }
 }
-function setEdit(on){ editMode = on; if (!on){ openEdit.clear(); filter = 'all'; } renderList(); }
+function setEdit(on){
+  editMode = on; filter = 'all'; if (!on) openEdit.clear(); renderList();
+  // D-7·D-1은 이미 편집 상태로 열려 있어서, 버튼을 눌러도 화면이 그대로면 "안 눌린다"고 느껴진다 —
+  // 그래서 켤 때는 항상 정리가 필요한 자리로 스크롤·강조해서 반응이 보이게 한다.
+  if (on) requestAnimationFrame(scrollToNeedsWork);
+}
+function scrollToNeedsWork(){
+  const list = $('#listCol');
+  const target = list.querySelector('.tier-h.U') || list.querySelector('.row.is-new') || list.querySelector('.chip.warn')?.closest('.row');
+  if (!target){ list.scrollTo({top:0, behavior:'smooth'}); return; }
+  target.scrollIntoView({behavior:'smooth', block:'center'});
+  target.classList.add('flash');
+  setTimeout(() => target.classList.remove('flash'), 1400);
+}
 const G = { editOn: () => setEdit(true), editOff: () => setEdit(false), gotoDraft,
   checkTask: el => { R().tasks[el.dataset.gotask] = true; commit(); },
   gotoStage: el => { stageKey = el.dataset.gostage; editMode = EDIT_STAGES.includes(stageKey); onlyOpen = false; $('#stageCol').scrollTop = 0; renderAll(); },
