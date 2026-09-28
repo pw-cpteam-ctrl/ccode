@@ -297,6 +297,7 @@ function renderList(){
         <button class="btn small" data-g="paste">D-7 붙여넣기</button>
         <button class="btn small" data-g="order">발주서 엑셀</button>
         <button class="btn small" data-g="links">링크 일괄</button>
+        <button class="btn small danger" data-g="clearAll" title="이번 회차 상품을 전부 지웁니다">전체 삭제</button>
         <span class="sp"></span>
         <div class="seg" role="group" aria-label="목록 거르기">${F.map(([k,l]) => `<button data-filter="${k}" aria-pressed="${filter === k}">${l}</button>`).join('')}</div>
       </div>`
@@ -344,7 +345,10 @@ function renderList(){
           ${rem ? '' : `<button class="chip ${p.secured ? 'ok' : 'wait'}" data-act="secure" title="눌러서 확보 상태 바꾸기">${p.secured ? '확보' : '확보 대기'}</button>
           <button class="chip ${p.link ? 'ok' : 'warn'}" data-act="edit" title="눌러서 링크 넣기">${p.link ? '링크 ✓' : '링크 없음'}</button>`}
         </div>
-        <div class="updown"><button data-act="up" aria-label="한 칸 위로">▲</button><button data-act="down" aria-label="한 칸 아래로">▼</button></div>
+        <div class="updown">
+          <button data-act="up" aria-label="한 칸 위로">▲</button><button data-act="down" aria-label="한 칸 아래로">▼</button>
+          <button class="rowdel ${armedDelete === p.id ? 'armed' : ''}" data-act="del" aria-label="상품 삭제" title="${armedDelete === p.id ? '한 번 더 누르면 삭제' : '상품 삭제'}">✕</button>
+        </div>
       </div>`;
       if (openEdit.has(p.id)) html += editPanel(p);
     }
@@ -376,7 +380,18 @@ function renderBulkBar(){
     <span class="bulk-label">등급 지정</span>
     ${TIERS.filter(t => t !== '미정').map(t => `<button class="btn small tierbtn ${TCLS(t)}" data-bulk="tier" data-tier="${t}">${t}</button>`).join('')}
     <button class="btn small" data-bulk="secure">확보로 표시</button>
+    <button class="btn small danger" data-bulk="del">선택 삭제</button>
     <button class="btn small" data-bulk="clear">선택 해제</button>`;
+}
+function bulkDelete(){
+  const n = selectedIds.size; if (!n) return;
+  openModal('선택한 상품 삭제', `<div class="alert bad"><b>${n}개를 삭제합니다.</b> 되돌릴 수 없어요.</div>`,
+    [{label:'취소'}, {label:`${n}개 삭제`, danger:true, fn: () => {
+      const ids = new Set(selectedIds);
+      R().products = P().filter(p => !ids.has(p.id));
+      for (const k of Object.keys(R().drafts)) if ([...ids].some(id => k.endsWith(':' + id))) delete R().drafts[k];
+      selectedIds.clear(); closeModal(); commit(); toast(`${n}개를 삭제했어요`);
+    }}]);
 }
 
 function draftCard(d){
@@ -632,6 +647,19 @@ function addProduct(){
   setTimeout(() => $(`#e-ip-${p.id}`)?.focus(), 0);
 }
 
+function clearAll(){
+  const n = P().length;
+  if (!n){ toast('이미 비어 있어요'); return; }
+  openModal('이번 회차 상품 전체 삭제',
+    `<div class="alert bad"><b>상품 ${n}개와 지금까지 쓴 원고·확정 표시가 전부 사라집니다.</b> 되돌릴 수 없어요.</div>
+     <p>회차 자체(스토어 오픈일, 할 일 체크 상태)는 그대로 남습니다.</p>`,
+    [{label:'취소'}, {label:`상품 ${n}개 전부 삭제`, danger:true, fn: () => {
+      R().products = []; R().orderChecked = false; R().drafts = {};
+      openEdit.clear(); selectedIds.clear(); armedDelete = null; filter = 'all';
+      closeModal(); commit(); toast(`상품 ${n}개를 전부 삭제했어요`);
+    }}]);
+}
+
 /* 발주서 */
 function sheetRows(file){
   return file.arrayBuffer().then(buf => {
@@ -784,7 +812,7 @@ function scrollToNeedsWork(){
 const G = { editOn: () => setEdit(true), editOff: () => setEdit(false), gotoDraft,
   checkTask: el => { R().tasks[el.dataset.gotask] = true; commit(); },
   gotoStage: el => { stageKey = el.dataset.gostage; editMode = EDIT_STAGES.includes(stageKey); selectedIds.clear(); onlyOpen = false; $('#stageCol').scrollTop = 0; renderAll(); },
-  paste:doPaste, order:doOrder, links:doLinks, copyMatome, copyAll, sample:loadSample, addProduct, newRound, backup, restore: () => $('#restoreFile').click() };
+  paste:doPaste, order:doOrder, links:doLinks, copyMatome, copyAll, sample:loadSample, addProduct, clearAll, newRound, backup, restore: () => $('#restoreFile').click() };
 
 document.addEventListener('click', e => {
   const g = e.target.closest('[data-g]'); if (g){ G[g.dataset.g](g); return; }
@@ -795,6 +823,7 @@ document.addEventListener('click', e => {
     const b = bulk.dataset.bulk;
     if (b === 'tier') bulkSetTier(bulk.dataset.tier);
     else if (b === 'secure') bulkSecure();
+    else if (b === 'del') bulkDelete();
     else if (b === 'clear') clearSelection();
     return;
   }
@@ -902,22 +931,31 @@ window.addEventListener('storage', e => {
 /* 순위 편집 중 빈 배경을 끌면 사각형(마퀴)으로 여러 상품을 한번에 고른다.
    손잡이·버튼·입력칸 위에서 시작하면 각자 원래 동작(줄 옮기기·클릭)을 우선한다. */
 (function attachListMarquee(){
+  // 시작점은 화면(뷰포트) 좌표로 잡지만, 그 좌표가 가리키는 "목록 속 위치"는 목록을 스크롤하면
+  // 화면에서 위아래로 움직인다. 이걸 안 따라가면 마퀴 중에 휠로 스크롤했을 때 사각형이 엉뚱한
+  // 자리를 가리키게 되고(선택이 풀린 것처럼 보임), 그래서 스크롤한 만큼 시작점도 같이 보정한다.
+  const listCol = $('#listCol');
   const BLOCK = 'button, select, input, a, textarea, .grip, .pedit';
-  let box = null, startX = 0, startY = 0, active = false;
-  const rectFrom = (x, y) => ({ x1: Math.min(startX, x), x2: Math.max(startX, x), y1: Math.min(startY, y), y2: Math.max(startY, y) });
+  let box = null, startX = 0, startY = 0, scrollAtStart = 0, lastX = 0, lastY = 0, active = false;
+  const rectFrom = (x, y) => {
+    const sy = startY - (listCol.scrollTop - scrollAtStart); // 스크롤된 만큼 시작점을 같이 옮겨서 보정
+    return { x1: Math.min(startX, x), x2: Math.max(startX, x), y1: Math.min(sy, y), y2: Math.max(sy, y) };
+  };
   const paint = r => { box.style.left = r.x1 + 'px'; box.style.top = r.y1 + 'px'; box.style.width = (r.x2 - r.x1) + 'px'; box.style.height = (r.y2 - r.y1) + 'px'; };
   const highlight = r => plist.querySelectorAll('.row:not(.view)').forEach(row => {
     const b = row.getBoundingClientRect();
     row.classList.toggle('marquee-hit', !(b.right < r.x1 || b.left > r.x2 || b.bottom < r.y1 || b.top > r.y2));
   });
+  const refresh = () => { if (!active) return; const r = rectFrom(lastX, lastY); paint(r); highlight(r); };
   plist.addEventListener('mousedown', e => {
     if (!editMode || e.button !== 0 || e.target.closest(BLOCK)) return;
     if (!e.shiftKey){ selectedIds.clear(); plist.querySelectorAll('.row.row-selected').forEach(row => row.classList.remove('row-selected')); }
-    active = true; startX = e.clientX; startY = e.clientY;
+    active = true; startX = lastX = e.clientX; startY = lastY = e.clientY; scrollAtStart = listCol.scrollTop;
     box = document.createElement('div'); box.className = 'marquee-box'; document.body.appendChild(box);
-    paint(rectFrom(startX, startY)); e.preventDefault();
+    refresh(); e.preventDefault();
   });
-  window.addEventListener('mousemove', e => { if (active){ const r = rectFrom(e.clientX, e.clientY); paint(r); highlight(r); } });
+  window.addEventListener('mousemove', e => { if (active){ lastX = e.clientX; lastY = e.clientY; refresh(); } });
+  listCol.addEventListener('scroll', refresh); // 마우스는 안 움직이고 휠로만 스크롤해도 사각형이 같이 따라가게
   window.addEventListener('mouseup', () => {
     if (!active) return;
     active = false; box?.remove(); box = null;
