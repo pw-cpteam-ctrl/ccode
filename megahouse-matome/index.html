@@ -53,6 +53,12 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:'Pretendard',-appl
 .ptab-del:hover{opacity:1;background:rgba(0,0,0,.15);}
 
 /* dropzone */
+/* 사진 넣는 자리끼리 나란히 — 드래그 영역이 주(7), 더미 버튼이 보조(3) */
+.droprow{display:grid;grid-template-columns:7fr 3fr;gap:7px;align-items:stretch;}
+.dummybtn{border:1.5px dashed var(--ui-border);border-radius:8px;background:var(--ui-card);
+  color:var(--ui-sub);font-size:13px;font-family:inherit;cursor:pointer;padding:6px 4px;
+  transition:border-color .15s,background .15s,color .15s;}
+.dummybtn:hover{border-color:var(--ui-accent);color:var(--ui-accent);background:rgba(20,82,192,.04);}
 .dropzone{border:1.5px dashed var(--ui-border);border-radius:8px;padding:14px 12px;text-align:center;
   color:var(--ui-sub);font-size:14px;cursor:pointer;background:var(--ui-card);transition:border-color .15s,background .15s;}
 .memo-item{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:8px;
@@ -563,7 +569,11 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
   <!-- ══ 사진 ══ -->
   <div class="gpane on" id="sec-photo">
     <div class="sec">사진 업로드</div>
-    <div class="dropzone" id="drop"><b>클릭</b>하거나 사진을 <b>드래그</b> — 현재 탭에 추가됩니다</div>
+    <div class="droprow">
+      <div class="dropzone" id="drop"><b>클릭</b>하거나 사진을 <b>드래그</b> — 현재 탭에 추가됩니다</div>
+      <button class="dummybtn" id="btnDummy" onclick="addDummy()"
+        title="정식 사진이 오기 전에 자리만 잡아둘 회색 칸을 한 개 추가합니다">＋ 더미 사진</button>
+    </div>
     <input type="file" id="fileInput" accept="image/*" multiple hidden/>
     <div class="items" id="itemList"></div>
     <div class="sec">제품명 일괄입력</div>
@@ -1948,6 +1958,22 @@ function addFiles(files) {
     });
     r.readAsDataURL(f);
   });
+}
+
+// 정식 사진이 오기 전에 배치부터 잡아보는 용도 — 사진 한 장을 넣은 것과 똑같이 취급되는
+// 회색 칸을 만들어 둔다(파일이 아니라 그림 자체를 코드로 그려 넣으므로 용량도 거의 안 먹음)
+const DUMMY_SRC = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  "<svg xmlns='http://www.w3.org/2000/svg' width='900' height='900'>" +
+  "<rect width='900' height='900' fill='#c9c9c9'/></svg>");
+function addDummy() {
+  const MAX = 12;
+  let pg = curPage;
+  while (pages[pg - 1] && pages[pg - 1].length >= MAX) pg++;
+  while (pages.length < pg) { pages.push([]); firstRowFlex.push(null); }
+  pages[pg - 1].push({id:idSeq++, src:DUMMY_SRC, name:'', scale:1, ox:0, oy:0, blur:true, dummy:true});
+  pages.forEach((_, i) => ensurePosterWrap(i+1));
+  curPage = pg;
+  refresh();
 }
 
 /* 클립보드 붙여넣기(Ctrl+V) — 항상 맨 마지막 페이지의 빈 칸부터 채움 */
