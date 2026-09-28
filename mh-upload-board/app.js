@@ -218,6 +218,10 @@ const EDIT_STAGES = ['d7','d1'];
 const openEdit = new Set();
 let armedDelete = null;
 let dragId = null;
+// 순위 편집 중 여러 상품을 사각형으로 끌어서 골라(마퀴) 한번에 등급 지정
+const selectedIds = new Set();
+function pruneSelection(){ const ids = new Set(P().map(p => p.id)); for (const id of [...selectedIds]) if (!ids.has(id)) selectedIds.delete(id); }
+function clearSelection(){ if (!selectedIds.size) return; selectedIds.clear(); renderList(); }
 
 /* ---------- 그리기 ---------- */
 function renderHeader(){
@@ -274,6 +278,7 @@ function issueBadges(p){
 }
 
 function renderList(){
+  pruneSelection();
   const a = active(), r = ranks();
   const nolink = a.filter(p => !p.link).length, unsorted = a.filter(p => p.tier === '미정').length;
   const nNew = P().filter(p => p.status === 'new').length, nRem = P().filter(p => p.status === 'removed').length;
@@ -327,7 +332,7 @@ function renderList(){
         </div>`;
         continue;
       }
-      html += `<div class="row ${rem ? 'removed' : ''} ${p.status === 'new' ? 'is-new' : ''}" draggable="true" data-id="${p.id}">
+      html += `<div class="row ${rem ? 'removed' : ''} ${p.status === 'new' ? 'is-new' : ''} ${selectedIds.has(p.id) ? 'row-selected' : ''}" draggable="true" data-id="${p.id}">
         <span class="grip" aria-hidden="true">⋮⋮</span>
         <span class="rank">${r[p.id] ?? '—'}</span>
         <button class="pname-btn" data-act="edit" aria-expanded="${openEdit.has(p.id)}" title="눌러서 상품 정보 고치기">
@@ -347,6 +352,31 @@ function renderList(){
   }
   if (editMode) html += `<div class="addrow"><button class="btn small" data-g="addProduct">+ 상품 직접 추가</button></div>`;
   $('#plist').innerHTML = html;
+  renderBulkBar();
+}
+
+function bulkSetTier(t){
+  const n = selectedIds.size; if (!n) return;
+  for (const id of selectedIds){ const p = byId(id); if (p) p.tier = t; }
+  tierSort(); selectedIds.clear(); commit();
+  toast(`${n}개를 ${t === '미정' ? '정렬 필요' : t + ' 등급'}으로 지정했어요`);
+}
+function bulkSecure(){
+  const n = selectedIds.size; if (!n) return;
+  for (const id of selectedIds){ const p = byId(id); if (p) p.secured = true; }
+  selectedIds.clear(); commit();
+  toast(`${n}개를 확보로 표시했어요`);
+}
+function renderBulkBar(){
+  const bar = $('#bulkBar'); if (!bar) return;
+  const n = selectedIds.size;
+  if (!editMode || !n){ bar.hidden = true; bar.innerHTML = ''; return; }
+  bar.hidden = false;
+  bar.innerHTML = `<span><b class="num">${n}</b>개 선택됨</span><span class="sp"></span>
+    <span class="bulk-label">등급 지정</span>
+    ${TIERS.filter(t => t !== '미정').map(t => `<button class="btn small tierbtn ${TCLS(t)}" data-bulk="tier" data-tier="${t}">${t}</button>`).join('')}
+    <button class="btn small" data-bulk="secure">확보로 표시</button>
+    <button class="btn small" data-bulk="clear">선택 해제</button>`;
 }
 
 function draftCard(d){
@@ -497,7 +527,11 @@ function openModal(title, body, buttons, why){
 }
 function closeModal(){ $('#scrim').hidden = true; }
 $('#scrim').addEventListener('click', e => { if (e.target.id === 'scrim') closeModal(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#scrim').hidden) closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!$('#scrim').hidden) closeModal();
+  else clearSelection();
+});
 
 function copyText(text, msg){
   const fallback = () => { openModal('직접 복사해 주세요', `<p>자동 복사가 막혀 있어요. 아래 내용이 전부 선택돼 있으니 Ctrl+C 하면 됩니다.</p><textarea id="copyTa" readonly>${esc(text)}</textarea>`, [{label:'닫기'}]); setTimeout(() => $('#copyTa')?.select(), 0); };
@@ -528,24 +562,50 @@ function nudge(id, dir){
 }
 
 /* ---------- 동작 ---------- */
+// 붙여넣기 형식은 두 가지를 함께 받는다.
+// ① 실제 본사 리스트 형태 — 머리글 한 줄("이모지 작품명 | 분류") 아래 "- 상품명" 줄이 여러 개 딸림.
+//    이 머리글 하나가 "작품 하나"이고, 그 아래 "-" 줄 각각이 상품 하나다 — "-" 줄 하나하나를
+//    따로 작품으로 잡으면 안 된다(실제로 그렇게 잡혀서 들어온다는 신고가 있었음).
+// ② 예전부터 쓰던 한 줄 형식 — "작품명 / 시리즈 / 상품명" (슬래시 없으면 상품명만).
+// 재판 표시는 "(재판)"과 "【재판】" 둘 다 인식한다.
+const REPRINT_RE = /\s*(?:[\(（]재판[\)）]|【재판】)/g;
+function stripReprint(s){ REPRINT_RE.lastIndex = 0; const re = REPRINT_RE.test(s); REPRINT_RE.lastIndex = 0; return {re, text: s.replace(REPRINT_RE, '').trim()}; }
 function parseListLines(text){
-  return text.split('\n').map(s => s.trim()).filter(Boolean).map(line => {
-    const re = /\(재판\)/.test(line);
-    const parts = line.replace(/\(재판\)/g, '').split(/\s*\/\s*/).map(s => s.trim()).filter(Boolean);
+  const out = [];
+  let curIp = '', curSeries = '';
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const bullet = line.match(/^[-•·]\s*(.+)$/);
+    if (bullet){
+      const {re, text: name} = stripReprint(bullet[1]);
+      out.push(normProduct({ip: curIp, series: curSeries, name, reprint: re, secured: re, tier:'미정'}));
+      continue;
+    }
+    const bar = line.split(/\s*\|\s*/);
+    if (bar.length >= 2 && !line.includes('/')){
+      curIp = bar[0].replace(/^[^\p{L}\p{N}]+/u, '').trim();
+      curSeries = bar.slice(1).join(' | ').trim();
+      continue;
+    }
+    // 옛 한 줄 형식
+    const {re, text: clean} = stripReprint(line);
+    const parts = clean.split(/\s*\/\s*/).map(s => s.trim()).filter(Boolean);
     let ip = '', series = '', name = '';
     if (parts.length >= 3){ [ip, series] = parts; name = parts.slice(2).join(' / '); }
     else if (parts.length === 2){ [ip, name] = parts; }
     else name = parts[0] || '';
-    return normProduct({ip, series, name, reprint:re, secured:re, tier:'미정'});
-  });
+    out.push(normProduct({ip, series, name, reprint:re, secured:re, tier:'미정'}));
+  }
+  return out;
 }
 
 function doPaste(){
   const n = P().length;
   openModal('D-7 프리뷰 리스트 붙여넣기',
-    `<p>번역한 본사 리스트를 한 줄에 한 상품씩 붙여넣으세요. 형식은 <b>작품명 / 시리즈 / 상품명</b>이고, 재판이면 끝에 <b>(재판)</b>을 붙입니다. 슬래시(/)가 없으면 한 줄 전체를 상품명으로 넣습니다.</p>
-     <textarea id="pasteTa" placeholder="원피스 / 룩업 / 로로노아 조로&#10;주술회전 / G.E.M. 시리즈 / 고죠 사토루 (재판)"></textarea>
-     <p>들어온 상품은 전부 등급 '미정'이 됩니다. 본사 순서는 뒤죽박죽이라 인기도 정렬부터 합니다.</p>
+    `<p>번역한 본사 리스트를 그대로 붙여넣으세요. <b>"작품명 | 분류"</b> 한 줄 아래 <b>"- 상품명"</b> 줄이 여러 개 있으면, 그 밑에 딸린 "-" 줄들을 전부 그 작품의 상품으로 묶어서 읽습니다(줄마다 따로 작품으로 잡지 않음). 재판 표시(<b>(재판)</b> 또는 <b>【재판】</b>)는 자동으로 인식합니다.</p>
+     <textarea id="pasteTa" placeholder="🏴‍☠️ 원피스 | 룩업&#10;- 로로노아 조로&#10;- 몽키 D. 루피 기어5【재판】&#10;&#10;⚔️ 귀멸의 칼날 | 룩업&#10;- 카마도 탄지로"></textarea>
+     <p style="font-size:12px">예전처럼 <b>작품명 / 시리즈 / 상품명</b> 한 줄짜리 형식도 그대로 씁니다. 들어온 상품은 전부 등급 '미정'이 됩니다 — 본사 순서는 뒤죽박죽이라 인기도 정렬부터 합니다.</p>
      ${n ? `<div class="alert warn"><b>지금 목록 ${n}개와 이 회차의 원고·확정 표시가 전부 새 목록으로 바뀝니다.</b> 뒤에 이어 붙이려면 '뒤에 추가'를 누르세요.</div>` : ''}`,
     [{label:'취소'},
      ...(n ? [{label:'뒤에 추가', fn: () => apply(false)}] : []),
@@ -708,7 +768,7 @@ function gotoDraft(el){
   if (c){ c.scrollIntoView({behavior:'smooth', block:'center'}); c.querySelector('textarea')?.focus({preventScroll:true}); }
 }
 function setEdit(on){
-  editMode = on; filter = 'all'; if (!on) openEdit.clear(); renderList();
+  editMode = on; filter = 'all'; if (!on){ openEdit.clear(); selectedIds.clear(); } renderList();
   // D-7·D-1은 이미 편집 상태로 열려 있어서, 버튼을 눌러도 화면이 그대로면 "안 눌린다"고 느껴진다 —
   // 그래서 켤 때는 항상 정리가 필요한 자리로 스크롤·강조해서 반응이 보이게 한다.
   if (on) requestAnimationFrame(scrollToNeedsWork);
@@ -723,14 +783,21 @@ function scrollToNeedsWork(){
 }
 const G = { editOn: () => setEdit(true), editOff: () => setEdit(false), gotoDraft,
   checkTask: el => { R().tasks[el.dataset.gotask] = true; commit(); },
-  gotoStage: el => { stageKey = el.dataset.gostage; editMode = EDIT_STAGES.includes(stageKey); onlyOpen = false; $('#stageCol').scrollTop = 0; renderAll(); },
+  gotoStage: el => { stageKey = el.dataset.gostage; editMode = EDIT_STAGES.includes(stageKey); selectedIds.clear(); onlyOpen = false; $('#stageCol').scrollTop = 0; renderAll(); },
   paste:doPaste, order:doOrder, links:doLinks, copyMatome, copyAll, sample:loadSample, addProduct, newRound, backup, restore: () => $('#restoreFile').click() };
 
 document.addEventListener('click', e => {
   const g = e.target.closest('[data-g]'); if (g){ G[g.dataset.g](g); return; }
-  const st = e.target.closest('[data-stage]'); if (st){ stageKey = st.dataset.stage; editMode = EDIT_STAGES.includes(stageKey); openEdit.clear(); onlyOpen = false; $('#stageCol').scrollTop = 0; renderAll(); return; }
+  const st = e.target.closest('[data-stage]'); if (st){ stageKey = st.dataset.stage; editMode = EDIT_STAGES.includes(stageKey); openEdit.clear(); selectedIds.clear(); onlyOpen = false; $('#stageCol').scrollTop = 0; renderAll(); return; }
   const fl = e.target.closest('[data-filter]'); if (fl){ filter = fl.dataset.filter; renderList(); return; }
   const chb = e.target.closest('button[data-ch]'); if (chb){ chBy[stageKey] = chb.dataset.ch; renderStage(); renderBar(); return; }
+  const bulk = e.target.closest('[data-bulk]'); if (bulk){
+    const b = bulk.dataset.bulk;
+    if (b === 'tier') bulkSetTier(bulk.dataset.tier);
+    else if (b === 'secure') bulkSecure();
+    else if (b === 'clear') clearSelection();
+    return;
+  }
 
   const act = e.target.closest('[data-act]'); if (!act) return;
   const a = act.dataset.act;
@@ -798,6 +865,8 @@ document.addEventListener('keydown', e => {
 const plist = $('#plist');
 const clearDrop = () => plist.querySelectorAll('.drop-before,.drop-after,.drop-into').forEach(el => el.classList.remove('drop-before','drop-after','drop-into'));
 plist.addEventListener('dragstart', e => {
+  // dragstart의 target은 항상 draggable=true가 걸린 .row 자신이라(어디를 잡았든), 손잡이 제한은
+  // 여기서가 아니라 아래 마퀴의 mousedown에서 건다(그쪽에서 preventDefault하면 애초에 이 이벤트가 안 뜬다).
   const row = e.target.closest?.('.row'); if (!row) return;
   dragId = row.dataset.id; row.classList.add('dragging');
   e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', dragId); } catch {}
@@ -829,6 +898,34 @@ window.addEventListener('storage', e => {
   if (keep in store.rounds) store.current = keep;
   renderAll(); toast('다른 탭에서 바뀐 내용을 불러왔어요');
 });
+
+/* 순위 편집 중 빈 배경을 끌면 사각형(마퀴)으로 여러 상품을 한번에 고른다.
+   손잡이·버튼·입력칸 위에서 시작하면 각자 원래 동작(줄 옮기기·클릭)을 우선한다. */
+(function attachListMarquee(){
+  const BLOCK = 'button, select, input, a, textarea, .grip, .pedit';
+  let box = null, startX = 0, startY = 0, active = false;
+  const rectFrom = (x, y) => ({ x1: Math.min(startX, x), x2: Math.max(startX, x), y1: Math.min(startY, y), y2: Math.max(startY, y) });
+  const paint = r => { box.style.left = r.x1 + 'px'; box.style.top = r.y1 + 'px'; box.style.width = (r.x2 - r.x1) + 'px'; box.style.height = (r.y2 - r.y1) + 'px'; };
+  const highlight = r => plist.querySelectorAll('.row:not(.view)').forEach(row => {
+    const b = row.getBoundingClientRect();
+    row.classList.toggle('marquee-hit', !(b.right < r.x1 || b.left > r.x2 || b.bottom < r.y1 || b.top > r.y2));
+  });
+  plist.addEventListener('mousedown', e => {
+    if (!editMode || e.button !== 0 || e.target.closest(BLOCK)) return;
+    if (!e.shiftKey){ selectedIds.clear(); plist.querySelectorAll('.row.row-selected').forEach(row => row.classList.remove('row-selected')); }
+    active = true; startX = e.clientX; startY = e.clientY;
+    box = document.createElement('div'); box.className = 'marquee-box'; document.body.appendChild(box);
+    paint(rectFrom(startX, startY)); e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => { if (active){ const r = rectFrom(e.clientX, e.clientY); paint(r); highlight(r); } });
+  window.addEventListener('mouseup', () => {
+    if (!active) return;
+    active = false; box?.remove(); box = null;
+    const hit = plist.querySelectorAll('.row.marquee-hit');
+    hit.forEach(row => { selectedIds.add(row.dataset.id); row.classList.remove('marquee-hit'); row.classList.add('row-selected'); });
+    if (hit.length) renderBulkBar();
+  });
+})();
 
 loadStore();
 stageKey = currentStageKey();
