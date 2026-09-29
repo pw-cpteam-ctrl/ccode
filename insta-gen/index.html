@@ -588,7 +588,7 @@
 <script>
 const cv = document.getElementById('stage'), ctx = cv.getContext('2d');
 const W = 1080, H = 1350;
-const FRAME = { x: 110, y: 190, w: 860, h: 760, r: 36 }; // 프레임을 위로 올려 텍스트와 여백 확보
+const FRAME = { x: 160, y: 190, w: 760, h: 760, r: 36 }; // 정사각형(760x760) — 가로가 더 넓어서 사진이 좌우로 과하게 잘리던 것을 고침
 const MAXW = 920;
 const TITLE_MIN_ONE_LINE = 60; // 한 줄로 욱여넣었을 때 이 크기 밑으로 줄어들면 답답해 보여서 두 줄로 분리
 const CHAR_SHRINK_RATIO = 0.6; // "캐릭터 목록 줄이기" 체크 시 제품명 크기 대비 축소 비율(3번째 크기 단계)
