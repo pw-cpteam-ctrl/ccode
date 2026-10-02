@@ -718,6 +718,49 @@ function applyAiGenderLean(item, genderLean) {
   else if (genderLean === 'female') item.subGrade = 'B_female';
 }
 
+// AI 호출은 서버가 Claude API 응답을 기다렸다 돌려주는 구조라, 사진이 복잡하거나
+// 서버가 잠깐 느려지면 수십 초가 걸릴 수 있다(평소에는 10초 안팎). 그래서
+//  - 기다리는 시간을 넉넉히 두고(서버 쪽 제한은 그보다 훨씬 길다)
+//  - 한 번 실패하면 바로 포기하지 않고 한 번 더 시도한다. 일시적인 지연이면
+//    두 번째 시도에서 대부분 그냥 성공하기 때문.
+const AI_TIMEOUT_MS = 120000;
+
+async function callAiApi(url, body) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `서버 오류 (${r.status})`);
+      return data;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError;
+}
+
+// 브라우저가 내는 오류 메시지는 영어인 데다("signal timed out" 등) 무슨 상황인지
+// 알기 어렵다. 사람이 다음에 뭘 하면 되는지까지 한국어로 풀어서 돌려준다.
+function describeAiError(e) {
+  const msg = String((e && e.message) || e || '');
+  if (/timed out|timeout|abort/i.test(msg)) {
+    return '서버 응답이 너무 오래 걸려서 기다리다 멈췄어요. 잠시 뒤에 다시 눌러보세요 (사진이 크고 복잡할수록 오래 걸립니다).';
+  }
+  if (/failed to fetch|networkerror|network|load failed/i.test(msg)) {
+    return '서버에 연결하지 못했어요. 인터넷 연결을 확인한 뒤 다시 눌러보세요.';
+  }
+  if (/ANTHROPIC_API_KEY/i.test(msg)) {
+    return 'AI 사용에 필요한 설정이 서버에 등록되어 있지 않아요. 이 경우에는 수동으로 입력해야 합니다.';
+  }
+  return msg;
+}
+
 async function aiFillSource(srcId) {
   const src = state.sources.find((s) => s.id === srcId);
   if (!src || !src.confirmed) return;
@@ -730,6 +773,9 @@ async function aiFillSource(srcId) {
   let filledCount = 0;
   let clusteredCount = 0;
   let genderClassifiedCount = 0;
+
+  const failedBatches = [];
+  let lastError = null;
 
   try {
     for (let b = 0; b < rowBatches.length; b++) {
@@ -749,19 +795,23 @@ async function aiFillSource(srcId) {
       const dataUrl = stripCanvas.toDataURL('image/png');
       const imageBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
 
-      const r = await fetch('/api/parse-image', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // 한 묶음이 실패해도 나머지 묶음은 계속 시도한다 — 예전에는 중간에 하나만
+      // 실패해도 전체가 거기서 멈춰서, 20개 중 앞쪽 몇 개만 채워진 채 끝났다.
+      let data;
+      try {
+        data = await callAiApi('/api/parse-image', {
           imageBase64, mediaType: 'image/png', expectedCount: itemIndicesInBatch.length, layout: 'cardStrip',
           ipDictHint: state.dict.ipNameMap, tagWhitelist: tagWhitelistForActiveStore(),
           moodClusters: state.dict.moodClusters, productLineNames: state.dict.productLineNames,
-        }),
-        signal: AbortSignal.timeout(60000),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error || 'AI 인식 실패');
+        });
+      } catch (e) {
+        failedBatches.push(b + 1);
+        lastError = e;
+        console.warn(`${b + 1}번째 묶음 인식 실패:`, e);
+        continue;
+      }
 
-      data.items.slice(0, itemIndicesInBatch.length).forEach((result, j) => {
+      (data.items || []).slice(0, itemIndicesInBatch.length).forEach((result, j) => {
         // itemStartIndex(고정 숫자 오프셋)로 찾으면, 다른 소스를 재크롭해서 state.items
         // 배열이 통째로 밀리는 순간 이 오프셋이 stale해져서 엉뚱한 소스의 항목에 결과가
         // 써지거나(항목 자체는 안 밀렸는데 위치만 밀린 경우) 조용히 아무 데도 안 써지는
@@ -788,9 +838,14 @@ async function aiFillSource(srcId) {
       renderDataTable();
     }
     if (clusteredCount) saveDictLocal('moodClusters', state.dict.moodClusters);
-    alert(`AI가 ${filledCount}개 항목을 채웠습니다.\n확인이 필요한 항목: ${uncertainCount}개 (⚠ 표시된 곳을 확인하세요)\n분위기 클러스터에 새로 편입된 IP: ${clusteredCount}개\n등급표에 없어 AI가 성향(B급 남/여성향)을 추측한 항목: ${genderClassifiedCount}개 (등급 자체는 필요시 2단계에서 직접 조정)`);
+    // 일부 묶음만 실패한 경우에도 "왜 덜 채워졌는지"를 분명히 알려준다 — 숫자만 보고
+    // "AI가 몇 개를 못 읽었나 보다"로 오해하면 다시 눌러볼 생각을 못 한다.
+    const failNote = failedBatches.length
+      ? `\n\n⚠ ${rowBatches.length}묶음 중 ${failedBatches.length}묶음(${failedBatches.join(', ')}번째)은 인식하지 못했습니다.\n이유: ${describeAiError(lastError)}\n그 줄만 다시 "AI로 채우기"를 눌러보세요.`
+      : '';
+    alert(`AI가 ${filledCount}개 항목을 채웠습니다.\n확인이 필요한 항목: ${uncertainCount}개 (⚠ 표시된 곳을 확인하세요)\n분위기 클러스터에 새로 편입된 IP: ${clusteredCount}개\n등급표에 없어 AI가 성향(B급 남/여성향)을 추측한 항목: ${genderClassifiedCount}개 (등급 자체는 필요시 2단계에서 직접 조정)${failNote}`);
   } catch (e) {
-    alert(`AI로 채우기 실패: ${e.message}\n(백엔드가 배포되어 있지 않다면 정상입니다 — 수동으로 입력해주세요)`);
+    alert(`AI로 채우기 실패: ${describeAiError(e)}`);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🤖 AI로 채우기'; }
   }
@@ -815,6 +870,9 @@ async function ocrLabelsForSource(srcId) {
   let clusteredCount = 0;
   let genderClassifiedCount = 0;
 
+  const failedBatches = [];
+  let lastError = null;
+
   try {
     for (let b = 0; b < rowBatches.length; b++) {
       if (btn) { btn.disabled = true; btn.textContent = `라벨 인식 중... (${b + 1}/${rowBatches.length})`; }
@@ -838,19 +896,22 @@ async function ocrLabelsForSource(srcId) {
       // 쓸모가 없었다. 그래서 이제 aiFillSource(1단계 "AI로 채우기")와 똑같은 IP명 추출
       // 규칙(사전/라인업 태그/분위기 클러스터/성향)을 그대로 적용한다 — 사진만 안 보낼 뿐,
       // 인식 품질/결과 처리는 동일하다.
-      const r = await fetch('/api/ocr-label', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // 한 묶음이 실패해도 나머지는 계속 시도한다(aiFillSource와 같은 이유).
+      let data;
+      try {
+        data = await callAiApi('/api/ocr-label', {
           imageBase64, mediaType: 'image/png', expectedCount: itemIndicesInBatch.length,
           ipDictHint: state.dict.ipNameMap, tagWhitelist: tagWhitelistForActiveStore(),
           moodClusters: state.dict.moodClusters, productLineNames: state.dict.productLineNames,
-        }),
-        signal: AbortSignal.timeout(60000),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error || '라벨 인식 실패');
+        });
+      } catch (e) {
+        failedBatches.push(b + 1);
+        lastError = e;
+        console.warn(`${b + 1}번째 묶음 라벨 인식 실패:`, e);
+        continue;
+      }
 
-      data.items.slice(0, itemIndicesInBatch.length).forEach((result, j) => {
+      (data.items || []).slice(0, itemIndicesInBatch.length).forEach((result, j) => {
         // itemStartIndex(고정 숫자 오프셋)로 찾으면, 다른 소스를 재크롭해서 state.items
         // 배열이 통째로 밀리는 순간 이 오프셋이 stale해져서 엉뚱한 소스의 항목에 결과가
         // 써지거나(항목 자체는 안 밀렸는데 위치만 밀린 경우) 조용히 아무 데도 안 써지는
@@ -874,9 +935,12 @@ async function ocrLabelsForSource(srcId) {
       renderDataTable();
     }
     if (clusteredCount) saveDictLocal('moodClusters', state.dict.moodClusters);
-    alert(`라벨에서 ${filledCount}개 항목을 인식했습니다.\n확인이 필요한 항목: ${uncertainCount}개 (⚠ 표시된 곳을 확인하세요)\n분위기 클러스터에 새로 편입된 IP: ${clusteredCount}개\n등급표에 없어 성향을 새로 추측한 항목: ${genderClassifiedCount}개`);
+    const failNote = failedBatches.length
+      ? `\n\n⚠ ${rowBatches.length}묶음 중 ${failedBatches.length}묶음(${failedBatches.join(', ')}번째)은 인식하지 못했습니다.\n이유: ${describeAiError(lastError)}\n그 줄만 다시 "라벨만 재인식"을 눌러보세요.`
+      : '';
+    alert(`라벨에서 ${filledCount}개 항목을 인식했습니다.\n확인이 필요한 항목: ${uncertainCount}개 (⚠ 표시된 곳을 확인하세요)\n분위기 클러스터에 새로 편입된 IP: ${clusteredCount}개\n등급표에 없어 성향을 새로 추측한 항목: ${genderClassifiedCount}개${failNote}`);
   } catch (e) {
-    alert(`라벨 인식 실패: ${e.message}\n(백엔드가 배포되어 있지 않다면 정상입니다 — 수동으로 입력해주세요)`);
+    alert(`라벨 인식 실패: ${describeAiError(e)}`);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🏷️ 라벨만 재인식'; }
   }
@@ -1802,15 +1866,11 @@ async function classifyIpsForSort() {
 
   if (btn) { btn.disabled = true; btn.textContent = `AI 분류 중... (${candidates.length}개 IP)`; }
   try {
-    const r = await fetch('/api/classify-ip', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ipNames: candidates, moodClusters: state.dict.moodClusters }),
-      signal: AbortSignal.timeout(60000),
+    const data = await callAiApi('/api/classify-ip', {
+      ipNames: candidates, moodClusters: state.dict.moodClusters,
     });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || 'AI 분류 실패');
 
-    const resultByIp = new Map(data.items.map((it) => [it.ip, it]));
+    const resultByIp = new Map((data.items || []).map((it) => [it.ip, it]));
     let clusteredCount = 0;
     let genderClassifiedCount = 0;
     state.items.forEach((item) => {
@@ -1829,7 +1889,7 @@ async function classifyIpsForSort() {
       `등급표에 없어 성향(B급 남/여성향)을 새로 추측한 항목: ${genderClassifiedCount}개\n` +
       `(IP명·가격·태그는 전혀 바뀌지 않았습니다)`);
   } catch (e) {
-    alert(`AI 분류 실패: ${e.message}\n(백엔드가 배포되어 있지 않다면 정상입니다)`);
+    alert(`AI 분류 실패: ${describeAiError(e)}`);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🏷️ AI 분류로 정렬 보조'; }
   }
