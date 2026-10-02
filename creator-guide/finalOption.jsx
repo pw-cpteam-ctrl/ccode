@@ -1452,6 +1452,10 @@ function Final_Rules() {
   const groupHeaders = React.useRef({});
   const activeGroup = React.useRef(1);
   const magnetLock = React.useRef(false);
+  // '전체 펼쳐 보기'를 누른 상태인지. 스크롤을 따라 한 묶음만 남기고 접는 동작이
+  // 이 버튼을 눌러 펼친 것까지 바로 되돌려서, 눌러도 아무 일도 안 일어나는 것처럼
+  // 보였다. 직접 전체를 펼친 동안에는 자동으로 접지 않는다.
+  const manualAll = React.useRef(false);
   const lastScrollY = React.useRef(0);
   const byTitle = Object.fromEntries(GUIDE.rules.forbidden.map((item) => [item.t, item]));
   const allOpen = [1, 2, 3].every((id) => openGroups.has(id));
@@ -1494,7 +1498,7 @@ function Final_Rules() {
         const goingDown = currentY > lastScrollY.current + 2;
         const goingUp = currentY < lastScrollY.current - 2;
         lastScrollY.current = currentY;
-        if ((!goingDown && !goingUp) || magnetLock.current) return;
+        if ((!goingDown && !goingUp) || magnetLock.current || manualAll.current) return;
 
         const active = activeGroup.current;
         const candidate = goingDown ? active + 1 : active - 1;
@@ -1520,6 +1524,7 @@ function Final_Rules() {
 
   const toggleGroup = (id) => {
     activeGroup.current = id;
+    manualAll.current = false;   // 하나를 직접 여닫으면 다시 스크롤을 따라간다
     setOpenGroups((prev) => prev.has(id) ? new Set() : new Set([id]));
   };
 
@@ -1582,8 +1587,8 @@ function Final_Rules() {
       </div>
 
       <button type="button" className="rule-all-toggle" onClick={() => {
-        if (allOpen) { setOpenGroups(new Set([activeGroup.current])); }
-        else { setOpenGroups(new Set([1, 2, 3])); }
+        if (allOpen) { manualAll.current = false; setOpenGroups(new Set([activeGroup.current])); }
+        else { manualAll.current = true; setOpenGroups(new Set([1, 2, 3])); }
       }}>{allOpen ? '전체 접기' : '전체 펼쳐 보기'}</button>
     </div>
   );
