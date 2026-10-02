@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A4%9D%F0%9F%8F%BB%3C/text%3E%3C/svg%3E" />
 <title>크리에이터 협업 가이드 · 통합본</title>
-<link rel="stylesheet" href="styles.css?v=49" />
+<link rel="stylesheet" href="styles.css?v=50" />
 <link rel="stylesheet" href="chat.css?v=1" />
 
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
@@ -32,6 +32,10 @@
 
   /* 데스크톱 — 은은한 사이드 배경 보이게 */
   @media (min-width: 721px) {
+    /* html에도 같은 색을 깐다. body 상자는 화면 높이에서 끝나는데 내용은 그보다
+       길어서, 아래로 내리면 body가 끝나는 지점부터 html 색(#fafaf9)이 드러나
+       배경이 중간에 밝아져 보였다. 1920x1080에서 딱 1080px 지점에서 갈렸다. */
+    html { background: #f0f0ed; }
     body { background: #f0f0ed; padding: 24px 0; }
     .app-shell {
       min-height: calc(100vh - 48px);

@@ -32,6 +32,10 @@
 
   /* 데스크톱 — 은은한 사이드 배경 보이게 */
   @media (min-width: 721px) {
+    /* html에도 같은 색을 깐다. body 상자는 화면 높이에서 끝나는데 내용은 그보다
+       길어서, 아래로 내리면 body가 끝나는 지점부터 html 색(#fafaf9)이 드러나
+       배경이 중간에 밝아져 보였다. 1920x1080에서 딱 1080px 지점에서 갈렸다. */
+    html { background: #f0f0ed; }
     body { background: #f0f0ed; padding: 24px 0; }
     .app-shell {
       min-height: calc(100vh - 48px);
