@@ -19,7 +19,10 @@ import { readGithubFile, writeGithubFile } from '../lib/github.js';
 const CONFIRMED_PATH = 'creator-logs/confirmed.json';
 const GUARD_PATH = 'creator-logs/admin-guard.json';
 const MAX_MONTHS = 6;   // 최근 몇 달치까지 훑을지
-const NICK_MAX = 20;    // 접수 API와 같은 값 — 두 곳의 이름이 어긋나면 안 된다
+// 확정 표시의 열쇠 길이 상한. 활동명(최대 20자)만 담던 자리였는데, 같은 분이
+// 달마다 다시 협업하는 경우가 있어 "활동명 | 차수 시작일" 형태로 바뀌었다.
+// 20자로 자르면 열쇠가 잘려 서로 다른 차수가 같은 것으로 뭉친다.
+const KEY_MAX = 60;
 
 // ─── 코드 찔러보기 막기 ──────────────────────────────────────────
 // 코드가 틀려도 응답만 돌아오고 끝이라, 자동으로 계속 넣어볼 수 있었다.
@@ -191,7 +194,7 @@ export default async function handler(req, res) {
     }
 
     if (action === 'confirm' || action === 'unconfirm') {
-      const name = String(nick || '').replace(/\s+/g, ' ').trim().slice(0, NICK_MAX);
+      const name = String(nick || '').replace(/\s+/g, ' ').trim().slice(0, KEY_MAX);
       if (!name) { res.status(400).json({ ok: false, reason: 'nick' }); return; }
 
       const { map, sha } = await loadConfirmed(gh);
