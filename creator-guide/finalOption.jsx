@@ -132,6 +132,7 @@ function firstThursday(year, month) {
 //   키: 'YYYY-MM'   값: 그 달의 오픈 날짜(일)
 const OPEN_DAY_EXCEPTIONS = {
   '2026-09': 10,   // 첫 목요일은 3일이지만 10일로 진행
+  '2026-10': 8,    // 첫 목요일은 1일이지만 8일로 진행
 };
 
 // 그 달의 오픈일이 며칠인지 돌려준다. month는 0부터 시작한다(0=1월).
