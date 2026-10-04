@@ -1083,24 +1083,36 @@ body {
 .ev-free-list { margin: 0; padding-left: 17px; }
 .ev-free-list li { font-size: 12.5px; line-height: 1.7; color: var(--ink-600); }
 
+/* 접혀 있을 때는 '눌러서 펼치는 것'으로 보여야 한다. 흰 바탕에 옅은 회색
+   테두리로 두었더니 그냥 읽고 지나가는 안내처럼 보여, 경품 지급 시점처럼
+   꼭 봐야 할 내용을 펼치지 않고 넘어가는 경우가 있었다.
+   접힌 동안만 파란 색을 입히고, 펼친 뒤에는 읽는 데 방해되지 않게 가라앉힌다. */
 .ev-more {
-  background: #fff; border: 1px solid var(--ink-200);
+  background: var(--blue-50); border: 1px solid var(--blue-200);
   border-radius: 14px; overflow: hidden;
+  transition: background .2s, border-color .2s;
 }
+.ev-more[open] { background: #fff; border-color: var(--ink-200); }
 .ev-more-head {
   list-style: none; cursor: pointer; padding: 14px 18px;
   display: grid; grid-template-columns: 1fr auto; align-items: center;
-  font-size: 13.5px; font-weight: 700; color: var(--ink-900);
+  font-size: 13.5px; font-weight: 700; color: var(--blue-700);
 }
+.ev-more[open] .ev-more-head { color: var(--ink-900); }
 .ev-more-head::-webkit-details-marker { display: none; }
 .ev-more-sub {
   grid-column: 1; font-size: 11.3px; font-weight: 400;
-  color: var(--ink-600); margin-top: 2px; line-height: 1.45;
+  color: var(--blue-600); margin-top: 2px; line-height: 1.45;
 }
+.ev-more[open] .ev-more-sub { color: var(--ink-600); }
+/* 화살표만으로는 누르는 곳인지 약해서, 접힌 동안엔 동그란 버튼처럼 보이게 한다 */
 .ev-more-arrow {
   grid-column: 2; grid-row: 1 / span 2;
-  color: var(--ink-400); font-size: 15px; transition: transform .2s;
+  display: grid; place-items: center; width: 26px; height: 26px;
+  border-radius: 50%; background: var(--blue-500); color: #fff;
+  font-size: 13px; line-height: 1; transition: transform .2s, background .2s, color .2s;
 }
+.ev-more[open] .ev-more-arrow { background: transparent; color: var(--ink-400); font-size: 15px; }
 .ev-more[open] .ev-more-arrow { transform: rotate(180deg); }
 .ev-more-body { padding: 0 18px 14px; border-top: 1px solid var(--ink-200); }
 .ev-more-body .ev-item {
