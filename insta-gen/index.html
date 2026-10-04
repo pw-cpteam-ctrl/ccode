@@ -79,7 +79,7 @@
   .pslot-del { top:4px; right:4px; background:var(--danger); color:#fff; }
   .pslot-pick { top:4px; left:4px; background:rgba(0,0,0,.6); color:#fff; }
   .pslot:hover .pslot-del, .pslot:hover .pslot-pick { opacity:1; }
-  @media (hover:none) { .pslot-del, .pslot-pick { opacity:1; } }
+  @media (hover:none) { .pslot-del, .pslot-pick { opacity:1; width:36px; height:36px; font-size:16px; top:6px; } .pslot-del{ right:6px; } .pslot-pick{ left:6px; } .pslot { min-height:120px; } }   /* 폰: 손가락으로 누르기 편한 크기 */
   .pslot-add { display:block; width:100%; margin-top:7px; border:none; background:none; padding:2px 0;
                font-size:11.5px; color:var(--muted); font-weight:500; cursor:pointer; text-align:left;
                font-family:'Pretendard',sans-serif; }
@@ -320,9 +320,10 @@
 
     /* PC의 가로 2열 카드들을 세로로 풀어 터치하기 편하게 */
     .combo12 { flex-direction:column; gap:14px; }
-    .combo-photo { flex:0 0 auto; height:auto; }
+    .combo-photo { flex:0 0 auto; height:auto; width:100%; align-self:stretch; }   /* 예전엔 내용 폭(약 160px)만큼만 잡혀서 사진 칸이 작았음 */
+    .combo-photo .pslot { min-height:170px; }
     .upload.compact { flex-direction:row; padding:14px; gap:12px; font-size:13px; }
-    .combo-text { flex:1 1 auto; }
+    .combo-text { flex:1 1 auto; width:100%; align-self:stretch; }
     .infobar { flex-direction:column; gap:14px; }
     .infobar-col:first-child, .infobar-col:last-child { flex:1 1 auto; }
     .infobar-col + .infobar-col { border-left:none; padding-left:0; border-top:1px solid var(--line); padding-top:14px; }
@@ -1218,7 +1219,7 @@ function renderPhotoSlots(){
     d.className='pslot'+(has?' filled':'')+(dual && state.sel===n?' sel':'');
     if(has) d.style.backgroundImage=`url(${n===1?state.imgData:state.imgData2})`;
     d.innerHTML = has
-      ? `<span class="pslot-face">${dual ? (n===1?'왼쪽':'오른쪽') : '사진'}</span>`
+      ? `<span class="pslot-face">${dual ? (n===1?'왼쪽':'오른쪽') : '눌러서 사진 바꾸기'}</span>`
       : `<span class="icon">📷</span><span>${dual&&n===2?'붙여넣기(Ctrl+V)<br>또는 클릭':'사진 선택<br>· 붙여넣기(Ctrl+V)'}</span>`;
     if(has){
       const pick=document.createElement('button'); pick.type='button'; pick.className='pslot-pick';
@@ -1232,7 +1233,8 @@ function renderPhotoSlots(){
       del.addEventListener('click',e=>{ e.stopPropagation(); clearSecond(); });
       d.appendChild(del);
     }
-    d.addEventListener('click',()=>{ setSel(n); if(!has) openPicker(n); });
+    // 채워진 칸도 누르면 바로 다른 사진으로 바꾸기(폰에선 작은 📁 버튼을 맞추기 어려움). 두 칸일 땐 첫 탭은 선택, 선택된 칸을 한 번 더 누르면 바꾸기
+    d.addEventListener('click',()=>{ const pick = !has || !dual || state.sel===n; setSel(n); if(pick) openPicker(n); });
     return d;
   };
 
@@ -1293,11 +1295,30 @@ function halfAtClientX(clientX){
   const x=(clientX-r.left)*(cv.width/r.width);
   return x < FRAME.x + FRAME.w/2 ? 1 : 2;
 }
-cv.addEventListener('pointerdown', e=>{ if(!state.img) return; setSel(halfAtClientX(e.clientX)); _drag=true; _lx=e.clientX; _ly=e.clientY; cv.classList.add('drag'); try{ cv.setPointerCapture(e.pointerId); }catch{} });
-cv.addEventListener('pointermove', e=>{ if(!_drag||!state.img) return; const sc=cv.width/cv.getBoundingClientRect().width; const fg=activeFg(); fg.panX+=(e.clientX-_lx)*sc; fg.panY+=(e.clientY-_ly)*sc; _lx=e.clientX; _ly=e.clientY; render(); });
-function _endDrag(){ _drag=false; cv.classList.remove('drag'); }
-cv.addEventListener('pointerup', _endDrag); cv.addEventListener('pointercancel', _endDrag); cv.addEventListener('pointerleave', ()=>{ if(_drag) _endDrag(); });
-cv.addEventListener('wheel', e=>{ if(!state.img) return; e.preventDefault(); setSel(halfAtClientX(e.clientX)); const fg=activeFg(); const nz=Math.max(1,Math.min(3, fg.zoom*(e.deltaY<0?1.06:0.94))); fg.zoom=nz; const zr=document.getElementById('s_zoom'); zr.value=Math.round(nz*100); document.getElementById('v_zoom').textContent=nz.toFixed(1)+'×'; render(); }, {passive:false});
+// 폰에서 두 손가락으로 벌리고 오므리면 확대/축소(핀치). 예전엔 손가락 두 개가 각각 드래그로
+// 읽혀서 확대는 안 되고 사진만 옆으로 밀렸다 — 지금 화면에 닿아 있는 손가락을 전부 기억해서 구분한다.
+const _pts=new Map(); let _pinch=null;
+function _syncZoomUI(nz){ const zr=document.getElementById('s_zoom'); zr.value=Math.round(nz*100); document.getElementById('v_zoom').textContent=nz.toFixed(1)+'×'; }
+function _pinchInfo(){ const [a,b]=[..._pts.values()]; return { d:Math.hypot(a.x-b.x,a.y-b.y)||1, mx:(a.x+b.x)/2, my:(a.y+b.y)/2 }; }
+cv.addEventListener('pointerdown', e=>{ if(!state.img) return;
+  _pts.set(e.pointerId,{x:e.clientX,y:e.clientY}); try{ cv.setPointerCapture(e.pointerId); }catch{}
+  if(_pts.size===2){ const i=_pinchInfo(); _pinch={ d0:i.d, z0:activeFg().zoom, mx:i.mx, my:i.my }; _drag=false; return; }
+  setSel(halfAtClientX(e.clientX)); _drag=true; _lx=e.clientX; _ly=e.clientY; cv.classList.add('drag'); });
+cv.addEventListener('pointermove', e=>{ if(!state.img) return;
+  if(_pts.has(e.pointerId)) _pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  const sc=cv.width/cv.getBoundingClientRect().width, fg=activeFg();
+  if(_pinch && _pts.size>=2){ const i=_pinchInfo();
+    const nz=Math.max(1,Math.min(3,_pinch.z0*i.d/_pinch.d0)); fg.zoom=nz; _syncZoomUI(nz);
+    fg.panX+=(i.mx-_pinch.mx)*sc; fg.panY+=(i.my-_pinch.my)*sc; _pinch.mx=i.mx; _pinch.my=i.my;   // 두 손가락을 같이 움직이면 위치도 이동
+    render(); return; }
+  if(!_drag) return; fg.panX+=(e.clientX-_lx)*sc; fg.panY+=(e.clientY-_ly)*sc; _lx=e.clientX; _ly=e.clientY; render(); });
+function _endDrag(e){ if(e) _pts.delete(e.pointerId);
+  if(_pts.size<2) _pinch=null;
+  // 핀치 중 한 손가락만 떼면 남은 손가락으로 이어서 드래그(사진이 튀지 않게 기준점을 다시 잡음)
+  if(_pts.size===1){ const [p]=[..._pts.values()]; _drag=true; _lx=p.x; _ly=p.y; return; }
+  _drag=false; cv.classList.remove('drag'); }
+cv.addEventListener('pointerup', _endDrag); cv.addEventListener('pointercancel', _endDrag); cv.addEventListener('pointerleave', e=>{ if(_drag && e.pointerType==='mouse') _endDrag(e); });
+cv.addEventListener('wheel', e=>{ if(!state.img) return; e.preventDefault(); setSel(halfAtClientX(e.clientX)); const fg=activeFg(); const nz=Math.max(1,Math.min(3, fg.zoom*(e.deltaY<0?1.06:0.94))); fg.zoom=nz; _syncZoomUI(nz); render(); }, {passive:false});
 
 /* ── 입력 연결 ── */
 document.getElementById('t_headline').addEventListener('change', e=>{ state.text.headline=e.target.value; render(); });
@@ -1673,15 +1694,30 @@ function restoreSlot(s){
   }
   function attachInteraction(canvas, getItem, W, H, onChange, onClick){
     let dragging=false, moved=false, lastX=0, lastY=0, side=1;
+    // 폰 두 손가락 핀치 확대/축소 — 화면에 닿은 손가락을 전부 기억해서 두 개면 핀치로 처리
+    const pts=new Map(); let pinch=null;
+    const pinchInfo=()=>{ const [a,b]=[...pts.values()]; return { d:Math.hypot(a.x-b.x,a.y-b.y)||1, mx:(a.x+b.x)/2, my:(a.y+b.y)/2 }; };
     canvas.addEventListener('pointerdown', e=>{
       const item=getItem(); if(!item) return;
+      pts.set(e.pointerId,{x:e.clientX,y:e.clientY}); try{ canvas.setPointerCapture(e.pointerId); }catch{}
+      if(pts.size===2){ const i=pinchInfo(); const sd=sideAt(item, canvas, W, H, i.mx, i.my); item.side=sd;
+        pinch={ d0:i.d, z0:item[keysOf(sd).z], side:sd }; dragging=false; moved=true; return; }
       side = sideAt(item, canvas, W, H, e.clientX, e.clientY);
       item.side = side;                     // 모달의 기울기·안내가 이 값을 따라감
       dragging=true; moved=false; lastX=e.clientX; lastY=e.clientY;
       try{ canvas.setPointerCapture(e.pointerId); }catch{}
     });
     canvas.addEventListener('pointermove', e=>{
-      const item=getItem(); if(!dragging || !item) return;
+      const item=getItem(); if(!item) return;
+      if(pts.has(e.pointerId)) pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      if(pinch && pts.size>=2){
+        const img = pinch.side===2 ? item.img2 : item.img; if(!img) return;
+        const pw = img.naturalWidth||img.width, ph = img.naturalHeight||img.height, bx = boxOf(item, pinch.side);
+        const k = keysOf(pinch.side);
+        item[k.z] = Math.max(containMinZoom(pw, ph, bx.w, bx.h), Math.min(4, pinch.z0*pinchInfo().d/pinch.d0));
+        onChange(item); return;
+      }
+      if(!dragging) return;
       const k = keysOf(side);
       const img = side===2 ? item.img2 : item.img;
       if(!img) return;
@@ -1699,10 +1735,13 @@ function restoreSlot(s){
       lastX=e.clientX; lastY=e.clientY;
       onChange(item);
     });
-    function endDrag(){ dragging=false; }
+    function endDrag(e){ if(e) pts.delete(e.pointerId);
+      if(pts.size<2) pinch=null;
+      if(pts.size===1){ const [p]=[...pts.values()]; dragging=true; lastX=p.x; lastY=p.y; return; }   // 남은 손가락으로 이어서 드래그
+      dragging=false; }
     canvas.addEventListener('pointerup', endDrag);
     canvas.addEventListener('pointercancel', endDrag);
-    canvas.addEventListener('pointerleave', ()=>{ if(dragging) endDrag(); });
+    canvas.addEventListener('pointerleave', e=>{ if(dragging && e.pointerType==='mouse') endDrag(e); });
     // 드래그로 위치를 옮긴 직후 놓는 동작이 클릭(모달 열기)으로 이어지지 않게, 클릭 처리를
     // 이 안에서 한 곳으로 모아 판단한다(별도 리스너 두 개로 나누면 실행 순서가 불안정함)
     canvas.addEventListener('click', e=>{
