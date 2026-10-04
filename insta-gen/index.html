@@ -481,7 +481,7 @@
     <div class="card cardCrop">
       <h2>사진 크롭 / 배경지</h2>
       <div class="slider"><label>사진 확대</label><input type="range" id="s_zoom" min="100" max="300" value="100"><span class="val" id="v_zoom">1.0×</span></div>
-      <div class="slider"><label>배경 불투명</label><input type="range" id="s_op" min="20" max="100" value="50"><span class="val" id="v_op">50%</span></div>
+      <div class="slider"><label>배경 불투명</label><input type="range" id="s_op" min="20" max="100" value="40"><span class="val" id="v_op">40%</span></div>
       <div class="slider"><label>배경 흐림</label><input type="range" id="s_blur" min="0" max="70" value="45"><span class="val" id="v_blur">45</span></div>
     </div>
 
@@ -620,7 +620,7 @@ const state = {
   fg2: { zoom: 1, panX: 0, panY: 0 },
   slot2Open: false,  // "＋ 두 번째 사진"을 눌러 빈 칸만 열어둔 상태(아직 사진은 없음)
   sel: 1,            // 붙여넣기·확대가 적용될 칸(1|2). 사진이 한 장이면 항상 1
-  bg: { opacity: 0.50, blur: 45 },
+  bg: { opacity: 0.40, blur: 45 },   // 배경 불투명도는 도구를 열 때마다 항상 40%에서 시작(저장값을 안 불러옴)
   size: { title: 82, product: 44 }, // 타이틀=작품명, 제품명=캐릭터 줄 크기
   bullet: true, charShrink: false,   // charShrink는 저장 안 함 — 새 값 불러오면 항상 꺼짐(off)으로 리셋
   work: '[작품명]', line: 'G.E.M. 시리즈', linePrefix: '', jp: '', saleDate: '', saleDow: '목',
@@ -1025,7 +1025,7 @@ function applySlot(s){
   document.getElementById('t_saledate').value=s.saleDate||''; state.saleDate=s.saleDate||''; state.saleDow=s.saleDow||'목';
   state.bullet=!!s.bullet; document.getElementById('c_bullet').checked=state.bullet;
   state.charShrink=false; document.getElementById('c_charshrink').checked=false;   // 새 값 불러오면 항상 해제
-  if(s.fg) state.fg={...state.fg,...s.fg}; if(s.bg) state.bg={...state.bg,...s.bg}; if(s.size && s.sizeVer===SIZE_VER) state.size={...state.size,...s.size};
+  if(s.fg) state.fg={...state.fg,...s.fg}; if(s.bg) state.bg={...state.bg,...s.bg, opacity:state.bg.opacity}; if(s.size && s.sizeVer===SIZE_VER) state.size={...state.size,...s.size};
   // 두 번째 사진은 나중에 추가된 필드라 예전 저장본엔 없다 — 없으면 한 장짜리로 되돌린다
   state.fg2 = s.fg2 ? {zoom:1,panX:0,panY:0,...s.fg2} : {zoom:1,panX:0,panY:0};
   state.imgData2 = s.imgData2 || ''; state.img2 = null;
@@ -1559,7 +1559,7 @@ function restoreSlot(s){
   document.getElementById('t_saledate').value=s.saleDate||''; state.saleDate=s.saleDate||''; state.saleDow=s.saleDow||'목';
   state.bullet=s.bullet!==false; document.getElementById('c_bullet').checked=state.bullet;
   state.charShrink=false; document.getElementById('c_charshrink').checked=false;
-  if(s.fg) state.fg={...state.fg,...s.fg}; if(s.bg) state.bg={...state.bg,...s.bg}; if(s.size && s.sizeVer===SIZE_VER) state.size={...state.size,...s.size};
+  if(s.fg) state.fg={...state.fg,...s.fg}; if(s.bg) state.bg={...state.bg,...s.bg, opacity:state.bg.opacity}; if(s.size && s.sizeVer===SIZE_VER) state.size={...state.size,...s.size};
   // 두 번째 사진은 나중에 추가된 필드라 예전 저장본엔 없다 — 없으면 한 장짜리로 되돌린다
   state.fg2 = s.fg2 ? {zoom:1,panX:0,panY:0,...s.fg2} : {zoom:1,panX:0,panY:0};
   state.imgData2 = s.imgData2 || ''; state.img2 = null;
