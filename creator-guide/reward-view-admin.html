@@ -96,6 +96,16 @@
   .dday.soon { background: #fff7ed; color: #c2410c; }
   .dday.today { background: #fef2f2; color: #b91c1c; }
   .dday.past { background: #f8fafc; color: #94a3b8; }
+  /* 아이디를 메일 주소로 적는 분이 있어 한 칸이 길어지면 표 전체가 밀려
+     오른쪽이 잘렸다. 10자 남짓에서 끊고, 누르면 그 칸만 전부 펼친다.
+     (마우스를 올려도 전체가 말풍선으로 뜨고, 복사 표에는 늘 전체가 들어간다) */
+  td.naver {
+    max-width: 11ch; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; cursor: pointer;
+  }
+  td.naver.is-open { max-width: none; white-space: normal; word-break: break-all; }
+  /* 희망 상품은 반대로 너무 좁아 글이 계속 접혔다. 아이디 칸만큼은 준다. */
+  td.wish { min-width: 13ch; }
   .empty { padding: 40px 16px; text-align: center; color: var(--ink-500); }
   .scroll { overflow-x: auto; }
   .foot { margin-top: 14px; font-size: 12px; color: var(--ink-400); line-height: 1.6; }
@@ -432,12 +442,12 @@
       var isOn = isConfirmed(r);
       return '<tr class="' + (r.latest ? '' : 'is-old') + '">' +
         '<td class="nick">' + esc(r.nick) + (r.latest ? '' : ' <span class="old-note">지난 제출</span>') + '</td>' +
-        '<td>' + esc(r.naver || '-') + '</td>' +
+        '<td class="naver" title="' + esc(r.naver || '') + '">' + esc(r.naver || '-') + '</td>' +
         '<td>' + esc(fmtDate(r.draftDate)) + '</td>' +
         '<td><span class="dday' + ddayClass(r.draftDate) + '">' + esc(fmtDday(r.draftDate)) + '</span></td>' +
         '<td><span class="tag ' + esc(r.track) + '">' + esc(TRACK[r.track] || r.track) + '</span></td>' +
         '<td><span class="tag ' + esc(r.reward) + '">' + esc(REWARD[r.reward] || r.reward) + '</span></td>' +
-        '<td>' + esc(r.wish || '-') + '</td>' +
+        '<td class="wish">' + esc(r.wish || '-') + '</td>' +
         '<td>' + esc(fmtAt(r.at)) + '</td>' +
         '<td>' + (r.latest
           ? '<button class="mini' + (isOn ? ' is-done' : '') + '" data-nick="' + esc(r.roundKey) + '" data-legacy="' + esc(confirmed[r.nick] ? r.nick : '') + '" data-on="' + (isOn ? '1' : '0') + '">' +
@@ -479,6 +489,10 @@
       try { nq.setSelectionRange(pos, pos); } catch (e) { /* 무시 */ }
     });
     document.getElementById('copy').addEventListener('click', function () { copyTable(this); });
+    // 잘려 보이는 아이디 칸을 누르면 그 칸만 전부 펼친다(다시 누르면 접힌다).
+    Array.prototype.forEach.call(root.querySelectorAll('td.naver'), function (td) {
+      td.addEventListener('click', function () { td.classList.toggle('is-open'); });
+    });
     Array.prototype.forEach.call(root.querySelectorAll('[data-unblock]'), function (b) {
       b.addEventListener('click', function () {
         var who = b.getAttribute('data-unblock');
