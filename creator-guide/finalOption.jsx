@@ -554,8 +554,92 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, wi
   );
 }
 
+// ─── 스크롤을 따라 차례로 펼쳐지는 묶음 ─────────────────────────
+// 06 규칙 탭에서 쓰던 방식을 이벤트 안내에서도 쓰려고 따로 뺐다.
+// 아래로 내리면 다음 묶음이 저절로 펼쳐지고 그 자리로 부드럽게 이동한다.
+// 한 번에 한 묶음만 열려 있어서, 접힌 안내를 통째로 지나치는 일이 없다.
+function useScrollAccordion(count, first = 1) {
+  const [open, setOpen] = React.useState(() => new Set([first]));
+  const headers = React.useRef({});
+  const active = React.useRef(first);
+  const lock = React.useRef(false);
+  const lastY = React.useRef(0);
+
+  React.useEffect(() => {
+    lastY.current = window.scrollY;
+    let rafId = 0;
+    let unlockTimer = 0;
+
+    const activateAndSnap = (id) => {
+      const target = headers.current[id];
+      if (!target) return;
+      active.current = id;
+      lock.current = true;
+      setOpen(new Set([id]));
+      // 접힘으로 위쪽 높이가 바뀐 다음 좌표를 다시 재야 화면이 튀지 않는다.
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          const anchorY = window.innerHeight * 0.28;
+          const targetY = window.scrollY + target.getBoundingClientRect().top - anchorY;
+          window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+        });
+      });
+      unlockTimer = window.setTimeout(() => {
+        lock.current = false;
+        lastY.current = window.scrollY;
+      }, 800);
+    };
+
+    const onScroll = () => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        const y = window.scrollY;
+        const down = y > lastY.current + 2;
+        const up = y < lastY.current - 2;
+        lastY.current = y;
+        if ((!down && !up) || lock.current) return;
+
+        const candidate = active.current + (down ? 1 : -1);
+        if (candidate < 1 || candidate > count) return;
+        const target = headers.current[candidate];
+        if (!target) return;
+
+        // 페이지 바닥에 닿으면 더 내릴 수가 없어, 마지막 묶음이 펼쳐지는 자리까지
+        // 영영 못 간다. 바닥에서는 자리와 상관없이 다음 묶음을 펼친다.
+        const atBottom = y + window.innerHeight >= document.documentElement.scrollHeight - 4;
+        const top = target.getBoundingClientRect().top;
+        const zoneTop = window.innerHeight * (down ? 0.38 : 0.10);
+        // 위로 올릴 때는 화면 안에 들어오기만 하면 펼친다. 페이지가 짧아
+        // 한 번 굴리면 맨 위에 닿아버려, 좁게 잡으면 되돌아가지지 않는다.
+        const zoneBottom = window.innerHeight * (down ? 0.76 : 0.98);
+        // 위로 올릴 때는 위쪽 경계를 두지 않는다. 앞 묶음의 제목이 이미 화면
+        // 위로 지나가 있는 경우가 많아, 경계를 두면 한참 올려도 안 펼쳐진다.
+        if (!(down && atBottom) && (top > zoneBottom || (down && top < zoneTop))) return;
+        activateAndSnap(candidate);
+      });
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (rafId) window.cancelAnimationFrame(rafId);
+      if (unlockTimer) window.clearTimeout(unlockTimer);
+    };
+  }, [count]);
+
+  const toggle = (id) => {
+    active.current = id;
+    setOpen((prev) => prev.has(id) ? new Set() : new Set([id]));
+  };
+
+  return { open, headers, toggle };
+}
+
 // 탭 바 없이 전체 화면으로 열리는 별도 페이지. 돌아가기로만 빠져나온다.
 function EventGuide({ onBack }) {
+  const acc = useScrollAccordion(EVENT_GUIDE.details.length);
+
   return (
     <div className="ev">
       <div className="ev-top">
@@ -596,20 +680,28 @@ function EventGuide({ onBack }) {
           </ul>
         </div>
 
-        {/* 나머지는 접어 둔다. 필요한 사람만 펼쳐 보면 되는 내용 */}
-        <details className="ev-more">
-          <summary className="ev-more-head">
-            <span>자세한 안내 보기</span>
-            <span className="ev-more-sub">경품 형태 · 지급 시점 · 공유할 내용 · 당첨자 정보</span>
-            <span className="ev-more-arrow">⌄</span>
-          </summary>
-          <div className="ev-more-body">
-            {EVENT_GUIDE.details.map((s2, i) => (
-              <div className="ev-item" key={i}>
-                <div className="ev-item-head">
+        {/* 예전엔 '자세한 안내 보기' 하나로 통째로 접어 뒀는데, 한 번도 펼치지
+            않고 지나가면 지급 시점처럼 꼭 봐야 할 내용을 아예 못 본 채 끝났다.
+            06 규칙 탭처럼 내려보면 한 묶음씩 저절로 펼쳐지게 바꾼다. */}
+        <div className="ev-more-lead">
+          <span className="ev-more-lead-title">자세한 안내</span>
+          <span className="ev-more-sub">아래로 내리시면 한 항목씩 펼쳐집니다 · 제목을 눌러 직접 여닫으셔도 됩니다</span>
+        </div>
+        <div className="ev-acc-list">
+            {EVENT_GUIDE.details.map((s2, i) => {
+              const id = i + 1;
+              const on = acc.open.has(id);
+              return (
+              <div className={`ev-item ev-acc${on ? ' is-open' : ''}`} key={i}
+                   ref={(el) => { acc.headers.current[id] = el; }}>
+                <button type="button" className="ev-item-head" aria-expanded={on}
+                        onClick={() => acc.toggle(id)}>
                   <span className="ev-item-emoji">{s2.emoji}</span>
                   <h2 className="ev-item-title">{s2.title}</h2>
-                </div>
+                  <span className="ev-acc-arrow">⌄</span>
+                </button>
+                {on && (
+                <div className="ev-acc-body">
                 <p className="ev-item-body">
                   {s2.conds && s2.conds.map((c, j) => (
                     <React.Fragment key={j}>
@@ -656,10 +748,12 @@ function EventGuide({ onBack }) {
                     : <div className="ev-form-todo">당첨자 정보 제출 링크는 담당자가 이 안내와 함께 전달드립니다. 아직 못 받으셨다면 말씀해 주세요.</div>
                 )}
                 {s2.note && <div className="ev-note">{s2.note}</div>}
+                </div>
+                )}
               </div>
-            ))}
-          </div>
-        </details>
+              );
+            })}
+        </div>
 
         <div className="ev-foot">
           궁금한 점이 있으시면 담당자에게 편히 문의해 주세요.
