@@ -22,7 +22,7 @@ const REWARD_CHOICES = [
 // 고르기 위한 짧은 문구만 둔다. 한 번 정하면 변경할 수 없다.
 const TRACK_CHOICES = [
   { id: 'split', emoji: '🟦', label: '선지급', desc: '먼저 받고\n나중에 더 받기', copy: '선지급 (업로드 후 5만 원 + 750 달성 시 추가)' },
-  { id: 'after', emoji: '🟨', label: '후지급', desc: '정산 후\n한 번에 받기',   copy: '후지급 (프리오더 마감 이후 한 번에)' },
+  { id: 'after', emoji: '🟨', label: '후지급', desc: '정산 후\n한 번에 받기',   copy: '후지급 (예약판매 마감 이후 한 번에)' },
 ];
 
 // ─── 팬 이벤트 안내 ──────────────────────────────────────────────
@@ -43,9 +43,9 @@ const EVENT_GUIDE = {
   // 그래서 꼭 맞춰야 하는 것(3개)만 먼저 보여주고, 자유로운 부분을 그다음에,
   // 나머지 상세는 접어 둔다.
   musts: [
-    // '프리오더 기간 안에 마무리'가 접혀 있는 상세 안내에만 있어서, 펼치지 않은
+    // '예약판매 기간 안에 마무리'가 접혀 있는 상세 안내에만 있어서, 펼치지 않은
     // 사람은 기간만 보고 일정을 짜게 됐다. 꼭 맞출 것에 같이 적는다.
-    { t: '이벤트 기간 7일 이상', d: '참여자가 모이려면 최소 일주일은 필요합니다 (프리오더 기간 안에 마무리)' },
+    { t: '이벤트 기간 7일 이상', d: '참여자가 모이려면 최소 일주일은 필요합니다 (예약판매 기간 안에 마무리)' },
     { t: '당첨자 정보 전달', d: '발표 후 취합이 완료되면 공유해 주세요' },
     { t: '진행 전 기획 방향 공유', d: '텍스트 초안이나 진행 방향을 미리 알려주세요' },
   ],
@@ -75,15 +75,15 @@ const EVENT_GUIDE = {
       title: '경품 쿠폰은 언제 지급되나요',
       // 챗봇은 '업로드 확인 + 당첨자 정보'를 조건으로 안내하는데 여기엔 업로드가
       // 빠져 있어, 이 화면만 본 사람은 업로드 전에도 경품이 나가는 줄 알았다.
-      body: '콘텐츠 업로드가 확인되고 당첨자 정보가 전달되면 발급됩니다. 지급일은 크리에이터님 보상을 받으시는 날과 같습니다.',
-      bullets: [
-        '오픈 후 9일차까지 당첨자 정보를 주신 경우 — 오픈 후 10일차에 일괄 발급',
-        '그 이후에 주신 경우 — 프리오더 정산 시점(오픈일 기준 약 40일)에 함께 발급',
-      ],
-      // 상대 표현(9일차·10일차)만 두면 받는 쪽이 달력을 직접 세어야 한다.
-      // 이벤트 일정을 짜는 화면이라 실제 날짜가 더 쓸모 있다.
+      // 조건이 두 개인데 한 문장으로 이어 쓰니 '업로드'와 '당첨자 정보'가 각각
+      // 필요하다는 게 눈에 안 들어왔다. 번호를 붙여 둘로 끊는다.
+      conds: ['콘텐츠 업로드가 확인되고', '당첨자 정보가 전달되면'],
+      body: '발급됩니다. 지급일은 크리에이터님 보상을 받으시는 날과 같습니다.',
+      // 예전에는 글머리표로 '9일차까지 주시면 10일차 발급' 식으로 풀어 쓰고,
+      // 그 아래에 실제 날짜표를 또 두어 같은 내용을 두 번 말했다. 폰에서는 긴
+      // 문장이 두세 줄로 접혀 더 읽기 어려웠다. 표 하나로 합친다.
       schedule: true,
-      note: '기간은 더 길게 잡으셔도 괜찮습니다 — 경품이 나가는 시점만 달라집니다. 다만 프리오더가 끝나면 발급이 어려우니, 그 안에 마무리되도록 잡아주시면 좋습니다',
+      note: '기간은 더 길게 잡으셔도 괜찮습니다 — 경품이 나가는 시점만 달라집니다. 다만 예약판매가 끝나면 발급이 어려우니, 그 안에 마무리되도록 잡아주시면 좋습니다',
     },
     {
       emoji: '💬',
@@ -610,7 +610,14 @@ function EventGuide({ onBack }) {
                   <span className="ev-item-emoji">{s2.emoji}</span>
                   <h2 className="ev-item-title">{s2.title}</h2>
                 </div>
-                <p className="ev-item-body">{s2.body}</p>
+                <p className="ev-item-body">
+                  {s2.conds && s2.conds.map((c, j) => (
+                    <React.Fragment key={j}>
+                      <span className="ev-cond"><span className="ev-cond-num">{j === 0 ? '①' : '②'}</span>{c}</span>{' '}
+                    </React.Fragment>
+                  ))}
+                  {s2.body}
+                </p>
                 {s2.bullets && (
                   <ul className="ev-list">
                     {s2.bullets.map((b, j) => <li key={j}>{b}</li>)}
@@ -618,12 +625,22 @@ function EventGuide({ onBack }) {
                 )}
                 {s2.schedule && (() => {
                   const open = nextOpenDate();
+                  // 폰에서 가로로 네 칸을 늘어놓으면 글자가 줄줄이 접힌다.
+                  // '언제까지 주면 / 언제 나간다' 두 칸만 두고 줄로 나눈다.
                   return (
                     <div className="ev-sched">
                       <div className="ev-sched-cap">{open.getMonth() + 1}월 오픈({openPlus(open, 0)}) 기준</div>
-                      <div className="ev-sched-row"><span>당첨자 정보 마감</span><strong>{openPlus(open, 9)}</strong></div>
-                      <div className="ev-sched-row"><span>경품 일괄 발급</span><strong>{openPlus(open, 10)}</strong></div>
-                      <div className="ev-sched-row"><span>프리오더 정산</span><strong>{openPlus(open, 40)} 전후</strong></div>
+                      <div className="ev-sched-head">
+                        <span>당첨자 정보를 주신 때</span><span>경품 발급</span>
+                      </div>
+                      <div className="ev-sched-row">
+                        <span><strong>{openPlus(open, 9)}</strong>까지<em>오픈 후 9일차</em></span>
+                        <span><strong>{openPlus(open, 10)}</strong><em>오픈 후 10일차 · 일괄</em></span>
+                      </div>
+                      <div className="ev-sched-row">
+                        <span><strong>그 이후</strong><em>예약판매 기간 안</em></span>
+                        <span><strong>{openPlus(open, 40)} 전후</strong><em>정산 때 함께</em></span>
+                      </div>
                     </div>
                   );
                 })()}
@@ -1674,7 +1691,7 @@ function Final_Reward({ reply }) {
           <li>금액 쿠폰은 해당 금액 이상 단품 결제 시 사용 가능하며, 룩업 외 다른 라인업 상품에도 쓰실 수 있습니다</li>
           <li>상품 쿠폰은 해당 월 라인업 기준입니다 (타월 등 일부 상품 제외 · 5만 원 미만 상품은 배송비 발생 가능)</li>
           <li>{R.tiersNote.replace('※ ', '')}</li>
-          <li>유입 수는 프리오더 기간(약 1달) 동안 카운트되며, 정산 완료 시 담당자가 한 번 더 연락드립니다</li>
+          <li>유입 수는 예약판매 기간(약 1달) 동안 카운트되며, 정산 완료 시 담당자가 한 번 더 연락드립니다</li>
         </ul>
       </div>
 

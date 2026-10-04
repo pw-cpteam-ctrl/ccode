@@ -1042,12 +1042,28 @@ body {
 .ev-sched-cap {
   font-size: 11px; color: var(--warn-fg); opacity: .8; margin-bottom: 6px;
 }
-.ev-sched-row {
-  display: flex; justify-content: space-between; gap: 10px;
-  padding: 3px 0; font-size: 12.5px; color: var(--warn-fg);
+/* 폰 기준. 두 칸을 같은 너비로 고정해 위아래 줄의 날짜가 세로로 맞아떨어지게
+   한다. 칸마다 날짜를 굵게 위에, 설명(몇 일차인지)을 작게 아래에 두어, 급할
+   때는 날짜만 훑고 궁금하면 아래 줄을 읽게 한다. */
+.ev-sched-head, .ev-sched-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
 }
+.ev-sched-head {
+  padding-bottom: 5px; font-size: 10.5px; font-weight: 700;
+  color: var(--warn-fg); opacity: .75;
+}
+.ev-sched-row { padding: 7px 0; font-size: 12.5px; color: var(--warn-fg); }
 .ev-sched-row + .ev-sched-row { border-top: 1px solid var(--warn-accent); }
-.ev-sched-row strong { font-weight: 800; }
+.ev-sched-head + .ev-sched-row { border-top: 1px solid var(--warn-accent); }
+.ev-sched-row strong { display: block; font-size: 13.5px; font-weight: 800; }
+.ev-sched-row em {
+  display: block; margin-top: 2px; font-style: normal;
+  font-size: 10.5px; opacity: .75; line-height: 1.4;
+}
+
+/* 발급 조건 두 가지 — 번호를 붙여 '둘 다 필요하다'가 보이게 한다 */
+.ev-cond { white-space: nowrap; }
+.ev-cond-num { font-weight: 800; color: var(--blue-600); margin-right: 3px; }
 
 .ev-form-btn {
   display: block; margin-top: 11px; padding: 11px;
