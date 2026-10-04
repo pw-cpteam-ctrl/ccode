@@ -43,7 +43,9 @@ const EVENT_GUIDE = {
   // 그래서 꼭 맞춰야 하는 것(3개)만 먼저 보여주고, 자유로운 부분을 그다음에,
   // 나머지 상세는 접어 둔다.
   musts: [
-    { t: '이벤트 기간 7일 이상', d: '참여자가 모이려면 최소 일주일은 필요합니다' },
+    // '프리오더 기간 안에 마무리'가 접혀 있는 상세 안내에만 있어서, 펼치지 않은
+    // 사람은 기간만 보고 일정을 짜게 됐다. 꼭 맞출 것에 같이 적는다.
+    { t: '이벤트 기간 7일 이상', d: '참여자가 모이려면 최소 일주일은 필요합니다 (프리오더 기간 안에 마무리)' },
     { t: '당첨자 정보 전달', d: '발표 후 취합이 완료되면 공유해 주세요' },
     { t: '진행 전 기획 방향 공유', d: '텍스트 초안이나 진행 방향을 미리 알려주세요' },
   ],
@@ -71,11 +73,16 @@ const EVENT_GUIDE = {
     {
       emoji: '⏱',
       title: '경품 쿠폰은 언제 지급되나요',
-      body: '당첨자 정보를 확인한 뒤 발급됩니다. 지급일은 크리에이터님 보상을 받으시는 날과 같습니다.',
+      // 챗봇은 '업로드 확인 + 당첨자 정보'를 조건으로 안내하는데 여기엔 업로드가
+      // 빠져 있어, 이 화면만 본 사람은 업로드 전에도 경품이 나가는 줄 알았다.
+      body: '콘텐츠 업로드가 확인되고 당첨자 정보가 전달되면 발급됩니다. 지급일은 크리에이터님 보상을 받으시는 날과 같습니다.',
       bullets: [
         '오픈 후 9일차까지 당첨자 정보를 주신 경우 — 오픈 후 10일차에 일괄 발급',
         '그 이후에 주신 경우 — 프리오더 정산 시점(오픈일 기준 약 40일)에 함께 발급',
       ],
+      // 상대 표현(9일차·10일차)만 두면 받는 쪽이 달력을 직접 세어야 한다.
+      // 이벤트 일정을 짜는 화면이라 실제 날짜가 더 쓸모 있다.
+      schedule: true,
       note: '기간은 더 길게 잡으셔도 괜찮습니다 — 경품이 나가는 시점만 달라집니다. 다만 프리오더가 끝나면 발급이 어려워서, 그 안에 마무리되도록 잡아주시면 좋습니다',
     },
     {
@@ -141,6 +148,25 @@ function openDayOf(year, month) {
   return OPEN_DAY_EXCEPTIONS[key] ?? firstThursday(year, month).getDate();
 }
 
+
+// 지금 기준으로 가장 가까운 오픈일을 찾는다. 이번 달 오픈일이 아직 안 지났으면
+// 그 날, 지났으면 다음 달 오픈일이다. 팬 이벤트 일정이 전부 이 날을 기준으로
+// 세어지기 때문에, 화면에 실제 날짜를 보여주려면 이 값이 있어야 한다.
+function nextOpenDate(today = new Date()) {
+  const y = today.getFullYear();
+  const m = today.getMonth();
+  const thisMonth = new Date(y, m, openDayOf(y, m));
+  if (today <= thisMonth) return thisMonth;
+  return new Date(y, m + 1, openDayOf(y, m + 1));
+}
+
+// 오픈일로부터 n일차가 며칠인지. 오픈 당일을 0일차로 센다 — 안내 문구의
+// '오픈 후 10일차'가 그렇게 쓰여 왔다.
+function openPlus(base, n) {
+  const d = new Date(base);
+  d.setDate(d.getDate() + n);
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
 
 // 2026-08-18 → "8월 18일 (화)"
 function formatDate(value) {
@@ -581,13 +607,27 @@ function EventGuide({ onBack }) {
                     {s2.bullets.map((b, j) => <li key={j}>{b}</li>)}
                   </ul>
                 )}
+                {s2.schedule && (() => {
+                  const open = nextOpenDate();
+                  return (
+                    <div className="ev-sched">
+                      <div className="ev-sched-cap">{open.getMonth() + 1}월 오픈({openPlus(open, 0)}) 기준</div>
+                      <div className="ev-sched-row"><span>당첨자 정보 마감</span><strong>{openPlus(open, 9)}</strong></div>
+                      <div className="ev-sched-row"><span>경품 일괄 발급</span><strong>{openPlus(open, 10)}</strong></div>
+                      <div className="ev-sched-row"><span>프리오더 정산</span><strong>{openPlus(open, 40)} 전후</strong></div>
+                    </div>
+                  );
+                })()}
                 {s2.form && (
                   EVENT_FORM_URL
                     ? <a className="ev-form-btn" href={EVENT_FORM_URL} target="_blank" rel="noopener noreferrer">
                         당첨자 정보 보내기 →
                       </a>
                     // 폼 주소가 아직 없을 때. 잘못된 링크를 내보내지 않고 안내로 대체한다
-                    : <div className="ev-form-todo">당첨자 정보 제출 링크는 기획 방향을 공유해 주시면 담당자가 미리 전달드립니다.</div>
+                    // 이 페이지는 협업 시작 때 담당자가 먼저 보내는 것이라, 예전
+                    // 문구("기획 방향을 공유해 주시면 전달드립니다")는 순서가
+                    // 거꾸로였다. 받는 쪽이 기획안부터 내야 하는 줄 알게 된다.
+                    : <div className="ev-form-todo">당첨자 정보 제출 링크는 담당자가 이 안내와 함께 전달드립니다. 아직 못 받으셨다면 말씀해 주세요.</div>
                 )}
                 {s2.note && <div className="ev-note">{s2.note}</div>}
               </div>

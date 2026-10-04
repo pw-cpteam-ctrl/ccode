@@ -1022,6 +1022,22 @@ body {
   background: var(--blue-50); border-radius: 9px;
   font-size: 11.8px; line-height: 1.55; color: var(--blue-700);
 }
+/* 이번 달 오픈일 기준 실제 날짜표 — '9일차·10일차'를 직접 세지 않게 한다.
+   읽고 지나가는 안내가 아니라 일정을 짤 때 보는 값이라, 회색 바탕에 날짜를
+   굵게 세워 한눈에 집히게 둔다. */
+.ev-sched {
+  margin-top: 10px; padding: 10px 12px;
+  background: var(--ink-50); border-radius: 9px;
+}
+.ev-sched-cap {
+  font-size: 11px; color: var(--ink-500); margin-bottom: 6px;
+}
+.ev-sched-row {
+  display: flex; justify-content: space-between; gap: 10px;
+  padding: 3px 0; font-size: 12.5px; color: var(--ink-700);
+}
+.ev-sched-row strong { color: var(--ink-900); font-weight: 700; }
+
 .ev-form-btn {
   display: block; margin-top: 11px; padding: 11px;
   background: var(--blue-500); color: #fff; border-radius: 10px;
