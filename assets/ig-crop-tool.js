@@ -19,6 +19,7 @@
 //   </script>
 //
 // 미리보기 조작: 드래그 = 위치 이동 · 휠 = 확대/축소 · Shift+휠 = 사진 전체가 보일 때까지 축소 · 더블클릭 = 처음 위치로
+//               폰: 한 손가락 = 위치 이동 · 두 손가락 벌리기/오므리기 = 확대/축소(전체 보기까지)
 // 가로로 넓은 사진(규격보다 납작한 사진)은 꽉 채우면 양옆이 크게 잘려서, 기본값을 "전체 보기"(위아래 여백)로 시작한다.
 // 미리보기와 내보내기는 같은 계산식 하나로 그려서 결과가 어긋나지 않는다.
 
@@ -161,15 +162,28 @@ function createIgCropper(canvas, opts) {
   }
   function changed() { render(); if (opts.onChange) opts.onChange({ ...state }); }
 
-  // ── 드래그로 위치 이동 ──
-  let dragging = false, lastX = 0, lastY = 0;
+  // ── 드래그로 위치 이동 + 폰 두 손가락 핀치 ──
+  // 닿아 있는 손가락을 전부 기억한다. 안 그러면 핀치할 때 두 손가락이 각각 드래그로 읽혀서
+  // 확대는 안 되고 사진만 밀린다.
+  let dragging = false, lastX = 0, lastY = 0, pinch = null;
+  const pts = new Map();
+  const pinchDist = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; };
   function onDown(e) {
     if (!state.img) return;
-    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+    if (pts.size === 2) { pinch = { d0: pinchDist(), z0: state.zoom }; dragging = false; return; }
+    dragging = true; lastX = e.clientX; lastY = e.clientY;
   }
   function onMove(e) {
-    if (!dragging || !state.img) return;
+    if (!state.img) return;
+    if (pts.has(e.pointerId)) pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pts.size >= 2) {
+      const { pw, ph } = igImgSize(state.img);
+      state.zoom = Math.min(maxZoom, Math.max(igContainZoom(pw, ph, size.w, size.h), pinch.z0 * pinchDist() / pinch.d0));
+      changed(); return;
+    }
+    if (!dragging) return;
     const rect = canvas.getBoundingClientRect();
     const dx = (e.clientX - lastX) * (canvas.width / rect.width);
     const dy = (e.clientY - lastY) * (canvas.height / rect.height);
@@ -182,7 +196,12 @@ function createIgCropper(canvas, opts) {
     if (oy > 0.5) state.fy = clamp(state.fy - dy / oy);
     changed();
   }
-  function onUp() { dragging = false; }
+  function onUp(e) {
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (pts.size === 1) { const [p] = [...pts.values()]; dragging = true; lastX = p.x; lastY = p.y; return; } // 남은 손가락으로 이어서 드래그
+    dragging = false;
+  }
   // ── 휠로 확대/축소 (평소엔 기본 배율까지만, Shift를 누르면 전체 보기까지) ──
   function onWheel(e) {
     if (!state.img) return;
