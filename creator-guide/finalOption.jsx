@@ -555,90 +555,60 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, wi
 }
 
 // ─── 스크롤을 따라 차례로 펼쳐지는 묶음 ─────────────────────────
-// 06 규칙 탭에서 쓰던 방식을 이벤트 안내에서도 쓰려고 따로 뺐다.
-// 아래로 내리면 다음 묶음이 저절로 펼쳐지고 그 자리로 부드럽게 이동한다.
-// 한 번에 한 묶음만 열려 있어서, 접힌 안내를 통째로 지나치는 일이 없다.
-function useScrollAccordion(count, first = 1) {
+// 내려보면 아래 항목이 차례로 펼쳐진다. 06 규칙 탭과 달리 한 번 펼친 것은
+// 다시 접지 않는다. 06처럼 접으면서 화면을 끌어당기면 스크롤이 걸리는 느낌이
+// 나는데, 이 페이지는 항목이 짧아 끌어당길 이유가 없기 때문이다.
+// 아래로 갈수록 펼쳐진 항목이 쌓이기만 하므로 화면이 튀지도 않는다.
+function useRevealOnScroll(count, first = 1) {
   const [open, setOpen] = React.useState(() => new Set([first]));
-  const headers = React.useRef({});
-  const active = React.useRef(first);
-  const lock = React.useRef(false);
-  const lastY = React.useRef(0);
+  const cards = React.useRef({});
 
   React.useEffect(() => {
-    lastY.current = window.scrollY;
-    let rafId = 0;
-    let unlockTimer = 0;
-
-    const activateAndSnap = (id) => {
-      const target = headers.current[id];
-      if (!target) return;
-      active.current = id;
-      lock.current = true;
-      setOpen(new Set([id]));
-      // 접힘으로 위쪽 높이가 바뀐 다음 좌표를 다시 재야 화면이 튀지 않는다.
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          const anchorY = window.innerHeight * 0.28;
-          const targetY = window.scrollY + target.getBoundingClientRect().top - anchorY;
-          window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
-        });
+    // 화면 아래 30% 선을 넘어 올라온 항목을 펼친다. 제목이 눈에 들어오는
+    // 순간 이미 펼쳐져 있어서, 펼쳐지는 동작 자체가 눈에 띄지 않는다.
+    const io = new IntersectionObserver((entries) => {
+      const hit = entries.filter((e) => e.isIntersecting)
+        .map((e) => Number(e.target.dataset.accId));
+      if (!hit.length) return;
+      setOpen((prev) => {
+        const next = new Set(prev);
+        hit.forEach((id) => next.add(id));
+        return next.size === prev.size ? prev : next;
       });
-      unlockTimer = window.setTimeout(() => {
-        lock.current = false;
-        lastY.current = window.scrollY;
-      }, 800);
-    };
+    }, { rootMargin: '0px 0px -30% 0px', threshold: 0 });
 
+    Object.values(cards.current).forEach((el) => el && io.observe(el));
+
+    // 페이지 바닥에서는 마지막 항목이 그 선까지 못 올라와 끝내 안 펼쳐진다.
+    // 바닥에 닿으면 남은 것을 모두 펼친다.
     const onScroll = () => {
-      if (rafId) return;
-      rafId = window.requestAnimationFrame(() => {
-        rafId = 0;
-        const y = window.scrollY;
-        const down = y > lastY.current + 2;
-        const up = y < lastY.current - 2;
-        lastY.current = y;
-        if ((!down && !up) || lock.current) return;
-
-        const candidate = active.current + (down ? 1 : -1);
-        if (candidate < 1 || candidate > count) return;
-        const target = headers.current[candidate];
-        if (!target) return;
-
-        // 페이지 바닥에 닿으면 더 내릴 수가 없어, 마지막 묶음이 펼쳐지는 자리까지
-        // 영영 못 간다. 바닥에서는 자리와 상관없이 다음 묶음을 펼친다.
-        const atBottom = y + window.innerHeight >= document.documentElement.scrollHeight - 4;
-        const top = target.getBoundingClientRect().top;
-        const zoneTop = window.innerHeight * (down ? 0.38 : 0.10);
-        // 위로 올릴 때는 화면 안에 들어오기만 하면 펼친다. 페이지가 짧아
-        // 한 번 굴리면 맨 위에 닿아버려, 좁게 잡으면 되돌아가지지 않는다.
-        const zoneBottom = window.innerHeight * (down ? 0.76 : 0.98);
-        // 위로 올릴 때는 위쪽 경계를 두지 않는다. 앞 묶음의 제목이 이미 화면
-        // 위로 지나가 있는 경우가 많아, 경계를 두면 한참 올려도 안 펼쳐진다.
-        if (!(down && atBottom) && (top > zoneBottom || (down && top < zoneTop))) return;
-        activateAndSnap(candidate);
-      });
+      if (window.scrollY + window.innerHeight < document.documentElement.scrollHeight - 4) return;
+      setOpen((prev) => prev.size >= count ? prev
+        : new Set(Array.from({ length: count }, (_, i) => i + 1)));
     };
-
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      if (rafId) window.cancelAnimationFrame(rafId);
-      if (unlockTimer) window.clearTimeout(unlockTimer);
-    };
+
+    return () => { io.disconnect(); window.removeEventListener('scroll', onScroll); };
   }, [count]);
 
-  const toggle = (id) => {
-    active.current = id;
-    setOpen((prev) => prev.has(id) ? new Set() : new Set([id]));
-  };
+  // 직접 누르면 여닫는다. 자동으로는 접지 않지만, 접고 싶은 사람은 접을 수 있다.
+  const toggle = (id) => setOpen((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
-  return { open, headers, toggle };
+  const allOpen = open.size >= count;
+  const toggleAll = () => setOpen(allOpen ? new Set([first]) : new Set(
+    Array.from({ length: count }, (_, i) => i + 1)
+  ));
+
+  return { open, cards, toggle, allOpen, toggleAll };
 }
 
 // 탭 바 없이 전체 화면으로 열리는 별도 페이지. 돌아가기로만 빠져나온다.
 function EventGuide({ onBack }) {
-  const acc = useScrollAccordion(EVENT_GUIDE.details.length);
+  const acc = useRevealOnScroll(EVENT_GUIDE.details.length);
 
   return (
     <div className="ev">
@@ -685,7 +655,10 @@ function EventGuide({ onBack }) {
             06 규칙 탭처럼 내려보면 한 묶음씩 저절로 펼쳐지게 바꾼다. */}
         <div className="ev-more-lead">
           <span className="ev-more-lead-title">자세한 안내</span>
-          <span className="ev-more-sub">아래로 내리시면 한 항목씩 펼쳐집니다 · 제목을 눌러 직접 여닫으셔도 됩니다</span>
+          <span className="ev-more-sub">아래로 내리시면 차례로 펼쳐집니다 · 제목을 눌러 직접 여닫으셔도 됩니다</span>
+          <button type="button" className="ev-all-toggle" onClick={acc.toggleAll}>
+            {acc.allOpen ? '처음으로 접기' : '전체 펼쳐 보기'}
+          </button>
         </div>
         <div className="ev-acc-list">
             {EVENT_GUIDE.details.map((s2, i) => {
@@ -693,7 +666,8 @@ function EventGuide({ onBack }) {
               const on = acc.open.has(id);
               return (
               <div className={`ev-item ev-acc${on ? ' is-open' : ''}`} key={i}
-                   ref={(el) => { acc.headers.current[id] = el; }}>
+                   data-acc-id={id}
+                   ref={(el) => { acc.cards.current[id] = el; }}>
                 <button type="button" className="ev-item-head" aria-expanded={on}
                         onClick={() => acc.toggle(id)}>
                   <span className="ev-item-emoji">{s2.emoji}</span>

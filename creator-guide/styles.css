@@ -1161,23 +1161,29 @@ body {
 .ev-more-body .ev-item:last-child { border-bottom: 0; padding-bottom: 4px; }
 
 /* ─── 자세한 안내: 스크롤을 따라 한 항목씩 펼쳐지는 묶음 ─────────── */
-.ev-more-lead { margin-top: 6px; padding: 0 2px; }
+.ev-more-lead {
+  margin-top: 6px; padding: 0 2px;
+  display: grid; grid-template-columns: 1fr auto; align-items: center;
+  column-gap: 10px;
+}
 .ev-more-lead-title {
   display: block; font-size: 13.5px; font-weight: 800;
   letter-spacing: -0.01em; color: var(--ink-900);
 }
 .ev-more-lead .ev-more-sub {
-  display: block; font-size: 11.3px; color: var(--ink-500);
+  grid-column: 1; font-size: 11.3px; color: var(--ink-500);
   margin-top: 3px; line-height: 1.45;
 }
+.ev-all-toggle {
+  grid-column: 2; grid-row: 1 / span 2;
+  background: #fff; border: 1px solid var(--blue-200); border-radius: 999px;
+  padding: 7px 13px; font: inherit; font-size: 11.5px; font-weight: 700;
+  color: var(--blue-700); cursor: pointer; white-space: nowrap;
+}
+.ev-all-toggle:active { background: var(--blue-50); }
 .ev-acc-list {
   display: flex; flex-direction: column; gap: 8px;
-  /* 마지막 항목이 펼쳐지려면 그 제목이 화면 위쪽까지 올라올 수 있어야 하는데,
-     아래에 남은 내용이 짧으면 스크롤이 먼저 끝나 영영 펼쳐지지 않는다.
-     마지막 항목이 펼쳐지면 이 여백은 그 내용으로 채워진다. */
-  padding-bottom: 40vh;
 }
-.ev-acc-list:has(.ev-acc:last-child.is-open) { padding-bottom: 8px; }
 /* 접혀 있는 동안엔 '눌러서 펼치는 것'으로 보여야 해서 옅은 파란 바탕을 두고,
    펼친 뒤에는 읽는 데 방해되지 않게 흰 바탕으로 가라앉힌다. */
 .ev-acc {
