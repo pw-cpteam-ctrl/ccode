@@ -32,7 +32,7 @@ const TRACK_CHOICES = [
 //
 // 담당자 회신용 폼 주소가 정해지면 EVENT_FORM_URL만 채우면 된다.
 // 비어 있으면 "담당자에게 문의" 안내로 대체되어, 잘못된 링크가 나가지 않는다.
-const EVENT_FORM_URL = '';
+const EVENT_FORM_URL = 'https://forms.gle/jx94VMP6wF4acyiV6';
 
 const EVENT_GUIDE = {
   title: '팬 이벤트 진행 안내',
@@ -104,6 +104,10 @@ const EVENT_GUIDE = {
         '주소는 필요하지 않습니다',
       ],
       form: true,
+      // 당첨 안내 문구를 크리에이터가 직접 짜게 하면 표현이 제각각이 되고,
+      // 그렇다고 양식과 절차를 여기에 다 적어두면 안 봐도 될 내부 진행까지
+      // 펼쳐놓는 꼴이 된다. 필요한 때에 담당자가 건네는 쪽이 양쪽 다 깔끔하다.
+      note: '당첨자분께 보내실 안내 문구와 이후 절차는 추첨이 끝나고 말씀해 주시면 담당자가 그대로 전달드립니다. 직접 작성하지 않으셔도 괜찮아요.',
     },
     {
       emoji: '🔄',
@@ -571,7 +575,9 @@ function EventGuide({ onBack }) {
           </div>
           {EVENT_GUIDE.musts.map((m, i) => (
             <div className="ev-must-item" key={i}>
-              <span className="ev-must-check">✓</span>
+              {/* 체크 표시만 있을 땐 세 줄이 같은 무게로 보여 '몇 개인지'가 안 잡혔다.
+                  03 본문 가이드와 같은 번호 배지를 써서 순서를 드러낸다. */}
+              <span className="ev-must-check">{i + 1}</span>
               <span className="ev-must-text">
                 <b>{m.t}</b>
                 <span>{m.d}</span>
