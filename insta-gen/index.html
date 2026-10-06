@@ -463,6 +463,8 @@
         <div class="stepper"><label>↑ 제품명 크기</label><div class="ctrl"><button data-k="product" data-d="-4">−</button><span class="num" id="v_productSize">44</span><button data-k="product" data-d="4">+</button></div></div>
       </div>
       <div class="field"><label>⑤ 푸터</label><input type="text" id="t_footer" value="메가하우스 공식 스토어"></div>
+      <label class="check"><input type="checkbox" id="c_jpnotice" checked> 맨 아래 일본 국내 안내문(노란 글씨 + 검은 띠) 표시</label>
+      <div class="pslot-hint" id="jpNoticeHint"></div>
     </div>
   </div>
 
@@ -622,7 +624,7 @@ const state = {
   sel: 1,            // 붙여넣기·확대가 적용될 칸(1|2). 사진이 한 장이면 항상 1
   bg: { opacity: 0.40, blur: 45 },   // 배경 불투명도는 도구를 열 때마다 항상 40%에서 시작(저장값을 안 불러옴)
   size: { title: 82, product: 44 }, // 타이틀=작품명, 제품명=캐릭터 줄 크기
-  bullet: true, charShrink: false,   // charShrink는 저장 안 함 — 새 값 불러오면 항상 꺼짐(off)으로 리셋
+  bullet: true, charShrink: false, jpNotice: true,   // jpNotice도 저장 안 함 — 켤 때마다 오픈일 기준으로 다시 정함   // charShrink는 저장 안 함 — 새 값 불러오면 항상 꺼짐(off)으로 리셋
   work: '[작품명]', line: 'G.E.M. 시리즈', linePrefix: '', jp: '', saleDate: '', saleDow: '목',
   text: { headline:'원형 최초공개', title:'[작품명] G.E.M. 시리즈', product:'', footer:'메가하우스 공식 스토어' },
   aiLearn: null, // AI로 채우기가 방금 인식한 원본 일본어 표기 — PNG 다운로드 시점에만 학습 서버로 전송
@@ -688,7 +690,7 @@ function wrapBySep(items,sep,weight,size,maxW){ setFont(weight,size); const line
 // 아래 영역: 라인명 머리말(분홍) → 큰 작품명 → 캐릭터 가로 나열, 맨 아래 어두운 띠에 안내문, 스토어명은 오른쪽 위
 function drawBottom(){
   const B=BOTTOM, x=FRAME.x, maxW=FRAME.w;
-  const floor=H-B.barH-16;                                  // 캐릭터 마지막 줄 baseline 한계(하단 띠 위)
+  const floor=state.jpNotice ? H-B.barH-16 : H-40;          // 캐릭터 마지막 줄 baseline 한계(하단 띠 위, 띠를 끄면 그만큼 아래까지)
   const K0=FRAME.y+FRAME.h+6+14+B.kickerSize*0.76;          // 머리말 baseline 상한 — 사진 흰 테두리에 안 닿게
   // ① 작품명 크기·줄 — 한 줄로 기준보다 작아지면 단어 단위로 두 줄
   const work=state.work.trim();
@@ -736,16 +738,46 @@ function drawBottom(){
   const lh=size*B.charLh;
   lines.forEach((t,i)=>{ fitText(t,400,size,maxW); ctx.fillText(t,x,first+i*lh); });
   ctx.shadowBlur=0; ctx.shadowOffsetY=0;
-  // 맨 아래 어두운 띠
-  ctx.fillStyle=B.barColor; ctx.fillRect(0,H-B.barH,W,B.barH);
+  // 맨 아래 어두운 띠(안내문을 끄면 띠도 같이 없앰)
+  if(state.jpNotice){ ctx.fillStyle=B.barColor; ctx.fillRect(0,H-B.barH,W,B.barH); }
   // 스토어명 — 오른쪽 위
   ctx.textAlign='right'; ctx.fillStyle=B.footColor; setFont(500,B.footSize); ctx.fillText(state.text.footer,B.footX,B.footY);
   // 일본 본사 방침 안내문 — 노란 글씨 + 검정 외곽선, 한 줄 왼쪽 정렬
   const NOTICE='※ 일본 국내에서 발표된 정보입니다. 한국에서의 수주, 판매는 결정되는대로 안내하겠습니다.';
+  if(!state.jpNotice){ ctx.textAlign='center'; return; }
   ctx.textAlign='left'; setFont(500,B.noteSize);
   ctx.lineJoin='round'; ctx.miterLimit=2; ctx.strokeStyle='#000'; ctx.lineWidth=B.noteStroke*2; ctx.strokeText(NOTICE,B.noteX,B.noteY);
   ctx.fillStyle=B.noteColor; ctx.fillText(NOTICE,B.noteX,B.noteY);
   ctx.textAlign='center'; ctx.lineWidth=1;
+}
+
+/* ── 일본 국내 안내문 자동 켜고 끄기 ──
+   메가하우스 오픈일 D-7 이내(오픈 당일 포함)면 한국 판매가 곧 열리므로 "한국 수주·판매는 결정되는 대로
+   안내" 문구가 맞지 않아 기본으로 끈다. 그 밖에는 켠다. 체크박스로 언제든 직접 켜고 끌 수 있고,
+   도구를 새로 열 때마다 이 규칙으로 다시 정한다(저장 안 함).
+   ⚠ 오픈일 규칙은 creator-guide/finalOption.jsx의 OPEN_DAY_EXCEPTIONS를 그대로 옮겨 온 것.
+     폴더끼리 서로 파일을 불러오지 않는 원칙(배포도 폴더별)이라 복사해 뒀으니,
+     예외 달이 생기면 저쪽과 여기 두 곳을 같이 고칠 것. */
+const OPEN_DAY_EXCEPTIONS = {   // 'YYYY-MM': 그 달 오픈 날짜(일). 적지 않은 달은 첫 목요일
+  '2026-09': 10,
+  '2026-10': 8,
+};
+function firstThursday(y,m){ const f=new Date(y,m,1); return 1+((4-f.getDay()+7)%7); }
+function openDayOf(y,m){ return OPEN_DAY_EXCEPTIONS[`${y}-${String(m+1).padStart(2,'0')}`] ?? firstThursday(y,m); }
+function nextOpenDate(now=new Date()){
+  const t=new Date(now.getFullYear(),now.getMonth(),now.getDate());   // 오늘 0시 기준(시간 무시)
+  const thisM=new Date(t.getFullYear(),t.getMonth(),openDayOf(t.getFullYear(),t.getMonth()));
+  if(t<=thisM) return thisM;
+  return new Date(t.getFullYear(),t.getMonth()+1,openDayOf(t.getFullYear(),t.getMonth()+1));
+}
+function initJpNotice(now=new Date()){
+  const open=nextOpenDate(now), today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const dday=Math.round((open-today)/86400000), near=dday<=7;
+  state.jpNotice=!near; document.getElementById('c_jpnotice').checked=state.jpNotice;
+  const dow='일월화수목금토'[open.getDay()];
+  document.getElementById('jpNoticeHint').textContent =
+    `다음 오픈일 ${open.getMonth()+1}월 ${open.getDate()}일(${dow}) · ${dday===0?'D-day':'D-'+dday} → `
+    + (near ? '오픈 7일 이내라 기본으로 꺼져 있어요' : '기본으로 켜져 있어요(오픈 7일 전부터 자동으로 꺼짐)');
 }
 
 /* ── 원고가 지금 입력값과 같은지(=최신인지) 판단하기 위한 지문 ──
@@ -1405,6 +1437,7 @@ async function aiParse() {
 document.getElementById('aiParseSrc').addEventListener('click', aiParse);
 document.getElementById('c_bullet').addEventListener('change', e=>{ state.bullet=e.target.checked; render(); });
 document.getElementById('c_charshrink').addEventListener('change', e=>{ state.charShrink=e.target.checked; render(); });
+document.getElementById('c_jpnotice').addEventListener('change', e=>{ state.jpNotice=e.target.checked; render(); });
 
 const z=document.getElementById('s_zoom'),op=document.getElementById('s_op'),bl=document.getElementById('s_blur');
 z.addEventListener('input',()=>{ activeFg().zoom=z.value/100; v_zoom.textContent=(z.value/100).toFixed(1)+'×'; render(); });
@@ -1573,7 +1606,7 @@ function restoreSlot(s){
   // 폴백 폰트로 잘못 계산돼 타이틀 한 줄/두 줄 판단·크기가 어긋나는 것을 막는다.
   // (헤드라인·작품명 800, 머리말 700, 스토어명·안내문 500, 캐릭터 400)
   try{ await Promise.all(['800 76px Pretendard','700 80px Pretendard','500 34px Pretendard','400 44px Pretendard'].map(f=>document.fonts.load(f))); await document.fonts.ready; }catch{}
-  setupNotice(); setupExplainMemory(); memoRender();
+  setupNotice(); setupExplainMemory(); memoRender(); initJpNotice();
   const slots=loadSlots();
   // 저장된 슬롯이 없는 첫 방문에서도 ③시리즈/라인 드롭다운을 실제 값(state.line)에 맞춰준다.
   // 안 하면 드롭다운은 목록 첫 항목('룩업')을 보여주는데 카드/타이틀엔 state.line 기본값
