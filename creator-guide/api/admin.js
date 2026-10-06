@@ -18,6 +18,9 @@ import { readGithubFile, writeGithubFile } from '../lib/github.js';
 import { OPEN_DAYS_PATH } from './open-days.js';
 
 const CONFIRMED_PATH = 'creator-logs/confirmed.json';
+// 다 끝난 건을 담당자가 손으로 내려 두는 목록. 지운 것이 아니라 가려 두는 것이라
+// 기록은 그대로 남고, 언제든 되돌릴 수 있다.
+const ARCHIVED_PATH = 'creator-logs/archived.json';
 const GUARD_PATH = 'creator-logs/admin-guard.json';
 const MAX_MONTHS = 6;   // 최근 몇 달치까지 훑을지
 // 확정 표시의 열쇠 길이 상한. 활동명(최대 20자)만 담던 자리였는데, 같은 분이
@@ -102,7 +105,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ ok: false }); return; }
   if (!isSameOrigin(req)) { res.status(403).json({ ok: false }); return; }
 
-  const { code, action, nick, ip: targetIp, month, day } = req.body || {};
+  const { code, action, nick, ip: targetIp, month, day, keys } = req.body || {};
   if (!process.env.ADMIN_PASSWORD) {
     res.status(503).json({ ok: false, reason: 'unconfigured' });
     return;
@@ -223,6 +226,30 @@ export default async function handler(req, res) {
       return;
     }
 
+    // 보관 / 보관 해제 — 여러 건을 한 번에 처리한다. 한 건씩 누르면 지난 달
+    // 것을 정리하는 데만 수십 번을 눌러야 해서다.
+    if (action === 'archive' || action === 'unarchive') {
+      const list = (Array.isArray(keys) ? keys : [])
+        .map((k) => String(k || '').replace(/\s+/g, ' ').trim().slice(0, KEY_MAX))
+        .filter(Boolean);
+      if (!list.length) { res.status(400).json({ ok: false, reason: 'keys' }); return; }
+
+      const f = await readGithubFile({ ...gh, path: ARCHIVED_PATH });
+      let map = {};
+      if (f) { try { map = JSON.parse(f.content) || {}; } catch { map = {}; } }
+      const at = new Date().toISOString();
+      list.forEach((k) => { if (action === 'archive') map[k] = { at }; else delete map[k]; });
+
+      await writeGithubFile({
+        ...gh, path: ARCHIVED_PATH,
+        content: JSON.stringify(map, null, 2) + '\n',
+        message: `creator-guide ${action === 'archive' ? '보관' : '보관 해제'} ${list.length}건`,
+        sha: f ? f.sha : undefined,
+      });
+      res.status(200).json({ ok: true, archived: map });
+      return;
+    }
+
     if (action === 'confirm' || action === 'unconfirm') {
       const name = String(nick || '').replace(/\s+/g, ' ').trim().slice(0, KEY_MAX);
       if (!name) { res.status(400).json({ ok: false, reason: 'nick' }); return; }
@@ -255,6 +282,12 @@ export default async function handler(req, res) {
     }
     const { map } = await loadConfirmed(gh);
     // 오픈일도 같이 내려보낸다. 관리자 화면이 따로 한 번 더 부르지 않게 한다.
+    let archived = {};
+    try {
+      const ar = await readGithubFile({ ...gh, path: ARCHIVED_PATH });
+      if (ar) archived = JSON.parse(ar.content) || {};
+    } catch (err) { console.error('[admin] 보관 목록 조회 실패:', err?.message || err); }
+
     let openDays = {};
     try {
       const od = await readGithubFile({ ...gh, path: OPEN_DAYS_PATH });
@@ -264,7 +297,7 @@ export default async function handler(req, res) {
     const blocked = Object.fromEntries(
       Object.entries(guard).filter(([, v]) => v?.blocked)
     );
-    res.status(200).json({ ok: true, rows, confirmed: map, blocked, openDays });
+    res.status(200).json({ ok: true, rows, confirmed: map, blocked, openDays, archived });
   } catch (err) {
     console.error('[admin] 처리 실패:', err?.message || err);
     res.status(502).json({ ok: false, reason: 'io' });

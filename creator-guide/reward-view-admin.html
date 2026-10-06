@@ -118,11 +118,37 @@
   }
   /* 희망 상품은 반대로 너무 좁아 글이 계속 접혔다. 아이디 칸만큼은 준다. */
   td.wish { min-width: 13ch; }
-  /* 지난 회차 — 두 달 넘게 쌓이면 지난 달 건이 섞여 지금 볼 것을 가린다.
-     지우지는 않고 흐리게 내려 둔다(기록은 남아야 하므로). */
-  tr.is-past td { color: var(--ink-400); background: #fbfbfa; }
+  /* 세 단계로 가라앉힌다 — 이번 달·날짜 지남 → 지난 달 → 담당자가 내린 건.
+     어느 것도 지우지 않는다. 기록은 남고 눈에 덜 걸리게만 한다. */
+  tr.is-past td { color: #8a8a85; background: #fbfbfa; }
   tr.is-past td.nick { font-weight: 400; }
-  tr.is-past .tag, tr.is-past .dday { opacity: .55; }
+  tr.is-past .tag, tr.is-past .dday { opacity: .6; }
+
+  tr.is-oldmonth td { color: #a3a3a0; background: #f6f6f4; }
+  tr.is-oldmonth td.nick { font-weight: 400; }
+  tr.is-oldmonth .tag, tr.is-oldmonth .dday { opacity: .45; }
+
+  tr.is-archived td { color: #9c9c99; background: #ebebe8; }
+  tr.is-archived td.nick { font-weight: 400; text-decoration: line-through; }
+  tr.is-archived .tag, tr.is-archived .dday { opacity: .35; }
+
+  /* 끌어서 고르는 중 */
+  tr.is-picked td { background: #eff6ff; color: var(--ink); }
+  tr.is-picked td.nick { font-weight: 700; }
+  th.pick, td.pick { width: 30px; padding-right: 0; }
+  td.pick input { pointer-events: none; }  /* 고르기는 줄 전체를 끄는 것으로 한다 */
+  tbody tr { cursor: default; user-select: none; }
+
+  /* 고른 뒤 나오는 아래쪽 띠 */
+  .pickbar {
+    position: sticky; bottom: 0; z-index: 5;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-top: 10px; padding: 10px 12px;
+    background: #fff; border: 1px solid var(--line); border-radius: 11px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.08);
+  }
+  .pickbar-n { font-size: 13.5px; font-weight: 700; margin-right: 2px; }
+  .mini.is-main { border-color: #1d4ed8; color: #1d4ed8; font-weight: 700; }
 
   /* 오픈 날짜 관리 — 평소엔 접어 두고, 바꿀 때만 펼친다 */
   .open-box {
@@ -176,6 +202,8 @@
   var confirmed = {};
   var blocked = {};   // 코드를 너무 여러 번 틀려 차단된 접속 지점
   var openDays = {};  // 기본(첫 목요일)과 다른 달의 오픈 날짜. 'YYYY-MM': 일
+  var archived = {};  // 담당자가 내려 둔 건 (차수 열쇠 기준)
+  var picked = {};    // 지금 드래그로 고른 건 (화면에서만 쓰는 임시 값)
   var keyword = '';
 
   function esc(s) {
@@ -281,6 +309,7 @@
           rows = r.data.rows || [];
           confirmed = r.data.confirmed || {};
           openDays = r.data.openDays || openDays;
+          archived = r.data.archived || {};
           blocked = r.data.blocked || {};
           renderList();
         } else if (r.status === 401) {
@@ -447,6 +476,7 @@
       if (r.status === 200 && r.data.ok) {
         confirmed = r.data.confirmed || {};
           openDays = r.data.openDays || openDays;
+          archived = r.data.archived || {};
         if (!on && legacy) {
           return api({ code: code, action: 'unconfirm', nick: legacy }).then(function (r2) {
             if (r2.status === 200 && r2.data.ok) confirmed = r2.data.confirmed || {};
@@ -546,13 +576,110 @@
       .catch(function () { if (msgEl) msgEl.textContent = '저장하지 못했습니다. 잠시 후 다시 시도해 주세요.'; });
   }
 
-  // 이번 달 오픈 회차보다 앞선 건은 이미 끝난 일정이라 흐리게 둔다.
-  // 두 달 넘게 운영하면 지난 달 건이 그대로 섞여 보여 지금 볼 것이 가려진다.
-  function isPastRound(r) {
+  // 행의 상태를 셋으로 나눈다. 두 달 넘게 운영하니 지난 달 것과 이번 달 것이
+  // 섞여 보여, '아직 볼 것'과 '이미 끝난 것'이 구분되지 않았다.
+  //   ''        이번 달이고 날짜가 아직 안 지남 — 지금 챙길 건
+  //   past      이번 달인데 날짜는 지남 — 마무리 확인이 남아 있을 수 있음
+  //   oldmonth  지난 달 이전 — 끝난 회차
+  function rowAge(r) {
     var v = String(r.draftDate || '');
-    if (v.length !== 10) return false;
-    return v < new Date().toISOString().slice(0, 10) && ddayNum(v) < 0;
+    if (v.length !== 10) return '';
+    var now = new Date();
+    var thisMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    if (v.slice(0, 7) < thisMonth) return 'oldmonth';
+    return ddayNum(v) < 0 ? 'past' : '';
   }
+
+  function isArchived(r) { return !!archived[r.roundKey]; }
+
+  // 고른 건의 차수 열쇠 목록. 같은 차수의 지난 제출은 한 묶음이라 한 번만 담긴다.
+  function pickedKeys() {
+    return Object.keys(picked).filter(function (k) { return picked[k]; });
+  }
+
+  // 고른 건이 있을 때만 나오는 아래쪽 띠. 한 번에 내리거나 되돌린다.
+  function pickBar() {
+    var keys = pickedKeys();
+    if (!keys.length) return '';
+    var allArchived = keys.every(function (k) { return archived[k]; });
+    return '<div class="pickbar">' +
+      '<span class="pickbar-n">' + keys.length + '건 선택</span>' +
+      (allArchived
+        ? '<button class="mini" id="unarch">목록으로 되돌리기</button>'
+        : '<button class="mini is-main" id="arch">끝난 건으로 내리기</button>') +
+      '<button class="mini" id="unpick">선택 해제</button>' +
+      '</div>';
+  }
+
+  function saveArchive(on) {
+    var keys = pickedKeys();
+    if (!keys.length) return;
+    var btn = document.getElementById(on ? 'arch' : 'unarch');
+    if (btn) { btn.disabled = true; btn.textContent = '처리 중…'; }
+    api({ code: code, action: on ? 'archive' : 'unarchive', keys: keys })
+      .then(function (r) {
+        if (r.status === 200 && r.data.ok) {
+          archived = r.data.archived || {};
+          picked = {};
+          renderList();
+        } else if (btn) { btn.disabled = false; btn.textContent = '다시 시도'; }
+      })
+      .catch(function () { if (btn) { btn.disabled = false; btn.textContent = '다시 시도'; } });
+  }
+
+  // 표 위에서 끌어 여러 줄을 한 번에 고른다. 지난 달 것을 정리할 때 한 줄씩
+  // 누르면 수십 번을 눌러야 해서다. 누른 줄부터 끌고 간 줄까지가 고른 범위다.
+  var drag = { on: false, paint: null };
+
+  // 표 위에서 끌어 여러 줄을 한 번에 고른다. 지난 달 것을 정리할 때 한 줄씩
+  // 누르면 수십 번을 눌러야 해서다. 누른 줄부터 끌고 간 줄까지가 고른 범위이고,
+  // 이미 골라 둔 줄에서 시작하면 그 범위를 푼다.
+  function bindDragPick(table) {
+    var startIdx = -1, base = null;
+    var trs = Array.prototype.slice.call(table.querySelectorAll('tbody tr'));
+    var keyAt = function (i) { return trs[i] && trs[i].getAttribute('data-key'); };
+
+    var paint = function (to) {
+      var a = Math.min(startIdx, to), b = Math.max(startIdx, to);
+      var next = {};
+      Object.keys(base).forEach(function (k) { if (base[k]) next[k] = true; });
+      var turnOff = !!base[keyAt(startIdx)];
+      for (var i = a; i <= b; i++) {
+        var k = keyAt(i);
+        if (!k) continue;
+        if (turnOff) delete next[k]; else next[k] = true;
+      }
+      picked = next;
+      trs.forEach(function (tr) {
+        var on = !!picked[tr.getAttribute('data-key')];
+        tr.classList.toggle('is-picked', on);
+        var box = tr.querySelector('.pick input');
+        if (box) box.checked = on;
+      });
+    };
+    drag.paint = paint;
+
+    trs.forEach(function (tr, i) {
+      tr.addEventListener('mousedown', function (e) {
+        if (e.button !== 0) return;
+        if (e.target.closest('button')) return;   // 확정 버튼 등은 그대로 눌리게
+        drag.on = true; startIdx = i;
+        base = {};
+        Object.keys(picked).forEach(function (k) { if (picked[k]) base[k] = true; });
+        paint(i);
+        e.preventDefault();                        // 글자가 파랗게 끌려가지 않게
+      });
+      tr.addEventListener('mouseenter', function () { if (drag.on) paint(i); });
+    });
+  }
+
+  // 끌기를 놓는 곳은 표 밖일 수도 있어 문서 전체에서 받는다. 화면을 다시 그릴
+  // 때마다 새로 달면 리스너가 쌓이므로 처음 한 번만 단다.
+  document.addEventListener('mouseup', function () {
+    if (!drag.on) return;
+    drag.on = false;
+    renderList();   // 아래 띠를 다시 그린다
+  });
 
   function renderList() {
     var list = visibleRows();
@@ -560,8 +687,14 @@
 
     var body = list.map(function (r) {
       var isOn = isConfirmed(r);
-      var cls = (r.latest ? '' : 'is-old') + (isPastRound(r) ? ' is-past' : '');
-      return '<tr class="' + cls.trim() + '">' +
+      var age = rowAge(r);
+      var on = !!picked[r.roundKey];
+      var cls = (r.latest ? '' : 'is-old') +
+        (age ? ' is-' + age : '') +
+        (isArchived(r) ? ' is-archived' : '') +
+        (on ? ' is-picked' : '');
+      return '<tr class="' + cls.trim() + '" data-key="' + esc(r.roundKey) + '">' +
+        '<td class="pick"><input type="checkbox"' + (on ? ' checked' : '') + ' aria-label="고르기" /></td>' +
         '<td class="nick">' + esc(r.nick) + (r.latest ? '' : ' <span class="old-note">지난 제출</span>') + '</td>' +
         '<td class="naver" title="' + esc(r.naver || '') + '"><span class="roll"><span>' + esc(r.naver || '-') + '</span></span></td>' +
         '<td>' + esc(fmtDate(r.draftDate)) + '</td>' +
@@ -592,9 +725,10 @@
       openBox() +
       (list.length
         ? '<div class="scroll"><table><thead><tr>' +
-          '<th>활동명</th><th>네이버 아이디</th><th>초안 공유 예정일</th><th>D-day</th><th>보상 수령 방식</th><th>보상 형태</th><th>희망 상품</th><th>제출 시각</th><th>확정</th>' +
+          '<th class="pick"></th><th>활동명</th><th>네이버 아이디</th><th>초안 공유 예정일</th><th>D-day</th><th>보상 수령 방식</th><th>보상 형태</th><th>희망 상품</th><th>제출 시각</th><th>확정</th>' +
           '</tr></thead><tbody>' + body + '</tbody></table></div>'
         : '<div class="empty">아직 접수된 내용이 없습니다.</div>') +
+      pickBar() +
       blockedBox() +
       '<p class="foot">‘표 전체 복사’는 최신 제출만 담습니다. 노션 표에 그대로 붙여넣을 수 있어요.<br />' +
       '이 기기에서는 2일간 코드를 다시 묻지 않습니다. 공용 PC라면 ‘잠그기’를 눌러주세요.<br />' +
@@ -611,6 +745,14 @@
       try { nq.setSelectionRange(pos, pos); } catch (e) { /* 무시 */ }
     });
     document.getElementById('copy').addEventListener('click', function () { copyTable(this); });
+    var tbl = root.querySelector('table');
+    if (tbl) bindDragPick(tbl);
+    var arch = document.getElementById('arch');
+    if (arch) arch.addEventListener('click', function () { saveArchive(true); });
+    var unarch = document.getElementById('unarch');
+    if (unarch) unarch.addEventListener('click', function () { saveArchive(false); });
+    var unpick = document.getElementById('unpick');
+    if (unpick) unpick.addEventListener('click', function () { picked = {}; renderList(); });
     // 오픈 날짜 — 고르면 바로 저장하고, '기본으로'를 누르면 목록에서 지운다.
     var openMsg = document.getElementById('open-msg');
     Array.prototype.forEach.call(root.querySelectorAll('.open-pick'), function (sel) {
@@ -652,6 +794,7 @@
           rows = r.data.rows || [];
           confirmed = r.data.confirmed || {};
           openDays = r.data.openDays || openDays;
+          archived = r.data.archived || {};
           renderList();
         }
       });
@@ -673,6 +816,7 @@
         rows = r.data.rows || [];
         confirmed = r.data.confirmed || {};
           openDays = r.data.openDays || openDays;
+          archived = r.data.archived || {};
         blocked = r.data.blocked || {};
         renderList();
       } else if (r.status === 429) {
