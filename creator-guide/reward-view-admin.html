@@ -99,11 +99,23 @@
   /* 아이디를 메일 주소로 적는 분이 있어 한 칸이 길어지면 표 전체가 밀려
      오른쪽이 잘렸다. 10자 남짓에서 끊고, 누르면 그 칸만 전부 펼친다.
      (마우스를 올려도 전체가 말풍선으로 뜨고, 복사 표에는 늘 전체가 들어간다) */
-  td.naver {
-    max-width: 11ch; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; cursor: pointer;
+  td.naver { max-width: 11ch; }
+  /* 긴 아이디는 칸 안에서 좌우로 천천히 오가게 둔다. 한 칸씩 눌러서 펼치면
+     여러 건을 훑어볼 때 매번 눌러야 해서, 가만히 둬도 전체가 읽히게 한다.
+     움직이는 거리에 맞춰 시간을 주므로 길수록 느리게 흐른다. */
+  td.naver .roll { display: block; overflow: hidden; white-space: nowrap; }
+  td.naver .roll > span { display: inline-block; }
+  td.naver .roll.is-long > span {
+    animation: naver-roll var(--roll-sec, 6s) ease-in-out infinite alternate;
   }
-  td.naver.is-open { max-width: none; white-space: normal; word-break: break-all; }
+  @keyframes naver-roll {
+    0%, 18% { transform: translateX(0); }
+    82%, 100% { transform: translateX(var(--roll-x, 0)); }
+  }
+  /* 화면 읽기 설정에서 움직임을 줄이도록 해 둔 경우엔 흐르지 않게 한다 */
+  @media (prefers-reduced-motion: reduce) {
+    td.naver .roll.is-long > span { animation: none; }
+  }
   /* 희망 상품은 반대로 너무 좁아 글이 계속 접혔다. 아이디 칸만큼은 준다. */
   td.wish { min-width: 13ch; }
   .empty { padding: 40px 16px; text-align: center; color: var(--ink-500); }
@@ -442,7 +454,7 @@
       var isOn = isConfirmed(r);
       return '<tr class="' + (r.latest ? '' : 'is-old') + '">' +
         '<td class="nick">' + esc(r.nick) + (r.latest ? '' : ' <span class="old-note">지난 제출</span>') + '</td>' +
-        '<td class="naver" title="' + esc(r.naver || '') + '">' + esc(r.naver || '-') + '</td>' +
+        '<td class="naver" title="' + esc(r.naver || '') + '"><span class="roll"><span>' + esc(r.naver || '-') + '</span></span></td>' +
         '<td>' + esc(fmtDate(r.draftDate)) + '</td>' +
         '<td><span class="dday' + ddayClass(r.draftDate) + '">' + esc(fmtDday(r.draftDate)) + '</span></td>' +
         '<td><span class="tag ' + esc(r.track) + '">' + esc(TRACK[r.track] || r.track) + '</span></td>' +
@@ -489,9 +501,14 @@
       try { nq.setSelectionRange(pos, pos); } catch (e) { /* 무시 */ }
     });
     document.getElementById('copy').addEventListener('click', function () { copyTable(this); });
-    // 잘려 보이는 아이디 칸을 누르면 그 칸만 전부 펼친다(다시 누르면 접힌다).
-    Array.prototype.forEach.call(root.querySelectorAll('td.naver'), function (td) {
-      td.addEventListener('click', function () { td.classList.toggle('is-open'); });
+    // 칸보다 긴 아이디만 골라 흐르게 한다. 넘치는 만큼만 움직이면 되므로
+    // 그 거리를 재서 넣어주고, 100px당 2초 정도로 속도를 맞춘다.
+    Array.prototype.forEach.call(root.querySelectorAll('td.naver .roll'), function (roll) {
+      var over = roll.firstChild.scrollWidth - roll.clientWidth;
+      if (over <= 1) return;
+      roll.classList.add('is-long');
+      roll.style.setProperty('--roll-x', '-' + over + 'px');
+      roll.style.setProperty('--roll-sec', Math.max(4, Math.round(over / 50)) + 's');
     });
     Array.prototype.forEach.call(root.querySelectorAll('[data-unblock]'), function (b) {
       b.addEventListener('click', function () {
