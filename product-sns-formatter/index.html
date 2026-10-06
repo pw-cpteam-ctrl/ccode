@@ -497,9 +497,29 @@ button.danger{background:var(--ui-warn);color:#fff;}
   </details>
 </div>
 
+<!-- 공용 스니펫. 아래 본문 스크립트가 시작할 때 이미 있어야 해서 반드시 그 앞에 둔다
+     (뒤에 두면 createUndoDelete가 아직 없는 상태로 본문이 실행된다). -->
+<script src="../assets/undo-delete.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const MEMO_STORAGE_KEY = 'product-sns-formatter:memos';
+
+/* 삭제 되돌리기. 사진 한 장, 상품 하나를 지울 때 몇 초간 되돌릴 기회를 준다.
+   되돌릴 수 있게 하려면 원본(IndexedDB의 사진)을 그 자리에서 지우면 안 되므로,
+   실제 삭제는 되돌릴 시간이 끝난 뒤(각 remove의 confirm)로 미룬다.
+
+   스니펫을 못 불러왔을 때도 지우기 자체는 되어야 한다 — 그 경우엔 예전처럼
+   묻고 즉시 영구 삭제하는 쪽으로 물러선다(되돌리기만 없어지고 기능은 살아있음). */
+const trash = (typeof createUndoDelete === 'function')
+  ? createUndoDelete({ seconds: 8 })
+  : {
+      remove(label, undo, o) {
+        if (!confirm(`'${label}'을(를) 지울까요? (되돌릴 수 없어요)`)) { undo(); return this; }
+        try { if (o && o.confirm) o.confirm(); } catch { /* 뒷정리 실패는 무시 */ }
+        return this;
+      },
+      undo: () => false, flush() {}, pending: () => 0,
+    };
 const PRODUCTS_KEY = 'product-sns-formatter:products:v1';
 const GRAD_SETTINGS_KEY = 'product-sns-formatter:gradSettings:v1';
 // 검정 그라데이션 4종 + 배지 자간 — 상품별로 따로 두지 않고 전체 상품(캔버스) 공통으로 적용.
@@ -1986,19 +2006,38 @@ function drawAllThumbs(p) {
     const del = document.createElement('div');
     del.className = 'th-del';
     del.textContent = '✕';
-    del.addEventListener('click', async e => {
+    del.addEventListener('click', e => {
       e.stopPropagation();
-      // 상품 삭제·상품 초기화·원고 재생성은 전부 확인을 받는데 사진만 즉시 지워지고 있었다.
-      // 지운 사진은 되돌릴 방법이 없으므로 같은 기준으로 맞춘다.
-      if (!confirm('이 사진을 지울까요? (되돌릴 수 없어요)')) return;
-      await idbDel(slide.key).catch(() => {});
-      imgCache.delete(slide.key);
-      p.images.splice(idx, 1);
+      /* 예전엔 "정말 지울까요?"로 물어보고 즉시 영구 삭제했다. 확인창은 누를 때마다
+         걸리적거려서 결국 아무 생각 없이 넘기게 되고, 그래놓고 되돌릴 방법은 없었다.
+         이제는 바로 지우되 몇 초 동안 되돌릴 기회를 준다.
+
+         여기서 중요한 건 원본(IndexedDB의 사진)을 지금 지우면 안 된다는 것이다.
+         지우면 되돌리기를 눌러도 사진이 없는 빈 슬라이드만 돌아온다. 그래서 원본
+         삭제는 되돌릴 시간이 끝난 뒤(confirm)로 미룬다. */
+      const removedSlide = p.images.splice(idx, 1)[0];
+      const prevMain = p.mainIndex;
+      const prevEditing = editingIdx;
       if (p.mainIndex >= p.images.length) p.mainIndex = Math.max(0, p.images.length - 1);
       editingIdx = Math.min(editingIdx, Math.max(0, p.images.length - 1));
+      selectedKeys.delete(removedSlide.key);
       saveProducts();
       renderImageStage(p);
       renderList();
+
+      trash.remove(`사진 ${idx + 1}`, () => {
+        // 되돌리기: 지운 자리에 그대로 끼워 넣고, 그때 같이 바뀐 값들도 되돌린다.
+        p.images.splice(idx, 0, removedSlide);
+        p.mainIndex = prevMain;
+        editingIdx = prevEditing;
+        saveProducts();
+        renderImageStage(p);
+        renderList();
+      }, {
+        // 시간이 지나 확정되면 그때 원본을 지운다. 이게 없으면 지운 사진이 저장소에
+        // 영영 남아서 용량만 차지한다.
+        confirm: () => { idbDel(removedSlide.key).catch(() => {}); imgCache.delete(removedSlide.key); },
+      });
     });
     const frameToggle = document.createElement('div');
     frameToggle.className = 'th-frame' + (slide.noFrame ? ' off' : '');
@@ -2247,14 +2286,28 @@ function addProduct() {
   selectProduct(p.id);
 }
 function removeProduct(id) {
-  if (!confirm('이 상품을 오늘 목록에서 지울까요? (사진도 함께 삭제돼요)')) return;
-  const p = PRODUCTS.find(x => x.id === id);
-  if (p) p.images.forEach(s => { idbDel(s.key).catch(() => {}); imgCache.delete(s.key); });
-  PRODUCTS = PRODUCTS.filter(x => x.id !== id);
-  saveProducts();
+  const idx = PRODUCTS.findIndex(x => x.id === id);
+  if (idx < 0) return;
+  const p = PRODUCTS[idx];
+  // 사진 삭제와 같은 방식이다(확인창 대신 되돌리기) — 두 삭제의 기준이 다르면
+  // 어느 쪽이 위험한지 감이 안 잡힌다. 사진 원본은 확정될 때까지 지우지 않는다.
+  const prevCurrent = currentProductId;
+  PRODUCTS.splice(idx, 1);
   if (currentProductId === id) currentProductId = PRODUCTS[0]?.id || null;
+  saveProducts();
   renderList();
   renderDetail();
+
+  const label = (p.title || '').trim() || '제목 없는 상품';
+  trash.remove(label, () => {
+    PRODUCTS.splice(idx, 0, p);
+    currentProductId = prevCurrent;
+    saveProducts();
+    renderList();
+    renderDetail();
+  }, {
+    confirm: () => p.images.forEach(s => { idbDel(s.key).catch(() => {}); imgCache.delete(s.key); }),
+  });
 }
 function resetAllProducts() {
   // 일괄 생성이 도는 중에 상품을 지우면, 이미 나간 API 호출은 계속 진행되면서 결과만
@@ -3110,6 +3163,20 @@ $('#dayLabel').textContent = new Date().toLocaleDateString('ko-KR', { month: 'lo
 // 띄우면 화면이 번잡해지고 잘못된 입구에 넣기도 쉬워서, 위에서 고른 브랜드의 것만 보여준다.
 
 $('#btnAddProduct').addEventListener('click', addProduct);
+
+/* Ctrl+Z(⌘Z)로도 되돌리기. 토스트의 버튼을 못 보고 지나쳐도 손이 먼저 가는 키라서 받는다.
+   글자를 치고 있는 중이면 가로채지 않는다 — 입력칸 안의 Ctrl+Z는 브라우저가 해주는
+   "방금 친 글자 되돌리기"라, 그걸 빼앗으면 멀쩡히 쓰던 기능이 사라진다.
+   되돌릴 삭제가 없으면 아무것도 하지 않고 그대로 흘려보낸다. */
+document.addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+  if (e.key !== 'z' && e.key !== 'Z') return;
+  const el = document.activeElement;
+  if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable)) return;
+  if (!trash.pending()) return;
+  e.preventDefault();
+  trash.undo();
+});
 
 /* ── Ctrl+V로 사진 추가 ───────────────────────────────────────────────────────
    캡처 도구나 탐색기에서 복사한 이미지를 파일로 저장하지 않고 바로 넣기 위한 것이다.
