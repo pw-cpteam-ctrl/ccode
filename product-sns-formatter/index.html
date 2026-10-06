@@ -500,6 +500,7 @@ button.danger{background:var(--ui-warn);color:#fff;}
 <!-- 공용 스니펫. 아래 본문 스크립트가 시작할 때 이미 있어야 해서 반드시 그 앞에 둔다
      (뒤에 두면 createUndoDelete가 아직 없는 상태로 본문이 실행된다). -->
 <script src="../assets/undo-delete.js"></script>
+<script src="../assets/undo-history.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const MEMO_STORAGE_KEY = 'product-sns-formatter:memos';
@@ -864,6 +865,9 @@ function insVersion(text) {
    업로드한 사진 원본(Blob)은 용량 때문에 IndexedDB에 따로 저장하고
    불러올 때 다시 합친다. */
 let PRODUCTS = [];
+// 실행취소 기록기. 아래쪽에서 실제로 만들어 넣는다 — 그 전에 saveProducts가 불릴 수
+// 있으므로 여기서 비워둔 채로 선언해두고, 비어 있으면 그냥 건너뛴다.
+let undoHistory = null;
 let currentProductId = null;
 let diffPlain = false; // "색깔 없이 보기" 토글 상태 (상품 전환해도 유지)
 
@@ -1019,6 +1023,12 @@ function setSaveWarning(msg) {
   el.hidden = !msg;
 }
 function saveProducts() {
+  // 모든 변경이 여기를 지나가므로 실행취소 기록도 여기 한 곳에서 남긴다. 삭제한 자리에만
+  // 넣으면, 삭제 뒤에 적은 원고가 되돌리기 한 번에 같이 지워진다(기억해둔 시점이
+  // 그 전이라서). 바꿀 때마다 남겨야 되돌리기가 "방금 한 일"만 되돌린다.
+  // 이름을 history로 짓지 않는다 — 브라우저가 이미 쓰는 이름(window.history)이라
+  // 가려버리면 어디서 터질지 모른다.
+  if (undoHistory) undoHistory.record();
   try {
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(PRODUCTS.map(stripForStorage)));
     setSaveWarning('');
