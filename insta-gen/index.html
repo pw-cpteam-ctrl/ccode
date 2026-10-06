@@ -2399,6 +2399,20 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
       await new Promise(r=>setTimeout(r,350));   // 너무 빨리 연달아 받으면 브라우저가 일부를 빠뜨림
     }
   }
+  // ── 이미 내려받은 사진은 다시 받지 않기 ──
+  // X·인스타 버튼을 누를 때마다 같은 사진이 또 내려받아져(파일명 (1)(2)… 로 쌓임) 불편했다.
+  // 마지막으로 내려받은 시점의 '사진 내용 지문'과 장수를 기억해 두고, 사진이 그대로면 다시 받지 않는다.
+  // 지문 = 실행취소가 기억하는 값(글자·위치·확대·사진 번호표·⑤ 목록)에서 사진에 안 찍히는 원문만 뺀 것.
+  let saved=null;   // { key, n } — n: 앞에서부터 몇 장째까지 받았는지(X는 4장만 받으니 인스타 때 나머지만 더 받게)
+  function photoKey(){ try{ const { src, applied, ...rest }=readUndoState(); return JSON.stringify(rest); }catch{ return 'x'+Date.now(); } }
+  // files 중 아직 안 받은 것만 받고, 몇 장을 새로 받았는지 돌려준다
+  async function downloadNew(files){
+    const key=photoKey(), from = saved && saved.key===key ? saved.n : 0;
+    const todo=files.slice(from);
+    if(todo.length) await downloadFiles(todo);
+    saved={ key, n:Math.max(from, files.length) };
+    return todo.length;
+  }
   // 폰 공유 창을 쓸 수 있는지(파일 공유 지원 + 손가락 기기) — 파일을 만들기 전에 가짜 파일로 미리 확인
   const canShareFiles=()=> matchMedia('(hover:none)').matches && !!navigator.canShare &&
     navigator.canShare({files:[new File([''],'a.png',{type:'image/png'})]});
@@ -2412,7 +2426,8 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
         try{ await navigator.share({files}); logAiLearningOnDownload(); return; }
         catch(e){ if(e && e.name==='AbortError') return; }   // 사용자가 공유 창을 닫은 건 그대로 끝
       }
-      await downloadFiles(files);
+      await downloadFiles(files);   // [전체 다운로드]는 직접 누른 것이라 이미 받았어도 다시 받는다
+      saved={ key:photoKey(), n:files.length };
       logAiLearningOnDownload();
       showToast(`${files.length}장을 내려받았어요 — 브라우저가 "여러 파일 다운로드"를 물으면 허용을 눌러주세요`);
     } catch(err){
@@ -2475,10 +2490,13 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
       if(phone){
         await shareOnPhone(kind, files, kind==='x' ? text : '', kind==='ig' ? ()=>showToast('원고를 복사해 뒀어요 — 인스타 글쓰기 칸에 붙여넣기 하세요') : null);
       } else {
-        await downloadFiles(files); logAiLearningOnDownload();
+        const got=await downloadNew(files); if(got) logAiLearningOnDownload();
+        const where = got===files.length ? `내려받은 사진 ${files.length}장`
+                    : got ? `사진 ${files.length}장(앞서 받은 것 + 이번에 ${got}장 더 받음)`
+                    : `아까 내려받은 사진 ${files.length}장(그대로라 다시 안 받았어요)`;
         showToast(kind==='x'
-          ? `X 작성창을 열었어요(원고 채워짐) — 내려받은 사진 ${files.length}장을 작성창에 끌어다 넣어주세요`
-          : `인스타를 열고 원고를 복사해 뒀어요 — 내려받은 사진 ${files.length}장으로 만들기 → 원고 붙여넣기`);
+          ? `X 작성창을 열었어요(원고 채워짐) — ${where}을 작성창에 끌어다 넣어주세요`
+          : `인스타를 열고 원고를 복사해 뒀어요 — ${where}으로 만들기 → 원고 붙여넣기`);
       }
     } catch(err){ console.error(err); showToast('⚠ 올리기 준비 중 문제가 생겼어요: '+err.message, true); }
     finally{ btn.innerHTML=label; runValidation(); }
