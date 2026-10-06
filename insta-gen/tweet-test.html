@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>트윗 불러오기 시험</title>
+<!--
+  트윗 링크 → 원문 + 사진 추출이 실제로 되는지 확인하는 시험용 페이지.
+  카드 그리기·크롭은 여기서 다시 만들지 않는다 — 원페이지(index.html)의 기능을 그대로 쓴다.
+  여기서 하는 일은 "뽑아서 보여주고, 원페이지로 넘길 꾸러미를 만드는 것"까지다.
+  확인이 끝나면 이 페이지는 지우고 원페이지 ① 칸에 입력란으로 흡수한다.
+-->
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f5f5f3; --card: #fff; --line: #e3e2dd;
+    --tx1: #14141a; --tx2: #55555f; --tx3: #8b8b95;
+    --accent: #1d6fd0; --warn-bg: #fdf6e6; --warn-bd: #eda100; --warn-tx: #7a5100;
+    --err-bg: #fdecea; --err-bd: #d9534f; --err-tx: #8d2420;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 80px; background: var(--bg); color: var(--tx1);
+    font: 15px/1.6 system-ui, -apple-system, 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h1 small { font-size: 13px; font-weight: 400; color: var(--tx2); margin-left: 8px; }
+  .lead { margin: 0 0 20px; font-size: 13.5px; color: var(--tx2); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .row { display: flex; gap: 8px; }
+  input[type=url], input[type=text] {
+    flex: 1; min-width: 0; padding: 10px 12px; font: inherit; font-size: 14px;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--tx1);
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button {
+    padding: 10px 16px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--tx1);
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .hint { font-size: 12.5px; color: var(--tx3); margin-top: 8px; }
+  .status { margin-top: 12px; font-size: 13.5px; }
+  .box { border-radius: 0 8px 8px 0; border-left: 4px solid; padding: 12px 14px; font-size: 13.5px; }
+  .box.warn { background: var(--warn-bg); border-color: var(--warn-bd); color: var(--warn-tx); }
+  .box.err  { background: var(--err-bg);  border-color: var(--err-bd);  color: var(--err-tx); }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--tx2); margin-bottom: 12px; }
+  .meta b { color: var(--tx1); }
+  textarea {
+    width: 100%; min-height: 180px; padding: 12px; font: inherit; font-size: 13.5px; line-height: 1.7;
+    border: 1px solid var(--line); border-radius: 8px; resize: vertical; background: #fff; color: var(--tx1);
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  figure { margin: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fafafa; }
+  figure img { display: block; width: 100%; height: 150px; object-fit: contain; background: #efefed; }
+  figcaption { padding: 7px 9px; font-size: 11.5px; color: var(--tx2); display: flex; justify-content: space-between; gap: 6px; }
+  figcaption a { color: var(--accent); text-decoration: none; }
+  .sendbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+  .samples { font-size: 12.5px; color: var(--tx3); margin-top: 10px; }
+  .samples button { padding: 4px 9px; font-size: 12px; font-weight: 400; margin: 3px 4px 0 0; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>트윗 불러오기 시험 <small>원문 + 사진만 뽑아봅니다</small></h1>
+  <p class="lead">
+    트윗 링크를 넣으면 <b>원문 전체</b>와 <b>사진 전부</b>를 가져옵니다.
+    카드 만들기·크롭은 여기서 하지 않고 <b>원페이지 도구</b>가 그대로 합니다.
+  </p>
+
+  <div class="card">
+    <label for="link">트윗 링크</label>
+    <div class="row">
+      <input type="url" id="link" placeholder="https://x.com/megahouse_tori/status/2107018025664962963" autocomplete="off">
+      <button class="primary" id="load">불러오기</button>
+    </div>
+    <div class="hint">x.com·twitter.com 링크 모두 됩니다. 뒤에 <code>?s=20</code> 같은 게 붙어 있어도 괜찮아요.</div>
+    <div class="samples">
+      예시로 바로 해보기:
+      <button type="button" data-u="https://x.com/megahouse_tori/status/2107018025664962963">사진 3장 (일본어)</button>
+      <button type="button" data-u="https://x.com/Megahouse_BH/status/2100498615613440387">긴 트윗 (한국어)</button>
+      <button type="button" data-u="https://x.com/Megahouse_BH/status/2040010523232588094">영상 트윗</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div id="result" class="hidden">
+    <div class="card">
+      <div class="meta" id="meta"></div>
+      <div id="trunc"></div>
+      <label for="text" style="margin-top:12px">원문</label>
+      <textarea id="text" spellcheck="false"></textarea>
+      <div class="sendbar" style="margin-top:10px">
+        <button id="copyText">원문 복사</button>
+        <span class="hint" id="copyMsg" style="margin:0"></span>
+      </div>
+    </div>
+
+    <div class="card" id="photoCard">
+      <label>사진 <span id="photoCount" style="font-weight:400;color:var(--tx3)"></span></label>
+      <div class="grid" id="photos"></div>
+      <div class="hint">
+        트위터 이미지 서버가 다른 사이트에서 쓰는 걸 허용하고 있어, 이 사진들은 <b>그대로 크롭 기능에 넣을 수 있습니다</b>(따로 내려받아 다시 올릴 필요 없음).
+      </div>
+    </div>
+
+    <div class="card">
+      <label>원페이지 도구로 넘기기</label>
+      <div class="sendbar">
+        <button class="primary" id="send">카드 도구로 보내기</button>
+        <span class="hint" id="sendMsg" style="margin:0"></span>
+      </div>
+      <div class="hint" style="margin-top:10px">
+        누르면 원문·사진 목록을 브라우저에 잠시 저장하고 원페이지로 이동합니다.
+        <b>원페이지가 이걸 받아 쓰는 부분은 아직 붙이기 전이라</b>, 지금은 저장까지만 됩니다.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// 원페이지로 넘길 때 쓰는 보관함 이름과 모양. 원페이지 쪽에서 이 이름으로 꺼내 쓰면 된다.
+//   sessionStorage['instaGenTweetHandoff'] = {
+//     v: 1, text: '원문', maybeTruncated: false,  // true면 뒤가 잘렸을 수 있음(확정 아님)
+//     photos: ['사진주소', ...],   // 영상 썸네일은 이 배열 '뒤쪽'에 붙는다
+//     fromVideo: 0,               // 뒤에서 n장이 영상 썸네일. 0이면 전부 진짜 사진.
+//     source: 'fxtwitter'|'syndication', tweetUrl: '트윗주소', at: 저장시각
+//   }
+// sessionStorage를 쓰는 이유: 탭을 닫으면 저절로 비워져서 예전 트윗이 다음 작업에 섞이지 않는다.
+const HANDOFF_KEY = 'instaGenTweetHandoff';
+
+const $ = id => document.getElementById(id);
+const el = { link: $('link'), load: $('load'), status: $('status'), result: $('result'),
+             meta: $('meta'), trunc: $('trunc'), text: $('text'), photos: $('photos'),
+             photoCard: $('photoCard'), photoCount: $('photoCount'), send: $('send') };
+let current = null;
+
+function say(html, kind) {
+  el.status.innerHTML = html ? (kind ? `<div class="box ${kind}">${html}</div>` : html) : '';
+}
+
+// 트윗을 못 읽는 건 '오류'가 아니라 정상적으로 일어나는 일이다(삭제·비공개·트위터 차단).
+// 그래서 화면을 망가뜨리지 않고, 직접 넣는 방법만 안내한다.
+function failed(reason) {
+  el.result.classList.add('hidden');
+  say(`<b>트윗을 못 읽어서 직접 넣어주세요.</b><br>${reason || ''}
+       <br><br>원페이지 도구에서 사진을 올리고 원문을 붙여넣으면 평소대로 쓸 수 있습니다.`, 'err');
+}
+
+async function load(url) {
+  const u = (url ?? el.link.value).trim();
+  if (!u) { say('트윗 링크를 넣어주세요.'); return; }
+  el.load.disabled = true;
+  say('불러오는 중…');
+  try {
+    const r = await fetch('/api/tweet?url=' + encodeURIComponent(u));
+    const j = await r.json();
+    if (!j.ok) { failed(j.reason); return; }
+    render(j);
+    say('');
+  } catch (e) {
+    // 네트워크 자체가 끊긴 경우도 같은 안내로 내려간다.
+    failed('인터넷 연결이 끊겼거나 서버가 응답하지 않았습니다.');
+  } finally {
+    el.load.disabled = false;
+  }
+}
+
+function render(d) {
+  current = d;
+  el.result.classList.remove('hidden');
+
+  const when = d.createdAt ? new Date(d.createdAt).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+  el.meta.innerHTML = [
+    d.author?.handle ? `<span>작성자 <b>@${d.author.handle}</b></span>` : '',
+    `<span>작성 <b>${when}</b></span>`,
+    `<span>글자수 <b>${d.text.length}자</b></span>`,
+    `<span>가져온 경로 <b>${d.source}</b></span>`,
+  ].filter(Boolean).join('');
+
+  // 공식 경로로 내려갔을 때만 뜬다. 잘렸는지 확실히는 알 수 없어서 단정하지 않는다.
+  el.trunc.innerHTML = d.maybeTruncated
+    ? `<div class="box warn"><b>원문 뒷부분이 잘렸을 수 있습니다.</b>
+       지금은 트위터 공식 경로로 가져와서, 긴 글이면 뒤쪽이 빠집니다(발매일·가격이 보통 거기 있습니다).
+       <b>위 원문의 끝이 문장 중간에서 끊겼는지 확인</b>하시고, 그렇다면 트위터에서 직접 복사해 붙여넣어 주세요.</div>`
+    : '';
+
+  el.text.value = d.text;
+
+  const photos = d.photos || [];
+  const videos = (d.videos || []).filter(v => v.thumb);
+  el.photoCard.classList.toggle('hidden', photos.length + videos.length === 0);
+  el.photoCount.textContent = photos.length
+    ? `${photos.length}장` + (videos.length ? ` · 영상 ${videos.length}개(썸네일)` : '')
+    : (videos.length ? `영상 ${videos.length}개(썸네일)` : '');
+
+  el.photos.innerHTML = [...photos, ...videos.map(v => ({ url: v.thumb, width: v.width, height: v.height, isVideo: true }))]
+    .map((p, i) => `
+      <figure>
+        <img src="${p.url}" alt="${i + 1}번째 사진" loading="lazy" crossorigin="anonymous">
+        <figcaption>
+          <span>${p.isVideo ? '🎬 ' : ''}${p.width && p.height ? `${p.width}×${p.height}` : '크기 미상'}</span>
+          <a href="${p.url}" target="_blank" rel="noopener">원본</a>
+        </figcaption>
+      </figure>`).join('');
+}
+
+el.load.addEventListener('click', () => load());
+el.link.addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
+document.querySelectorAll('.samples button').forEach(b =>
+  b.addEventListener('click', () => { el.link.value = b.dataset.u; load(b.dataset.u); }));
+
+$('copyText').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(el.text.value); $('copyMsg').textContent = '복사했습니다.'; }
+  catch { el.text.select(); $('copyMsg').textContent = '직접 Ctrl+C로 복사해주세요.'; }
+  setTimeout(() => { $('copyMsg').textContent = ''; }, 2500);
+});
+
+el.send.addEventListener('click', () => {
+  if (!current) return;
+  // 카드에는 사진이 필요한데 영상 트윗엔 사진이 없다. 그래서 영상은 썸네일을 사진처럼 넘기고,
+  // 받는 쪽에서 "영상 트윗이라 썸네일을 넣었어요"라고 알릴 수 있게 fromVideo로 표시해 둔다.
+  const vthumbs = (current.videos || []).filter(v => v.thumb).map(v => v.thumb);
+  const payload = {
+    v: 1,
+    // 사용자가 화면에서 고친 원문이 있으면 그걸 넘긴다(잘린 글을 직접 채워 넣었을 수 있음).
+    text: el.text.value,
+    maybeTruncated: current.maybeTruncated,
+    photos: [...(current.photos || []).map(p => p.url), ...vthumbs],
+    fromVideo: vthumbs.length,          // 뒤쪽 n장이 영상 썸네일이라는 뜻
+    source: current.source,
+    tweetUrl: current.url,
+    at: Date.now(),
+  };
+  try {
+    sessionStorage.setItem(HANDOFF_KEY, JSON.stringify(payload));
+    $('sendMsg').textContent = '저장했습니다. 원페이지로 이동합니다…';
+    setTimeout(() => { location.href = './index.html'; }, 600);
+  } catch {
+    // 시크릿 창 등에서 저장이 막힌 경우 — 원문 복사만이라도 되게 안내한다.
+    $('sendMsg').textContent = '브라우저가 저장을 막았습니다. 원문 복사 버튼을 써주세요.';
+  }
+});
+</script>
+</body>
+</html>
