@@ -2178,8 +2178,9 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   const HINT_CARD=hint.textContent;
   let key='card';   // 선택은 번호가 아니라 고유 key로 기억(중간 사진이 지워져도 엉뚱한 장이 선택되지 않게)
   const api=()=>window.igcropPages;
-  // ⑤의 '카드 생성기 사진'(카드에 쓴 사진 원본)은 목록에서 뺀다 — 표지(카드)가 이미 그 사진이라 두 번 나오게 됨
-  function pages(){ const L=[{key:'card'}]; (api()?api().list():[]).filter(p=>!p.fromMain).forEach(p=>L.push({key:'p'+p.id, id:p.id, name:p.name})); return L; }
+  // ⑤의 '카드 생성기 사진'(카드에 쓴 사진 원본)도 목록에 넣는다 — 카드 액자 안에서는 사진 가장자리
+  // (카피라이트 표기 등)가 잘릴 수 있어서, 원본을 2장째로 같이 올려야 한다. ★로 표지를 바꾸면 이 장도 따라 바뀐다.
+  function pages(){ const L=[{key:'card'}]; (api()?api().list():[]).forEach(p=>L.push({key:'p'+p.id, id:p.id, name:p.name, fromMain:p.fromMain})); return L; }
   let neighborIdx=0, busy=false;   // 지운 장 자리(크게 보던 장을 지우면 이웃 장으로 옮기려고)
   function paint(pg, c){ const x=c.getContext('2d'); x.clearRect(0,0,c.width,c.height);
     if(pg.key==='card') x.drawImage(stage,0,0,c.width,c.height);   // 카드는 이미 그려진 큰 캔버스를 줄여서
@@ -2191,14 +2192,14 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     row.innerHTML='';
     L.forEach((pg,i)=>{
       const w=document.createElement('div'); w.className='pthumb'+(pg.key===key?' sel':''); w.dataset.key=pg.key;
-      w.title = pg.key==='card' ? '카드' : `${i+1}장째 · ${pg.name}`;
+      w.title = pg.key==='card' ? '카드' : pg.fromMain ? `${i+1}장째 · 표지 사진 원본(카드에서 잘리는 부분까지 전체)` : `${i+1}장째 · ${pg.name}`;
       const c=document.createElement('canvas'); c.width=TW; c.height=TH; paint(pg,c);
-      const n=document.createElement('span'); n.className='pnum'; n.textContent = i===0 ? '카드' : String(i+1);
+      const n=document.createElement('span'); n.className='pnum'; n.textContent = i===0 ? '카드' : pg.fromMain ? `${i+1} 원본` : String(i+1);
       // ★ = 표지. 1장째(카드)가 늘 표지이고, 사진 장의 ★를 누르면 그 사진이 카드 사진이 된다(맞바꾸기)
       const star=document.createElement('div'); star.className='th-star'+(pg.key==='card'?' on':'');
       star.textContent='★'; star.title = pg.key==='card' ? '지금 표지(카드)' : '이 사진을 표지(카드)로 — 원래 카드 사진은 이 자리로';
       star.addEventListener('click', e=>{ e.stopPropagation(); if(pg.key!=='card') setCover(pg.id); });   // stopPropagation: 없으면 선택까지 같이 바뀜
-      w.append(c,n,star);
+      w.append(c,n); if(!pg.fromMain) w.appendChild(star);   // 원본 장은 이미 표지 사진 그 자체라 ★ 없음
       if(pg.key!=='card'){   // 카드(표지)는 지울 수 없다 — ✕는 사진 장에만, ★ 반대편 모서리에
         const del=document.createElement('div'); del.className='th-del'; del.textContent='✕'; del.title='이 장 지우기';
         del.addEventListener('click', e=>{ e.stopPropagation(); removePage(pg, i); });
