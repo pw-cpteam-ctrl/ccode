@@ -1692,13 +1692,28 @@ async function exportProductZip(p) {
   if (typeof JSZip === 'undefined') { if (statusEl) statusEl.textContent = 'ZIP 라이브러리 로딩 실패 — 새로고침 후 다시 시도해주세요.'; return; }
   if (statusEl) statusEl.textContent = '만드는 중...';
   const zip = new JSZip();
+  const failed = [];
   for (let i = 0; i < p.images.length; i++) {
-    const blob = await exportSlidePng(p, i);
-    zip.file(`${safeFileName(p.title || '상품')}_${i + 1}.png`, blob);
+    // 한 장이 실패해도 나머지는 담는다 (전체 ZIP과 같은 이유 — harvestZip 주석 참고).
+    try {
+      const blob = await exportSlidePng(p, i);
+      if (!blob) throw new Error('이미지를 만들지 못했어요');
+      zip.file(`${safeFileName(p.title || '상품')}_${i + 1}.png`, blob);
+    } catch { failed.push(i + 1); }
   }
-  const zipBlob = await zip.generateAsync({ type: 'blob' });
-  downloadBlob(zipBlob, `${safeFileName(p.title || '상품')}.zip`);
-  if (statusEl) statusEl.textContent = '완료';
+  if (failed.length === p.images.length) {
+    if (statusEl) statusEl.textContent = '사진을 하나도 만들지 못했어요. 새로고침 후 다시 시도해주세요.';
+    return;
+  }
+  try {
+    // PNG는 다시 압축해도 거의 안 줄어든다 — STORE가 빠르고 메모리도 덜 쓴다.
+    const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+    downloadBlob(zipBlob, `${safeFileName(p.title || '상품')}.zip`);
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `ZIP을 만들지 못했어요 (${err.message})`;
+    return;
+  }
+  if (statusEl) statusEl.textContent = failed.length ? `⚠ ${failed.join(', ')}번은 빠졌어요` : '완료';
 }
 
 // 썸네일이 그려지는 해상도. 화면에 보이는 크기(.thumbwrap canvas의 CSS width/height)와
@@ -2893,24 +2908,62 @@ async function harvestZip() {
   const withImages = PRODUCTS.filter(p => p.images.length);
   if (!withImages.length) { statusEl.textContent = '아직 이미지가 있는 상품이 없어요.'; return; }
   if (typeof JSZip === 'undefined') { statusEl.textContent = 'ZIP 라이브러리 로딩 실패 — 새로고침 후 다시 시도해주세요.'; return; }
-  statusEl.textContent = '만드는 중...';
+
+  const total = withImages.reduce((n, p) => n + p.images.length, 0);
+  let done = 0;
+  const failed = [];
+  statusEl.textContent = `만드는 중... 0/${total}장`;
   const zip = new JSZip();
-  for (const p of withImages) {
+
+  for (const [pi, p] of withImages.entries()) {
     for (const slide of p.images) {
       if (!imgCache.has(slide.key)) {
         const blob = await idbGet(slide.key).catch(() => null);
-        if (blob) { try { imgCache.set(slide.key, await loadImageFromBlob(blob)); } catch {} }
+        if (blob) { try { imgCache.set(slide.key, await loadImageFromBlob(blob)); } catch { /* 아래에서 실패로 잡힌다 */ } }
       }
     }
-    const folder = zip.folder(safeFileName(p.title || '상품'));
+    /* 폴더 이름 앞에 순번을 붙인다. 예전엔 제목만 썼는데, 제목이 비어 있으면 전부
+       "상품"이 되고 제목이 같아도 마찬가지였다. JSZip은 같은 이름이면 같은 폴더를
+       돌려주므로 1.png, 2.png가 서로 덮어써져 사진이 조용히 사라졌다 — 사진만 넣고
+       제목을 비워두는 흐름에서 상품 3개(6장)가 2장으로 줄어드는 걸 재현했는데,
+       그때도 화면에는 "완료"라고 떴다. 순번은 어차피 상품마다 다르므로 겹칠 수 없다. */
+    // safeFileName은 제목이 비면 '상품'을 돌려준다 — 그래서 여기서 또 비었는지 보지 않는다.
+    const label = safeFileName(p.title || '');
+    const folder = zip.folder(`${String(pi + 1).padStart(2, '0')}. ${label}`);
+
     for (let i = 0; i < p.images.length; i++) {
-      const blob = await exportSlidePng(p, i);
-      folder.file(`${i + 1}.png`, blob);
+      // 한 장이 실패해도 나머지를 포기하지 않는다. 예전엔 try가 없어서 중간에 한 번
+      // 걸리면 그때까지 만든 것까지 통째로 날아가고 내려받기 자체가 일어나지 않았다.
+      try {
+        const blob = await exportSlidePng(p, i);
+        if (!blob) throw new Error('이미지를 만들지 못했어요');
+        folder.file(`${i + 1}.png`, blob);
+      } catch (err) {
+        failed.push(`${label} ${i + 1}번`);
+      }
+      done += 1;
+      // 상품이 많으면 몇 분씩 걸려서, 진행 표시가 없으면 멈춘 것처럼 보인다.
+      statusEl.textContent = `만드는 중... ${done}/${total}장`;
+      // 화면이 갱신될 틈을 준다 — 안 그러면 끝날 때까지 0/N에서 멈춘 채로 보인다.
+      if (done % 4 === 0) await new Promise(r => setTimeout(r, 0));
     }
   }
-  const zipBlob = await zip.generateAsync({ type: 'blob' });
-  downloadBlob(zipBlob, `오늘작업_${new Date().toISOString().slice(0, 10)}.zip`);
-  statusEl.textContent = '완료';
+
+  try {
+    // PNG는 이미 압축된 형식이라 다시 압축해도 거의 안 줄어든다. STORE로 두면 사진이
+    // 많을 때 시간과 메모리를 크게 아낄 수 있고, 메모리가 모자라 실패하는 경우도 줄어든다.
+    const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+    downloadBlob(zipBlob, `오늘작업_${new Date().toISOString().slice(0, 10)}.zip`);
+  } catch (err) {
+    statusEl.textContent = `ZIP을 만들지 못했어요 (${err.message}). 상품 수를 줄여서 나눠 받아보세요.`;
+    return;
+  }
+
+  // 빠진 게 있으면 반드시 알린다. 조용히 "완료"라고 하면 몇 장이 없어진 걸 모르고
+  // 그대로 넘기게 되는데, 그게 이번에 실제로 일어난 일이다.
+  statusEl.textContent = failed.length
+    ? `⚠ ${total - failed.length}/${total}장만 담겼어요 — 빠진 것: ${failed.join(', ')}`
+    : `✓ 완료 (${total}장)`;
 }
 function harvestCopy(kind) {
   const withDraft = PRODUCTS.filter(p => p.finalText);
