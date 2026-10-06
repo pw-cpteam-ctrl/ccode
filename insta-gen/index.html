@@ -192,8 +192,8 @@
   #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); max-width:520px; width:calc(100% - 48px); background:#2b2f36; color:#fff; font-size:13px; font-weight:500; line-height:1.5; padding:13px 16px; border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,.28); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:9999; text-align:center; }
   #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
   #toast.warn { background:#8a2f3d; }
-  /* 되돌리기 토스트(undo-delete.js)는 기본이 화면 아래 24px라 하단 고정 바(다운로드 버튼)를 가린다 — 바 위로 올림 */
-  body .ud-toast.ud-bottom-center { bottom:96px; }
+  #undoBtn { padding:9px 12px; line-height:1; display:inline-flex; align-items:center; justify-content:center; }
+  #undoBtn:disabled { opacity:.35; cursor:not-allowed; }
 
   /* ===== "인스타 규격 크롭" — 위 카드 생성기와 완전히 독립된 별도 도구.
      3열(.colOut) 안에서 4·원고와 함께 세로로 놓이고, 폭은 그 열을 그대로 따라간다.
@@ -589,6 +589,7 @@
     <div class="dstatus"><span class="ddot"></span><span><span id="dockMsg">준비 중</span> <span class="dsub" id="blockmsg"></span></span></div>
     <div class="dspacer"></div>
     <button class="btn-refresh" id="dockRegen" style="display:none">원고 다시 만들기</button>
+    <button class="btn-dock" id="undoBtn" title="실행취소 (Ctrl+Z · 맥은 ⌘+Z)" aria-label="실행취소" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
     <button class="btn-dock" id="dockCopy">원고 복사</button>
     <!-- 사진이 여러 장일 때만 보임 — 기존 분홍 버튼 바로 옆에 둬서 '전체 / 개별'이 한눈에 비교되게 -->
     <button class="btn-dock btn-dlall" id="downloadAll" hidden disabled>⬇ 전체 다운로드</button>
@@ -636,7 +637,7 @@
 <script src="../assets/dict-works.js"></script>
 <script src="dict.js"></script>
 <script src="ig-crop.js"></script>
-<script src="undo-delete.js"></script>
+<script src="undo-history.js"></script>
 <script>
 const cv = document.getElementById('stage'), ctx = cv.getContext('2d');
 const W = 1080, H = 1350;
@@ -719,6 +720,7 @@ function render(){
   fitText(state.text.headline,800,60,MAXW); ctx.fillText(state.text.headline,W/2,112);
   drawBottom();
   if(window.onCardRendered) window.onCardRendered();   // 미리보기 위 여러 장 목록의 '카드' 칸 갱신
+  recordSoon();   // 실행취소 기록 — 드래그·휠·타이핑처럼 연달아 오는 변경은 멈춘 뒤 한 단계로
 }
 
 // 단어 단위로 두 줄에 균형 있게 나누기(작품명이 한 줄로는 기준보다 작아질 때)
@@ -1425,7 +1427,7 @@ document.getElementById('t_product').addEventListener('input', e=>{ state.text.p
 document.getElementById('t_footer').addEventListener('input', e=>{ state.text.footer=e.target.value; render(); });
 document.getElementById('t_jp').addEventListener('input', e=>{ state.jp=e.target.value; });
 document.getElementById('t_saledate').addEventListener('input', e=>{ state.saleDate=e.target.value; });
-document.getElementById('t_source').addEventListener('input', ()=>runValidation());
+document.getElementById('t_source').addEventListener('input', ()=>{ runValidation(); recordSoon(); });
 document.getElementById('applySrc').addEventListener('click', applySource);
 
 /* ── AI 파싱 ── */
@@ -1670,9 +1672,72 @@ function restoreSlot(s){
   if(slots.length && !handoff){ restoreSlot(slots[0]); syncControlsUI(); checkWorkSpacing(); }
   else { setLineSelect(state.line, state.linePrefix, true); }
   composeTitle(); updatePreview(); renderPhotoSlots(); render(); runValidation(); renderSlots(); updateCopyCount();
-  if(!handoff && slots[0]?.imgData) loadImage(slots[0].imgData, true);
+  if(!handoff && slots[0]?.imgData) await loadImage(slots[0].imgData, true);
   if(handoff) await applyTweetHandoff(handoff);
+  // 두 번째 사진(좌우 나누기)도 불러오는 중이면 끝날 때까지 기다린다(최대 3초) — 안 그러면 "사진이 뜬 것"이
+  // 첫 변경으로 기록돼서, 처음 되돌리기를 누르면 사진이 사라진다
+  for(let i=0;i<30 && state.imgData2 && !state.img2;i++) await new Promise(r=>setTimeout(r,100));
+  setupUndo();
 })();
+
+/* ── 실행취소(Ctrl+Z · 하단 바 ↶) — 공용 스니펫 undo-history.js ──
+   카드(글자·사진·위치/확대·배경·글자 크기·체크) + 캐러셀 사진 목록(⑤)을 통째로 기억한다. 시간 제한 없음(최대 30단계,
+   새로고침하면 사라짐). 스니펫은 기억을 글자(JSON)로 복사하는데 사진은 글자로 못 담아서, 사진마다 번호표를 붙여
+   번호로 기억하고 실제 사진은 아래 보관함에 둔다. 그래서 지운 사진도 메모리를 풀지 않고 들고 있는다(되살려야 하니까). */
+var UNDO_REG=new Map(), _undoSeq=0, UNDO=null, _recT=null;   // var: 화면을 처음 그릴 때 이 줄보다 먼저 불려도 오류 안 나게
+function regKey(obj, data){ if(!obj) return null; if(!obj.__uk) obj.__uk='u'+(++_undoSeq); if(!UNDO_REG.has(obj.__uk)) UNDO_REG.set(obj.__uk,{obj,data:''});
+  if(data!=null) UNDO_REG.get(obj.__uk).data=data; return obj.__uk; }
+function regObj(k){ const r=k&&UNDO_REG.get(k); return r?r.obj:null; }
+function regData(k){ const r=k&&UNDO_REG.get(k); return r?r.data:''; }
+function recordSoon(){ if(!UNDO) return; clearTimeout(_recT); _recT=setTimeout(()=>{ UNDO.record(); updateUndoBtn(); }, 450); }
+function updateUndoBtn(){ const b=document.getElementById('undoBtn'); if(b) b.disabled=!(UNDO && UNDO.canUndo()); }
+function readUndoState(){
+  return {
+    src:document.getElementById('t_source').value, applied:appliedSource,
+    headline:state.text.headline, work:state.work, line:state.line, linePrefix:state.linePrefix,
+    product:state.text.product, footer:state.text.footer, jp:state.jp, saleDate:state.saleDate, saleDow:state.saleDow,
+    bullet:state.bullet, charShrink:state.charShrink, jpNotice:state.jpNotice,
+    fg:{...state.fg}, fg2:{...state.fg2}, bg:{...state.bg}, size:{...state.size},
+    img:regKey(state.img, state.imgData), img2:regKey(state.img2, state.imgData2), slot2Open:state.slot2Open, sel:state.sel,
+    crop: window.igcropPages ? window.igcropPages.snapshot() : null,
+  };
+}
+function writeUndoState(s){
+  const v=(id,val)=>{ document.getElementById(id).value=val; };
+  v('t_source', s.src); appliedSource=s.applied;
+  setSelect('t_headline', s.headline); state.text.headline=s.headline;
+  v('t_work', s.work); state.work=s.work;
+  setLineSelect(s.line, s.linePrefix, true); state.line=s.line;
+  state.linePrefix=s.linePrefix; v('t_lineprefix', s.linePrefix);
+  v('t_product', s.product); state.text.product=s.product;
+  v('t_footer', s.footer); state.text.footer=s.footer;
+  v('t_jp', s.jp); state.jp=s.jp; v('t_saledate', s.saleDate); state.saleDate=s.saleDate; state.saleDow=s.saleDow;
+  state.bullet=s.bullet; document.getElementById('c_bullet').checked=s.bullet;
+  state.charShrink=s.charShrink; document.getElementById('c_charshrink').checked=s.charShrink;
+  state.jpNotice=s.jpNotice; document.getElementById('c_jpnotice').checked=s.jpNotice;
+  state.fg={...s.fg}; state.fg2={...s.fg2}; state.bg={...s.bg}; state.size={...s.size};
+  state.img=regObj(s.img); state.imgData=regData(s.img); state.img2=regObj(s.img2); state.imgData2=regData(s.img2);
+  state.slot2Open=s.slot2Open; state.sel=s.sel;
+  if(s.crop && window.igcropPages) window.igcropPages.restore(s.crop);
+}
+function setupUndo(){
+  UNDO = createUndoHistory({
+    read: readUndoState, write: writeUndoState,
+    after: ()=>{ composeTitle(); updatePreview(); syncControlsUI(); renderPhotoSlots(); render(); runValidation(); checkWorkSpacing(); updateUndoBtn(); },
+    onUndo: ()=> showToast('↶ 한 단계 되돌렸어요'),
+    onEmpty: ()=> showToast('더 이상 되돌릴 게 없어요'),
+    hotkey: false,   // Ctrl+Z는 아래에서 직접 연결 — 기록 대기 중인 변경을 먼저 쌓은 뒤 되돌려야 한 칸씩 정확히 돌아감
+  });
+  UNDO.reset(); updateUndoBtn();
+}
+function undoNow(){ if(!UNDO) return; clearTimeout(_recT); UNDO.record(); UNDO.undo(); updateUndoBtn(); }
+document.getElementById('undoBtn').addEventListener('click', undoNow);
+document.addEventListener('keydown', e=>{
+  if(!((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z' && !e.shiftKey)) return;
+  const el=document.activeElement, tag=el && el.tagName;
+  if(tag==='INPUT' || tag==='TEXTAREA' || (el && el.isContentEditable)) return;   // 글자 입력 중엔 브라우저 기본 되돌리기
+  e.preventDefault(); undoNow();
+});
 
 /* ── 트윗에서 넘어온 원문·사진 받기 ──
    tweet-test.html이 sessionStorage['instaGenTweetHandoff']에 남긴 꾸러미:
@@ -1841,7 +1906,8 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     return side===2 ? { w:b.R.w, h:b.R.h } : { w:b.L.w, h:b.L.h };
   }
   function renderThumb(item){ drawItem(item, item.ctx, THUMB_W, THUMB_H);
-    document.dispatchEvent(new CustomEvent('igcrop:changed', {detail:{id:item.id}})); }   // 미리보기 쪽 같은 사진도 다시 그리게
+    document.dispatchEvent(new CustomEvent('igcrop:changed', {detail:{id:item.id}}));
+    if(typeof recordSoon==='function') recordSoon(); }   // 미리보기 쪽 같은 사진도 다시 그리게
   function renderModal(){ if(openItem) drawItem(openItem, modalCtx, MODAL_W, MODAL_H); }
 
   // 썸네일/모달 캔버스 공용 — 드래그로 위치 이동, 휠로 확대/축소(평소엔 최소 1배 또는
@@ -1940,7 +2006,6 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   // 초기화 — 올린 사진·크롭·기울기를 전부 버리고 처음 상태로. 되돌릴 수 없으니 한 번 묻는다.
   function resetAll(){
     if(!items.length) return;
-    trash.flush();   // 되돌리기 대기 중인 삭제는 초기화 전에 확정
     if(!confirm('⑤ 인스타 규격 크롭을 초기화합니다.\n올린 사진과 조정한 크롭·기울기가 모두 지워집니다.\n(위 카드 생성기는 영향 없음)')) return;
     openItem = null; modal.classList.remove('show');
     items.forEach(it=>{ if(it.el) it.el.remove(); });
@@ -1952,6 +2017,7 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
 
   function updateEmptyMsg(){
     document.dispatchEvent(new CustomEvent('igcrop:list'));   // 사진이 늘거나 줄었음 — 미리보기 위 목록을 다시 만든다
+    if(typeof recordSoon==='function') recordSoon();
     const rb = document.getElementById('igcropReset');
     if(rb) rb.style.display = items.length ? '' : 'none';
     let msg = grid.querySelector('.igcrop-empty');
@@ -1975,7 +2041,9 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     updateEmptyMsg();
   }
 
+  const ALL = new Map();   // 만들었던 항목 전부(id → 항목) — 지운 장을 실행취소로 되살릴 때 찾는다
   function addItemEl(item, prepend){
+    ALL.set(item.id, item);
     const el = document.createElement('div');
     el.className = 'igcrop-item';
     el.innerHTML =
@@ -1992,7 +2060,7 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     el.querySelector('.igcrop-name').textContent = item.name;
     el.querySelector('.igcrop-del').addEventListener('click', e=>{
       e.stopPropagation();
-      deleteWithUndo(item);   // 바로 지우고 아래 토스트로 되돌리기(미리보기 목록의 ✕와 같은 방식)
+      deleteWithUndo(item);   // 바로 지우고, 되돌리기는 실행취소로(미리보기 목록의 ✕와 같은 방식)
     });
     el.querySelector('.igcrop-add2').addEventListener('click', e=>{
       e.stopPropagation();
@@ -2006,40 +2074,20 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     renderThumb(item);
   }
 
-  // keepImage: 되돌리기가 남아 있는 삭제면 사진 메모리를 아직 풀지 않는다(풀면 되살려도 빈 그림)
-  function removeItem(item, keepImage){
-    if(!keepImage) releaseImage(item);
+  // 사진 메모리(ImageBitmap)는 풀지 않는다 — 실행취소로 되살릴 수 있어야 해서(풀면 되살려도 빈 그림)
+  function removeItem(item){
     items = items.filter(x=>x.id!==item.id);
     if(item.el) item.el.remove();
     if(openItem && openItem.id===item.id) closeModal();
     updateEmptyMsg();
   }
 
-  function releaseImage(item){ if(item.img && item.img.close && !item.fromMain) { try{ item.img.close(); }catch{} } }   // ImageBitmap 메모리 해제(카드 사진은 카드가 계속 쓰므로 제외)
-
-  // ── 한 장 지우기 + 되돌리기 ──
-  // "정말 지울까요?" 대신 바로 지우고 7초 동안 되돌릴 기회를 준다(공용 스니펫 undo-delete.js).
-  // 되돌리는 방법은 지우는 쪽이 알고 있으니 여기서 같이 넘긴다 — 원래 순서·화면 위치 그대로 복구.
-  const trash = createUndoDelete({ text:{ one: l=>`'${l}' 삭제됨` } });
+  // ── 한 장 지우기 — 확인창 없이 바로 지우고, 잘못 지웠으면 실행취소(Ctrl+Z · 하단 바 ↶)로 되살린다 ──
   function deleteWithUndo(item){
-    const idx = items.findIndex(x=>x.id===item.id); if(idx<0) return;
-    const nextEl = item.el ? item.el.nextSibling : null;   // 화면에서 바로 다음에 있던 것 — 그 앞에 다시 끼워 넣는다
-    const wasMain = !!item.fromMain;
-    if(wasMain){ mainDismissed = true; mainItem = null; }
-    removeItem(item, true);
-    trash.remove(item.name, ()=>{
-      items.splice(Math.min(idx, items.length), 0, item);
-      if(item.el) grid.insertBefore(item.el, (nextEl && nextEl.parentNode===grid) ? nextEl : null);
-      if(wasMain){ mainItem = item; mainDismissed = false; }
-      renderThumb(item); updateEmptyMsg();
-    }, { confirm: ()=> releaseImage(item) });   // 시간이 지나 확정되면 그때 메모리 해제
+    if(item.fromMain){ mainDismissed = true; mainItem = null; }
+    removeItem(item);
+    if(typeof showToast==='function') showToast(`'${item.name}' 지웠어요 — 되돌리려면 하단 바의 되돌리기 화살표(또는 Ctrl+Z)`);
   }
-  // Ctrl+Z(맥은 ⌘+Z)로도 방금 지운 걸 되돌린다 — 글자 입력칸에선 원래 Ctrl+Z(글자 되돌리기)가 그대로 동작
-  document.addEventListener('keydown', e=>{
-    if(!(e.ctrlKey||e.metaKey) || e.shiftKey || e.key.toLowerCase()!=='z') return;
-    const t=e.target; if(t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
-    if(trash.undo()) e.preventDefault();
-  });
 
   // ── 아트보드 하나를 좌우 2분할로 만들기(⑤ 전용) ──
   // 기본은 사진 1장 = 아트보드 1개. 특정 아트보드를 고른 뒤 ＋를 눌러야 그 칸만 2분할이 된다.
@@ -2114,7 +2162,7 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   // 트윗에서 넘어온 2장째부터의 사진(캐러셀 2페이지~) — 직접 올린 사진과 똑같이 추가
   document.addEventListener('igcrop:addFiles', async e=>{ const d=e.detail||{};
     // 새 트윗이면: 되돌리기 대기 중인 삭제를 먼저 확정(안 그러면 예전 트윗 사진이 새 트윗 사이로 되살아남) → 앞서 불러온 트윗 사진 교체
-    if(d.fromTweet){ trash.flush(); items.filter(it=>it.fromTweet).forEach(it=>removeItem(it)); }
+    if(d.fromTweet){ items.filter(it=>it.fromTweet).forEach(it=>removeItem(it)); }
     if(d.files && d.files.length) await addFiles([...d.files], d.fromTweet ? {fromTweet:true} : null); });
   if(typeof state !== 'undefined' && state.img) syncMainImage(state.img);
 
@@ -2176,12 +2224,30 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     list: ()=> items.map(it=>({ id:it.id, name:it.name, fromMain:!!it.fromMain })),
     remove: id=>{ const it=items.find(x=>x.id===id); if(it) removeItem(it); },
     removeUndoable: id=>{ const it=items.find(x=>x.id===id); if(it) deleteWithUndo(it); },
+    // 실행취소용 — 지금 목록·순서·각 장의 위치/확대/기울기를 글자로 적을 수 있는 값으로(사진은 번호표로)
+    snapshot: ()=>({ main: mainItem ? mainItem.id : null, dismissed: mainDismissed,
+      items: items.map(it=>({ id:it.id, name:it.name, img:regKey(it.img), img2:regKey(it.img2), file:regKey(it.file),
+        fx:it.focusX, fy:it.focusY, z:it.zoom, fx2:it.focusX2, fy2:it.focusY2, z2:it.zoom2, tilt:it.tilt })) }),
+    restore: snap=>{
+      const next = snap.items.map(e=>{ const it=ALL.get(e.id); if(!it) return null;
+        Object.assign(it, { name:e.name, img:regObj(e.img), img2:regObj(e.img2), file:regObj(e.file),
+          focusX:e.fx, focusY:e.fy, zoom:e.z, focusX2:e.fx2, focusY2:e.fy2, zoom2:e.z2, tilt:e.tilt });
+        if(it.el) it.el.querySelector('.igcrop-name').textContent=it.name;
+        return it; }).filter(Boolean);
+      items.forEach(it=>{ if(!next.includes(it) && it.el) it.el.remove(); });
+      next.forEach(it=>{ if(it.el) grid.appendChild(it.el); });   // 기억한 순서대로 다시 줄 세움(빠졌던 장은 다시 붙음)
+      items = next;
+      mainItem = snap.main!=null ? (ALL.get(snap.main)||null) : null; mainDismissed = snap.dismissed;
+      if(openItem && !items.includes(openItem)) closeModal();
+      items.forEach(it=>{ syncItemUI(it); renderThumb(it); });
+      if(openItem) renderModal();
+      updateEmptyMsg();
+    },
     // ★ 표지 맞바꾸기용 — 이 장의 원본 사진을 파일로 / 이 장의 사진을 다른 사진으로 갈아끼우기
     imageBlob: async id=>{ const it=items.find(x=>x.id===id); if(!it) throw new Error('사진을 찾지 못했습니다'); return it.file || imgToBlob(it.img); },
     replaceImage: async (id, blob, name)=>{
       const it=items.find(x=>x.id===id); if(!it) return;
       const img=await igLoadImage(blob);
-      if(it.img && it.img.close) { try{ it.img.close(); }catch{} }
       const pw=img.naturalWidth||img.width, ph=img.naturalHeight||img.height, bx=boxOf(it,1);
       Object.assign(it, { img, file:blob, name:name||it.name, focusX:0.5, focusY:0.5, zoom:defaultZoom(pw,ph,bx.w,bx.h) });
       if(it.el) it.el.querySelector('.igcrop-name').textContent=it.name;
