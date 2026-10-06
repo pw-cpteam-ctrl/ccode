@@ -1093,6 +1093,15 @@ function idbDel(key) {
     tx.onerror = () => { db.close(); rej(tx.error); };
   }));
 }
+// 저장소에 들어있는 사진 키 전부. 어느 상품도 안 쓰는 것을 골라내는 데만 쓴다.
+function idbAllKeys() {
+  return idbOpen().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('blobs', 'readonly');
+    const rq = tx.objectStore('blobs').getAllKeys();
+    rq.onsuccess = () => { db.close(); res((rq.result || []).map(String)); };
+    rq.onerror = () => { db.close(); rej(rq.error); };
+  }));
+}
 function loadImageFromBlob(blob) {
   return new Promise((res, rej) => {
     const img = new Image();
@@ -1115,6 +1124,61 @@ async function preloadMainThumbnails() {
   }));
 }
 const imgCache = new Map(); // key -> HTMLImageElement (메모리 캐시, 상품 전환할 때마다 다시 불러오지 않게)
+
+/* ── 실행취소(Ctrl+Z) ────────────────────────────────────────────────────────
+   시간 제한이 없다. 지우고 30분 뒤에 생각나도 되돌아간다 — 새로고침하거나 단계 수를
+   넘길 때까지 유지된다. 처음엔 8초짜리 토스트만 뒀는데, 8초는 스니펫 기본값을 그대로
+   쓴 것이지 이 도구에 맞춰 따진 숫자가 아니었다. 사진은 IndexedDB에 있어 용량 여유가
+   크고 어차피 "상품 초기화"로 하루치를 비우므로, 짧게 잡을 이유가 없다.
+
+   기억하는 것은 "되돌려야 하는 값"뿐이다. 화면 요소나 사진 자체는 넣지 않는다 —
+   기억은 JSON으로 복사되므로 들어갈 수도 없고, 사진은 저장소에 그대로 있어서 넣을
+   필요도 없다(아래 cleanupOrphanPhotos 참고). */
+function setupUndoHistory() {
+  if (typeof createUndoHistory !== 'function') return;  // 스니펫을 못 불러왔으면 없는 대로 동작
+  undoHistory = createUndoHistory({
+    max: 60,
+    read: () => ({
+      products: PRODUCTS.map(stripForStorage),
+      currentProductId,
+      editingIdx,
+      // Set은 JSON으로 적을 수 없어 배열로 바꿔 담는다
+      selected: [...selectedKeys],
+    }),
+    write: s => {
+      PRODUCTS = s.products.map(p => ({ ...makeBlankProduct(), ...p }));
+      currentProductId = s.currentProductId;
+      editingIdx = s.editingIdx;
+      selectedKeys.clear();
+      (s.selected || []).forEach(k => selectedKeys.add(k));
+    },
+    after: () => {
+      // 되돌린 결과를 저장하고 화면을 다시 그린다. 이 안에서 saveProducts가 다시
+      // 기록을 남기지는 않는다(스니펫이 되돌리는 동안 기록을 막아둔다).
+      saveProducts();
+      renderList();
+      renderDetail();
+      showPasteToast('↩ 되돌렸어요 (Ctrl+Z)');
+    },
+    onEmpty: () => showPasteToast('더 되돌릴 게 없어요'),
+  });
+  // 저장본을 다 불러온 지금을 출발점으로 삼는다. 안 하면 첫 변경 하나는 못 되돌린다.
+  undoHistory.reset();
+}
+
+/* 어느 상품도 쓰지 않는 사진 원본을 저장소에서 치운다.
+   지울 때 원본을 바로 지우면 되돌려도 사진 없는 빈 슬라이드만 돌아온다. 그렇다고
+   영영 두면 용량만 쌓인다. 되돌리기가 새로고침까지 유효하므로, 새로고침하는 이 순간이
+   "이제 아무도 안 쓰는 사진"을 치우기에 정확히 맞는 시점이다. */
+async function cleanupOrphanPhotos() {
+  try {
+    const used = new Set();
+    for (const p of PRODUCTS) for (const s of (p.images || [])) used.add(s.key);
+    const all = await idbAllKeys();
+    const orphans = all.filter(k => !used.has(k));
+    for (const k of orphans) await idbDel(k).catch(() => {});
+  } catch { /* 정리는 실패해도 작업에 지장이 없다 — 다음 새로고침에 다시 시도된다 */ }
+}
 
 /* ══════════════════ 캐러셀 이미지 합성 (실제 canvas) ══════════════════
    1080x1350(4:5) 해상도로 그리고 화면에는 CSS로 축소해서 보여준다.
@@ -2039,8 +2103,6 @@ function drawAllThumbs(p) {
          지우면 되돌리기를 눌러도 사진이 없는 빈 슬라이드만 돌아온다. 그래서 원본
          삭제는 되돌릴 시간이 끝난 뒤(confirm)로 미룬다. */
       const removedSlide = p.images.splice(idx, 1)[0];
-      const prevMain = p.mainIndex;
-      const prevEditing = editingIdx;
       /* 지운 자리보다 뒤에 있던 번호는 하나씩 당겨야 한다. 예전엔 범위를 벗어났을 때만
          깎았는데(>= length), 그러면 앞쪽 사진을 지웠을 때 대표(★)가 가리키는 번호는
          그대로인 채 사진들만 앞으로 밀려서 ★가 옆 사진으로 옮겨갔다. 실제로 5장 중
@@ -2054,19 +2116,11 @@ function drawAllThumbs(p) {
       renderImageStage(p);
       renderList();
 
-      trash.remove(`사진 ${idx + 1}`, () => {
-        // 되돌리기: 지운 자리에 그대로 끼워 넣고, 그때 같이 바뀐 값들도 되돌린다.
-        p.images.splice(idx, 0, removedSlide);
-        p.mainIndex = prevMain;
-        editingIdx = prevEditing;
-        saveProducts();
-        renderImageStage(p);
-        renderList();
-      }, {
-        // 시간이 지나 확정되면 그때 원본을 지운다. 이게 없으면 지운 사진이 저장소에
-        // 영영 남아서 용량만 차지한다.
-        confirm: () => { idbDel(removedSlide.key).catch(() => {}); imgCache.delete(removedSlide.key); },
-      });
+      /* 토스트는 "방금 지웠다"를 알리는 역할만 한다. 되돌리는 일은 실행취소 기록기에
+         맡긴다 — 두 군데서 따로 되돌리면 서로 엇갈려서 엉뚱한 단계로 돌아간다.
+         그래서 토스트가 사라져도(8초) 되돌리기는 그대로 살아 있다. 원본은 여기서
+         지우지 않는다. 지우면 되돌려도 빈 슬라이드만 돌아온다. */
+      trash.remove(`사진 ${idx + 1}`, () => { undoHistory ? undoHistory.undo() : null; });
     });
     const frameToggle = document.createElement('div');
     frameToggle.className = 'th-frame' + (slide.noFrame ? ' off' : '');
@@ -2320,23 +2374,15 @@ function removeProduct(id) {
   const p = PRODUCTS[idx];
   // 사진 삭제와 같은 방식이다(확인창 대신 되돌리기) — 두 삭제의 기준이 다르면
   // 어느 쪽이 위험한지 감이 안 잡힌다. 사진 원본은 확정될 때까지 지우지 않는다.
-  const prevCurrent = currentProductId;
   PRODUCTS.splice(idx, 1);
   if (currentProductId === id) currentProductId = PRODUCTS[0]?.id || null;
   saveProducts();
   renderList();
   renderDetail();
 
+  // 사진 삭제와 같다 — 토스트는 알림만, 되돌리기는 실행취소 기록기가 한다.
   const label = (p.title || '').trim() || '제목 없는 상품';
-  trash.remove(label, () => {
-    PRODUCTS.splice(idx, 0, p);
-    currentProductId = prevCurrent;
-    saveProducts();
-    renderList();
-    renderDetail();
-  }, {
-    confirm: () => p.images.forEach(s => { idbDel(s.key).catch(() => {}); imgCache.delete(s.key); }),
-  });
+  trash.remove(label, () => { undoHistory ? undoHistory.undo() : null; });
 }
 function resetAllProducts() {
   // 일괄 생성이 도는 중에 상품을 지우면, 이미 나간 API 호출은 계속 진행되면서 결과만
@@ -3193,19 +3239,8 @@ $('#dayLabel').textContent = new Date().toLocaleDateString('ko-KR', { month: 'lo
 
 $('#btnAddProduct').addEventListener('click', addProduct);
 
-/* Ctrl+Z(⌘Z)로도 되돌리기. 토스트의 버튼을 못 보고 지나쳐도 손이 먼저 가는 키라서 받는다.
-   글자를 치고 있는 중이면 가로채지 않는다 — 입력칸 안의 Ctrl+Z는 브라우저가 해주는
-   "방금 친 글자 되돌리기"라, 그걸 빼앗으면 멀쩡히 쓰던 기능이 사라진다.
-   되돌릴 삭제가 없으면 아무것도 하지 않고 그대로 흘려보낸다. */
-document.addEventListener('keydown', e => {
-  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
-  if (e.key !== 'z' && e.key !== 'Z') return;
-  const el = document.activeElement;
-  if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable)) return;
-  if (!trash.pending()) return;
-  e.preventDefault();
-  trash.undo();
-});
+// Ctrl+Z는 실행취소 기록기(assets/undo-history.js)가 스스로 붙인다. 여기서 또 붙이면
+// 한 번 눌러도 두 단계가 되돌아가므로 따로 두지 않는다.
 
 /* ── Ctrl+V로 사진 추가 ───────────────────────────────────────────────────────
    캡처 도구나 탐색기에서 복사한 이미지를 파일로 저장하지 않고 바로 넣기 위한 것이다.
@@ -3606,6 +3641,8 @@ bushiImportZone.addEventListener('drop', e => {
   await loadWorkTitleDict(); // 상품을 그리기 전에 사전을 올려둬야 "확인 필요"가 잘못 뜨지 않는다
   loadGradSettings();
   PRODUCTS = loadProductsFromStorage().map(p => ({ ...makeBlankProduct(), ...p }));
+  await cleanupOrphanPhotos();
+  setupUndoHistory();
   // 예전에 담아둔 상품도, 그 사이 사전에 등록된 작품이면 확정 표기를 채워준다.
   for (const p of PRODUCTS) {
     if (!(p.workKo || '').trim()) p.workKo = lookupWorkTitle(p.work, p.workJa) || '';
