@@ -816,7 +816,9 @@ const OPEN_DAY_EXCEPTIONS = {   // 'YYYY-MM': 그 달 오픈 날짜(일). 적지
   '2026-10': 8,
 };
 function firstThursday(y,m){ const f=new Date(y,m,1); return 1+((4-f.getDay()+7)%7); }
-function openDayOf(y,m){ return OPEN_DAY_EXCEPTIONS[`${y}-${String(m+1).padStart(2,'0')}`] ?? firstThursday(y,m); }
+// m이 12(=다음 해 1월)처럼 넘쳐도 맞는 연·월로 고쳐서 본다 — 안 그러면 12월에 다음 해 1월 예외('YYYY-01')를 못 찾음
+function openDayOf(y,m){ const d=new Date(y,m,1); y=d.getFullYear(); m=d.getMonth();
+  return OPEN_DAY_EXCEPTIONS[`${y}-${String(m+1).padStart(2,'0')}`] ?? firstThursday(y,m); }
 function nextOpenDate(now=new Date()){
   const t=new Date(now.getFullYear(),now.getMonth(),now.getDate());   // 오늘 0시 기준(시간 무시)
   const thisM=new Date(t.getFullYear(),t.getMonth(),openDayOf(t.getFullYear(),t.getMonth()));
@@ -2170,7 +2172,7 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   document.addEventListener('igcrop:mainImage', e=> syncMainImage(e.detail && e.detail.img));
   // 트윗에서 넘어온 2장째부터의 사진(캐러셀 2페이지~) — 직접 올린 사진과 똑같이 추가
   document.addEventListener('igcrop:addFiles', async e=>{ const d=e.detail||{};
-    // 새 트윗이면: 되돌리기 대기 중인 삭제를 먼저 확정(안 그러면 예전 트윗 사진이 새 트윗 사이로 되살아남) → 앞서 불러온 트윗 사진 교체
+    // 새 트윗이면: 앞서 불러온 트윗 사진을 빼고 새로 넣는다(지운 것도 실행취소로 되살릴 수 있음)
     if(d.fromTweet){ items.filter(it=>it.fromTweet).forEach(it=>removeItem(it)); }
     if(d.files && d.files.length) await addFiles([...d.files], d.fromTweet ? {fromTweet:true} : null); });
   if(typeof state !== 'undefined' && state.img) syncMainImage(state.img);
@@ -2364,10 +2366,10 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     } catch(err){ console.error(err); showToast('⚠ 표지를 바꾸지 못했어요: '+err.message, true); }
     finally{ busy=false; }
   }
-  // ✕ 한 장 지우기 — 바로 지우고 7초 동안 되돌리기, 크게 보던 장이면 이웃 장으로(번호가 아니라 key로 다룸)
+  // ✕ 한 장 지우기 — 바로 지우고, 되돌리기는 실행취소(시간 제한 없음). 크게 보던 장이면 이웃 장으로(번호가 아니라 key로 다룸)
   function removePage(pg, idx){
     neighborIdx=idx;
-    api().removeUndoable(pg.id);   // 바로 지우고 되돌리기 토스트 — ⑤에서도 같이 지워지고, 목록은 igcrop:list 알림으로 다시 만듦
+    api().removeUndoable(pg.id);   // 바로 지우고 실행취소 안내 토스트 — ⑤에서도 같이 지워지고, 목록은 igcrop:list 알림으로 다시 만듦
   }
   document.addEventListener('igcrop:list', build);
   document.addEventListener('igcrop:changed', e=>{ const k='p'+e.detail.id; repaint(k); if(k===key) show(); });
@@ -2430,35 +2432,48 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     if(!t.value.trim()){ t.value=buildCopy(); updateCopyCount(); markCopyFresh(); }   // 원고가 비어 있으면 만들어서 씀(손본 원고는 덮어쓰지 않음)
     return t.value;
   }
-  async function shareOnPhone(files, text, onDone){
+  async function shareOnPhone(kind, files, text, onDone){
     try{ await navigator.share(text ? {files, text} : {files}); shareCache=null; logAiLearningOnDownload(); if(onDone) onDone(); }
     catch(e){
       if(e && e.name==='AbortError') return;   // 사용자가 공유 창을 닫음
-      if(e && e.name==='NotAllowedError'){ shareCache={files, text, at:Date.now()}; showToast('사진 준비가 끝났어요 — 버튼을 한 번 더 눌러주세요'); return; }
+      // kind도 같이 기억 — 안 그러면 X용(4장 + 원고)으로 준비한 파일이 바로 뒤 인스타 버튼에 그대로 쓰인다
+      if(e && e.name==='NotAllowedError'){ shareCache={kind, files, text, onDone, at:Date.now()}; showToast('사진 준비가 끝났어요 — 버튼을 한 번 더 눌러주세요'); return; }
       throw e;
     }
+  }
+  // 글자를 지금 바로(기다림 없이) 복사한다. 컴퓨터에선 다음 줄에서 새 창이 열리며 이 페이지가 포커스를 잃는데,
+  // 포커스 없는 페이지는 복사가 거절된다(navigator.clipboard는 결과를 나중에 확인해서 이미 늦음).
+  // 그래서 즉시 끝나는 옛 방식(execCommand)을 먼저 쓰고, 안 되면 navigator.clipboard로 한 번 더 시도한다.
+  function copyNow(text){
+    const ta=document.createElement('textarea'), prev=document.activeElement;
+    ta.value=text; ta.setAttribute('readonly',''); ta.style.cssText='position:fixed;left:-9999px;top:0;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    let ok=false; try{ ok=document.execCommand('copy'); }catch{}
+    ta.remove(); if(prev && prev.focus) prev.focus({preventScroll:true});
+    if(!ok && navigator.clipboard) navigator.clipboard.writeText(text).catch(()=>{});
   }
   async function postTo(kind, btn){
     if(!runValidation()){ showToast('⚠ 3번 칸에 빠진 항목이 있어 올릴 수 없어요 — 표시된 항목을 먼저 채워주세요', true); return; }
     const text=postText(), phone=canShareFiles();
     if(document.getElementById('dockbar').classList.contains('stale'))
       showToast('⚠ 원고가 지금 입력값과 달라요(옛날 값) — 필요하면 [원고 다시 만들기] 후 다시 눌러주세요', true);
-    // 컴퓨터는 새 창을 누른 순간 바로 연다(사진 만들기·복사를 기다린 뒤에 열면 팝업 차단)
+    // 인스타는 원고 글자를 받지 않으니 누른 순간 복사해 둔다 — 복사는 누른 순간 + 이 페이지에 포커스가 있을 때만
+    // 허락되므로, 새 창을 열기 '전에' 해야 한다(새 창이 먼저 뜨면 포커스가 넘어가 복사가 조용히 실패함)
+    if(kind==='ig') copyNow(text);
+    // 컴퓨터는 새 창을 누른 순간 바로 연다(사진 만들기를 기다린 뒤에 열면 팝업 차단)
     if(!phone){
       if(kind==='x') window.open('https://twitter.com/intent/tweet?text='+encodeURIComponent(text), '_blank', 'noopener');
       else window.open('https://www.instagram.com/', '_blank', 'noopener');
     }
-    // 인스타는 원고 글자를 받지 않으니 누른 순간 복사해 둔다(복사도 누른 순간에만 허락됨)
-    if(kind==='ig'){ try{ await navigator.clipboard.writeText(text); }catch{} }
-    if(phone && shareCache && Date.now()-shareCache.at < 60000){   // 방금 준비해 둔 파일이 있으면 바로 공유
-      const c=shareCache; return shareOnPhone(c.files, c.text);
+    if(phone && shareCache && shareCache.kind===kind && Date.now()-shareCache.at < 60000){   // 방금 이 버튼용으로 준비해 둔 파일이 있으면 바로 공유
+      const c=shareCache; return shareOnPhone(kind, c.files, c.text, c.onDone);
     }
     btn.disabled=true; const label=btn.innerHTML; btn.querySelector('.sns-t') && (btn.querySelector('.sns-t').textContent='준비 중…');
     try{
       let files=await makeFiles();
       if(kind==='x' && files.length>X_MAX){ files=files.slice(0,X_MAX); showToast(`X는 사진 ${X_MAX}장까지라 앞 ${X_MAX}장만 넣어요`); }
       if(phone){
-        await shareOnPhone(files, kind==='x' ? text : '', kind==='ig' ? ()=>showToast('원고를 복사해 뒀어요 — 인스타 글쓰기 칸에 붙여넣기 하세요') : null);
+        await shareOnPhone(kind, files, kind==='x' ? text : '', kind==='ig' ? ()=>showToast('원고를 복사해 뒀어요 — 인스타 글쓰기 칸에 붙여넣기 하세요') : null);
       } else {
         await downloadFiles(files); logAiLearningOnDownload();
         showToast(kind==='x'
