@@ -32,6 +32,15 @@
   .step .aside { margin-left:auto; font-size:11.5px; color:var(--muted); font-weight:400; }
   #stage { width: 324px; height: 405px; border-radius: 14px; box-shadow: 0 10px 36px rgba(0,0,0,.16); cursor: grab; touch-action: none; background: #e9eaee; display:block; } /* 미리보기만 75% 축소 — canvas width/height(1080x1350) 속성은 그대로 = 다운로드 화질 무관 */
   #stage.drag { cursor: grabbing; }
+  /* 사진 장 큰 화면 — 카드 미리보기와 같은 자리·크기 */
+  #pageStage { width: 324px; height: 405px; border-radius: 14px; box-shadow: 0 10px 36px rgba(0,0,0,.16); cursor: grab; touch-action: none; background: #fff; display:block; margin:0 auto; }
+  .cardPreview [hidden] { display:none !important; }   /* #stage{display:block}이 hidden을 덮어쓰지 않게 */
+  /* 여러 장 목록 — 보이는 크기 68×85(내부 해상도는 JS에서 2배인 136×170) */
+  .pthumbs { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 12px; }
+  .pthumb { position:relative; cursor:pointer; }
+  .pthumb canvas { width:68px; height:85px; border-radius:5px; display:block; background:#eee; border:1px solid var(--line); }
+  .pthumb.sel canvas { outline:2px solid var(--accent); outline-offset:1px; }
+  .pthumb .pnum { position:absolute; left:4px; bottom:4px; background:rgba(0,0,0,.62); color:#fff; font-size:10px; font-weight:700; border-radius:4px; padding:1px 5px; pointer-events:none; }
   .hint { color: var(--muted); font-size: 13px; margin-top: 10px; text-align: center; font-weight: 300; line-height: 1.5; }
   .subtitle { font-size:16px; color:var(--text); font-weight:700; margin:-2px 0 12px; line-height:1.35; }
 
@@ -87,6 +96,13 @@
   .pslot-hint { font-size:11px; color:var(--muted); margin-top:6px; line-height:1.45; }
 
   .combo12 { display:flex; flex-direction:row; gap:14px; align-items:flex-start; }
+  .tweetrow { display:flex; gap:8px; margin:0 0 6px; }
+  .tweetrow input { flex:1 1 auto; min-width:0; border:1.5px solid var(--line2); border-radius:9px; padding:9px 11px; font-size:13px; font-family:'Pretendard',sans-serif; }
+  .tweetrow input:focus { outline:none; border-color:var(--accent); }
+  .tweetrow .btn2 { flex:0 0 auto; padding:9px 14px; }
+  .tweet-status { font-size:11.5px; color:var(--muted); line-height:1.5; margin:0 0 10px; min-height:0; }
+  .tweet-status:empty { display:none; }
+  .tweet-status.warn { color:#b8860b; }
   /* 두 번째 사진 칸이 생겨도 썸네일이 알아볼 만한 크기로 남게 고정폭으로 잡는다 */
   .combo-photo { flex:0 0 156px; display:flex; flex-direction:column; }
   .combo-photo h2 { flex:0 0 auto; }
@@ -313,7 +329,7 @@
     .stagewrap { flex:0 0 auto; width:auto; max-width:100%; }
     /* 좁은 폰에선 '표시 크기'만 화면폭에 맞춰 축소. canvas width/height 속성(1080×1350)은
        그대로라 다운로드 화질엔 영향 없음. 드래그도 실측 rect 기준이라 자동으로 맞음. */
-    #stage { width:min(324px, 82vw); height:auto; aspect-ratio:1080 / 1350; }
+    #stage, #pageStage { width:min(324px, 82vw); height:auto; aspect-ratio:1080 / 1350; }
     /* 이전입력 6칸: 세로 열 → 가로 스크롤 줄 */
     .slotcol { flex-direction:row; flex-wrap:nowrap; overflow-x:auto; gap:8px; width:100%; padding-bottom:4px; }
     .slotcol .slotsq { flex:0 0 60px; }
@@ -341,6 +357,11 @@
 
     <div class="card cardInput">
       <div class="step"><span class="n">1</span><span class="t">사진 · 원문 입력 (원문 필수)</span></div>
+      <div class="tweetrow">
+        <input type="url" id="t_tweet" placeholder="🐦 트윗 링크 붙여넣기 → 원문·사진 자동으로 채움" autocomplete="off">
+        <button type="button" class="btn2" id="tweetLoad">가져오기</button>
+      </div>
+      <div class="tweet-status" id="tweetStatus"></div>
       <div class="combo12">
         <div class="combo-photo">
           <div class="pslot-row" id="photoSlots"></div>
@@ -471,12 +492,14 @@
   <!-- ══ 2열 · 결과 미리보기 (스크롤해도 따라옴 — 왼쪽에서 고치면서 바로 확인) ══ -->
   <div class="colPreview">
     <div class="card cardPreview">
+      <div class="pthumbs" id="pageThumbs" hidden></div>
       <div class="imagerow">
         <div class="stagewrap">
           <canvas id="stage" width="1080" height="1350"></canvas>
+          <canvas id="pageStage" width="648" height="810" hidden></canvas>
         </div>
       </div>
-      <div class="hint">미리보기만 75% 축소 (다운로드 화질엔 영향 없음) · 드래그로 위치 조정</div>
+      <div class="hint" id="previewHint">미리보기만 75% 축소 (다운로드 화질엔 영향 없음) · 드래그로 위치 조정</div>
     </div>
     <button class="mobile-preview-toggle" id="previewToggle" type="button" aria-expanded="true">🖼 미리보기·편집칸 접기 ▲</button>
 
@@ -676,6 +699,7 @@ function render(){
   ctx.textAlign='center'; ctx.fillStyle='#fff'; ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=12; ctx.shadowOffsetY=2;
   fitText(state.text.headline,800,60,MAXW); ctx.fillText(state.text.headline,W/2,112);
   drawBottom();
+  if(window.onCardRendered) window.onCardRendered();   // 미리보기 위 여러 장 목록의 '카드' 칸 갱신
 }
 
 // 단어 단위로 두 줄에 균형 있게 나누기(작품명이 한 줄로는 기준보다 작아질 때)
@@ -1428,8 +1452,10 @@ async function aiParse() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || '서버 오류 (' + res.status + ')');
     applyParsed(data, txt);
+    return true;
   } catch (err) {
     el.textContent = '✦ AI로 채우기 실패: ' + err.message; el.style.color = 'var(--danger)';
+    return false;
   } finally {
     btn.disabled = false; btn.textContent = '✦ AI로 채우기';
   }
@@ -1635,6 +1661,9 @@ function takeTweetHandoff(){
   return h;
 }
 async function applyTweetHandoff(h){
+  // 도구를 쓰던 중에 새 트윗을 불러오는 경우 — 지금 작업을 이전 입력 목록에 먼저 저장해서 잃지 않게
+  pushSlot(snapshotWith(appliedSource));
+  if(state.img2) clearSecond();   // 새 작업이니 지난 작업의 좌우 2분할은 풀어 둔다
   const urls=h.photos.filter(u=>typeof u==='string' && /^https:\/\//.test(u));
   showToast(`트윗에서 사진 ${urls.length}장을 불러오는 중…`);
   // 트위터 이미지 서버가 다른 사이트에서 쓰는 걸 허용해서 바로 받아올 수 있다. 파일로 바꿔 두면
@@ -1646,13 +1675,16 @@ async function applyTweetHandoff(h){
     catch(e){ console.error('트윗 사진 불러오기 실패', urls[i], e); }
   }
   if(files[0]) await loadImageInto(1, URL.createObjectURL(files[0]));
-  if(files.length>1) document.dispatchEvent(new CustomEvent('igcrop:addFiles', {detail:{files:files.slice(1)}}));
+  // 2장째부터는 ⑤ 크롭(캐러셀 2페이지~)으로. 앞서 불러온 트윗 사진이 있으면 그건 빼고 새로 넣는다
+  document.dispatchEvent(new CustomEvent('igcrop:addFiles', {detail:{files:files.slice(1), fromTweet:true}}));
   const text=(h.text||'').trim();
   document.getElementById('t_source').value=text;
-  if(text) applySource();
-  const msgs=[`🐦 트윗에서 원문과 사진 ${files.length}장을 가져왔어요`];
-  if(text) msgs.push('[무료로 채우기]까지 해뒀어요 — 이상하면 [✦ AI로 채우기]');
-  if(files.length>1) msgs.push(`2장째부터는 맨 아래 인스타 규격 크롭에 넣었어요`);
+  // 트윗 본문은 문장형이라 무료 사전 방식은 캐릭터명에 조사까지 붙여 집는 일이 잦다 — AI로 바로 채우고,
+  // AI가 실패하면(네트워크·키 문제 등) 무료 채우기로 내려간다
+  let how='';
+  if(text){ how = (await aiParse()) ? 'AI로 채웠어요' : 'AI가 실패해서 무료로 채웠어요'; if(how.startsWith('AI가')) applySource(); }
+  const msgs=[`🐦 트윗에서 원문과 사진 ${files.length}장을 가져와 ${how||'넣었어요'}`];
+  if(files.length>1) msgs.push(`2장째부터는 미리보기 위 목록과 맨 아래 인스타 규격 크롭에 넣었어요`);
   if(files.length<urls.length) msgs.push(`⚠ 사진 ${urls.length-files.length}장은 못 불러왔어요 — 직접 올려주세요`);
   if(h.fromVideo) msgs.push('영상 트윗이라 영상 썸네일을 사진으로 넣었어요');
   if(h.maybeTruncated) msgs.push('⚠ 원문 끝이 잘렸을 수 있어요 — 끝부분을 확인해주세요');
@@ -1661,7 +1693,36 @@ async function applyTweetHandoff(h){
   // 토스트는 몇 초 뒤 사라지니, 2번 버튼 밑 안내줄에도 남겨 둔다
   const st=document.getElementById('srcStatus');
   st.textContent = msgs.join(' · ') + (st.textContent ? ' / ' + st.textContent : '');
+  const ts=document.getElementById('tweetStatus'); ts.textContent=msgs.join(' · '); ts.classList.toggle('warn', warn);
+  document.dispatchEvent(new CustomEvent('pages:select', {detail:{key:'card'}}));   // 미리보기는 카드로
 }
+
+/* ── ① 트윗 링크 칸 — 붙여넣거나 [가져오기]를 누르면 /api/tweet에서 원문·사진을 받아 위 함수로 채운다.
+   서버 쪽(api/tweet.js)이 바깥 주소 두 곳을 차례로 시도하고, 둘 다 안 되면 ok:false — 그땐 안내만 하고
+   평소처럼 사진·원문을 직접 넣어 쓰면 된다(도구는 그대로 동작). */
+const TWEET_RE=/(?:twitter|x|fxtwitter|vxtwitter|fixupx)\.com\/[^\s]*?\/status(?:es)?\/\d{5,25}/i;
+let _tweetBusy=false;
+async function loadTweetLink(link){
+  link=(link||'').trim(); const ts=document.getElementById('tweetStatus'), btn=document.getElementById('tweetLoad');
+  if(!link || _tweetBusy) return;
+  _tweetBusy=true; btn.disabled=true; btn.textContent='불러오는 중…'; ts.classList.remove('warn'); ts.textContent='트윗을 읽는 중…';
+  let j;
+  try{ const r=await fetch('/api/tweet?url='+encodeURIComponent(link)); j=await r.json(); }
+  catch{ j={ok:false, reason:'인터넷 연결이 끊겼거나 서버가 응답하지 않았습니다.'}; }
+  try{
+    if(!j || !j.ok){ ts.classList.add('warn'); ts.textContent='⚠ 트윗을 못 읽어서 직접 넣어주세요 — '+((j&&j.reason)||'알 수 없는 오류')+' (사진 올리기 + 원문 붙여넣기는 평소대로 됩니다)'; return; }
+    const vthumbs=(j.videos||[]).filter(v=>v.thumb).map(v=>v.thumb);
+    await applyTweetHandoff({ v:1, text:j.text, maybeTruncated:!!j.maybeTruncated,
+      photos:[...(j.photos||[]).map(p=>p.url), ...vthumbs], fromVideo:vthumbs.length, source:j.source, tweetUrl:j.url, at:Date.now() });
+  } finally { _tweetBusy=false; btn.disabled=false; btn.textContent='가져오기'; }
+}
+document.getElementById('tweetLoad').addEventListener('click', ()=>loadTweetLink(document.getElementById('t_tweet').value));
+document.getElementById('t_tweet').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); loadTweetLink(e.target.value); } });
+// 링크를 붙여넣는 순간 바로 가져오기(버튼 안 눌러도 됨)
+document.getElementById('t_tweet').addEventListener('paste', e=>{ const t=e.clipboardData?.getData('text')||''; if(TWEET_RE.test(t)){ e.preventDefault(); e.target.value=t.trim(); loadTweetLink(t); } });
+// 원문칸에 트윗 링크만 덩그러니 붙여넣어도 알아듣고 트윗 칸으로 넘긴다
+document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.clipboardData?.getData('text')||'').trim();
+  if(TWEET_RE.test(t) && !/\s/.test(t)){ e.preventDefault(); document.getElementById('t_tweet').value=t; loadTweetLink(t); } });
 </script>
 
 <!-- ================================================================
@@ -1752,7 +1813,8 @@ async function applyTweetHandoff(h){
     const b = splitBoxes(EXPORT_W, EXPORT_H, item.tilt);
     return side===2 ? { w:b.R.w, h:b.R.h } : { w:b.L.w, h:b.L.h };
   }
-  function renderThumb(item){ drawItem(item, item.ctx, THUMB_W, THUMB_H); }
+  function renderThumb(item){ drawItem(item, item.ctx, THUMB_W, THUMB_H);
+    document.dispatchEvent(new CustomEvent('igcrop:changed', {detail:{id:item.id}})); }   // 미리보기 쪽 같은 사진도 다시 그리게
   function renderModal(){ if(openItem) drawItem(openItem, modalCtx, MODAL_W, MODAL_H); }
 
   // 썸네일/모달 캔버스 공용 — 드래그로 위치 이동, 휠로 확대/축소(평소엔 최소 1배 또는
@@ -1861,6 +1923,7 @@ async function applyTweetHandoff(h){
   document.getElementById('igcropReset').addEventListener('click', resetAll);
 
   function updateEmptyMsg(){
+    document.dispatchEvent(new CustomEvent('igcrop:list'));   // 사진이 늘거나 줄었음 — 미리보기 위 목록을 다시 만든다
     const rb = document.getElementById('igcropReset');
     if(rb) rb.style.display = items.length ? '' : 'none';
     let msg = grid.querySelector('.igcrop-empty');
@@ -1869,7 +1932,7 @@ async function applyTweetHandoff(h){
     } else if(msg){ msg.remove(); }
   }
 
-  async function addFiles(files){
+  async function addFiles(files, extra){
     for(const file of files){
       if(!file.type || !file.type.startsWith('image/')) continue;
       let img;
@@ -1877,7 +1940,7 @@ async function applyTweetHandoff(h){
       catch(e){ console.error(e); if(typeof showToast==='function') showToast('⚠ 불러오지 못한 사진: '+file.name, true); continue; }
       const pw = img.naturalWidth||img.width, ph = img.naturalHeight||img.height;
       const item = { id: nextId++, name: file.name, img, focusX:0.5, focusY:0.5, zoom: defaultZoom(pw, ph),
-                     img2:null, focusX2:0.5, focusY2:0.5, zoom2:1, tilt:0, side:1 };
+                     img2:null, focusX2:0.5, focusY2:0.5, zoom2:1, tilt:0, side:1, ...(extra||{}) };
       items.push(item);
       addItemEl(item);
     }
@@ -1994,7 +2057,9 @@ async function applyTweetHandoff(h){
   }
   document.addEventListener('igcrop:mainImage', e=> syncMainImage(e.detail && e.detail.img));
   // 트윗에서 넘어온 2장째부터의 사진(캐러셀 2페이지~) — 직접 올린 사진과 똑같이 추가
-  document.addEventListener('igcrop:addFiles', e=>{ const f=e.detail && e.detail.files; if(f && f.length) addFiles([...f]); });
+  document.addEventListener('igcrop:addFiles', async e=>{ const d=e.detail||{};
+    if(d.fromTweet){ items.filter(it=>it.fromTweet).forEach(removeItem); }   // 앞서 불러온 트윗 사진은 새 트윗으로 교체
+    if(d.files && d.files.length) await addFiles([...d.files], d.fromTweet ? {fromTweet:true} : null); });
   if(typeof state !== 'undefined' && state.img) syncMainImage(state.img);
 
   function exportBlob(item){
@@ -2049,7 +2114,68 @@ async function applyTweetHandoff(h){
     openItem.tilt = 0; syncTiltUI(); renderModal(); renderThumb(openItem);
   });
 
+  // ── 2열 미리보기(여러 장 보기)에서 쓰는 창구 — 그리기·조작은 여기 함수를 그대로 빌려 써서,
+  //    미리보기와 ⑤ 썸네일·다운로드 결과가 서로 달라지지 않게 한다(같은 drawItem 하나만 씀) ──
+  window.igcropPages = {
+    list: ()=> items.map(it=>({ id:it.id, name:it.name })),
+    draw: (id, ctx2d, W, H)=>{ const it=items.find(x=>x.id===id); if(it) drawItem(it, ctx2d, W, H); },
+    attach: (canvas, getId, W, H)=> attachInteraction(canvas, ()=> items.find(x=>x.id===getId()) || null, W, H,
+      it=>{ renderThumb(it); if(openItem && openItem.id===it.id) renderModal(); }),
+  };
+
   updateEmptyMsg();
+})();
+</script>
+
+<!-- ================================================================
+     미리보기 여러 장 보기(캐러셀) — 2열 미리보기 위에 작은 목록, 누르면 큰 화면에 그 장을 띄운다.
+     1장째 = 카드(위 생성기 결과), 2장째부터 = ⑤ 인스타 규격 크롭의 사진들(같은 순서).
+     사진 장은 큰 화면에서 바로 드래그·휠·두 손가락으로 조정되고 ⑤와 실시간으로 같이 바뀐다.
+     ================================================================ -->
+<script>
+(function(){
+  const row=document.getElementById('pageThumbs'), stage=document.getElementById('stage'),
+        pstage=document.getElementById('pageStage'), hint=document.getElementById('previewHint');
+  // 썸네일 내부 해상도는 보이는 크기(68×85, CSS)의 정확히 2배 — 비율이 같아 흐려지거나 잘리지 않고 레티나에서도 선명.
+  // 둘 중 한쪽만 바꾸면 늘어나 보이니 CSS(.pthumb canvas)와 같이 바꿀 것.
+  const TW=136, TH=170;
+  const PW=pstage.width, PH=pstage.height;   // 사진 장 큰 화면(보이는 324×405의 2배)
+  const HINT_CARD=hint.textContent;
+  let key='card';   // 선택은 번호가 아니라 고유 key로 기억(중간 사진이 지워져도 엉뚱한 장이 선택되지 않게)
+  const api=()=>window.igcropPages;
+  function pages(){ const L=[{key:'card'}]; (api()?api().list():[]).forEach(p=>L.push({key:'p'+p.id, id:p.id, name:p.name})); return L; }
+  function paint(pg, c){ const x=c.getContext('2d'); x.clearRect(0,0,c.width,c.height);
+    if(pg.key==='card') x.drawImage(stage,0,0,c.width,c.height);   // 카드는 이미 그려진 큰 캔버스를 줄여서
+    else if(api()) api().draw(pg.id, x, c.width, c.height); }        // 사진 장은 ⑤와 같은 함수로
+  function build(){
+    const L=pages(); if(!L.find(p=>p.key===key)) key='card';
+    row.hidden = L.length<2;   // 카드 한 장뿐이면 목록 자체를 숨겨 예전 화면 그대로
+    row.innerHTML='';
+    L.forEach((pg,i)=>{
+      const w=document.createElement('div'); w.className='pthumb'+(pg.key===key?' sel':''); w.dataset.key=pg.key;
+      w.title = pg.key==='card' ? '카드' : `${i+1}장째 · ${pg.name}`;
+      const c=document.createElement('canvas'); c.width=TW; c.height=TH; paint(pg,c);
+      const n=document.createElement('span'); n.className='pnum'; n.textContent = i===0 ? '카드' : String(i+1);
+      w.append(c,n); w.addEventListener('click',()=>select(pg.key)); row.appendChild(w);
+    });
+    show();
+  }
+  // 한 칸만 다시 칠하기 — 드래그처럼 연속으로 들어오는 조작 중에 목록 전체를 다시 만들지 않으려고
+  function repaint(k){ const c=row.querySelector(`.pthumb[data-key="${k}"] canvas`); const pg=pages().find(p=>p.key===k); if(c&&pg) paint(pg,c); }
+  function show(){
+    const card = key==='card'; stage.hidden=!card; pstage.hidden=card;
+    if(card){ hint.textContent=HINT_CARD; return; }
+    const L=pages(), i=L.findIndex(p=>p.key===key), pg=L[i];
+    if(pg && api()) api().draw(pg.id, pstage.getContext('2d'), PW, PH);
+    hint.textContent=`${i+1}장째 사진 · 드래그로 위치, 휠·두 손가락으로 확대/축소 (좌우 나누기·삭제·다운로드는 맨 아래 인스타 규격 크롭)`;
+  }
+  function select(k){ key=k; row.querySelectorAll('.pthumb').forEach(w=>w.classList.toggle('sel', w.dataset.key===k)); show(); }
+  window.onCardRendered=()=>{ if(!row.hidden) repaint('card'); };
+  document.addEventListener('igcrop:list', build);
+  document.addEventListener('igcrop:changed', e=>{ const k='p'+e.detail.id; repaint(k); if(k===key) show(); });
+  document.addEventListener('pages:select', e=>{ build(); select(e.detail && e.detail.key || 'card'); });
+  if(api()) api().attach(pstage, ()=> key==='card' ? null : +key.slice(1), PW, PH);
+  build();
 })();
 </script>
 </body>
