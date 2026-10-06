@@ -192,6 +192,8 @@
   #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); max-width:520px; width:calc(100% - 48px); background:#2b2f36; color:#fff; font-size:13px; font-weight:500; line-height:1.5; padding:13px 16px; border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,.28); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:9999; text-align:center; }
   #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
   #toast.warn { background:#8a2f3d; }
+  /* 되돌리기 토스트(undo-delete.js)는 기본이 화면 아래 24px라 하단 고정 바(다운로드 버튼)를 가린다 — 바 위로 올림 */
+  body .ud-toast.ud-bottom-center { bottom:96px; }
 
   /* ===== "인스타 규격 크롭" — 위 카드 생성기와 완전히 독립된 별도 도구.
      3열(.colOut) 안에서 4·원고와 함께 세로로 놓이고, 폭은 그 열을 그대로 따라간다.
@@ -634,6 +636,7 @@
 <script src="../assets/dict-works.js"></script>
 <script src="dict.js"></script>
 <script src="ig-crop.js"></script>
+<script src="undo-delete.js"></script>
 <script>
 const cv = document.getElementById('stage'), ctx = cv.getContext('2d');
 const W = 1080, H = 1350;
@@ -1937,6 +1940,7 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   // 초기화 — 올린 사진·크롭·기울기를 전부 버리고 처음 상태로. 되돌릴 수 없으니 한 번 묻는다.
   function resetAll(){
     if(!items.length) return;
+    trash.flush();   // 되돌리기 대기 중인 삭제는 초기화 전에 확정
     if(!confirm('⑤ 인스타 규격 크롭을 초기화합니다.\n올린 사진과 조정한 크롭·기울기가 모두 지워집니다.\n(위 카드 생성기는 영향 없음)')) return;
     openItem = null; modal.classList.remove('show');
     items.forEach(it=>{ if(it.el) it.el.remove(); });
@@ -1988,10 +1992,7 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     el.querySelector('.igcrop-name').textContent = item.name;
     el.querySelector('.igcrop-del').addEventListener('click', e=>{
       e.stopPropagation();
-      // 되돌릴 수 없으니 묻는다 — 미리보기 목록의 ✕, 전체 초기화와 기준을 맞춤
-      if(!confirm('이 사진을 지울까요? (되돌릴 수 없어요)')) return;
-      if(item.fromMain){ mainDismissed = true; mainItem = null; }
-      removeItem(item);
+      deleteWithUndo(item);   // 바로 지우고 아래 토스트로 되돌리기(미리보기 목록의 ✕와 같은 방식)
     });
     el.querySelector('.igcrop-add2').addEventListener('click', e=>{
       e.stopPropagation();
@@ -2005,13 +2006,40 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     renderThumb(item);
   }
 
-  function removeItem(item){
-    if(item.img && item.img.close && !item.fromMain) { try{ item.img.close(); }catch{} }   // ImageBitmap 메모리 해제(카드 사진은 카드가 계속 쓰므로 제외)
+  // keepImage: 되돌리기가 남아 있는 삭제면 사진 메모리를 아직 풀지 않는다(풀면 되살려도 빈 그림)
+  function removeItem(item, keepImage){
+    if(!keepImage) releaseImage(item);
     items = items.filter(x=>x.id!==item.id);
     if(item.el) item.el.remove();
     if(openItem && openItem.id===item.id) closeModal();
     updateEmptyMsg();
   }
+
+  function releaseImage(item){ if(item.img && item.img.close && !item.fromMain) { try{ item.img.close(); }catch{} } }   // ImageBitmap 메모리 해제(카드 사진은 카드가 계속 쓰므로 제외)
+
+  // ── 한 장 지우기 + 되돌리기 ──
+  // "정말 지울까요?" 대신 바로 지우고 7초 동안 되돌릴 기회를 준다(공용 스니펫 undo-delete.js).
+  // 되돌리는 방법은 지우는 쪽이 알고 있으니 여기서 같이 넘긴다 — 원래 순서·화면 위치 그대로 복구.
+  const trash = createUndoDelete({ text:{ one: l=>`'${l}' 삭제됨` } });
+  function deleteWithUndo(item){
+    const idx = items.findIndex(x=>x.id===item.id); if(idx<0) return;
+    const nextEl = item.el ? item.el.nextSibling : null;   // 화면에서 바로 다음에 있던 것 — 그 앞에 다시 끼워 넣는다
+    const wasMain = !!item.fromMain;
+    if(wasMain){ mainDismissed = true; mainItem = null; }
+    removeItem(item, true);
+    trash.remove(item.name, ()=>{
+      items.splice(Math.min(idx, items.length), 0, item);
+      if(item.el) grid.insertBefore(item.el, (nextEl && nextEl.parentNode===grid) ? nextEl : null);
+      if(wasMain){ mainItem = item; mainDismissed = false; }
+      renderThumb(item); updateEmptyMsg();
+    }, { confirm: ()=> releaseImage(item) });   // 시간이 지나 확정되면 그때 메모리 해제
+  }
+  // Ctrl+Z(맥은 ⌘+Z)로도 방금 지운 걸 되돌린다 — 글자 입력칸에선 원래 Ctrl+Z(글자 되돌리기)가 그대로 동작
+  document.addEventListener('keydown', e=>{
+    if(!(e.ctrlKey||e.metaKey) || e.shiftKey || e.key.toLowerCase()!=='z') return;
+    const t=e.target; if(t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if(trash.undo()) e.preventDefault();
+  });
 
   // ── 아트보드 하나를 좌우 2분할로 만들기(⑤ 전용) ──
   // 기본은 사진 1장 = 아트보드 1개. 특정 아트보드를 고른 뒤 ＋를 눌러야 그 칸만 2분할이 된다.
@@ -2085,7 +2113,8 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   document.addEventListener('igcrop:mainImage', e=> syncMainImage(e.detail && e.detail.img));
   // 트윗에서 넘어온 2장째부터의 사진(캐러셀 2페이지~) — 직접 올린 사진과 똑같이 추가
   document.addEventListener('igcrop:addFiles', async e=>{ const d=e.detail||{};
-    if(d.fromTweet){ items.filter(it=>it.fromTweet).forEach(removeItem); }   // 앞서 불러온 트윗 사진은 새 트윗으로 교체
+    // 새 트윗이면: 되돌리기 대기 중인 삭제를 먼저 확정(안 그러면 예전 트윗 사진이 새 트윗 사이로 되살아남) → 앞서 불러온 트윗 사진 교체
+    if(d.fromTweet){ trash.flush(); items.filter(it=>it.fromTweet).forEach(it=>removeItem(it)); }
     if(d.files && d.files.length) await addFiles([...d.files], d.fromTweet ? {fromTweet:true} : null); });
   if(typeof state !== 'undefined' && state.img) syncMainImage(state.img);
 
@@ -2146,6 +2175,7 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   window.igcropPages = {
     list: ()=> items.map(it=>({ id:it.id, name:it.name, fromMain:!!it.fromMain })),
     remove: id=>{ const it=items.find(x=>x.id===id); if(it) removeItem(it); },
+    removeUndoable: id=>{ const it=items.find(x=>x.id===id); if(it) deleteWithUndo(it); },
     // ★ 표지 맞바꾸기용 — 이 장의 원본 사진을 파일로 / 이 장의 사진을 다른 사진으로 갈아끼우기
     imageBlob: async id=>{ const it=items.find(x=>x.id===id); if(!it) throw new Error('사진을 찾지 못했습니다'); return it.file || imgToBlob(it.img); },
     replaceImage: async (id, blob, name)=>{
@@ -2259,11 +2289,10 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     } catch(err){ console.error(err); showToast('⚠ 표지를 바꾸지 못했어요: '+err.message, true); }
     finally{ busy=false; }
   }
-  // ✕ 한 장 지우기 — 되돌릴 수 없으니 묻고, 크게 보던 장이면 이웃 장으로(번호가 아니라 key로 다룸)
+  // ✕ 한 장 지우기 — 바로 지우고 7초 동안 되돌리기, 크게 보던 장이면 이웃 장으로(번호가 아니라 key로 다룸)
   function removePage(pg, idx){
-    if(!confirm('이 장을 지울까요? (되돌릴 수 없어요)')) return;
     neighborIdx=idx;
-    api().remove(pg.id);   // ⑤에서도 같이 지워지고, 목록 다시 만들기는 igcrop:list 알림으로
+    api().removeUndoable(pg.id);   // 바로 지우고 되돌리기 토스트 — ⑤에서도 같이 지워지고, 목록은 igcrop:list 알림으로 다시 만듦
   }
   document.addEventListener('igcrop:list', build);
   document.addEventListener('igcrop:changed', e=>{ const k='p'+e.detail.id; repaint(k); if(k===key) show(); });
