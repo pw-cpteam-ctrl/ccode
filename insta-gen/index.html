@@ -40,6 +40,7 @@
   .pthumb { position:relative; cursor:pointer; }
   .pthumb canvas { width:68px; height:85px; border-radius:5px; display:block; background:#eee; border:1px solid var(--line); }
   .pthumb.sel canvas { outline:2px solid var(--accent); outline-offset:1px; }
+  .dl-all { display:block; width:100%; margin-top:10px; padding:10px; font-weight:700; }
   .pthumb .pnum { position:absolute; left:4px; bottom:4px; background:rgba(0,0,0,.62); color:#fff; font-size:10px; font-weight:700; border-radius:4px; padding:1px 5px; pointer-events:none; }
   .hint { color: var(--muted); font-size: 13px; margin-top: 10px; text-align: center; font-weight: 300; line-height: 1.5; }
   .subtitle { font-size:16px; color:var(--text); font-weight:700; margin:-2px 0 12px; line-height:1.35; }
@@ -500,6 +501,7 @@
         </div>
       </div>
       <div class="hint" id="previewHint">미리보기만 75% 축소 (다운로드 화질엔 영향 없음) · 드래그로 위치 조정</div>
+      <button type="button" class="btn2 dl-all" id="downloadAll" hidden>⬇ 전체 다운로드</button>
     </div>
     <button class="mobile-preview-toggle" id="previewToggle" type="button" aria-expanded="true">🖼 미리보기·편집칸 접기 ▲</button>
 
@@ -2119,6 +2121,7 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   window.igcropPages = {
     list: ()=> items.map(it=>({ id:it.id, name:it.name })),
     draw: (id, ctx2d, W, H)=>{ const it=items.find(x=>x.id===id); if(it) drawItem(it, ctx2d, W, H); },
+    blob: id=>{ const it=items.find(x=>x.id===id); return it ? exportBlob(it) : Promise.reject(new Error('사진을 찾지 못했습니다')); },   // ⑤ 개별 다운로드와 같은 결과
     attach: (canvas, getId, W, H)=> attachInteraction(canvas, ()=> items.find(x=>x.id===getId()) || null, W, H,
       it=>{ renderThumb(it); if(openItem && openItem.id===it.id) renderModal(); }),
   };
@@ -2135,7 +2138,8 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
 <script>
 (function(){
   const row=document.getElementById('pageThumbs'), stage=document.getElementById('stage'),
-        pstage=document.getElementById('pageStage'), hint=document.getElementById('previewHint');
+        pstage=document.getElementById('pageStage'), hint=document.getElementById('previewHint'),
+        dlAll=document.getElementById('downloadAll');
   // 썸네일 내부 해상도는 보이는 크기(68×85, CSS)의 정확히 2배 — 비율이 같아 흐려지거나 잘리지 않고 레티나에서도 선명.
   // 둘 중 한쪽만 바꾸면 늘어나 보이니 CSS(.pthumb canvas)와 같이 바꿀 것.
   const TW=136, TH=170;
@@ -2150,6 +2154,7 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   function build(){
     const L=pages(); if(!L.find(p=>p.key===key)) key='card';
     row.hidden = L.length<2;   // 카드 한 장뿐이면 목록 자체를 숨겨 예전 화면 그대로
+    dlAll.hidden = L.length<2; dlAll.textContent=`⬇ 전체 다운로드 (${L.length}장)`;
     row.innerHTML='';
     L.forEach((pg,i)=>{
       const w=document.createElement('div'); w.className='pthumb'+(pg.key===key?' sel':''); w.dataset.key=pg.key;
@@ -2175,6 +2180,38 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   document.addEventListener('igcrop:changed', e=>{ const k='p'+e.detail.id; repaint(k); if(k===key) show(); });
   document.addEventListener('pages:select', e=>{ build(); select(e.detail && e.detail.key || 'card'); });
   if(api()) api().attach(pstage, ()=> key==='card' ? null : +key.slice(1), PW, PH);
+
+  // ── 전체 다운로드: 카드 + 사진 장을 목록 순서대로 번호 붙여 한 장씩 내려받는다(ZIP 없이) ──
+  // 파일 이름: 작품_라인_01_카드.png, 작품_라인_02.png … — 폴더에서 이름순 정렬하면 올릴 순서 그대로.
+  // 폰은 공유 창으로 한 번에 넘겨서 "이미지 N개 저장"으로 사진첩에 바로 넣게 한다(한 장씩 받으면
+  // 파일 앱으로 가고 매번 확인창이 떠서 불편). 공유가 안 되는 폰이면 한 장씩 받기로 내려간다.
+  dlAll.addEventListener('click', async ()=>{
+    if(!runValidation()){ showToast('⚠ 3번 칸에 빠진 항목이 있어 카드를 내려받을 수 없어요 — 표시된 항목을 먼저 채워주세요', true); return; }
+    dlAll.disabled=true; const label=dlAll.textContent; dlAll.textContent='준비 중…';
+    try{
+      const L=pages(), base=buildDownloadName().replace(/\.png$/,''), files=[];
+      for(let i=0;i<L.length;i++){
+        const pg=L[i];
+        const blob = pg.key==='card' ? await new Promise((res,rej)=>stage.toBlob(b=>b?res(b):rej(new Error('카드 변환 실패')),'image/png'))
+                                     : await api().blob(pg.id);
+        files.push(new File([blob], `${base}_${String(i+1).padStart(2,'0')}${pg.key==='card'?'_카드':''}.png`, {type:'image/png'}));
+      }
+      if(matchMedia('(hover:none)').matches && navigator.canShare && navigator.canShare({files})){
+        try{ await navigator.share({files}); logAiLearningOnDownload(); return; }
+        catch(e){ if(e && e.name==='AbortError') return; }   // 사용자가 공유 창을 닫은 건 그대로 끝
+      }
+      for(const f of files){
+        const a=document.createElement('a'); a.href=URL.createObjectURL(f); a.download=f.name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+        await new Promise(r=>setTimeout(r,350));   // 너무 빨리 연달아 받으면 브라우저가 일부를 빠뜨림
+      }
+      logAiLearningOnDownload();
+      showToast(`${files.length}장을 내려받았어요 — 브라우저가 "여러 파일 다운로드"를 물으면 허용을 눌러주세요`);
+    } catch(err){
+      console.error(err); showToast('⚠ 전체 다운로드 중 문제가 생겼어요: '+err.message, true);
+    } finally { dlAll.disabled=false; dlAll.textContent=label; }
+  });
   build();
 })();
 </script>
