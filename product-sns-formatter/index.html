@@ -1736,6 +1736,19 @@ async function exportProductZip(p) {
   if (statusEl) statusEl.textContent = failed.length ? `⚠ ${failed.join(', ')}번은 빠졌어요` : '완료';
 }
 
+/* 목록에서 removedIdx 번째를 뺐을 때, 다른 곳에 저장해둔 번호(ref)가 계속 같은 항목을
+   가리키도록 고쳐준다. 번호로 항목을 가리키는 값(대표 슬라이드, 편집 중인 슬라이드)은
+   중간이 빠지는 순간 전부 어긋나므로, 지울 때마다 반드시 이걸 거쳐야 한다.
+     - 지운 것보다 앞  → 그대로
+     - 지운 것보다 뒤  → 하나 당김
+     - 지운 것 자신    → 그 자리에 오게 된 항목(없으면 마지막)을 가리킴 */
+function shiftIndexAfterRemoval(ref, removedIdx, newLength) {
+  if (newLength <= 0) return 0;
+  if (ref > removedIdx) return ref - 1;
+  if (ref < removedIdx) return ref;
+  return Math.min(removedIdx, newLength - 1);
+}
+
 // 썸네일이 그려지는 해상도. 화면에 보이는 크기(.thumbwrap canvas의 CSS width/height)와
 // 반드시 같은 값이어야 한다 — 다르면 흐릿하게 늘어나거나 잘린다.
 const THUMB_W = 68, THUMB_H = 85;
@@ -2018,8 +2031,14 @@ function drawAllThumbs(p) {
       const removedSlide = p.images.splice(idx, 1)[0];
       const prevMain = p.mainIndex;
       const prevEditing = editingIdx;
-      if (p.mainIndex >= p.images.length) p.mainIndex = Math.max(0, p.images.length - 1);
-      editingIdx = Math.min(editingIdx, Math.max(0, p.images.length - 1));
+      /* 지운 자리보다 뒤에 있던 번호는 하나씩 당겨야 한다. 예전엔 범위를 벗어났을 때만
+         깎았는데(>= length), 그러면 앞쪽 사진을 지웠을 때 대표(★)가 가리키는 번호는
+         그대로인 채 사진들만 앞으로 밀려서 ★가 옆 사진으로 옮겨갔다. 실제로 5장 중
+         맨 앞을 지우면 대표가 3번째에서 4번째 사진으로 넘어가는 것을 확인했다.
+         편집 중인 번호도 같은 문제를 갖고 있었다(이쪽은 깎이면서 우연히 맞는 경우가
+         있어 더 늦게 드러난다). */
+      p.mainIndex = shiftIndexAfterRemoval(p.mainIndex, idx, p.images.length);
+      editingIdx = shiftIndexAfterRemoval(editingIdx, idx, p.images.length);
       selectedKeys.delete(removedSlide.key);
       saveProducts();
       renderImageStage(p);
