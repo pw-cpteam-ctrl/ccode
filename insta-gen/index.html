@@ -1611,11 +1611,57 @@ function restoreSlot(s){
   // 저장된 슬롯이 없는 첫 방문에서도 ③시리즈/라인 드롭다운을 실제 값(state.line)에 맞춰준다.
   // 안 하면 드롭다운은 목록 첫 항목('룩업')을 보여주는데 카드/타이틀엔 state.line 기본값
   // ('G.E.M. 시리즈')이 찍혀서, 화면 라벨과 실제 결과가 서로 다른 상태가 된다.
-  if(slots.length){ restoreSlot(slots[0]); syncControlsUI(); checkWorkSpacing(); }
+  // 트윗 시험 페이지(tweet-test.html)에서 "카드 도구로 보내기"로 넘어왔으면, 지난 작업을 되살리지 않고
+  // 트윗 내용으로 새로 시작한다. 지난 작업은 이전 입력 목록(slots)에 그대로 남아 있어서 잃지 않는다.
+  const handoff = takeTweetHandoff();
+  if(slots.length && !handoff){ restoreSlot(slots[0]); syncControlsUI(); checkWorkSpacing(); }
   else { setLineSelect(state.line, state.linePrefix, true); }
   composeTitle(); updatePreview(); renderPhotoSlots(); render(); runValidation(); renderSlots(); updateCopyCount();
-  if(slots[0]?.imgData) loadImage(slots[0].imgData, true);
+  if(!handoff && slots[0]?.imgData) loadImage(slots[0].imgData, true);
+  if(handoff) await applyTweetHandoff(handoff);
 })();
+
+/* ── 트윗에서 넘어온 원문·사진 받기 ──
+   tweet-test.html이 sessionStorage['instaGenTweetHandoff']에 남긴 꾸러미:
+   { v:1, text, maybeTruncated, photos:[주소…](영상 썸네일은 뒤쪽), fromVideo:n, source, tweetUrl, at }
+   - 첫 사진 → ① 카드 사진 / 2장째부터 → ⑤ 인스타 규격 크롭(캐러셀 2페이지~)
+   - 원문 → 원문칸에 넣고 [무료로 채우기]까지 자동으로 누른 상태로 만든다
+   한 번 읽으면 바로 지워서, 새로고침해도 같은 트윗이 다시 덮어쓰지 않게 한다. */
+function takeTweetHandoff(){
+  let h=null;
+  try{ const raw=sessionStorage.getItem('instaGenTweetHandoff'); sessionStorage.removeItem('instaGenTweetHandoff'); h=raw?JSON.parse(raw):null; }catch{ return null; }
+  if(!h || h.v!==1 || !Array.isArray(h.photos)) return null;
+  if(h.at && Date.now()-h.at > 30*60*1000) return null;   // 30분 넘게 묵은 건 무시(다른 작업에 섞이지 않게)
+  return h;
+}
+async function applyTweetHandoff(h){
+  const urls=h.photos.filter(u=>typeof u==='string' && /^https:\/\//.test(u));
+  showToast(`트윗에서 사진 ${urls.length}장을 불러오는 중…`);
+  // 트위터 이미지 서버가 다른 사이트에서 쓰는 걸 허용해서 바로 받아올 수 있다. 파일로 바꿔 두면
+  // 카드·크롭 쪽은 사용자가 직접 올린 사진과 똑같이 처리한다.
+  const files=[];
+  for(let i=0;i<urls.length;i++){
+    try{ const r=await fetch(urls[i]); if(!r.ok) throw new Error(r.status); const b=await r.blob();
+      files.push(new File([b], `tweet-${i+1}.jpg`, {type:b.type||'image/jpeg'})); }
+    catch(e){ console.error('트윗 사진 불러오기 실패', urls[i], e); }
+  }
+  if(files[0]) await loadImageInto(1, URL.createObjectURL(files[0]));
+  if(files.length>1) document.dispatchEvent(new CustomEvent('igcrop:addFiles', {detail:{files:files.slice(1)}}));
+  const text=(h.text||'').trim();
+  document.getElementById('t_source').value=text;
+  if(text) applySource();
+  const msgs=[`🐦 트윗에서 원문과 사진 ${files.length}장을 가져왔어요`];
+  if(text) msgs.push('[무료로 채우기]까지 해뒀어요 — 이상하면 [✦ AI로 채우기]');
+  if(files.length>1) msgs.push(`2장째부터는 맨 아래 인스타 규격 크롭에 넣었어요`);
+  if(files.length<urls.length) msgs.push(`⚠ 사진 ${urls.length-files.length}장은 못 불러왔어요 — 직접 올려주세요`);
+  if(h.fromVideo) msgs.push('영상 트윗이라 영상 썸네일을 사진으로 넣었어요');
+  if(h.maybeTruncated) msgs.push('⚠ 원문 끝이 잘렸을 수 있어요 — 끝부분을 확인해주세요');
+  const warn = files.length<urls.length || !!h.maybeTruncated;
+  showToast(msgs[0] + (warn?' (아래 안내 확인)':''), warn);
+  // 토스트는 몇 초 뒤 사라지니, 2번 버튼 밑 안내줄에도 남겨 둔다
+  const st=document.getElementById('srcStatus');
+  st.textContent = msgs.join(' · ') + (st.textContent ? ' / ' + st.textContent : '');
+}
 </script>
 
 <!-- ================================================================
@@ -1947,6 +1993,8 @@ function restoreSlot(s){
     updateEmptyMsg();
   }
   document.addEventListener('igcrop:mainImage', e=> syncMainImage(e.detail && e.detail.img));
+  // 트윗에서 넘어온 2장째부터의 사진(캐러셀 2페이지~) — 직접 올린 사진과 똑같이 추가
+  document.addEventListener('igcrop:addFiles', e=>{ const f=e.detail && e.detail.files; if(f && f.length) addFiles([...f]); });
   if(typeof state !== 'undefined' && state.img) syncMainImage(state.img);
 
   function exportBlob(item){
