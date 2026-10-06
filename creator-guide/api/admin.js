@@ -15,6 +15,7 @@
 //   GITHUB_TOKEN / GITHUB_OWNER / GITHUB_REPO / GITHUB_LOG_BRANCH(비공개 저장소의 main)
 
 import { readGithubFile, writeGithubFile } from '../lib/github.js';
+import { OPEN_DAYS_PATH } from './open-days.js';
 
 const CONFIRMED_PATH = 'creator-logs/confirmed.json';
 const GUARD_PATH = 'creator-logs/admin-guard.json';
@@ -101,7 +102,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ ok: false }); return; }
   if (!isSameOrigin(req)) { res.status(403).json({ ok: false }); return; }
 
-  const { code, action, nick, ip: targetIp } = req.body || {};
+  const { code, action, nick, ip: targetIp, month, day } = req.body || {};
   if (!process.env.ADMIN_PASSWORD) {
     res.status(503).json({ ok: false, reason: 'unconfigured' });
     return;
@@ -193,6 +194,35 @@ export default async function handler(req, res) {
       return;
     }
 
+    // 오픈 날짜 예외 저장. 기본은 매달 첫 목요일이고, 그와 다른 달만 남긴다.
+    // day를 비우면 그 달을 목록에서 지워 기본 규칙으로 되돌린다.
+    if (action === 'open-day') {
+      const key = String(month || '').trim();
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(key)) { res.status(400).json({ ok: false, reason: 'month' }); return; }
+      const n = day === '' || day === null || day === undefined ? null : Number(day);
+      if (n !== null && (!Number.isInteger(n) || n < 1 || n > 31)) {
+        res.status(400).json({ ok: false, reason: 'day' }); return;
+      }
+
+      const f = await readGithubFile({ ...gh, path: OPEN_DAYS_PATH });
+      let days = {};
+      if (f) { try { days = JSON.parse(f.content) || {}; } catch { days = {}; } }
+      if (n === null) delete days[key]; else days[key] = n;
+
+      // 달 순서대로 적어 둔다. 파일을 직접 열어볼 일이 있을 때 읽기 쉽다.
+      const sorted = {};
+      Object.keys(days).sort().forEach(function (k) { sorted[k] = days[k]; });
+
+      await writeGithubFile({
+        ...gh, path: OPEN_DAYS_PATH,
+        content: JSON.stringify(sorted, null, 2) + '\n',
+        message: `creator-guide 오픈일 ${n === null ? `해제 (${key})` : `지정 (${key} → ${n}일)`}`,
+        sha: f ? f.sha : undefined,
+      });
+      res.status(200).json({ ok: true, days: sorted });
+      return;
+    }
+
     if (action === 'confirm' || action === 'unconfirm') {
       const name = String(nick || '').replace(/\s+/g, ' ').trim().slice(0, KEY_MAX);
       if (!name) { res.status(400).json({ ok: false, reason: 'nick' }); return; }
@@ -224,11 +254,17 @@ export default async function handler(req, res) {
       }
     }
     const { map } = await loadConfirmed(gh);
+    // 오픈일도 같이 내려보낸다. 관리자 화면이 따로 한 번 더 부르지 않게 한다.
+    let openDays = {};
+    try {
+      const od = await readGithubFile({ ...gh, path: OPEN_DAYS_PATH });
+      if (od) openDays = JSON.parse(od.content) || {};
+    } catch (err) { console.error('[admin] 오픈일 조회 실패:', err?.message || err); }
     // 차단된 곳이 있으면 화면에 같이 보여준다 — 담당자가 풀어줘야 하기 때문이다.
     const blocked = Object.fromEntries(
       Object.entries(guard).filter(([, v]) => v?.blocked)
     );
-    res.status(200).json({ ok: true, rows, confirmed: map, blocked });
+    res.status(200).json({ ok: true, rows, confirmed: map, blocked, openDays });
   } catch (err) {
     console.error('[admin] 처리 실패:', err?.message || err);
     res.status(502).json({ ok: false, reason: 'io' });

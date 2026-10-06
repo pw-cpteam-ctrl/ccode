@@ -118,6 +118,35 @@
   }
   /* 희망 상품은 반대로 너무 좁아 글이 계속 접혔다. 아이디 칸만큼은 준다. */
   td.wish { min-width: 13ch; }
+  /* 지난 회차 — 두 달 넘게 쌓이면 지난 달 건이 섞여 지금 볼 것을 가린다.
+     지우지는 않고 흐리게 내려 둔다(기록은 남아야 하므로). */
+  tr.is-past td { color: var(--ink-400); background: #fbfbfa; }
+  tr.is-past td.nick { font-weight: 400; }
+  tr.is-past .tag, tr.is-past .dday { opacity: .55; }
+
+  /* 오픈 날짜 관리 — 평소엔 접어 두고, 바꿀 때만 펼친다 */
+  .open-box {
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 14px;
+  }
+  .open-box > summary {
+    cursor: pointer; font-size: 13.5px; font-weight: 700; list-style: none;
+  }
+  .open-box > summary::-webkit-details-marker { display: none; }
+  .open-box > summary::before { content: '📅 '; }
+  .open-sum { font-weight: 400; font-size: 12px; color: var(--ink-500); margin-left: 6px; }
+  .open-list { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .open-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .open-month { width: 42px; font-weight: 700; font-size: 13.5px; }
+  .open-pick {
+    padding: 6px 9px; font: inherit; font-size: 13px;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff;
+  }
+  .open-row.is-set .open-pick { border-color: #1d4ed8; color: #1d4ed8; font-weight: 700; }
+  .open-note { font-size: 12px; color: var(--ink-500); }
+  .open-row.is-set .open-note { color: #1d4ed8; }
+  .open-reset { padding: 5px 9px; font-size: 12px; }
+  .open-foot { margin: 12px 0 0; font-size: 12px; color: var(--ink-500); }
   .empty { padding: 40px 16px; text-align: center; color: var(--ink-500); }
   .scroll { overflow-x: auto; }
   .foot { margin-top: 14px; font-size: 12px; color: var(--ink-400); line-height: 1.6; }
@@ -146,6 +175,7 @@
   var rows = [];
   var confirmed = {};
   var blocked = {};   // 코드를 너무 여러 번 틀려 차단된 접속 지점
+  var openDays = {};  // 기본(첫 목요일)과 다른 달의 오픈 날짜. 'YYYY-MM': 일
   var keyword = '';
 
   function esc(s) {
@@ -250,6 +280,7 @@
           rememberCode(v);
           rows = r.data.rows || [];
           confirmed = r.data.confirmed || {};
+          openDays = r.data.openDays || openDays;
           blocked = r.data.blocked || {};
           renderList();
         } else if (r.status === 401) {
@@ -415,6 +446,7 @@
     api({ code: code, action: on ? 'confirm' : 'unconfirm', nick: key }).then(function (r) {
       if (r.status === 200 && r.data.ok) {
         confirmed = r.data.confirmed || {};
+          openDays = r.data.openDays || openDays;
         if (!on && legacy) {
           return api({ code: code, action: 'unconfirm', nick: legacy }).then(function (r2) {
             if (r2.status === 200 && r2.data.ok) confirmed = r2.data.confirmed || {};
@@ -446,13 +478,90 @@
       '<p class="blocked-note">모르는 곳이라면 누군가 코드를 찔러본 것입니다. 풀지 말고 그대로 두세요.</p></div>';
   }
 
+  // ─── 오픈 날짜 관리 ───
+  // 기본은 매달 첫 목요일이고, 그와 다른 달만 여기에 적어 둔다.
+  // 적어 둔 값은 비공개 저장소에 저장되어 가이드 페이지의 달력·일정에 쓰인다.
+  function firstThursday(y, m) {   // m은 1부터
+    var first = new Date(y, m - 1, 1);
+    return 1 + ((4 - first.getDay() + 7) % 7);
+  }
+
+  function monthKey(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+
+  // 이번 달부터 앞으로 다섯 달치를 보여준다. 지난 달은 이미 끝난 일정이라 뺀다.
+  function openMonths() {
+    var out = [];
+    var d = new Date();
+    d.setDate(1);
+    for (var i = 0; i < 5; i++) {
+      out.push(monthKey(d));
+      d.setMonth(d.getMonth() + 1);
+    }
+    return out;
+  }
+
+  function openBox() {
+    var rows = openMonths().map(function (key) {
+      var p = key.split('-');
+      var base = firstThursday(+p[0], +p[1]);
+      var set = openDays[key];
+      var day = set == null ? base : set;
+      return '<div class="open-row' + (set == null ? '' : ' is-set') + '">' +
+        '<span class="open-month">' + (+p[1]) + '월</span>' +
+        '<select class="open-pick" data-month="' + esc(key) + '">' +
+          Array.from({ length: new Date(+p[0], +p[1], 0).getDate() }, function (_, i) {
+            var n = i + 1;
+            return '<option value="' + n + '"' + (n === day ? ' selected' : '') + '>' + n + '일</option>';
+          }).join('') +
+        '</select>' +
+        '<span class="open-note">' + (set == null
+          ? '기본 (첫 목요일 ' + base + '일)'
+          : '직접 지정함 · 기본은 ' + base + '일') + '</span>' +
+        (set == null ? '' : '<button class="mini open-reset" data-month="' + esc(key) + '">기본으로</button>') +
+        '</div>';
+    }).join('');
+
+    return '<details class="open-box"><summary>오픈 날짜 관리 ' +
+      '<span class="open-sum">기본은 매달 첫 목요일 · 다른 날이면 여기서 바꾸세요</span></summary>' +
+      '<div class="open-list">' + rows + '</div>' +
+      '<p class="open-foot" id="open-msg">바꾸면 가이드 페이지의 달력과 이벤트 일정에 바로 반영됩니다.</p>' +
+      '</details>';
+  }
+
+  function saveOpenDay(month, day, msgEl) {
+    if (msgEl) msgEl.textContent = '저장 중…';
+    return api({ code: code, action: 'open-day', month: month, day: day })
+      .then(function (r) {
+        if (r.status === 200 && r.data.ok) {
+          openDays = r.data.days || {};
+          renderList();
+          var m = document.getElementById('open-msg');
+          if (m) m.textContent = '저장했습니다. 가이드 페이지에 바로 반영됩니다.';
+        } else if (msgEl) {
+          msgEl.textContent = '저장하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+        }
+      })
+      .catch(function () { if (msgEl) msgEl.textContent = '저장하지 못했습니다. 잠시 후 다시 시도해 주세요.'; });
+  }
+
+  // 이번 달 오픈 회차보다 앞선 건은 이미 끝난 일정이라 흐리게 둔다.
+  // 두 달 넘게 운영하면 지난 달 건이 그대로 섞여 보여 지금 볼 것이 가려진다.
+  function isPastRound(r) {
+    var v = String(r.draftDate || '');
+    if (v.length !== 10) return false;
+    return v < new Date().toISOString().slice(0, 10) && ddayNum(v) < 0;
+  }
+
   function renderList() {
     var list = visibleRows();
     var latestCount = list.filter(function (r) { return r.latest; }).length;
 
     var body = list.map(function (r) {
       var isOn = isConfirmed(r);
-      return '<tr class="' + (r.latest ? '' : 'is-old') + '">' +
+      var cls = (r.latest ? '' : 'is-old') + (isPastRound(r) ? ' is-past' : '');
+      return '<tr class="' + cls.trim() + '">' +
         '<td class="nick">' + esc(r.nick) + (r.latest ? '' : ' <span class="old-note">지난 제출</span>') + '</td>' +
         '<td class="naver" title="' + esc(r.naver || '') + '"><span class="roll"><span>' + esc(r.naver || '-') + '</span></span></td>' +
         '<td>' + esc(fmtDate(r.draftDate)) + '</td>' +
@@ -480,6 +589,7 @@
       '<button class="mini" id="reload">새로고침</button>' +
       '<button class="mini" id="lock">잠그기</button>' +
       '</div>' +
+      openBox() +
       (list.length
         ? '<div class="scroll"><table><thead><tr>' +
           '<th>활동명</th><th>네이버 아이디</th><th>초안 공유 예정일</th><th>D-day</th><th>보상 수령 방식</th><th>보상 형태</th><th>희망 상품</th><th>제출 시각</th><th>확정</th>' +
@@ -501,6 +611,18 @@
       try { nq.setSelectionRange(pos, pos); } catch (e) { /* 무시 */ }
     });
     document.getElementById('copy').addEventListener('click', function () { copyTable(this); });
+    // 오픈 날짜 — 고르면 바로 저장하고, '기본으로'를 누르면 목록에서 지운다.
+    var openMsg = document.getElementById('open-msg');
+    Array.prototype.forEach.call(root.querySelectorAll('.open-pick'), function (sel) {
+      sel.addEventListener('change', function () {
+        saveOpenDay(sel.getAttribute('data-month'), Number(sel.value), openMsg);
+      });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('.open-reset'), function (b) {
+      b.addEventListener('click', function () {
+        saveOpenDay(b.getAttribute('data-month'), '', openMsg);
+      });
+    });
     // 칸보다 긴 아이디만 골라 흐르게 한다. 넘치는 만큼만 움직이면 되므로
     // 그 거리를 재서 넣어주고, 100px당 2초 정도로 속도를 맞춘다.
     Array.prototype.forEach.call(root.querySelectorAll('td.naver .roll'), function (roll) {
@@ -529,6 +651,7 @@
         if (r.status === 200 && r.data.ok) {
           rows = r.data.rows || [];
           confirmed = r.data.confirmed || {};
+          openDays = r.data.openDays || openDays;
           renderList();
         }
       });
@@ -549,6 +672,7 @@
         code = saved;
         rows = r.data.rows || [];
         confirmed = r.data.confirmed || {};
+          openDays = r.data.openDays || openDays;
         blocked = r.data.blocked || {};
         renderList();
       } else if (r.status === 429) {

@@ -141,18 +141,42 @@ function firstThursday(year, month) {
 }
 
 // 첫 목요일이 아닌 달이 가끔 있다. 메가하우스 쪽 사정으로 그때그때 정해지는
-// 것이라 계산으로 알아낼 방법이 없어, 담당자에게 전달받으면 여기에 한 줄씩
-// 적어 둔다. 적어 두지 않은 달은 위의 기본 규칙(첫 목요일)을 따른다.
+// 것이라 계산으로 알아낼 방법이 없다.
+//
+// 이 값은 이제 담당자가 관리자 화면(reward-view-admin.html)의 '오픈 날짜 관리'에서
+// 직접 넣고, 비공개 저장소에 저장된 것을 아래 loadOpenDays가 받아 온다.
+// 여기 적힌 것은 받아 오기 전이나 받아 오지 못했을 때 쓰는 기본값이다.
 //   키: 'YYYY-MM'   값: 그 달의 오픈 날짜(일)
 const OPEN_DAY_EXCEPTIONS = {
   '2026-09': 10,   // 첫 목요일은 3일이지만 10일로 진행
   '2026-10': 8,    // 첫 목요일은 1일이지만 8일로 진행
 };
 
+// 관리자 화면에서 받아 온 값. 받기 전에는 비어 있다.
+let OPEN_DAYS_SAVED = null;
+
 // 그 달의 오픈일이 며칠인지 돌려준다. month는 0부터 시작한다(0=1월).
+// 저장된 값이 가장 먼저고, 없으면 위 기본값, 그것도 없으면 첫 목요일이다.
 function openDayOf(year, month) {
   const key = `${year}-${String(month + 1).padStart(2, '0')}`;
-  return OPEN_DAY_EXCEPTIONS[key] ?? firstThursday(year, month).getDate();
+  return (OPEN_DAYS_SAVED && OPEN_DAYS_SAVED[key])
+    ?? OPEN_DAY_EXCEPTIONS[key]
+    ?? firstThursday(year, month).getDate();
+}
+
+// 저장된 오픈 날짜를 한 번만 받아 온다. 받아 오면 onDone으로 알려 화면을
+// 다시 그리게 한다. 실패해도 아무 말 없이 기본값으로 둔다 — 날짜 때문에
+// 가이드 전체가 멈추면 안 된다.
+function loadOpenDays(onDone) {
+  if (OPEN_DAYS_SAVED) { return; }
+  fetch('api/open-days')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      if (!d || !d.ok) return;
+      OPEN_DAYS_SAVED = d.days || {};
+      onDone();
+    })
+    .catch(() => { /* 기본값으로 둔다 */ });
 }
 
 
@@ -788,6 +812,9 @@ function FloatingChatDock({ brand, onGoTab, inline = false }) {
 
 function FinalOption() {
   const [phase, setPhase] = React.useState('cover');
+  // 담당자가 지정해 둔 오픈 날짜를 받아 오면 달력·일정을 다시 그린다.
+  const [, bumpOpenDays] = React.useReducer((n) => n + 1, 0);
+  React.useEffect(() => { loadOpenDays(bumpOpenDays); }, []);
   const [tab, setTab] = React.useState('flow');
   const [openFaq, setOpenFaq] = React.useState(-1);
 
