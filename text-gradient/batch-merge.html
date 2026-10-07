@@ -2175,6 +2175,9 @@ $('#selZoom').addEventListener('input', e => {
 $('#btnSelBadgeFlip').addEventListener('click', () => {
   const list = selectedItems();
   if (!list.length) return;
+  // 다른 일괄 버튼은 전부 되돌리기 기록을 남기는데 여기만 빠져 있었다. 그래서 뱃지를 뒤집고
+  // Ctrl+Z를 누르면 뱃지는 그대로인 채 그 "앞 작업"이 되돌아가 버렸다
+  pushUndo(`뱃지 좌우 전환 ${list.length}장`);
   for (const it of list) {
     it.badgeSide = (it.badgeSide === 'right') ? 'left' : 'right';
     refreshThumb(it);
@@ -2658,6 +2661,9 @@ function unsplitItem(it){
                       it.split.img2.naturalHeight || it.split.img2.height, CW, CH),
     storeName: it.storeName, badgeSide: it.badgeSide,
     isMain: false, noFrame: true,
+    // 2분할일 때 흰 배경 지우기는 위·아래 칸에 똑같이 적용되므로, 꺼낸 사진도 그 설정을
+    // 그대로 가져간다 (안 넘기면 푸는 순간 혼자만 흰 배경이 되살아나 보인다)
+    whiteCut: !!it.whiteCut,
   };
   it.split = null;
   it._thumbSrc2 = null;
@@ -2753,14 +2759,25 @@ function toggleWhiteCutSelected(){
   if (!list.length) return;
   ensureUids();
   const turnOn = list.some(it => !it.whiteCut);
-  pushUndo(turnOn ? `흰 배경 지우기 ${list.length}장` : `흰 배경 되돌리기 ${list.length}장`);
-  for (const it of list) { it.whiteCut = turnOn; dropWhiteCutCache(it); }
-  renderGrid();
-  saveMetaToCache();
-  reportAction(`${list.length}장 흰 배경 ${turnOn ? '지움' : '되돌림'}`);
-  log(`${list.length}장의 흰 배경을 ${turnOn ? '지웠습니다' : '되돌렸습니다'}.`
-    + (turnOn ? ' 사진 바깥쪽과 이어진 흰 부분만 지우므로 상품 안쪽 흰색은 그대로 남습니다.' : '')
-    + ' Ctrl+Z로 되돌릴 수 있습니다.');
+  const btn = $('#btnSelWhiteCut');
+  // 300장이면 다시 그리는 데 몇 초가 걸리는데, 그 사이 화면이 멈춰 있어서 눌리지 않은 줄 알고
+  // 다시 누르게 된다(=켰다 껐다가 됨). 먼저 안내를 칠한 뒤 다음 화면 갱신 때 작업을 시작한다
+  if (btn) { btn.disabled = true; btn.textContent = turnOn ? '지우는 중…' : '되돌리는 중…'; }
+  reportAction(`${list.length}장 흰 배경 ${turnOn ? '지우는 중…' : '되돌리는 중…'}`);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    try {
+      pushUndo(turnOn ? `흰 배경 지우기 ${list.length}장` : `흰 배경 되돌리기 ${list.length}장`);
+      for (const it of list) { it.whiteCut = turnOn; dropWhiteCutCache(it); }
+      renderGrid();
+      saveMetaToCache();
+      reportAction(`${list.length}장 흰 배경 ${turnOn ? '지움' : '되돌림'}`);
+      log(`${list.length}장의 흰 배경을 ${turnOn ? '지웠습니다' : '되돌렸습니다'}.`
+        + (turnOn ? ' 사진 바깥쪽과 이어진 흰 부분만 지우므로 상품 안쪽 흰색은 그대로 남습니다.' : '')
+        + ' Ctrl+Z로 되돌릴 수 있습니다.');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '흰 배경 지우기'; }
+    }
+  }));
 }
 
 // 그리드 썸네일 전용 — 화질을 낮춘 캐시 이미지로 그림. 뱃지 그림자는 캐싱된 halo 이미지를
