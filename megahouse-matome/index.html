@@ -227,12 +227,15 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 .p-hd-open .oh-top{display:flex;align-items:flex-start;justify-content:space-between;}
 .p-hd-open .oh-title-wrap{display:flex;flex-direction:column;gap:2px;min-width:0;}
 .oh-title{font-family:'Pretendard',sans-serif;font-weight:900;color:#fff;line-height:1.05;letter-spacing:-1px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;}
-/* 날짜 묶음: 작은 설명 줄 + 날짜 두 줄, 둘 다 오른쪽 맞춤. 박스는 둘을 함께 감싼다 */
-.oh-date-wrap{display:flex;flex-direction:column;align-items:flex-end;gap:1px;
-  background:rgba(0,0,0,.4);border-radius:999px;padding:8px 20px;}
+/* 날짜 묶음: 작은 설명 줄 + 날짜 두 줄, 둘 다 오른쪽 맞춤.
+   알약 박스는 날짜만 감싼다(설명 줄까지 감싸면 덩어리가 커서 촌스러움).
+   설명 줄에도 알약과 같은 오른쪽 여백(20px)을 줘야 두 줄의 오른쪽 끝이 맞는다 */
+.oh-date-wrap{display:flex;flex-direction:column;align-items:flex-end;gap:3px;}
 .oh-dlabel{font-family:'Pretendard',sans-serif;font-weight:600;color:#fff;line-height:1.15;
-  letter-spacing:-.3px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;opacity:.92;text-align:right;}
-.oh-date{font-family:'Pretendard',sans-serif;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;text-align:right;}
+  letter-spacing:-.3px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;opacity:.92;
+  text-align:right;padding-right:20px;}
+.oh-date{font-family:'Pretendard',sans-serif;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;text-align:right;
+  background:rgba(0,0,0,.4);border-radius:999px;padding:8px 20px;}
 .oh-store-wrap{display:flex;align-items:center;gap:14px;flex-shrink:0;}
 .oh-store{font-family:'Pretendard',sans-serif;background:rgba(0,0,0,.4);color:#fff;font-weight:350;border-radius:999px;padding:8px 20px;white-space:nowrap;}
 .oh-logo{width:52px;height:52px;object-fit:contain;display:block;border-radius:50%;
@@ -1931,9 +1934,13 @@ function toggleOpenHeader() {
   requestAnimationFrame(fitScale);
   if (_bootDone) saveState();
 }
-let ohBoxWhite = false;
+// 사진 위라 박스가 필요한 경우도, 박스가 오히려 거슬리는 경우도 있어서 끌 수 있게 3단으로
+// ('dark' 검정 → 'light' 흰색 → 'none' 투명). 예전 저장본은 참/거짓 하나만 있어 불러올 때 변환함
+let ohBoxMode = 'dark';
+const OH_BOX_NEXT = { dark:'light', light:'none', none:'dark' };
+const OH_BOX_LABEL = { dark:'검정', light:'흰색', none:'투명' };
 function toggleOhBox() {
-  ohBoxWhite = !ohBoxWhite;
+  ohBoxMode = OH_BOX_NEXT[ohBoxMode] || 'dark';
   applyOhBox();
   saveState();
 }
@@ -1951,11 +1958,13 @@ function syncOhGrad() {
   if (_bootDone) saveState();
 }
 function applyOhBox() {
-  const btn = $('#ohBoxBtn'); if (btn) btn.textContent = ohBoxWhite ? '흰색' : '검정';
+  const btn = $('#ohBoxBtn'); if (btn) btn.textContent = OH_BOX_LABEL[ohBoxMode] || '검정';
   const op = ($('#ohBoxOpacity') ? +$('#ohBoxOpacity').value : 40) / 100;
-  document.querySelectorAll('.oh-date-wrap').forEach(el => {
-    el.style.background = ohBoxWhite ? `rgba(255,255,255,${op})` : `rgba(0,0,0,${op})`;
-    el.style.color = ohBoxWhite ? '#111' : '#fff';
+  const sl = $('#ohBoxOpacity'); if (sl) sl.disabled = (ohBoxMode === 'none');  // 투명일 땐 조절할 게 없음
+  document.querySelectorAll('.oh-date').forEach(el => {
+    if (ohBoxMode === 'none') { el.style.background = 'transparent'; el.style.color = '#fff'; }
+    else if (ohBoxMode === 'light') { el.style.background = `rgba(255,255,255,${op})`; el.style.color = '#111'; }
+    else { el.style.background = `rgba(0,0,0,${op})`; el.style.color = '#fff'; }
   });
 }
 // 가로를 width:auto로 두면 "원본 비율대로 알아서" 계산되길 기대하는 건데,
@@ -3040,7 +3049,7 @@ function buildState() {
       ohLabelSize: $('#ohLabelSize') ? $('#ohLabelSize').value : '14',
       ohStoreSize: $('#ohStoreSize') ? $('#ohStoreSize').value : '34',
       ohTitleFontWeight: $('#ohTitleFontWeight') ? $('#ohTitleFontWeight').value : '900',
-      ohBoxWhite,
+      ohBoxMode,
       ohBoxOpacity: $('#ohBoxOpacity') ? $('#ohBoxOpacity').value : '40',
       ohGradStart: $('#ohGradStart') ? $('#ohGradStart').value : '0',
       ohGradOpacity: $('#ohGradOpacity') ? $('#ohGradOpacity').value : '60',
@@ -3157,7 +3166,8 @@ async function loadState() {
     if (st.ohStoreSize && $('#ohStoreSize')) $('#ohStoreSize').value = st.ohStoreSize;
     if (st.ohTitleFontWeight && $('#ohTitleFontWeight')) $('#ohTitleFontWeight').value = st.ohTitleFontWeight;
     if (st.ohOn && $('#chkOpenHeader')) $('#chkOpenHeader').checked = true;
-    if (st.ohBoxWhite) ohBoxWhite = true;
+    if (st.ohBoxMode) ohBoxMode = st.ohBoxMode;
+    else if (st.ohBoxWhite) ohBoxMode = 'light';   // 참/거짓만 있던 예전 저장본
     if (st.ohBoxOpacity && $('#ohBoxOpacity')) $('#ohBoxOpacity').value = st.ohBoxOpacity;
     if (st.ohGradStart != null && $('#ohGradStart')) $('#ohGradStart').value = st.ohGradStart;
     if (st.ohGradOpacity && $('#ohGradOpacity')) $('#ohGradOpacity').value = st.ohGradOpacity;
