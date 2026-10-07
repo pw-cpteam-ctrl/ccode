@@ -8,6 +8,8 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fonts-archive/S-CoreDream/S-CoreDream.css"/>
 <!-- 공용 작품 사전 (일본어 작품명 → 한국 정식명). 다른 도구와 같은 파일을 읽는다 -->
 <script src="../assets/dict-works.js"></script>
+<!-- 세로 2분할 캔버스 — 사진 2장을 한 아트보드에 위아래로 담는 공용 코드 -->
+<script src="../assets/split-canvas.js"></script>
 <style>
 *{box-sizing:border-box;}
 /* 배경(흰색) ↔ 카드(베이지) — 아트보드가 흰 바탕이라 카드까지 희면 사진 경계가 안 보였다 */
@@ -136,6 +138,10 @@ button:disabled{opacity:.4;cursor:default;}
   display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;
   background:#fff;border:1px solid #ccc4b4;color:#bbb;line-height:1;}
 .mainStar.on{color:#f07d1e;border-color:#f07d1e;}
+/* 2분할 칸임을 알리는 표시 — 누르면 풀린다 */
+.splitTag{position:absolute;bottom:2px;right:2px;z-index:4;font-size:9.5px;font-weight:800;
+  padding:2px 6px;border-radius:999px;background:rgba(37,32,24,.86);color:#fff;border:none;line-height:1;}
+.splitTag:hover{background:#b33;}
 .mainStar:hover{border-color:#f07d1e;}
 /* 스토어명 글자색 — 옵션이 2개뿐이라 드롭다운 대신 버튼 2개로 현재 상태가 바로 보이게 */
 .storeColorBtn{font-size:11px;padding:4px 10px;border:1px solid #ccc4b4;background:#fff;cursor:pointer;border-radius:0;}
@@ -464,6 +470,7 @@ button:disabled{opacity:.4;cursor:default;}
     </label>
     <button id="btnSelBadgeFlip">뱃지 좌우 전환</button>
     <button id="btnSelMergeFolder" title="선택한 사진을 폴더 하나로 합칩니다. 같은 IP를 한 캐러셀로 올릴 때 씁니다">폴더 합치기</button>
+    <button id="btnSelSplit" title="고른 사진 2장을 한 아트보드에 위아래로 담습니다 (캐러셀 장수를 줄일 때)">2분할로 합치기</button>
     <button id="btnSelFrameOff" title="고른 사진에서 제목 이미지를 화면에서 끕니다. 배정은 그대로 남아 있어 언제든 다시 켤 수 있습니다">투명 끄기</button>
     <button id="btnSelFrameOn" title="고른 사진에 배정된 제목 이미지를 다시 켭니다">투명 켜기</button>
     <button id="btnSelDelete" style="background:#fff0f0;border-color:#e05d5d;color:#b33;">선택 삭제</button>
@@ -532,6 +539,9 @@ button:disabled{opacity:.4;cursor:default;}
     <div id="editClip">
       <div id="editCanvasWrap">
         <div id="editBg"></div>
+        <!-- 2분할 칸을 열었을 때만 쓰는 캔버스. 공용 split-canvas가 여기에 붙어
+             칸마다 드래그=이동 / 휠=확대 / 더블클릭=처음 자리를 처리한다 -->
+        <canvas id="editSplit" width="1080" height="1350" style="display:none;position:absolute;left:0;top:0;width:1080px;height:1350px;"></canvas>
         <img id="editPhoto"/>
         <img id="editOverlay"/>
         <canvas id="editBadge" width="1080" height="1350" style="position:absolute;inset:0;pointer-events:none;"></canvas>
@@ -629,7 +639,10 @@ function itemsMetaSnapshot(){
       offX: it.offX || 0, offY: it.offY || 0, // 끌어서 옮긴 양(px, 1080 기준)
       scaleMul: legacy.scaleMul, ox: legacy.ox, oy: legacy.oy, bg: it.bg,
       storeName: it.storeName || '', badgeSide: it.badgeSide || 'left',
-      isMain: !!it.isMain, noFrame: !!it.noFrame
+      isMain: !!it.isMain, noFrame: !!it.noFrame,
+      // 2분할 정보 — 예전 저장분에는 없는 칸이라, 없으면 한 장짜리로 읽힌다
+      split: isSplit(it) ? { name2: it.split.name2, gap: it.split.gap,
+                             crops: it.split.crops.map(c => ({ ...c })) } : null,
     };
   });
 }
@@ -644,6 +657,8 @@ async function saveFilesToCache(){
   const photoBlobs = {}, overlayBlobs = {};
   for (const it of items) {
     photoBlobs[photoCacheKey(it.folder, it.photoName)] = it.photoFile;
+    // 2분할의 아래 칸 사진도 같이 저장해야 새로고침 후에 되살아난다
+    if (isSplit(it) && it.split.file2) photoBlobs[photoCacheKey(it.folder, it.split.name2)] = it.split.file2;
     if (it.overlayName && it.overlayFile) overlayBlobs[it.overlayName] = it.overlayFile;
   }
   try { await queueIdbSet('files', { photoBlobs, overlayBlobs }); }
@@ -746,8 +761,27 @@ async function restoreFromCache(){
       focusX: m.focusX, focusY: m.focusY, zoom: m.zoom,
       offX: m.offX ?? 0, offY: m.offY ?? 0, // 예전 저장분엔 없는 값이라 기본 0
       storeName: m.storeName ?? DEFAULT_STORE_NAME, badgeSide: m.badgeSide || 'left',
-      isMain: !!m.isMain, noFrame: !!m.noFrame
+      isMain: !!m.isMain, noFrame: !!m.noFrame,
+      split: null,   // 아래에서 되살린다 (예전 저장분엔 이 칸이 없어 한 장짜리로 남는다)
     });
+    // 2분할이었으면 아래 칸 사진도 되살린다. 아래 칸만 깨져 있으면 2분할을 포기하고
+    // 위 칸 한 장짜리로 남긴다 — 통째로 날리는 것보다 낫다
+    if (m.split && m.split.name2) {
+      const b2 = filesData.photoBlobs[photoCacheKey(m.folder, m.split.name2)]
+              || filesData.photoBlobs[m.split.name2];
+      if (b2) {
+        try {
+          const img2 = await loadImageFromBlob(b2);
+          items[items.length - 1].split = {
+            name2: m.split.name2, file2: b2, img2,
+            gap: m.split.gap ?? SPLIT_GAP_DEFAULT,
+            crops: (m.split.crops && m.split.crops.length === 2)
+              ? m.split.crops.map(c => ({ ...c }))
+              : splitDefaultCrops([photoImg, img2], CW, CH, m.split.gap ?? SPLIT_GAP_DEFAULT),
+          };
+        } catch (err) { broken++; }
+      } else { broken++; }
+    }
     migrateGeom(items[items.length - 1]); // 예전에 저장된 것이면 새 방식으로 옮김 (이미 새 방식이면 그대로 둠)
   }
   if (!items.length) { showLoadingScreen(false); return false; }
@@ -1196,6 +1230,8 @@ function undoSnapshot(){
       offX: it.offX || 0, offY: it.offY || 0,
       bg: it.bg, storeName: it.storeName || '', badgeSide: it.badgeSide || 'left',
       isMain: !!it.isMain, noFrame: !!it.noFrame, folder: it.folder || '',
+      // 2분할은 통째로 기억한다 (합치기·풀기도 되돌릴 수 있게)
+      split: it.split ? { ...it.split, crops: it.split.crops.map(c => ({ ...c })) } : null,
     })),
     settings: { badgeMonth, badgeColor, badgeWeight, storeTextColor },
   };
@@ -1237,6 +1273,8 @@ function undo(){
       it.offX = m.offX; it.offY = m.offY;
       it.bg = m.bg; it.storeName = m.storeName; it.badgeSide = m.badgeSide;
       it.isMain = m.isMain; it.noFrame = m.noFrame; it.folder = m.folder;
+      it.split = m.split ? { ...m.split, crops: m.split.crops.map(c => ({ ...c })) } : null;
+      it._thumbSrc2 = null;
     }
     items.length = 0;
     items.push(...next);
@@ -1358,6 +1396,7 @@ function mergeSelectedIntoOneFolder(){
   log(`폴더 ${folders.length}개를 "${target}" 하나로 합쳤습니다 (사진 ${list.length}장). 제목은 그대로 두었으니, 첫 장만 남기려면 폴더 머리의 "★만 제목"을 누르세요. Ctrl+Z로 되돌릴 수 있습니다.`);
 }
 $('#btnSelMergeFolder').addEventListener('click', () => mergeSelectedIntoOneFolder());
+$('#btnSelSplit').addEventListener('click', () => mergeSelectedIntoSplit());
 
 // ---------- 아트보드 삭제 ----------
 // 지운 사진은 되돌리기로 되살릴 수 있게 원래 위치까지 기억해둔다 (사진 데이터는 메모리에 그대로 있음)
@@ -2524,8 +2563,15 @@ function drawItem(ctx, it){
   ctx.fillStyle = it.bg;
   ctx.fillRect(0, 0, CW, CH);
 
+  if (isSplit(it)) {
+    // 2분할 아트보드는 사진 2장을 위아래로 담는다. 자리값(crops)만 들고 있고 그리는 일은
+    // 공용 코드에 맡겨서, 크게보기·목록·내보내기가 서로 어긋나지 않게 한다
+    drawSplitTo(ctx, CW, CH, [it.photoImg, it.split.img2], it.split.crops,
+                { width: CW, height: CH, gap: it.split.gap, backdrop: it.bg, keepTransform: true });
+  } else {
   const { dw, dh, dx, dy } = geomOf(it);
   ctx.drawImage(it.photoImg, dx, dy, dw, dh);
+  }
 
   if (it.overlayImg && !it.noFrame) ctx.drawImage(it.overlayImg, 0, 0, CW, CH); // noFrame이면 배정은 유지하고 그리지만 않음
 
@@ -2535,6 +2581,72 @@ function drawItem(ctx, it){
 // 썸네일 전용 저해상도 캐시 — 사진이 수백 장일 때 원본 고해상도를 매번 리샘플링하면
 // 렉이 심해서, 최초 1회만 작게 줄인 캔버스를 만들어두고 이후 썸네일은 그걸로만 그림
 const THUMB_SRC_MAX = 480;
+// ---------- 세로 2분할 ----------
+// 사진 2장을 한 아트보드에 위아래로 담는다. 캐러셀 장수를 줄이려고 쓴다.
+// 기존 항목 구조는 그대로 두고 split 칸만 덧붙였다 — 예전에 저장해둔 작업물에는 이 칸이
+// 없으므로, 없으면 그냥 한 장짜리로 읽힌다(하위호환)
+const SPLIT_GAP_DEFAULT = 40;
+function isSplit(it){ return !!(it && it.split && it.split.img2); }
+function getThumbSource2(it){
+  if (it._thumbSrc2) return it._thumbSrc2;
+  const im = it.split.img2;
+  const pw = im.naturalWidth || im.width, ph = im.naturalHeight || im.height;
+  const scale = Math.min(1, THUMB_SRC_MAX / Math.max(pw, ph));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(pw * scale));
+  c.height = Math.max(1, Math.round(ph * scale));
+  c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+  it._thumbSrc2 = c;
+  return c;
+}
+// 고른 2장을 한 장으로 합친다 — 앞의 것이 위 칸, 뒤의 것이 아래 칸
+function mergeSelectedIntoSplit(){
+  const list = selectedItems();
+  if (list.length !== 2) { log('2분할로 합치려면 사진을 정확히 2장 골라 주세요.'); return; }
+  const [top, bottom] = list;
+  if (isSplit(top) || isSplit(bottom)) { log('이미 2분할인 칸은 다시 합칠 수 없습니다. 먼저 2분할을 푸세요.'); return; }
+  pushUndo('2분할로 합치기');
+  top.split = {
+    name2: bottom.photoName, file2: bottom.photoFile, img2: bottom.photoImg,
+    gap: SPLIT_GAP_DEFAULT,
+    crops: splitDefaultCrops([top.photoImg, bottom.photoImg], CW, CH, SPLIT_GAP_DEFAULT),
+  };
+  top._thumbSrc2 = null;
+  // 아래 칸이 된 사진은 목록에서 뺀다. 지우는 게 아니라 위 칸 안으로 들어간 것이라
+  // 2분할을 풀면 원래 자리로 돌아온다
+  items = items.filter(x => x !== bottom);
+  clearSelection();
+  renderGrid();
+  saveMetaToCache();
+  saveFilesToCache();
+  log(`"${top.photoName}" 위에 "${bottom.photoName}"을 아래 칸으로 합쳤습니다. 자리 조정은 칸을 눌러 크게 보기에서 하세요. Ctrl+Z로 되돌릴 수 있습니다.`);
+}
+// 2분할 풀기 — 아래 칸 사진을 다시 독립된 아트보드로 꺼낸다
+function unsplitItem(it){
+  if (!isSplit(it)) return;
+  pushUndo('2분할 풀기');
+  const idx = items.indexOf(it);
+  const born = {
+    photoName: it.split.name2, overlayName: it.overlayName,
+    photoFile: it.split.file2, overlayFile: it.overlayFile,
+    photoImg: it.split.img2, overlayImg: it.overlayImg,
+    folder: it.folder || '',
+    scaleMul: 1, ox: 0, oy: 0, bg: it.bg,
+    focusX: 0.5, focusY: 0.5, offX: 0, offY: 0,
+    zoom: defaultZoom(it.split.img2.naturalWidth || it.split.img2.width,
+                      it.split.img2.naturalHeight || it.split.img2.height, CW, CH),
+    storeName: it.storeName, badgeSide: it.badgeSide,
+    isMain: false, noFrame: true,
+  };
+  it.split = null;
+  it._thumbSrc2 = null;
+  items.splice(idx + 1, 0, born);
+  clearSelection();
+  renderGrid();
+  saveMetaToCache();
+  saveFilesToCache();
+  log(`2분할을 풀어 "${born.photoName}"을 따로 꺼냈습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
+}
 function getThumbSourceCanvas(it){
   if (it._thumbSrc) return it._thumbSrc;
   const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
@@ -2554,8 +2666,14 @@ function drawItemThumb(ctx, it){
   ctx.fillStyle = it.bg;
   ctx.fillRect(0, 0, CW, CH);
 
+  if (isSplit(it)) {
+    // 축소본을 넘겨도 자리값은 비율 기준이라 큰 그림과 똑같이 나온다
+    drawSplitTo(ctx, CW, CH, [getThumbSourceCanvas(it), getThumbSource2(it)], it.split.crops,
+                { width: CW, height: CH, gap: it.split.gap, backdrop: it.bg, keepTransform: true });
+  } else {
   const { dw, dh, dx, dy } = geomOf(it);
   ctx.drawImage(getThumbSourceCanvas(it), dx, dy, dw, dh);
+  }
 
   if (it.overlayImg && !it.noFrame) ctx.drawImage(it.overlayImg, 0, 0, CW, CH); // noFrame이면 배정은 유지하고 그리지만 않음
 
@@ -2890,7 +3008,8 @@ function renderGrid(){
     drawItemThumb(ctx, it);
     const name = document.createElement('div');
     name.className = 'name';
-    name.textContent = it.photoName;
+    // 2분할 칸은 어떤 두 장이 들어 있는지 파일명에 같이 보여준다 (아니면 아래 칸 사진이 어디 갔는지 알 수 없음)
+    name.textContent = isSplit(it) ? (it.photoName + ' + ' + it.split.name2) : it.photoName;
     name.title = it.photoName + ' — 눌러서 아래 리스트의 이 줄로 이동';
     name.addEventListener('click', (e) => {
       e.stopPropagation();   // 칸 클릭(크게보기)까지 같이 열리지 않게
@@ -2984,6 +3103,17 @@ function renderGrid(){
     star.addEventListener('click', (e) => { e.stopPropagation(); setMainPhoto(it); });
     star.addEventListener('mousedown', (e) => e.stopPropagation()); // 사진 끌기로 안 넘어가게
     cvWrap.appendChild(star);
+    // 2분할 칸 표시 — 누르면 아래 칸 사진을 다시 따로 꺼낸다
+    if (isSplit(it)) {
+      const sp = document.createElement('button');
+      sp.className = 'splitTag';
+      sp.type = 'button';
+      sp.textContent = '2분할 ✕';
+      sp.title = '2분할 풀기 — 아래 칸 사진을 다시 따로 꺼냅니다';
+      sp.addEventListener('mousedown', e => e.stopPropagation());
+      sp.addEventListener('click', (e) => { e.stopPropagation(); unsplitItem(it); });
+      cvWrap.appendChild(sp);
+    }
     wrap.appendChild(cvWrap);
     // 드롭다운 줄 = [페이지 번호 동그라미] : [투명 드롭다운] = 1 : 9
     const ovRow = document.createElement('div');
@@ -3467,6 +3597,7 @@ function updateEditorBadge(){
 
 function openEditor(idx){
   curItem = items[idx];
+  openSplitEditor(curItem);          // 2분할이면 전용 캔버스를 켜고, 아니면 꺼둔다
   editPhoto.src = curItem.photoImg.src;
   // noFrame(제목 빼기)을 확인하지 않아서, 제목을 뺀 장을 눌러 크게 보면 뺀 제목이 다시 얹혀
   // 보였다. 미리보기·저장은 noFrame을 보는데 편집기만 안 봐서 화면끼리 어긋난 것
@@ -3481,6 +3612,33 @@ function openEditor(idx){
   updateEditorGeom();
   updateEditorBadge();
   editOverlay.classList.add('open');
+}
+// 2분할 칸을 크게 볼 때만 공용 split-canvas를 붙인다. 아트보드마다 만들면
+// 1080×1350 캔버스가 사진 수만큼 생겨 메모리가 버티지 못하므로, 인스턴스는 하나만 두고
+// 열 때마다 사진과 자리값을 갈아끼운다
+let _splitEditor = null;
+async function openSplitEditor(it){
+  const cv = $('#editSplit');
+  const on = isSplit(it);
+  cv.style.display = on ? '' : 'none';
+  editPhoto.style.display = on ? 'none' : '';
+  if (!on) return;
+  if (!_splitEditor) {
+    _splitEditor = createSplitCanvas(cv, {
+      width: CW, height: CH, gap: it.split.gap, backdrop: it.bg,
+      // 자리를 옮길 때마다 항목에 바로 반영하고, 목록 썸네일도 같이 갱신한다
+      onChange: (crops) => {
+        if (!curItem || !isSplit(curItem)) return;
+        pushUndoGrouped('splitCrop', '2분할 자리 조정', 900);
+        curItem.split.crops = crops;
+        refreshThumb(curItem);
+        saveMetaSoon();
+      },
+    });
+  }
+  _splitEditor.setGap(it.split.gap);
+  await _splitEditor.setImages([it.photoImg, it.split.img2]);
+  _splitEditor.setCrops(it.split.crops);   // 저장해둔 자리로 되돌려놓기
 }
 function updateEditorGeom(){
   const { dx, dy, dw, dh } = computeGeom(curItem);

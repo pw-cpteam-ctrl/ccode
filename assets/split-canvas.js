@@ -24,6 +24,77 @@
 //   interactive   드래그·휠 연결. 기본 true (썸네일처럼 보기만 할 땐 false)
 //   onChange      자리가 바뀔 때마다 호출 — 썸네일 다시 그리기·저장 등에 씀
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 순수 계산·그리기 (캔버스에 붙지 않는 부분)
+//
+// 아래 네 개는 createSplitCanvas 안에서 쓰던 식을 밖으로 꺼낸 것이다.
+// 꺼낸 이유: 썸네일을 수백 개 그리는 도구는 아트보드마다 createSplitCanvas를 만들 수 없다
+// (1080×1350 캔버스가 그 수만큼 생겨 메모리가 버티지 못한다). 그래서 조작은 큰 화면에서
+// 인스턴스 하나로 하고, 목록·내보내기는 저장해둔 자리값(crops)으로 여기 있는 그리기 함수를
+// 직접 부른다. 계산식을 한 곳에 두어야 큰 화면과 썸네일이 서로 어긋나지 않는다.
+// createSplitCanvas도 같은 함수를 쓰므로 기존 동작은 그대로다.
+
+// 배율을 그대로 쓰면 반올림 때문에 가장자리에 배경이 실선처럼 비칠 때가 있어 0.3% 크게 그린다
+var SPLIT_SLOP = 1.003;
+
+/* 사진이 들어갈 자리 — 1장이면 한 칸, 2장이면 위아래 두 칸 */
+function splitSlots(W, H, gap, count) {
+  if (count <= 1) return [{ x: 0, y: 0, w: W, h: H }];
+  const h = (H - gap) / 2;
+  return [{ x: 0, y: 0, w: W, h }, { x: 0, y: H - h, w: W, h }];
+}
+/* 꽉 채우기 기준 위치·크기 */
+function splitCoverRect(pw, ph, w, h, fx, fy, zoom) {
+  const eff = Math.max(w / pw, h / ph) * SPLIT_SLOP * zoom;
+  const dw = pw * eff, dh = ph * eff;
+  return { dw, dh, dx: -(dw - w) * fx, dy: -(dh - h) * fy };
+}
+/* 사진 전체가 다 보이는 배율 (여백이 생김) */
+function splitContainZoom(pw, ph, w, h) {
+  return Math.min(w / pw, h / ph) / (Math.max(w / pw, h / ph) * SPLIT_SLOP);
+}
+/* 처음 자리 — 전체가 보이게. 꽉 채우면 가장자리(카피라이트 등)가 잘리므로 */
+function splitDefaultCrops(imgs, W, H, gap) {
+  return splitSlots(W, H, gap, imgs.length).map((sl, i) => {
+    const im = imgs[i];
+    if (!im) return { fx: .5, fy: .5, zoom: 1 };
+    const pw = im.naturalWidth || im.width, ph = im.naturalHeight || im.height;
+    return { fx: .5, fy: .5, zoom: splitContainZoom(pw, ph, sl.w, sl.h) };
+  });
+}
+/* 어느 캔버스에든 같은 그림을 그린다 (큰 화면·썸네일·내보내기 공용).
+   기본은 "이 캔버스는 내가 다 쓴다" — 좌표를 초기화하고 캔버스 크기(cw×ch)에 맞춰 그린다.
+   opt.keepTransform을 켜면 부르는 쪽이 이미 걸어둔 축소 배율을 그대로 두고 규격(W×H)
+   좌표로만 그린다. 썸네일을 수백 개 그리는 도구처럼, 한 캔버스에 이 그림 위에 다른 것을
+   더 얹는 경우에 쓴다 (초기화해버리면 그림이 캔버스 밖으로 나가고 뒤에 얹는 것과도 어긋난다) */
+function drawSplitTo(ctx, cw, ch, imgs, crops, opt) {
+  opt = opt || {};
+  const W = opt.width || 1080, H = opt.height || 1350;
+  const gap = opt.gap != null ? opt.gap : 40;
+  const backdrop = opt.backdrop || '#ffffff';
+  ctx.save();
+  if (!opt.keepTransform) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.scale(cw / W, ch / H);
+  }
+  ctx.fillStyle = backdrop; ctx.fillRect(0, 0, W, H);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  splitSlots(W, H, gap, imgs.length).forEach((sl, i) => {
+    const im = imgs[i]; if (!im) return;
+    const cr = (crops && crops[i]) || { fx: .5, fy: .5, zoom: 1 };
+    const pw = im.naturalWidth || im.width, ph = im.naturalHeight || im.height;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(sl.x, sl.y, sl.w, sl.h); ctx.clip();
+    ctx.translate(sl.x, sl.y);
+    ctx.fillStyle = backdrop; ctx.fillRect(0, 0, sl.w, sl.h);
+    const r = splitCoverRect(pw, ph, sl.w, sl.h, cr.fx, cr.fy, cr.zoom);
+    ctx.drawImage(im, r.dx, r.dy, r.dw, r.dh);
+    ctx.restore();
+  });
+  ctx.restore();
+}
+
 function createSplitCanvas(canvas, opts) {
   opts = opts || {};
   const W = opts.width || 1080, H = opts.height || 1350;
@@ -36,26 +107,11 @@ function createSplitCanvas(canvas, opts) {
   let imgs = [];                 // 불러온 그림 1~2장
   let crops = [];                // 칸마다 { fx, fy, zoom }
 
-  // 배율을 그대로 쓰면 반올림 때문에 가장자리에 배경이 실선처럼 비칠 때가 있어 0.3% 크게 그린다
-  const SLOP = 1.003;
+  // 계산식은 위의 공용 함수를 그대로 쓴다 (목록·내보내기 쪽과 어긋나지 않게)
   const size = im => ({ pw: im.naturalWidth || im.width, ph: im.naturalHeight || im.height });
-  /* 꽉 채우기 기준 위치·크기 — 화면에 그릴 때와 내보낼 때가 이 식 하나만 쓴다 */
-  function coverRect(pw, ph, w, h, fx, fy, zoom) {
-    const eff = Math.max(w / pw, h / ph) * SLOP * zoom;
-    const dw = pw * eff, dh = ph * eff;
-    return { dw, dh, dx: -(dw - w) * fx, dy: -(dh - h) * fy };
-  }
-  /* 사진 전체가 다 보이는 배율 (여백이 생김) */
-  function containZoom(pw, ph, w, h) {
-    return Math.min(w / pw, h / ph) / (Math.max(w / pw, h / ph) * SLOP);
-  }
-
-  /* 사진이 들어갈 자리 — 1장이면 한 칸, 2장이면 위아래 두 칸 */
-  function slots() {
-    if (imgs.length <= 1) return [{ x: 0, y: 0, w: W, h: H }];
-    const h = (H - gap) / 2;
-    return [{ x: 0, y: 0, w: W, h }, { x: 0, y: H - h, w: W, h }];
-  }
+  const coverRect = splitCoverRect;
+  const containZoom = splitContainZoom;
+  const slots = () => splitSlots(W, H, gap, imgs.length);
 
   async function load(src) {
     if (typeof HTMLImageElement !== 'undefined' && src instanceof HTMLImageElement) {
@@ -78,38 +134,14 @@ function createSplitCanvas(canvas, opts) {
 
   /* 어느 그림이든 이 함수 하나로 그린다 — 큰 화면과 썸네일이 달라 보이지 않게 */
   function drawTo(c2, cw, ch) {
-    c2.save();
-    c2.setTransform(1, 0, 0, 1, 0, 0);
-    c2.clearRect(0, 0, cw, ch);
-    c2.scale(cw / W, ch / H);
-    c2.fillStyle = backdrop; c2.fillRect(0, 0, W, H);
-    c2.imageSmoothingEnabled = true; c2.imageSmoothingQuality = 'high';
-    slots().forEach((sl, i) => {
-      const im = imgs[i]; if (!im) return;
-      const cr = crops[i], { pw, ph } = size(im);
-      c2.save();
-      c2.beginPath(); c2.rect(sl.x, sl.y, sl.w, sl.h); c2.clip();
-      c2.translate(sl.x, sl.y);
-      c2.fillStyle = backdrop; c2.fillRect(0, 0, sl.w, sl.h);
-      const r = coverRect(pw, ph, sl.w, sl.h, cr.fx, cr.fy, cr.zoom);
-      c2.drawImage(im, r.dx, r.dy, r.dw, r.dh);
-      c2.restore();
-    });
-    c2.restore();
+    drawSplitTo(c2, cw, ch, imgs, crops, { width: W, height: H, gap, backdrop });
   }
   const render = () => drawTo(ctx, W, H);
   // onChange는 "바뀌었을 때"만 부른다. 만드는 도중의 첫 그리기에서 부르면
   // 부른 쪽이 아직 결과를 변수에 담기도 전이라 그 안에서 이 도구를 쓸 수 없다
   const changed = () => { render(); if (opts.onChange) opts.onChange(api.getCrops()); };
 
-  function resetCrops() {
-    crops = slots().map((sl, i) => {
-      const im = imgs[i];
-      if (!im) return { fx: .5, fy: .5, zoom: 1 };
-      const { pw, ph } = size(im);
-      return { fx: .5, fy: .5, zoom: containZoom(pw, ph, sl.w, sl.h) };
-    });
-  }
+  function resetCrops() { crops = splitDefaultCrops(imgs, W, H, gap); }
 
   /* 눌린 지점이 위 칸인지 아래 칸인지 */
   function slotAt(clientY) {
@@ -202,6 +234,8 @@ function createSplitCanvas(canvas, opts) {
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     },
+    /** 사진 불러오기만 따로 쓰고 싶을 때 (EXIF 회전까지 처리된 이미지를 돌려준다) */
+    load,
     destroy() {
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
