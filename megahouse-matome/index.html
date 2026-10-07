@@ -227,11 +227,12 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 .p-hd-open .oh-top{display:flex;align-items:flex-start;justify-content:space-between;}
 .p-hd-open .oh-title-wrap{display:flex;flex-direction:column;gap:2px;min-width:0;}
 .oh-title{font-family:'Pretendard',sans-serif;font-weight:900;color:#fff;line-height:1.05;letter-spacing:-1px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;}
-.oh-date{font-family:'Pretendard',sans-serif;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;}
+.oh-date{font-family:'Pretendard',sans-serif;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;
+  background:rgba(0,0,0,.4);border-radius:999px;padding:8px 20px;}
 .oh-store-wrap{display:flex;align-items:center;gap:14px;flex-shrink:0;}
 .oh-store{font-family:'Pretendard',sans-serif;background:rgba(0,0,0,.4);color:#fff;font-weight:350;border-radius:999px;padding:8px 20px;white-space:nowrap;}
 .oh-logo{width:52px;height:52px;object-fit:contain;display:block;border-radius:50%;
-  padding:5px;box-sizing:border-box;}
+  padding:5px;box-sizing:border-box;background:#fff;}
 /* 재판 / 특전 스티커 */
 .reprint-badge,.special-badge{
   display:inline-block;font-weight:900;font-size:.72em;
@@ -600,10 +601,7 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
     <div class="frow pair"><span class="flbl">크기<br>타이틀 / 날짜</span>
       <div class="field"><input type="range" id="ohTitleSize" min="20" max="80" value="38" oninput="syncOpenHeader()"/></div>
       <div class="field"><input type="range" id="ohDateSize" min="12" max="48" value="22" oninput="syncOpenHeader()"/></div></div>
-    <div class="frow pair"><span class="flbl">스토어명<br>글자 / 크기</span>
-      <div class="field"><input type="text" id="inOhStore" value="메가하우스 공식 스토어"/></div>
-      <div class="field"><input type="range" id="ohStoreSize" min="12" max="60" value="34" oninput="syncOpenHeader()"/></div></div>
-    <div class="frow pair"><span class="flbl">박스<br>색 / 투명도</span>
+    <div class="frow pair"><span class="flbl">날짜 박스<br>색 / 투명도</span>
       <div class="field"><button id="ohBoxBtn" class="ptab" style="width:100%;padding:5px 0;font-size:14px" onclick="toggleOhBox()">검정</button></div>
       <div class="field"><input type="range" id="ohBoxOpacity" min="0" max="100" value="40" oninput="applyOhBox();saveState()"/></div></div>
     <div class="frow pair"><span class="flbl">그라데이션<br>시작 / 퍼짐</span>
@@ -841,10 +839,9 @@ function makePosterWrap(pg) {
           <div class="oh-top">
             <div class="oh-title-wrap">
               <div class="oh-title" id="ohTitle${pg}">26년 6월 신제품</div>
-              <div class="oh-date" id="ohDate${pg}">6/4~7/12</div>
             </div>
             <div class="oh-store-wrap">
-              <div class="oh-store" id="ohStore${pg}">메가하우스 공식 스토어</div>
+              <div class="oh-date" id="ohDate${pg}">6/4~7/12</div>
               <img class="oh-logo" id="ohLogo${pg}" alt="MH"/>
             </div>
           </div>
@@ -1876,10 +1873,10 @@ function fitOpenHeaderTitles() {
     const topEl = document.querySelector(`#poster${p} .oh-top`);
     if (!topEl || topEl.clientWidth <= 0) return;
     const storeWrapEl = topEl.querySelector('.oh-store-wrap');
-    const storeEl = document.querySelector(`#ohStore${p}`);
-    // 1) 스토어명이 헤더 폭의 절반을 넘으면 먼저 축소 (타이틀 자리 확보)
+    const storeEl = document.querySelector(`#ohDate${p}`);
+    // 1) 우상단(날짜+로고)이 헤더 폭의 절반을 넘으면 먼저 축소 (타이틀 자리 확보)
     if (storeEl && storeWrapEl) {
-      let ss = parseFloat(storeEl.dataset.baseSize || storeEl.style.fontSize || '34');
+      let ss = parseFloat(storeEl.dataset.baseSize || storeEl.style.fontSize || '22');
       storeEl.style.fontSize = ss + 'px';
       // export 여유 감안해 헤더폭의 38%로 제한 (스토어+로고가 화면 밖으로 안 밀리게)
       const storeMax = topEl.clientWidth * 0.38;
@@ -1889,10 +1886,11 @@ function fitOpenHeaderTitles() {
         storeEl.style.fontSize = ss + 'px';
       }
     }
-    // 2) 타이틀/날짜를 (헤더폭 - 스토어영역) 안에 맞춤 (export 여유 위해 추가 마진)
+    // 2) 타이틀을 (헤더폭 - 우상단 영역) 안에 맞춤 (export 여유 위해 추가 마진)
+    //    날짜는 1)에서 이미 맞췄으므로 여기서 다시 건드리면 크기가 되돌아감
     const avail = (topEl.clientWidth - (storeWrapEl ? storeWrapEl.offsetWidth : 0) - 24) * 0.95;
     if (avail <= 0) return;
-    [`#ohTitle${p}`, `#ohDate${p}`].forEach(sel => {
+    [`#ohTitle${p}`].forEach(sel => {
       const el = document.querySelector(sel);
       if (!el) return;
       let size = parseFloat(el.dataset.baseSize || el.style.fontSize || '38');
@@ -1933,7 +1931,7 @@ function syncOhGrad() {
 function applyOhBox() {
   const btn = $('#ohBoxBtn'); if (btn) btn.textContent = ohBoxWhite ? '흰색' : '검정';
   const op = ($('#ohBoxOpacity') ? +$('#ohBoxOpacity').value : 40) / 100;
-  document.querySelectorAll('.oh-store').forEach(el => {
+  document.querySelectorAll('.oh-date').forEach(el => {
     el.style.background = ohBoxWhite ? `rgba(255,255,255,${op})` : `rgba(0,0,0,${op})`;
     el.style.color = ohBoxWhite ? '#111' : '#fff';
   });
@@ -2685,7 +2683,6 @@ $('#inStore').addEventListener('input', syncHeader);
 $('#inFooter').addEventListener('input', syncHeader);
 $('#inOhTitle').addEventListener('input', syncOpenHeader);
 $('#inOhDate').addEventListener('input', syncOpenHeader);
-$('#inOhStore').addEventListener('input', syncOpenHeader);
 
 // gradSlider replaced by syncGrad (gradStart/gradWidth/gradOpacity)
 
