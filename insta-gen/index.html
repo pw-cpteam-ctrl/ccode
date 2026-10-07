@@ -1115,6 +1115,9 @@ function applySlot(s){
   document.getElementById('t_saledate').value=s.saleDate||''; state.saleDate=s.saleDate||''; state.saleDow=s.saleDow||'목';
   state.bullet=!!s.bullet; document.getElementById('c_bullet').checked=state.bullet;
   state.charShrink=false; document.getElementById('c_charshrink').checked=false;   // 새 값 불러오면 항상 해제
+  // 다른 작업으로 넘어가니 ⑤(캐러셀)에 남은 지난 작업 사진을 비운다 — 안 비우면 [전체]·X·인스타에 다른 작품 사진이 섞임
+  document.dispatchEvent(new CustomEvent('igcrop:newWork'));
+  if(!s.imgData) clearCardPhoto();   // 사진 없이 저장된 슬롯이면 지난 작업 카드 사진도 비움
   if(s.fg) state.fg={...state.fg,...s.fg}; if(s.bg) state.bg={...state.bg,...s.bg, opacity:state.bg.opacity}; if(s.size && s.sizeVer===SIZE_VER) state.size={...state.size,...s.size};
   // 두 번째 사진은 나중에 추가된 필드라 예전 저장본엔 없다 — 없으면 한 장짜리로 되돌린다
   state.fg2 = s.fg2 ? {zoom:1,panX:0,panY:0,...s.fg2} : {zoom:1,panX:0,panY:0};
@@ -1279,6 +1282,14 @@ function loadImageInto(which, src, keepView){
   });
 }
 function loadImage(src, keepView){ return loadImageInto(1, src, keepView); }
+// 새 작업으로 넘어갔는데 새 사진이 없을 때 지난 작업의 카드 사진을 비운다(실행취소로 되살릴 수 있음).
+// ⑤의 '카드 생성기 사진'(원본 장)도 같이 빼고, 다음에 카드 사진을 넣으면 다시 따라오게 한다
+function clearCardPhoto(){
+  if(state.img2 || state.slot2Open) clearSecond();
+  state.img=null; state.imgData=''; state.fg={zoom:1,panX:0,panY:0};
+  document.dispatchEvent(new CustomEvent('igcrop:newWork', {detail:{dropMain:true}}));
+  renderPhotoSlots(); syncControlsUI(); render(); runValidation();
+}
 // 그림(img/ImageBitmap)을 원래 크기 그대로 파일로 — 표지 맞바꾸기에서 카드 사진을 ⑤ 장으로 옮길 때 쓴다
 function imgToBlob(img){
   const w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
@@ -1786,8 +1797,11 @@ async function applyTweetHandoffInner(h){
       files.push(new File([b], `tweet-${i+1}.jpg`, {type:b.type||'image/jpeg'})); }
     catch(e){ console.error('트윗 사진 불러오기 실패', urls[i], e); }
   }
+  // 새 작업이니 ⑤에 남은 지난 작업 사진(직접 올린 것 포함)을 비운다 — 안 비우면 [전체]·X·인스타에 다른 작품 사진이 섞임
+  document.dispatchEvent(new CustomEvent('igcrop:newWork'));
   if(files[0]) await loadImageInto(1, URL.createObjectURL(files[0]));
-  // 2장째부터는 ⑤ 크롭(캐러셀 2페이지~)으로. 앞서 불러온 트윗 사진이 있으면 그건 빼고 새로 넣는다
+  else clearCardPhoto();   // 사진 없는 트윗(또는 하나도 못 받음) — 지난 작업 카드 사진이 남지 않게 비움
+  // 2장째부터는 ⑤ 크롭(캐러셀 2페이지~)으로
   document.dispatchEvent(new CustomEvent('igcrop:addFiles', {detail:{files:files.slice(1), fromTweet:true}}));
   const text=(h.text||'').trim();
   document.getElementById('t_source').value=text;
@@ -2179,6 +2193,16 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     updateEmptyMsg();
   }
   document.addEventListener('igcrop:mainImage', e=> syncMainImage(e.detail && e.detail.img));
+  // 새 작업(새 트윗·이전 입력 슬롯)으로 넘어감 — 지난 작업 사진을 비운다. 실행취소로 되살릴 수 있다(ALL에 남아 있음).
+  // '카드 생성기 사진' 장은 카드 사진을 따라가니 그대로 두고(dropMain이면 그것도 뺌), 직접 지웠던 적이 있어도 새 작업에선 다시 따라오게
+  document.addEventListener('igcrop:newWork', e=>{ const dropMain=!!(e.detail && e.detail.dropMain);
+    const gone=items.filter(it=> dropMain || it!==mainItem);
+    gone.forEach(it=>removeItem(it));
+    if(dropMain) mainItem=null;
+    mainDismissed=false;
+    const n=gone.filter(it=>!it.fromMain).length;
+    if(n && typeof showToast==='function') showToast(`지난 작업의 캐러셀 사진 ${n}장을 비웠어요 — 필요하면 실행취소(Ctrl+Z)로 되살릴 수 있어요`);
+  });
   // 트윗에서 넘어온 2장째부터의 사진(캐러셀 2페이지~) — 직접 올린 사진과 똑같이 추가
   document.addEventListener('igcrop:addFiles', async e=>{ const d=e.detail||{};
     // 새 트윗이면: 앞서 불러온 트윗 사진을 빼고 새로 넣는다(지운 것도 실행취소로 되살릴 수 있음)
