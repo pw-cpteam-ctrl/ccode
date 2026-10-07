@@ -227,12 +227,16 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 .p-hd-open .oh-top{display:flex;align-items:flex-start;justify-content:space-between;}
 .p-hd-open .oh-title-wrap{display:flex;flex-direction:column;gap:2px;min-width:0;}
 .oh-title{font-family:'Pretendard',sans-serif;font-weight:900;color:#fff;line-height:1.05;letter-spacing:-1px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;}
-.oh-date{font-family:'Pretendard',sans-serif;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;
+/* 날짜 묶음: 작은 설명 줄 + 날짜 두 줄, 둘 다 오른쪽 맞춤. 박스는 둘을 함께 감싼다 */
+.oh-date-wrap{display:flex;flex-direction:column;align-items:flex-end;gap:1px;
   background:rgba(0,0,0,.4);border-radius:999px;padding:8px 20px;}
+.oh-dlabel{font-family:'Pretendard',sans-serif;font-weight:600;color:#fff;line-height:1.15;
+  letter-spacing:-.3px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;opacity:.92;text-align:right;}
+.oh-date{font-family:'Pretendard',sans-serif;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;text-align:right;}
 .oh-store-wrap{display:flex;align-items:center;gap:14px;flex-shrink:0;}
 .oh-store{font-family:'Pretendard',sans-serif;background:rgba(0,0,0,.4);color:#fff;font-weight:350;border-radius:999px;padding:8px 20px;white-space:nowrap;}
 .oh-logo{width:52px;height:52px;object-fit:contain;display:block;border-radius:50%;
-  padding:5px;box-sizing:border-box;background:#fff;}
+  padding:0;box-sizing:border-box;background:#fff;}
 /* 재판 / 특전 스티커 */
 .reprint-badge,.special-badge{
   display:inline-block;font-weight:900;font-size:.72em;
@@ -598,6 +602,9 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
         </select>
       </div>
     </div>
+    <div class="frow pair"><span class="flbl">날짜 위 설명<br>글자 / 크기</span>
+      <div class="field"><input type="text" id="inOhLabel" value="예약기간 및 할인혜택"/></div>
+      <div class="field"><input type="range" id="ohLabelSize" min="8" max="36" value="14" oninput="syncOpenHeader()"/></div></div>
     <div class="frow pair"><span class="flbl">크기<br>타이틀 / 날짜</span>
       <div class="field"><input type="range" id="ohTitleSize" min="20" max="80" value="38" oninput="syncOpenHeader()"/></div>
       <div class="field"><input type="range" id="ohDateSize" min="12" max="48" value="22" oninput="syncOpenHeader()"/></div></div>
@@ -841,7 +848,10 @@ function makePosterWrap(pg) {
               <div class="oh-title" id="ohTitle${pg}">26년 6월 신제품</div>
             </div>
             <div class="oh-store-wrap">
-              <div class="oh-date" id="ohDate${pg}">6/4~7/12</div>
+              <div class="oh-date-wrap" id="ohDateWrap${pg}">
+                <div class="oh-dlabel" id="ohLabel${pg}">예약기간 및 할인혜택</div>
+                <div class="oh-date" id="ohDate${pg}">6/4~7/12</div>
+              </div>
               <img class="oh-logo" id="ohLogo${pg}" alt="MH"/>
             </div>
           </div>
@@ -1855,12 +1865,19 @@ function syncOpenHeader() {
   const s = $('#inOhStore') ? $('#inOhStore').value.trim() : '';
   const tSize = $('#ohTitleSize') ? $('#ohTitleSize').value + 'px' : '38px';
   const dSize = $('#ohDateSize') ? $('#ohDateSize').value + 'px' : '22px';
+  const lb = $('#inOhLabel') ? $('#inOhLabel').value.trim() : '';
+  const lbSize = $('#ohLabelSize') ? $('#ohLabelSize').value + 'px' : '14px';
   const sSize = $('#ohStoreSize') ? $('#ohStoreSize').value + 'px' : '34px';
   const tWeight = $('#ohTitleFontWeight') ? $('#ohTitleFontWeight').value : '900';
   pages.forEach((_, i) => { const p = i+1;
     const tEl = $(`#ohTitle${p}`); if (tEl) { tEl.textContent = t; tEl.dataset.baseSize = tSize; tEl.style.fontSize = tSize; tEl.style.fontWeight = tWeight; }
     const dEl = $(`#ohDate${p}`); if (dEl) { dEl.textContent = d; dEl.dataset.baseSize = dSize; dEl.style.fontSize = dSize;
       dEl.style.display = pageOpenOn[i] === false ? 'none' : ''; }
+    const lEl = $(`#ohLabel${p}`);
+    if (lEl) { lEl.textContent = lb; lEl.dataset.baseSize = lbSize; lEl.style.fontSize = lbSize;
+      lEl.style.display = (!lb || pageOpenOn[i] === false) ? 'none' : ''; }
+    const wEl = $(`#ohDateWrap${p}`);
+    if (wEl) wEl.style.display = pageOpenOn[i] === false ? 'none' : '';
     const sEl = $(`#ohStore${p}`); if (sEl) { sEl.textContent = s; sEl.dataset.baseSize = sSize; sEl.style.fontSize = sSize; }
   });
   // 타이틀/날짜가 스토어 배지와 겹치지 않게, 레이아웃 확정 후 공간 부족 시 자동 축소
@@ -1874,6 +1891,7 @@ function fitOpenHeaderTitles() {
     if (!topEl || topEl.clientWidth <= 0) return;
     const storeWrapEl = topEl.querySelector('.oh-store-wrap');
     const storeEl = document.querySelector(`#ohDate${p}`);
+    const labelEl = document.querySelector(`#ohLabel${p}`);
     // 1) 우상단(날짜+로고)이 헤더 폭의 절반을 넘으면 먼저 축소 (타이틀 자리 확보)
     if (storeEl && storeWrapEl) {
       let ss = parseFloat(storeEl.dataset.baseSize || storeEl.style.fontSize || '22');
@@ -1881,9 +1899,13 @@ function fitOpenHeaderTitles() {
       // export 여유 감안해 헤더폭의 38%로 제한 (스토어+로고가 화면 밖으로 안 밀리게)
       const storeMax = topEl.clientWidth * 0.38;
       const minStore = 12;
+      let ls = labelEl ? parseFloat(labelEl.dataset.baseSize || labelEl.style.fontSize || '14') : 0;
+      if (labelEl) labelEl.style.fontSize = ls + 'px';
       while (storeWrapEl.offsetWidth > storeMax && ss > minStore) {
         ss -= 1;
         storeEl.style.fontSize = ss + 'px';
+        // 설명 줄도 같은 비율로 줄여야 두 줄 크기 차이가 유지됨
+        if (labelEl && ls > 8) { ls = Math.max(8, ls - 1); labelEl.style.fontSize = ls + 'px'; }
       }
     }
     // 2) 타이틀을 (헤더폭 - 우상단 영역) 안에 맞춤 (export 여유 위해 추가 마진)
@@ -1931,7 +1953,7 @@ function syncOhGrad() {
 function applyOhBox() {
   const btn = $('#ohBoxBtn'); if (btn) btn.textContent = ohBoxWhite ? '흰색' : '검정';
   const op = ($('#ohBoxOpacity') ? +$('#ohBoxOpacity').value : 40) / 100;
-  document.querySelectorAll('.oh-date').forEach(el => {
+  document.querySelectorAll('.oh-date-wrap').forEach(el => {
     el.style.background = ohBoxWhite ? `rgba(255,255,255,${op})` : `rgba(0,0,0,${op})`;
     el.style.color = ohBoxWhite ? '#111' : '#fff';
   });
@@ -2683,6 +2705,7 @@ $('#inStore').addEventListener('input', syncHeader);
 $('#inFooter').addEventListener('input', syncHeader);
 $('#inOhTitle').addEventListener('input', syncOpenHeader);
 $('#inOhDate').addEventListener('input', syncOpenHeader);
+$('#inOhLabel').addEventListener('input', syncOpenHeader);
 
 // gradSlider replaced by syncGrad (gradStart/gradWidth/gradOpacity)
 
@@ -3013,6 +3036,8 @@ function buildState() {
       ohStore: $('#inOhStore') ? $('#inOhStore').value : '',
       ohTitleSize: $('#ohTitleSize') ? $('#ohTitleSize').value : '38',
       ohDateSize: $('#ohDateSize') ? $('#ohDateSize').value : '22',
+      ohLabel: $('#inOhLabel') ? $('#inOhLabel').value : '',
+      ohLabelSize: $('#ohLabelSize') ? $('#ohLabelSize').value : '14',
       ohStoreSize: $('#ohStoreSize') ? $('#ohStoreSize').value : '34',
       ohTitleFontWeight: $('#ohTitleFontWeight') ? $('#ohTitleFontWeight').value : '900',
       ohBoxWhite,
@@ -3127,6 +3152,8 @@ async function loadState() {
     if (st.ohStore != null && $('#inOhStore')) $('#inOhStore').value = st.ohStore;
     if (st.ohTitleSize && $('#ohTitleSize')) $('#ohTitleSize').value = st.ohTitleSize;
     if (st.ohDateSize && $('#ohDateSize')) $('#ohDateSize').value = st.ohDateSize;
+    if (st.ohLabel != null && $('#inOhLabel')) $('#inOhLabel').value = st.ohLabel;
+    if (st.ohLabelSize && $('#ohLabelSize')) $('#ohLabelSize').value = st.ohLabelSize;
     if (st.ohStoreSize && $('#ohStoreSize')) $('#ohStoreSize').value = st.ohStoreSize;
     if (st.ohTitleFontWeight && $('#ohTitleFontWeight')) $('#ohTitleFontWeight').value = st.ohTitleFontWeight;
     if (st.ohOn && $('#chkOpenHeader')) $('#chkOpenHeader').checked = true;
