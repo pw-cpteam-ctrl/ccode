@@ -2568,7 +2568,10 @@ function igSetStage(on) {
   if (on && !wasDetail) _posterScroll = { top: st.scrollTop, left: st.scrollLeft };
   st.classList.toggle('detailmode', on);
   if (tb) tb.style.display = on ? 'none' : '';
-  if (pr) pr.style.display = on ? 'none' : '';
+  // 포스터 줄은 '가로보기 / 2열보기'에 따라 배치 방식이 달라서, 여기서 빈 값으로
+  // 되돌리면 그 설정이 통째로 풀려 세로로 쭉 쌓인 모양이 됐음(버튼은 2열보기인데 화면은 아님).
+  // 다시 보일 땐 배치 설정을 그대로 다시 적용한다
+  if (pr) { if (on) pr.style.display = 'none'; else applyBoardLayout(); }
   ds.style.display = on ? '' : 'none';
   if (on) { st.scrollTop = 0; st.scrollLeft = 0; igRender(); }
   else if (wasDetail) {
