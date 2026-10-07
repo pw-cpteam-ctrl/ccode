@@ -345,9 +345,13 @@ button:disabled{opacity:.4;cursor:default;}
    이제는 미리보기 영역 아래에 떠 있게 해서 배치를 밀지 않고, 마우스가 있던 자리와도 가깝다.
    (마우스 놓은 자리에 띄우는 방식은 쓰지 않았다 — 화면 끝에서는 잘리고, 뜨는 위치가 매번
    달라 어디를 눌러야 할지 매번 다시 찾아야 한다) */
-#selBar{position:absolute;left:50%;transform:translateX(-50%);bottom:14px;z-index:50;
-  display:flex;align-items:center;gap:8px;padding:9px 12px;max-width:calc(100% - 28px);
-  flex-wrap:wrap;justify-content:center;row-gap:7px;
+/* 가운데 정렬을 left:50% + translateX(-50%)로 하면, 막대가 쓸 수 있는 폭이 화면의 "오른쪽 절반"
+   으로 제한된다(왼쪽 끝이 한가운데 못 박혀 있어서). 그래서 자리가 남는데도 다섯 줄까지 접혔다.
+   left/right를 양쪽에 주고 margin:auto로 가운데에 두면 미리보기 폭을 전부 쓴다 */
+#selBar{position:absolute;left:14px;right:14px;margin:0 auto;width:max-content;max-width:calc(100% - 28px);
+  bottom:14px;z-index:50;
+  display:flex;align-items:center;gap:7px;padding:8px 11px;
+  flex-wrap:wrap;justify-content:center;row-gap:6px;
   /* 떠 있는 막대라 뒤 사진이 비치면 글자가 안 읽힌다 — 불투명 배경과 테두리를 확실히 준다
      (막대를 띄우는 과정에서 이 두 줄이 사라져 투명해졌던 것을 되살림) */
   background:#eef3ff;border:1px solid #4a7cff;border-radius:10px;
@@ -358,7 +362,13 @@ button:disabled{opacity:.4;cursor:default;}
   white-space:nowrap;background:#252018;color:#fff;font-size:11.5px;font-weight:700;
   padding:4px 10px;border-radius:999px;pointer-events:none;}
 #selBar #selAction:empty{display:none;}
-#selBar button{font-size:12px;padding:6px 12px;white-space:nowrap;flex:none;}
+#selBar button{font-size:12px;padding:6px 10px;white-space:nowrap;flex:none;}
+/* "선택 해제"는 베이지색 버튼들 사이에 섞여 있어 눈에 안 띄었다 — 유일하게 꽉 찬 검정으로 두고
+   앞에 세로 칸막이를 넣어, 다른 작업 버튼들과 성격이 다르다는 걸 모양으로 구분한다 */
+#selBar #btnSelClear{background:#252018;border-color:#252018;color:#fff;font-weight:700;
+  margin-left:4px;box-shadow:0 1px 0 rgba(0,0,0,.15);}
+#selBar #btnSelClear:hover{background:#3d352a;border-color:#3d352a;}
+#selBar .selDiv{width:1px;align-self:stretch;background:#b9c9f0;margin:0 1px;flex:none;}
 #selBar select{font-size:12px;padding:6px 8px;border-radius:6px;border:1px solid #4a7cff;background:#fff;font-family:inherit;font-weight:700;color:#1a3d8f;cursor:pointer;}
 </style>
 </head>
@@ -457,6 +467,7 @@ button:disabled{opacity:.4;cursor:default;}
       <div><b>여러 장 한꺼번에</b> — 선택하면 위쪽 파란 바에 확대/축소 슬라이더가 떠서 전부 같이 조정됨(선택한 칸에서 휠·드래그해도 같이 조정). 20%까지 줄이면 사방에 여백이 생기고 그 상태에서도 위치를 맞출 수 있음</div>
       <div><b>고르는 방법</b> — ① 빈 곳에서 마우스로 드래그해 사각형으로 쓸어 담기(Ctrl 누른 채면 기존 선택에 더하기) ② 칸 파일명 왼쪽 체크박스, <b>Shift+클릭</b>이면 사이 전부 ③ 폴더 머리의 "폴더 전체 선택"</div>
       <div><b>순서 바꾸기</b> — 칸에 마우스를 올리면 나오는 ≡ 를 끌기 (여러 장 선택 중이면 전부 같이 이동)</div>
+      <div><b>흰 배경 지우기</b> — 상품 사진 자체에 흰 배경이 있어 배경색과 안 맞을 때 씁니다. 사진 바깥쪽과 이어진 흰 부분만 지우므로 상품 안의 흰색(포장·라벨)은 남습니다. 한 번 더 누르면 원래대로</div>
       <label class="helpRemember"><input type="checkbox" id="gridHelpRemember"/> 다음부터 접어두기</label>
     </div>
   </details>
@@ -464,16 +475,18 @@ button:disabled{opacity:.4;cursor:default;}
     <b id="selCount"></b>
     <span id="selAction" style="color:#1a3d8f;font-weight:400;"></span>
     <select id="selOverlaySel"><option value="__ph__">고른 사진에 투명 배정 ▾</option></select>
-    <label style="display:flex;align-items:center;gap:6px;">확대/축소
-      <input type="range" id="selZoom" min="20" max="400" value="100" style="width:150px;"/>
-      <b id="selZoomVal" style="min-width:42px;">100%</b>
+    <label style="display:flex;align-items:center;gap:5px;">확대/축소
+      <input type="range" id="selZoom" min="20" max="400" value="100" style="width:96px;"/>
+      <b id="selZoomVal" style="min-width:40px;">100%</b>
     </label>
-    <button id="btnSelBadgeFlip">뱃지 좌우 전환</button>
+    <button id="btnSelBadgeFlip">뱃지 좌우</button>
     <button id="btnSelMergeFolder" title="선택한 사진을 폴더 하나로 합칩니다. 같은 IP를 한 캐러셀로 올릴 때 씁니다">폴더 합치기</button>
-    <button id="btnSelSplit" title="고른 사진 2장을 한 아트보드에 위아래로 담습니다 (캐러셀 장수를 줄일 때)">2분할로 합치기</button>
+    <button id="btnSelSplit" title="고른 사진 2장을 한 아트보드에 위아래로 담습니다 (캐러셀 장수를 줄일 때)">2분할 합치기</button>
     <button id="btnSelFrameOff" title="고른 사진에서 제목 이미지를 화면에서 끕니다. 배정은 그대로 남아 있어 언제든 다시 켤 수 있습니다">투명 끄기</button>
     <button id="btnSelFrameOn" title="고른 사진에 배정된 제목 이미지를 다시 켭니다">투명 켜기</button>
+    <button id="btnSelWhiteCut" title="상품 사진 바깥쪽의 흰 배경을 투명하게 지워 아래 배경색이 그대로 비치게 합니다. 한 번 더 누르면 원래대로 돌아옵니다">흰 배경 지우기</button>
     <button id="btnSelDelete" style="background:#fff0f0;border-color:#e05d5d;color:#b33;">선택 삭제</button>
+    <span class="selDiv"></span>
     <button id="btnSelClear">선택 해제</button>
   </div>
   <!-- 툴바를 성격으로 나눴다. 한 줄에 11개가 뒤섞여 있어서 무엇이 "지금 할 일"인지 안 보였다.
@@ -640,6 +653,7 @@ function itemsMetaSnapshot(){
       scaleMul: legacy.scaleMul, ox: legacy.ox, oy: legacy.oy, bg: it.bg,
       storeName: it.storeName || '', badgeSide: it.badgeSide || 'left',
       isMain: !!it.isMain, noFrame: !!it.noFrame,
+      whiteCut: !!it.whiteCut,   // 예전 저장분에는 없는 칸 — 없으면 "안 지움"으로 읽힌다
       // 2분할 정보 — 예전 저장분에는 없는 칸이라, 없으면 한 장짜리로 읽힌다
       split: isSplit(it) ? { name2: it.split.name2, gap: it.split.gap,
                              crops: it.split.crops.map(c => ({ ...c })) } : null,
@@ -762,7 +776,8 @@ async function restoreFromCache(){
       offX: m.offX ?? 0, offY: m.offY ?? 0, // 예전 저장분엔 없는 값이라 기본 0
       storeName: m.storeName ?? DEFAULT_STORE_NAME, badgeSide: m.badgeSide || 'left',
       isMain: !!m.isMain, noFrame: !!m.noFrame,
-      split: null,   // 아래에서 되살린다 (예전 저장분엔 이 칸이 없어 한 장짜리로 남는다)
+      whiteCut: !!m.whiteCut,   // 예전 저장분엔 없는 값이라 기본 false
+      split: null,  // 아래에서 되살린다 (예전 저장분엔 이 칸이 없어 한 장짜리로 남는다)
     });
     // 2분할이었으면 아래 칸 사진도 되살린다. 아래 칸만 깨져 있으면 2분할을 포기하고
     // 위 칸 한 장짜리로 남긴다 — 통째로 날리는 것보다 낫다
@@ -1230,6 +1245,7 @@ function undoSnapshot(){
       offX: it.offX || 0, offY: it.offY || 0,
       bg: it.bg, storeName: it.storeName || '', badgeSide: it.badgeSide || 'left',
       isMain: !!it.isMain, noFrame: !!it.noFrame, folder: it.folder || '',
+      whiteCut: !!it.whiteCut,
       // 2분할은 통째로 기억한다 (합치기·풀기도 되돌릴 수 있게)
       split: it.split ? { ...it.split, crops: it.split.crops.map(c => ({ ...c })) } : null,
     })),
@@ -1274,6 +1290,7 @@ function undo(){
       it.bg = m.bg; it.storeName = m.storeName; it.badgeSide = m.badgeSide;
       it.isMain = m.isMain; it.noFrame = m.noFrame; it.folder = m.folder;
       it.split = m.split ? { ...m.split, crops: m.split.crops.map(c => ({ ...c })) } : null;
+      if (!!it.whiteCut !== !!m.whiteCut) { it.whiteCut = !!m.whiteCut; dropWhiteCutCache(it); }
       it._thumbSrc2 = null;
     }
     items.length = 0;
@@ -1455,6 +1472,7 @@ function setSelectionFrame(on){
     + (noAssign ? ` (그중 ${noAssign}장은 배정된 투명 이미지가 없어 화면은 그대로입니다)` : '')
     + ' Ctrl+Z로 되돌릴 수 있습니다.');
 }
+$('#btnSelWhiteCut').addEventListener('click', toggleWhiteCutSelected);
 $('#btnSelFrameOff').addEventListener('click', () => setSelectionFrame(false));
 $('#btnSelFrameOn').addEventListener('click', () => setSelectionFrame(true));
 // ---------- 키보드로 순서 옮기기 ----------
@@ -1950,7 +1968,9 @@ function updateSelUi(){
   // 일괄 삭제인 줄 모르고 지나치게 된다. Delete 키로도 같은 동작을 한다
   const delBtn = $('#btnSelDelete');
   if (delBtn && n) {
-    delBtn.textContent = `선택 ${n}장 삭제 (Delete)`;
+    // 바로 왼쪽에 "N개 선택됨"이 이미 떠 있어서 "선택"과 "(Delete)"는 글자만 길게 만든다.
+    // 장수만 남기고 Delete 키 안내는 마우스를 올렸을 때 나오게 옮겼다 (막대를 두 줄로 유지)
+    delBtn.textContent = `${n}장 삭제`;
     delBtn.title = `선택한 ${n}장을 목록에서 지웁니다. Delete 키로도 됩니다 (Ctrl+Z로 되돌리기 가능)`;
   }
   if (n) { // 슬라이더를 선택한 사진의 현재 배율에 맞춰둔다 (안 맞추면 슬라이더를 잡는 순간 값이 튄다)
@@ -2566,11 +2586,11 @@ function drawItem(ctx, it){
   if (isSplit(it)) {
     // 2분할 아트보드는 사진 2장을 위아래로 담는다. 자리값(crops)만 들고 있고 그리는 일은
     // 공용 코드에 맡겨서, 크게보기·목록·내보내기가 서로 어긋나지 않게 한다
-    drawSplitTo(ctx, CW, CH, [it.photoImg, it.split.img2], it.split.crops,
+    drawSplitTo(ctx, CW, CH, [photoSourceOf(it, it.photoImg, 0), photoSourceOf(it, it.split.img2, 1)], it.split.crops,
                 { width: CW, height: CH, gap: it.split.gap, backdrop: it.bg, keepTransform: true });
   } else {
   const { dw, dh, dx, dy } = geomOf(it);
-  ctx.drawImage(it.photoImg, dx, dy, dw, dh);
+  ctx.drawImage(photoSourceOf(it, it.photoImg, 0), dx, dy, dw, dh);
   }
 
   if (it.overlayImg && !it.noFrame) ctx.drawImage(it.overlayImg, 0, 0, CW, CH); // noFrame이면 배정은 유지하고 그리지만 않음
@@ -2588,7 +2608,7 @@ const THUMB_SRC_MAX = 480;
 const SPLIT_GAP_DEFAULT = 40;
 function isSplit(it){ return !!(it && it.split && it.split.img2); }
 function getThumbSource2(it){
-  if (it._thumbSrc2) return it._thumbSrc2;
+  if (it._thumbSrc2 && it._thumbSrc2Cut === !!it.whiteCut) return it._thumbSrc2;
   const im = it.split.img2;
   const pw = im.naturalWidth || im.width, ph = im.naturalHeight || im.height;
   const scale = Math.min(1, THUMB_SRC_MAX / Math.max(pw, ph));
@@ -2596,8 +2616,9 @@ function getThumbSource2(it){
   c.width = Math.max(1, Math.round(pw * scale));
   c.height = Math.max(1, Math.round(ph * scale));
   c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
-  it._thumbSrc2 = c;
-  return c;
+  it._thumbSrc2 = it.whiteCut ? cutWhiteCanvas(c, c.width, c.height) : c;
+  it._thumbSrc2Cut = !!it.whiteCut;
+  return it._thumbSrc2;
 }
 // 고른 2장을 한 장으로 합친다 — 앞의 것이 위 칸, 뒤의 것이 아래 칸
 function mergeSelectedIntoSplit(){
@@ -2648,15 +2669,98 @@ function unsplitItem(it){
   log(`2분할을 풀어 "${born.photoName}"을 따로 꺼냈습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
 }
 function getThumbSourceCanvas(it){
-  if (it._thumbSrc) return it._thumbSrc;
+  if (it._thumbSrc && it._thumbSrcCut === !!it.whiteCut) return it._thumbSrc;
   const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
   const scale = Math.min(1, THUMB_SRC_MAX / Math.max(pw, ph));
   const tw = Math.max(1, Math.round(pw * scale)), th = Math.max(1, Math.round(ph * scale));
   const c = document.createElement('canvas');
   c.width = tw; c.height = th;
   c.getContext('2d').drawImage(it.photoImg, 0, 0, tw, th);
-  it._thumbSrc = c;
+  it._thumbSrc = it.whiteCut ? cutWhiteCanvas(c, tw, th) : c;
+  it._thumbSrcCut = !!it.whiteCut;
+  return it._thumbSrc;
+}
+
+// ---------- 흰 배경 지우기 ----------
+// 상품 사진 안에 흰 배경이 들어 있으면 아트보드 배경색과 미세하게 달라 네모 자국이 보인다.
+// "밝으면 무조건 지우기"로 하면 흰 포장·라벨·하이라이트에 구멍이 뚫리므로, 사진 네 변에서
+// 시작해 바깥과 "이어져 있는" 밝은 영역만 번져 나가며 지운다(포토샵 자동 선택과 같은 방식).
+// 계산은 전부 브라우저 안에서 일어난다 — 사진이 서버로 나가지 않고, 인터넷 없이도 된다
+const WHITE_CUT_THR = 230;      // 이 밝기 이상이면 배경 후보
+const WHITE_CUT_FEATHER = 40;   // 지워진 영역과 맞닿은 1px은 밝기만큼 반투명 — 흰 테두리가 남는 걸 막는다
+function cutWhiteCanvas(src, w, h){
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  const ctx = out.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(src, 0, 0, w, h);
+  let img;
+  // 다른 출처의 이미지였다면 픽셀을 읽을 수 없다(브라우저 보안 제한). 그때는 원본을 그대로 돌려준다
+  try { img = ctx.getImageData(0, 0, w, h); }
+  catch (err) { log('이 사진은 흰 배경을 지울 수 없습니다 (브라우저 보안 제한)'); return src; }
+  const d = img.data, n = w * h;
+  const mark = new Uint8Array(n);
+  const stack = new Int32Array(n);
+  let sp = 0;
+  const lumAt = k => (d[k*4]*299 + d[k*4+1]*587 + d[k*4+2]*114) / 1000;
+  const push = k => { if (!mark[k] && d[k*4+3] > 8 && lumAt(k) >= WHITE_CUT_THR) { mark[k] = 1; stack[sp++] = k; } };
+  for (let x = 0; x < w; x++) { push(x); push((h-1)*w + x); }
+  for (let y = 0; y < h; y++) { push(y*w); push(y*w + w - 1); }
+  while (sp > 0) {
+    const k = stack[--sp], x = k % w, y = (k - x) / w;
+    if (x > 0) push(k - 1);
+    if (x < w-1) push(k + 1);
+    if (y > 0) push(k - w);
+    if (y < h-1) push(k + w);
+  }
+  for (let k = 0; k < n; k++) {
+    if (mark[k]) { d[k*4+3] = 0; continue; }
+    const x = k % w, y = (k - x) / w;
+    const near = (x > 0 && mark[k-1]) || (x < w-1 && mark[k+1]) || (y > 0 && mark[k-w]) || (y < h-1 && mark[k+w]);
+    if (!near) continue;
+    const a = Math.max(0, Math.min(1, (WHITE_CUT_THR - lumAt(k)) / WHITE_CUT_FEATHER));
+    d[k*4+3] = Math.round(d[k*4+3] * a);
+  }
+  ctx.putImageData(img, 0, 0);
+  return out;
+}
+// 원본 화질(크게보기·내보내기)용 결과. 1080×1350 한 장이 약 6MB라 수백 장을 들고 있으면
+// 메모리가 터지므로, 가장 최근에 쓴 몇 장만 기억하고 나머지는 버린다(필요하면 다시 계산)
+const FULL_CUT_MAX = 4;
+const _fullCutCache = new Map();
+function photoSourceOf(it, img, slot){
+  if (!it.whiteCut || !img) return img;
+  const key = it.uid == null ? null : it.uid + '#' + (slot || 0);
+  if (key && _fullCutCache.has(key)) {
+    const hit = _fullCutCache.get(key);
+    _fullCutCache.delete(key); _fullCutCache.set(key, hit); // 최근 쓴 것으로 올림
+    return hit;
+  }
+  const c = cutWhiteCanvas(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
+  if (key) {
+    _fullCutCache.set(key, c);
+    while (_fullCutCache.size > FULL_CUT_MAX) _fullCutCache.delete(_fullCutCache.keys().next().value);
+  }
   return c;
+}
+// 흰 배경 설정이 바뀐 칸은 만들어둔 결과를 버려야 다음 그리기에서 새로 계산된다
+function dropWhiteCutCache(it){
+  it._thumbSrc = null; it._thumbSrcCut = null; it._thumbSrc2 = null; it._thumbSrc2Cut = null;
+  if (it.uid != null) { _fullCutCache.delete(it.uid + '#0'); _fullCutCache.delete(it.uid + '#1'); }
+}
+// 고른 사진의 흰 배경을 지웠다 되돌렸다 한 번에 전환한다 (하나라도 꺼져 있으면 전부 켜기)
+function toggleWhiteCutSelected(){
+  const list = selectedItems();
+  if (!list.length) return;
+  ensureUids();
+  const turnOn = list.some(it => !it.whiteCut);
+  pushUndo(turnOn ? `흰 배경 지우기 ${list.length}장` : `흰 배경 되돌리기 ${list.length}장`);
+  for (const it of list) { it.whiteCut = turnOn; dropWhiteCutCache(it); }
+  renderGrid();
+  saveMetaToCache();
+  reportAction(`${list.length}장 흰 배경 ${turnOn ? '지움' : '되돌림'}`);
+  log(`${list.length}장의 흰 배경을 ${turnOn ? '지웠습니다' : '되돌렸습니다'}.`
+    + (turnOn ? ' 사진 바깥쪽과 이어진 흰 부분만 지우므로 상품 안쪽 흰색은 그대로 남습니다.' : '')
+    + ' Ctrl+Z로 되돌릴 수 있습니다.');
 }
 
 // 그리드 썸네일 전용 — 화질을 낮춘 캐시 이미지로 그림. 뱃지 그림자는 캐싱된 halo 이미지를
