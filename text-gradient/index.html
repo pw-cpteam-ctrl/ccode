@@ -31,6 +31,8 @@ body{background:var(--ui-bg);color:var(--ui-text);font-family:-apple-system,'Mal
 .range-wrap input[type=range]::-moz-range-track{height:22px;background:transparent;border:none;}
 .range-wrap input[type=range]::-moz-range-thumb{width:4px;height:16px;border-radius:2px;background:#fff;border:1px solid var(--ui-border);cursor:pointer;}
 .range-badge{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;font-weight:700;font-size:12px;text-shadow:0 1px 2px rgba(0,0,0,.5);pointer-events:none;}
+/* 타이틀 입력칸 — 여러 줄을 넣을 수 있지만 보통은 한 줄이라, 내용만큼만 세로로 늘어나게 둔다 */
+.field textarea.titleBox{resize:vertical;min-height:34px;line-height:1.35;overflow:hidden;}
 .field textarea#inBulkMd{font-family:'SFMono-Regular',Consolas,monospace;font-size:13px;white-space:pre;}
 .row2{display:flex;gap:7px;}.row2 .field{flex:1;min-width:0;}
 .col-divider{flex:0 0 5px;align-self:stretch;margin:0 3px;border-radius:2px;background:var(--ui-border);cursor:col-resize;position:relative;}
@@ -125,9 +127,11 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 
   <div class="sec">텍스트</div>
   <div class="field"><label>배지 문구</label><input type="text" id="inBadge" value="예약판매 기간 5% 할인 캠페인 중!"/></div>
+  <!-- 엔터로 직접 줄을 나눌 수 있어야 해서 한 줄 입력칸이 아니라 여러 줄 입력칸을 쓴다.
+       엔터를 넣은 타이틀은 글자 크기를 줄이지 않고 그 줄 나눔 그대로 보여준다 -->
   <div class="row2">
-    <div class="field"><label>타이틀 (좌)</label><input type="text" id="inTitleL" value="주술회전"/></div>
-    <div class="field"><label>타이틀 (우)</label><input type="text" id="inTitleR" value="메가캣 프로젝트"/></div>
+    <div class="field"><label>타이틀 (좌) — 엔터로 줄 나눔</label><textarea id="inTitleL" class="titleBox" rows="1">주술회전</textarea></div>
+    <div class="field"><label>타이틀 (우)</label><textarea id="inTitleR" class="titleBox" rows="1">메가캣 프로젝트</textarea></div>
   </div>
   <div class="field"><label>서브타이틀</label><input type="text" id="inSubtitle" value=""/></div>
   <div style="font-size:12px;color:var(--ui-sub);margin-bottom:4px;">불릿 리스트 — 줄 앞에 "-"를 붙이면 그 줄만 • 불릿으로 표시, 없으면 일반 텍스트</div>
@@ -278,6 +282,8 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<!-- 글자 크기 자동 맞춤 (공용) — 타이틀이 캔버스 폭을 넘칠 때 크기를 줄여 한 줄로 유지하는 데 쓴다 -->
+<script src="../assets/fit-text.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 
@@ -352,7 +358,9 @@ let titleFolderPath = '';
 
 function makeEmptySlot() {
   // twoColAutoOff: 2열을 직접 껐다는 표시. 예전에 저장된 슬롯엔 이 칸이 없어 undefined(=거짓)로 읽힌다
-  return { badge:'', titleL:'', titleR:'', subtitle:'', bullets:'', bulletsR:'', bulletsTwoCol:false, twoColAutoOff:false, bulletsColRatio:50, gradStart:40, gradWidth:60, gradOpacity:85, gradCompress:0, ...LAYOUT_DEFAULTS };
+  // titleFit: 타이틀 글자 크기 자동 맞춤 대상인지. 예전에 저장된 슬롯엔 이 칸이 없어 undefined(=거짓)로
+  // 읽히므로, 열어보는 순간 글자 크기가 달라지는 일이 없다. 새로 만드는 슬롯부터 적용된다
+  return { badge:'', titleL:'', titleR:'', subtitle:'', bullets:'', bulletsR:'', bulletsTwoCol:false, twoColAutoOff:false, titleFit:true, bulletsColRatio:50, gradStart:40, gradWidth:60, gradOpacity:85, gradCompress:0, ...LAYOUT_DEFAULTS };
 }
 function layoutVal(s, key) { return s[key] ?? LAYOUT_DEFAULTS[key]; } // 이전에 저장된 슬롯엔 이 필드들이 없을 수 있어 기본값으로 대체
 
@@ -473,6 +481,7 @@ function applyBulkMarkdown() {
     const titleR = bar >= 0 ? it.title.slice(bar + 1).trim() : '';
     return { badge: commonBadge, titleL, titleR, subtitle: '', bullets: it.bullets.map(b => `- ${b}`).join('\n'), bulletsR: '', bulletsTwoCol: false, bulletsColRatio: 50,
       gradStart: g.gradStart, gradWidth: g.gradWidth, gradOpacity: g.gradOpacity, gradCompress: g.gradCompress ?? 0,
+      titleFit: true,   // 여기서 새로 만드는 슬롯이므로 타이틀 자동 맞춤 대상
       bottomAnchorY: layoutVal(g,'bottomAnchorY'),
       badgeYOffset: layoutVal(g,'badgeYOffset'), badgeSize: layoutVal(g,'badgeSize'),
       titleYOffset: layoutVal(g,'titleYOffset'), titleSize: layoutVal(g,'titleSize'),
@@ -509,6 +518,7 @@ const ALL_LAYOUT_FIELDS = [
 function loadInputsFromCurSlot() {
   const s = slots[curSlot - 1];
   $('#inBadge').value = s.badge; $('#inTitleL').value = s.titleL; $('#inTitleR').value = s.titleR;
+  growTitleBox($('#inTitleL')); growTitleBox($('#inTitleR'));   // 슬롯을 바꿔도 줄 수에 맞게 칸 높이를 맞춘다
   $('#inSubtitle').value = s.subtitle || '';
   $('#inBullets').value = s.bullets; $('#inBulletsR').value = s.bulletsR || '';
   $('#inBulletsTwoCol').checked = !!s.bulletsTwoCol;
@@ -630,6 +640,21 @@ function maybeAutoTwoCol() {
   clearTimeout(note._t);
   note._t = setTimeout(() => { note.style.display = 'none'; }, 8000);
 }
+// 타이틀 입력칸은 엔터로 줄을 늘릴 수 있으므로, 내용만큼 칸 높이도 같이 늘려 준다
+// (줄을 넣었는데 칸이 그대로면 쓴 글자가 가려져 보인다)
+function growTitleBox(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.max(34, el.scrollHeight) + 'px';
+}
+// 타이틀을 직접 고친 슬롯부터 글자 크기 자동 맞춤을 적용한다 (예전 작업물은 그대로 둔다)
+['inTitleL', 'inTitleR'].forEach(id => {
+  $('#'+id).addEventListener('input', () => {
+    slots[curSlot - 1].titleFit = true;
+    growTitleBox($('#'+id));
+    renderCurSlotDom();
+    persistState();
+  });
+});
 $('#inBullets').addEventListener('input', () => {
   clearTimeout(_twoColAutoT);
   // 입력하고 바로 다른 슬롯으로 넘어가면, 기다리던 이 처리가 "지금 열려 있는 다른 슬롯"을
@@ -718,15 +743,35 @@ function renderBulletLines(raw) {
     return m ? `• ${m[1]}` : line;
   }).join('<br>');
 }
+/* ── 타이틀 글자 크기 자동 맞춤 ──
+   타이틀이 캔버스 폭을 넘칠 때 한 줄로 유지하려고 글자 크기를 줄인다(공용 assets/fit-text.js).
+   다만 무조건 줄이면 긴 제목이 읽기 힘들 만큼 작아지므로, 줄이는 것은 짧은 제목에서만 한다.
+     · 엔터로 직접 줄을 나눈 타이틀  → 줄이지 않고 정한 크기 그대로, 나눈 줄 그대로 표시
+     · 한 줄이 TITLE_FIT_MAX_CHARS자를 넘는 긴 타이틀 → 줄이지 않고 정한 크기 그대로 다음 줄로 흘림
+     · 그 외(짧은 한 줄)        → 캔버스 폭에 맞게 글자 크기만 줄여 한 줄로 유지
+   예전에 만들어 둔 슬롯(s.titleFit이 없음)은 건드리지 않는다 — 저장해 둔 작업물의 글자 크기가
+   열어보는 순간 달라지지 않게 하려는 것. 타이틀을 새로 고치거나 새 슬롯을 만들면 적용된다. */
+const TITLE_FIT_MAX_CHARS = 12;
+const TITLE_FIT_MIN_SIZE = 20;
+function applyTitleFit(el, text, baseSize, s) {
+  const longestLine = text.split('\n').reduce((m, line) => Math.max(m, line.length), 0);
+  const hasManualBreak = text.includes('\n');
+  const shrink = !!s.titleFit && !hasManualBreak && longestLine <= TITLE_FIT_MAX_CHARS;
+  // pre-line: 엔터로 나눈 줄은 그대로 보여주되 자동 줄바꿈도 함께 되게 한다
+  el.style.whiteSpace = shrink ? 'nowrap' : 'pre-line';
+  el.style.fontSize = baseSize + 'px';
+  if (shrink) fitElementText(el, { max: baseSize, min: TITLE_FIT_MIN_SIZE });
+}
 const PREVIEW_SCALE = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--preview-scale')) || 0.3;
 function renderSlotDom(pg) {
   const s = slots[pg - 1];
   const badgeEl = $('#badge'+pg), titleEl = $('#title'+pg), subtitleEl = $('#subtitle'+pg), bulletsEl = $('#bullets'+pg);
   badgeEl.textContent = s.badge;
   badgeEl.style.fontSize = layoutVal(s,'badgeSize') + 'px';
-  titleEl.textContent = s.titleL + (s.titleR ? ' | ' + s.titleR : '');
-  titleEl.style.fontSize = layoutVal(s,'titleSize') + 'px';
+  const titleText = s.titleL + (s.titleR ? ' | ' + s.titleR : '');
+  titleEl.textContent = titleText;
   titleEl.style.letterSpacing = (layoutVal(s,'titleTracking') / 1000) + 'em';
+  applyTitleFit(titleEl, titleText, layoutVal(s,'titleSize'), s);
   subtitleEl.textContent = s.subtitle || '';
   subtitleEl.style.fontSize = layoutVal(s,'subtitleSize') + 'px';
   subtitleEl.style.letterSpacing = (layoutVal(s,'subtitleTracking') / 1000) + 'em';
