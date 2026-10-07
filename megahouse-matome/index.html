@@ -196,6 +196,9 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
   box-shadow:0 1px 4px rgba(0,0,0,.14);}
 .dthumb canvas{width:100%;height:auto;display:block;}
 .dthumb.sel{outline:3px solid var(--ui-accent);outline-offset:1px;}
+.dthumb.dragover{outline:3px dashed var(--ui-accent);outline-offset:2px;}
+.dthumb{cursor:grab;}
+.dthumb:active{cursor:grabbing;}
 .dthumb .tno{position:absolute;left:3px;top:3px;background:rgba(0,0,0,.55);color:#fff;
   font-size:10px;font-weight:800;border-radius:4px;padding:1px 5px;}
 .dmainwrap{display:flex;flex-direction:column;align-items:center;gap:12px;}
@@ -2380,8 +2383,9 @@ function igRenderAll() {
 
 /* 카드를 끌어서 순서 바꾸기 — 마토메 칸 순서 자체를 바꾸므로 포스터도 같이 움직인다 */
 let _igDragKey = null;
+let _igJustDragged = false;   // 끌고 난 직후 따라오는 클릭이 선택을 바꿔버리지 않게
 function igBindCardDrag(el, card) {
-  el.addEventListener('dragstart', e => { _igDragKey = card.key; e.dataTransfer.effectAllowed = 'move'; });
+  el.addEventListener('dragstart', e => { _igDragKey = card.key; _igJustDragged = true; e.dataTransfer.effectAllowed = 'move'; });
   el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('dragover'); });
   el.addEventListener('dragleave', () => el.classList.remove('dragover'));
   el.addEventListener('drop', e => {
@@ -2390,7 +2394,11 @@ function igBindCardDrag(el, card) {
     igMoveCard(_igDragKey, card.key);
     _igDragKey = null;
   });
-  el.addEventListener('dragend', () => el.classList.remove('dragover'));
+  el.addEventListener('dragend', () => {
+    el.classList.remove('dragover');
+    setTimeout(() => { _igJustDragged = false; }, 60);
+  });
+  el.addEventListener('click', e => { if (_igJustDragged) { e.stopPropagation(); e.preventDefault(); } }, true);
 }
 /* 모든 페이지를 한 줄로 편 뒤 카드 순서를 옮기고, 다시 원래 칸 자리에 채워 넣는다 */
 function igMoveCard(fromKey, toKey) {
@@ -2447,6 +2455,8 @@ function igRenderOne() {
     no.textContent = String(idx+1).padStart(2,'0');
     w.appendChild(no);
     w.onclick = () => { igSelKey = card.key; igRenderOne(); };
+    w.draggable = true;
+    igBindCardDrag(w, card);   // 전체보기와 같은 방식으로 썸네일도 끌어서 순서 변경
     row.appendChild(w);
   });
   const card = igFindCard(igSelKey);
@@ -2547,14 +2557,29 @@ function igRender() {
 }
 
 /* 포스터 화면 ⇄ 상세컷 화면 전환 */
+// 포스터는 위아래로 화면 높이의 45%씩 여백을 두고 그 한가운데를 보고 있는 구조라,
+// 상세컷을 보고 오면서 스크롤이 맨 위(0)로 가면 포스터가 아래로 밀려 엉뚱하게 보인다
+// ("확대가 이상해졌다"로 보였음). 떠날 때 보던 자리를 기억했다가 돌아올 때 되돌려 준다
+let _posterScroll = null;
 function igSetStage(on) {
   const st = $('#stage'), tb = $('#stageToolbar'), pr = $('#postersRow'), ds = $('#detailStage');
   if (!st || !ds) return;
+  const wasDetail = st.classList.contains('detailmode');
+  if (on && !wasDetail) _posterScroll = { top: st.scrollTop, left: st.scrollLeft };
   st.classList.toggle('detailmode', on);
   if (tb) tb.style.display = on ? 'none' : '';
   if (pr) pr.style.display = on ? 'none' : '';
   ds.style.display = on ? '' : 'none';
-  if (on) { st.scrollTop = 0; igRender(); }
+  if (on) { st.scrollTop = 0; st.scrollLeft = 0; igRender(); }
+  else if (wasDetail) {
+    // 화면 구조가 바뀐 직후라 자리가 아직 안 잡혔으므로 한 박자 뒤에 되돌린다
+    const pos = _posterScroll;
+    requestAnimationFrame(() => {
+      if (pos) { st.scrollTop = pos.top; st.scrollLeft = pos.left; }
+      else { st.scrollTop = (st.scrollHeight - st.clientHeight) / 2;
+             st.scrollLeft = (st.scrollWidth - st.clientWidth) / 2; }
+    });
+  }
 }
 
 /* 상세컷 전체 다운로드 — 올릴 순서대로 번호를 붙여 내려받는다 */
