@@ -25,9 +25,23 @@ function isSameOrigin(req) {
   try { return new URL(src).host === host; } catch { return false; }
 }
 
+// 같은 오픈일로 '일본 국내 안내문'을 자동으로 켜고 끄는 인스타 카드 생성기(insta-gen)는 다른 사이트라,
+// 그 주소만 따로 허용한다. 브라우저가 다른 사이트의 응답을 읽게 하려면 허용 헤더(CORS)를 붙여야 한다.
+// 여기 없는 사이트는 지금처럼 막는다.
+const OTHER_ALLOWED_HOSTS = ['ccode-omega.vercel.app'];
+function allowedOtherOrigin(req) {
+  try {
+    const o = new URL(req.headers.origin || '');
+    return o.protocol === 'https:' && OTHER_ALLOWED_HOSTS.includes(o.host) ? o.origin : null;
+  } catch { return null; }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') { res.status(405).json({ ok: false }); return; }
-  if (!isSameOrigin(req)) { res.status(403).json({ ok: false }); return; }
+  const other = allowedOtherOrigin(req);
+  res.setHeader('Vary', 'Origin');   // 허용 헤더가 요청 사이트마다 달라서, 캐시가 섞이지 않게
+  if (!isSameOrigin(req) && !other) { res.status(403).json({ ok: false }); return; }
+  if (other) res.setHeader('Access-Control-Allow-Origin', other);
 
   const gh = {
     token: process.env.GITHUB_TOKEN,

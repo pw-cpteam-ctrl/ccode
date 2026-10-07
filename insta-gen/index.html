@@ -808,31 +808,45 @@ function drawBottom(){
    메가하우스 오픈일 D-7 이내(오픈 당일 포함)면 한국 판매가 곧 열리므로 "한국 수주·판매는 결정되는 대로
    안내" 문구가 맞지 않아 기본으로 끈다. 그 밖에는 켠다. 체크박스로 언제든 직접 켜고 끌 수 있고,
    도구를 새로 열 때마다 이 규칙으로 다시 정한다(저장 안 함).
-   ⚠ 오픈일 규칙은 creator-guide/finalOption.jsx의 OPEN_DAY_EXCEPTIONS를 그대로 옮겨 온 것.
-     폴더끼리 서로 파일을 불러오지 않는 원칙(배포도 폴더별)이라 복사해 뒀으니,
-     예외 달이 생기면 저쪽과 여기 두 곳을 같이 고칠 것. */
+   오픈일은 크리에이터 가이드 관리자 화면('오픈 날짜 관리')에서 담당자가 넣은 값을 읽어 온다
+   (creator-guide/api/open-days — 그쪽에서 이 사이트 주소만 따로 허용해 둠). 못 읽으면(인터넷·서버 문제)
+   아래 기본값 → 첫 목요일 순으로 정한다. 기본값은 creator-guide/finalOption.jsx와 같은 값. */
 const OPEN_DAY_EXCEPTIONS = {   // 'YYYY-MM': 그 달 오픈 날짜(일). 적지 않은 달은 첫 목요일
   '2026-09': 10,
   '2026-10': 8,
 };
+const OPEN_DAYS_URL='https://pw-creator-guide.vercel.app/api/open-days';
+var OPEN_DAYS_SAVED=null;   // 관리자 화면에서 받아 온 값 { 'YYYY-MM': 일 }. 받기 전·실패면 null
+var OPEN_DAYS_STATE='loading';   // loading → ok | fail (fail일 때만 안내줄에 경고)
+var _jpTouched=false;            // 사용자가 안내문 체크박스를 직접 눌렀으면 true — 늦게 도착한 오픈일이 그 선택을 덮지 않게
+// 페이지를 열자마자 받기 시작한다. 도구 시작은 이걸 기다리지 않는다(가이드 서버가 느리거나 멈춰도 도구는 바로 뜨게) —
+// 우선 기본 규칙으로 켜고 끈 뒤, 도착하면 그 값으로 다시 맞춘다. 5초 넘게 안 오면 실패로 본다
+// (AbortSignal.timeout은 오래된 아이폰 사파리에 없어서 쓰지 않음 — 없으면 이 줄에서 스크립트 전체가 멈춘다)
+const openDaysReady = Promise.race([
+  fetch(OPEN_DAYS_URL).then(r=>r.ok?r.json():null).then(d=>{ if(d && d.ok){ OPEN_DAYS_SAVED=d.days||{}; OPEN_DAYS_STATE='ok'; } }),
+  new Promise(r=>setTimeout(r,5000)),
+]).catch(()=>{}).then(()=>{ if(OPEN_DAYS_STATE!=='ok') OPEN_DAYS_STATE='fail'; });
 function firstThursday(y,m){ const f=new Date(y,m,1); return 1+((4-f.getDay()+7)%7); }
 // m이 12(=다음 해 1월)처럼 넘쳐도 맞는 연·월로 고쳐서 본다 — 안 그러면 12월에 다음 해 1월 예외('YYYY-01')를 못 찾음
 function openDayOf(y,m){ const d=new Date(y,m,1); y=d.getFullYear(); m=d.getMonth();
-  return OPEN_DAY_EXCEPTIONS[`${y}-${String(m+1).padStart(2,'0')}`] ?? firstThursday(y,m); }
+  const key=`${y}-${String(m+1).padStart(2,'0')}`, saved=OPEN_DAYS_SAVED && Number(OPEN_DAYS_SAVED[key]);
+  return saved || OPEN_DAY_EXCEPTIONS[key] || firstThursday(y,m); }
 function nextOpenDate(now=new Date()){
   const t=new Date(now.getFullYear(),now.getMonth(),now.getDate());   // 오늘 0시 기준(시간 무시)
   const thisM=new Date(t.getFullYear(),t.getMonth(),openDayOf(t.getFullYear(),t.getMonth()));
   if(t<=thisM) return thisM;
   return new Date(t.getFullYear(),t.getMonth()+1,openDayOf(t.getFullYear(),t.getMonth()+1));
 }
-function initJpNotice(now=new Date()){
+// keepChoice: 켜짐/꺼짐은 그대로 두고 안내줄만 새로 씀(사용자가 이미 직접 고른 뒤 오픈일이 도착한 경우)
+function initJpNotice(now=new Date(), keepChoice=false){
   const open=nextOpenDate(now), today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
   const dday=Math.round((open-today)/86400000), near=dday<=7;
-  state.jpNotice=!near; document.getElementById('c_jpnotice').checked=state.jpNotice;
+  if(!keepChoice){ state.jpNotice=!near; document.getElementById('c_jpnotice').checked=state.jpNotice; }
   const dow='일월화수목금토'[open.getDay()];
   document.getElementById('jpNoticeHint').textContent =
     `다음 오픈일 ${open.getMonth()+1}월 ${open.getDate()}일(${dow}) · ${dday===0?'D-day':'D-'+dday} → `
-    + (near ? '오픈 7일 이내라 기본으로 꺼져 있어요' : '기본으로 켜져 있어요(오픈 7일 전부터 자동으로 꺼짐)');
+    + (near ? '오픈 7일 이내라 기본으로 꺼져 있어요' : '기본으로 켜져 있어요(오픈 7일 전부터 자동으로 꺼짐)')
+    + (OPEN_DAYS_STATE==='fail' ? ' · ⚠ 크리에이터 가이드의 오픈 날짜를 못 읽어 기본 규칙(첫 목요일)으로 계산했어요' : '');
 }
 
 /* ── 원고가 지금 입력값과 같은지(=최신인지) 판단하기 위한 지문 ──
@@ -1514,7 +1528,7 @@ async function aiParse() {
 document.getElementById('aiParseSrc').addEventListener('click', aiParse);
 document.getElementById('c_bullet').addEventListener('change', e=>{ state.bullet=e.target.checked; render(); });
 document.getElementById('c_charshrink').addEventListener('change', e=>{ state.charShrink=e.target.checked; render(); });
-document.getElementById('c_jpnotice').addEventListener('change', e=>{ state.jpNotice=e.target.checked; render(); });
+document.getElementById('c_jpnotice').addEventListener('change', e=>{ _jpTouched=true; state.jpNotice=e.target.checked; render(); });
 
 const z=document.getElementById('s_zoom'),op=document.getElementById('s_op'),bl=document.getElementById('s_blur');
 z.addEventListener('input',()=>{ activeFg().zoom=z.value/100; v_zoom.textContent=(z.value/100).toFixed(1)+'×'; render(); });
@@ -1685,6 +1699,9 @@ function restoreSlot(s){
   // (헤드라인·작품명 800, 머리말 700, 스토어명·안내문 500, 캐릭터 400)
   try{ await Promise.all(['800 76px Pretendard','700 80px Pretendard','500 34px Pretendard','400 44px Pretendard'].map(f=>document.fonts.load(f))); await document.fonts.ready; }catch{}
   setupNotice(); setupExplainMemory(); memoRender(); initJpNotice();
+  // 오픈일이 도착하면 다시 맞춘다(직접 고른 뒤면 안내줄만). 아직 아무것도 안 했으면 이 변경이 실행취소 단계로 남지 않게 출발점을 다시 잡음
+  openDaysReady.then(()=>{ initJpNotice(new Date(), _jpTouched);
+    if(!_jpTouched){ render(); if(UNDO && !UNDO.canUndo()){ clearTimeout(_recT); UNDO.reset(); updateUndoBtn(); } } });
   const slots=loadSlots();
   // 저장된 슬롯이 없는 첫 방문에서도 ③시리즈/라인 드롭다운을 실제 값(state.line)에 맞춰준다.
   // 안 하면 드롭다운은 목록 첫 항목('룩업')을 보여주는데 카드/타이틀엔 state.line 기본값
