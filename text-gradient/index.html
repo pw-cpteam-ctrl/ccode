@@ -134,6 +134,8 @@ button{padding:10px;border-radius:7px;font-size:14px;font-weight:700;cursor:poin
   <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ui-sub);margin-bottom:6px;cursor:pointer;">
     <input type="checkbox" id="inBulletsTwoCol"/> 2열 사용 (체크하면 좌/우로 나눠 입력, 이미지도 2열로 표시)
   </label>
+  <!-- 자동으로 2열이 켜졌을 때만 잠깐 뜨는 안내 — 글자가 저절로 갈라지면 왜 그런지 알 수 없어서 -->
+  <div id="twoColAutoNote" style="display:none;font-size:12px;color:#1a3d8f;background:#eef3ff;border:1px solid #4a7cff;border-radius:6px;padding:6px 9px;margin-bottom:8px;"></div>
   <div class="row2" id="bulletsColRow" style="align-items:stretch;">
     <div class="field" id="inBulletsField"><label>좌열</label><textarea id="inBullets" rows="4">- 주술냥코 시부야 사변 (재판)
 - 유지/메구미/노바라
@@ -349,7 +351,8 @@ let folderPath = '';
 let titleFolderPath = '';
 
 function makeEmptySlot() {
-  return { badge:'', titleL:'', titleR:'', subtitle:'', bullets:'', bulletsR:'', bulletsTwoCol:false, bulletsColRatio:50, gradStart:40, gradWidth:60, gradOpacity:85, gradCompress:0, ...LAYOUT_DEFAULTS };
+  // twoColAutoOff: 2열을 직접 껐다는 표시. 예전에 저장된 슬롯엔 이 칸이 없어 undefined(=거짓)로 읽힌다
+  return { badge:'', titleL:'', titleR:'', subtitle:'', bullets:'', bulletsR:'', bulletsTwoCol:false, twoColAutoOff:false, bulletsColRatio:50, gradStart:40, gradWidth:60, gradOpacity:85, gradCompress:0, ...LAYOUT_DEFAULTS };
 }
 function layoutVal(s, key) { return s[key] ?? LAYOUT_DEFAULTS[key]; } // 이전에 저장된 슬롯엔 이 필드들이 없을 수 있어 기본값으로 대체
 
@@ -510,9 +513,11 @@ function loadInputsFromCurSlot() {
   $('#inBullets').value = s.bullets; $('#inBulletsR').value = s.bulletsR || '';
   $('#inBulletsTwoCol').checked = !!s.bulletsTwoCol;
   $('#inBulletsColRatio').value = s.bulletsColRatio ?? 50;
-  $('#inBulletsRField').style.display = s.bulletsTwoCol ? '' : 'none';
-  $('#inBulletsColDivider').style.display = s.bulletsTwoCol ? '' : 'none';
-  $('#inBulletsColRatioField').style.display = s.bulletsTwoCol ? '' : 'none';
+  setTwoColFieldsVisible(!!s.bulletsTwoCol);
+  // 입력칸을 통째로 다시 채우는 참이라, 기다리고 있던 자동 2열 처리는 취소한다
+  // (되돌리기·슬롯 전환 직후에 뒤늦게 끼어들어 방금 되살린 내용을 다시 가르는 것을 막는다)
+  clearTimeout(_twoColAutoT);
+  $('#twoColAutoNote').style.display = 'none';
   applyBulletsColRatioLayout(s.bulletsColRatio ?? 50);
   $('#gradStart').value = s.gradStart; $('#gradWidth').value = s.gradWidth; $('#gradOpacity').value = s.gradOpacity;
   $('#gradCompress').value = s.gradCompress ?? 0;
@@ -566,14 +571,71 @@ $('#inBulletsColDivider').addEventListener('mousedown', e => {
   });
 });
 $('#inBulletsColRatio').addEventListener('input', () => applyBulletsColRatioLayout(+$('#inBulletsColRatio').value));
-$('#inBulletsTwoCol').addEventListener('input', () => {
-  syncInputsToState();
-  const on = $('#inBulletsTwoCol').checked;
+/* 2열 입력칸·비율 슬라이더를 한꺼번에 보이거나 숨긴다 (슬롯을 열 때와 체크를 바꿀 때 같은 동작) */
+function setTwoColFieldsVisible(on) {
   $('#inBulletsRField').style.display = on ? '' : 'none';
   $('#inBulletsColDivider').style.display = on ? '' : 'none';
   $('#inBulletsColRatioField').style.display = on ? '' : 'none';
+}
+$('#inBulletsTwoCol').addEventListener('input', () => {
+  syncInputsToState();
+  const on = $('#inBulletsTwoCol').checked;
+  // 직접 끈 슬롯에서는 자동으로 다시 켜지 않는다 — 안 그러면 끄자마자 다음 글자를 칠 때
+  // 도로 켜져서 끌 방법이 없어진다. 직접 켜면 그 표시를 지워 다시 자동 대상이 된다
+  slots[curSlot - 1].twoColAutoOff = !on;
+  $('#twoColAutoNote').style.display = 'none';
+  setTwoColFieldsVisible(on);
   renderCurSlotDom();
   persistState();
+});
+
+/* ── 좌열이 여러 줄이 되면 2열을 자동으로 켠다 ──
+   줄이 TWO_COL_AUTO_MIN_LINES개 이상이 되면 2열에 체크하고, 좌열 내용을 앞뒤 절반으로 나눠
+   우열로 옮긴다. 칸만 열고 내용을 그대로 두면 글자가 왼쪽 절반 폭만 쓰게 되어 모양이 깨진다.
+   - 손으로 입력할 때만 동작한다. 슬롯을 열거나 저장본을 불러올 때는 건드리지 않으므로,
+     예전에 1열로 만들어 둔 작업물이 저절로 바뀌는 일은 없다.
+   - 글자를 치는 도중에 바로 갈라지면 입력이 끊기므로, 잠시 멈췄을 때 적용한다.
+   - 적용 뒤에는 커서를 우열 끝으로 옮겨 하던 입력을 그대로 이어갈 수 있게 한다.
+   - pushUndo를 먼저 부르므로 Ctrl+Z 한 번으로 통째로 되돌아간다. */
+const TWO_COL_AUTO_MIN_LINES = 2;
+const TWO_COL_AUTO_DELAY = 700;
+let _twoColAutoT = null;
+function maybeAutoTwoCol() {
+  const s = slots[curSlot - 1];
+  if (s.bulletsTwoCol || s.twoColAutoOff) return;
+  const lines = $('#inBullets').value.split('\n').filter(l => l.trim());
+  if (lines.length < TWO_COL_AUTO_MIN_LINES) return;
+  // 되돌리기로 돌아간 자리는 "자동 2열을 원하지 않는 상태"여야 한다. 그냥 되돌리면 다음 글자를
+  // 치는 순간 또 갈라져서 Ctrl+Z가 소용없어지므로, 되돌릴 지점에만 그 표시를 넣어 저장한다
+  s.twoColAutoOff = true;
+  pushUndo();
+  s.twoColAutoOff = false;
+  const half = Math.ceil(lines.length / 2);
+  const wasFocused = document.activeElement === $('#inBullets');
+  $('#inBullets').value = lines.slice(0, half).join('\n');
+  $('#inBulletsR').value = lines.slice(half).join('\n');
+  $('#inBulletsTwoCol').checked = true;
+  syncInputsToState();
+  setTwoColFieldsVisible(true);
+  renderCurSlotDom();
+  persistState();
+  if (wasFocused) {
+    const r = $('#inBulletsR');
+    r.focus();
+    r.setSelectionRange(r.value.length, r.value.length);
+  }
+  const note = $('#twoColAutoNote');
+  note.textContent = `줄이 ${lines.length}개라 2열로 바꾸고 내용을 반씩 나눴습니다. 되돌리려면 Ctrl+Z, 1열로 쓰려면 위 체크를 끄세요.`;
+  note.style.display = '';
+  clearTimeout(note._t);
+  note._t = setTimeout(() => { note.style.display = 'none'; }, 8000);
+}
+$('#inBullets').addEventListener('input', () => {
+  clearTimeout(_twoColAutoT);
+  // 입력하고 바로 다른 슬롯으로 넘어가면, 기다리던 이 처리가 "지금 열려 있는 다른 슬롯"을
+  // 건드릴 수 있다. 예약할 때의 슬롯 번호를 같이 들고 있다가 달라졌으면 그만둔다
+  const slotAtType = curSlot;
+  _twoColAutoT = setTimeout(() => { if (curSlot === slotAtType) maybeAutoTwoCol(); }, TWO_COL_AUTO_DELAY);
 });
 function syncInputsToState() {
   const s = slots[curSlot - 1];
