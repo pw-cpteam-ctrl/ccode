@@ -746,21 +746,26 @@ function renderBulletLines(raw) {
 /* ── 타이틀 글자 크기 자동 맞춤 ──
    타이틀이 캔버스 폭을 넘칠 때 한 줄로 유지하려고 글자 크기를 줄인다(공용 assets/fit-text.js).
    다만 무조건 줄이면 긴 제목이 읽기 힘들 만큼 작아지므로, 줄이는 것은 짧은 제목에서만 한다.
-     · 엔터로 직접 줄을 나눈 타이틀  → 줄이지 않고 정한 크기 그대로, 나눈 줄 그대로 표시
-     · 한 줄이 TITLE_FIT_MAX_CHARS자를 넘는 긴 타이틀 → 줄이지 않고 정한 크기 그대로 다음 줄로 흘림
-     · 그 외(짧은 한 줄)        → 캔버스 폭에 맞게 글자 크기만 줄여 한 줄로 유지
+     · 엔터로 직접 줄을 나눈 타이틀 → 줄이지 않고 정한 크기 그대로, 나눈 줄 그대로 표시
+     · 그 외 → 폭에 맞게 글자 크기를 줄여 한 줄로 유지하되, 정한 크기의 TITLE_FIT_MIN_RATIO보다
+       더 작아져야 들어가는 긴 제목이면 줄이기를 포기하고 정한 크기 그대로 다음 줄로 흘린다.
+   처음에는 "몇 자 이상이면 안 줄인다"로 했는데, 조금만 줄이면 한 줄에 들어가는 제목까지 글자 수만
+   보고 두 줄로 쪼개졌다. 글자 수가 아니라 "얼마나 작아져야 하는가"로 판단해야 맞다.
+   기준이 되는 크기는 타이틀 크기 슬라이더 값이므로, 슬라이더를 움직이면 그 값으로 다시 계산된다.
    예전에 만들어 둔 슬롯(s.titleFit이 없음)은 건드리지 않는다 — 저장해 둔 작업물의 글자 크기가
    열어보는 순간 달라지지 않게 하려는 것. 타이틀을 새로 고치거나 새 슬롯을 만들면 적용된다. */
-const TITLE_FIT_MAX_CHARS = 12;
-const TITLE_FIT_MIN_SIZE = 20;
+const TITLE_FIT_MIN_RATIO = 0.7;   // 정한 크기의 70%까지만 줄인다
+const TITLE_FIT_MIN_SIZE = 20;     // 슬라이더를 아주 작게 둔 경우의 바닥값
 function applyTitleFit(el, text, baseSize, s) {
-  const longestLine = text.split('\n').reduce((m, line) => Math.max(m, line.length), 0);
-  const hasManualBreak = text.includes('\n');
-  const shrink = !!s.titleFit && !hasManualBreak && longestLine <= TITLE_FIT_MAX_CHARS;
-  // pre-line: 엔터로 나눈 줄은 그대로 보여주되 자동 줄바꿈도 함께 되게 한다
-  el.style.whiteSpace = shrink ? 'nowrap' : 'pre-line';
   el.style.fontSize = baseSize + 'px';
-  if (shrink) fitElementText(el, { max: baseSize, min: TITLE_FIT_MIN_SIZE });
+  // pre-line: 엔터로 나눈 줄은 그대로 보여주되 자동 줄바꿈도 함께 되게 한다
+  if (!s.titleFit || text.includes('\n')) { el.style.whiteSpace = 'pre-line'; return; }
+  el.style.whiteSpace = 'nowrap';
+  fitElementText(el, { max: baseSize, min: Math.max(TITLE_FIT_MIN_SIZE, baseSize * TITLE_FIT_MIN_RATIO) });
+  if (el.scrollWidth > el.clientWidth + 0.5) {   // 거기까지 줄여도 안 들어가면 줄이기를 포기
+    el.style.whiteSpace = 'pre-line';
+    el.style.fontSize = baseSize + 'px';
+  }
 }
 const PREVIEW_SCALE = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--preview-scale')) || 0.3;
 function renderSlotDom(pg) {
