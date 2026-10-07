@@ -308,8 +308,8 @@
           rememberCode(v);
           rows = r.data.rows || [];
           confirmed = r.data.confirmed || {};
-          openDays = r.data.openDays || openDays;
-          archived = r.data.archived || {};
+        openDays = r.data.openDays || openDays;
+        archived = r.data.archived || archived;
           blocked = r.data.blocked || {};
           renderList();
         } else if (r.status === 401) {
@@ -393,6 +393,9 @@
     var keyDate = {};
     out.forEach(function (r) { if (r.latest) keyDate[r.roundKey] = r.draftDate || ''; });
     return out.sort(function (a, b) {
+      // 담당자가 내려 둔 건은 날짜와 상관없이 맨 아래로 보낸다.
+      var aa = archived[a.roundKey] ? 1 : 0, ab = archived[b.roundKey] ? 1 : 0;
+      if (aa !== ab) return aa - ab;
       var da = keyDate[a.roundKey] || '', db = keyDate[b.roundKey] || '';
       if (da !== db) {
         if (!da) return 1;           // 날짜를 안 적은 건은 맨 아래
@@ -423,7 +426,7 @@
   function tableText() {
     var head = ['활동명', '네이버 아이디', '초안 공유 예정일', 'D-day', '보상 수령 방식', '보상 형태', '희망 상품', '제출 시각', '확정'];
     var lines = [head.join('\t')];
-    visibleRows().filter(function (r) { return r.latest; }).forEach(function (r) {
+    visibleRows().filter(function (r) { return r.latest && !isArchived(r); }).forEach(function (r) {
       lines.push([
         r.nick,
         r.naver || '',
@@ -475,8 +478,8 @@
     api({ code: code, action: on ? 'confirm' : 'unconfirm', nick: key }).then(function (r) {
       if (r.status === 200 && r.data.ok) {
         confirmed = r.data.confirmed || {};
-          openDays = r.data.openDays || openDays;
-          archived = r.data.archived || {};
+        openDays = r.data.openDays || openDays;
+        archived = r.data.archived || archived;
         if (!on && legacy) {
           return api({ code: code, action: 'unconfirm', nick: legacy }).then(function (r2) {
             if (r2.status === 200 && r2.data.ok) confirmed = r2.data.confirmed || {};
@@ -683,7 +686,8 @@
 
   function renderList() {
     var list = visibleRows();
-    var latestCount = list.filter(function (r) { return r.latest; }).length;
+    var liveRows = list.filter(function (r) { return r.latest && !isArchived(r); });
+    var doneCount = list.filter(function (r) { return r.latest && isArchived(r); }).length;
 
     var body = list.map(function (r) {
       var isOn = isConfirmed(r);
@@ -713,7 +717,9 @@
     root.innerHTML =
       '<div class="wrap">' +
       '<div class="head"><h1>진행 정보 접수 현황</h1>' +
-      '<span class="count">진행 ' + latestCount + '건 · 전체 기록 ' + list.length + '건</span></div>' +
+      '<span class="count">진행 ' + liveRows.length + '건' +
+      (doneCount ? ' · 내려둔 건 ' + doneCount + '건' : '') +
+      ' · 전체 기록 ' + list.length + '건</span></div>' +
       '<p class="sub">같은 분이 <b>' + ROUND_GAP_DAYS + '일 안에</b> 다시 내신 것은 고쳐 내신 것으로 보고 <b>마지막 제출</b>만 유효합니다(지난 제출은 흐리게 표시). ' +
       '그보다 간격이 벌어지면 <b>다른 차수</b>로 보고 각각 따로 남습니다 — 같은 분과 달마다 협업하는 경우를 위해서입니다.</p>' +
       '<div class="bar">' +
@@ -793,8 +799,8 @@
         if (r.status === 200 && r.data.ok) {
           rows = r.data.rows || [];
           confirmed = r.data.confirmed || {};
-          openDays = r.data.openDays || openDays;
-          archived = r.data.archived || {};
+        openDays = r.data.openDays || openDays;
+        archived = r.data.archived || archived;
           renderList();
         }
       });
@@ -815,8 +821,8 @@
         code = saved;
         rows = r.data.rows || [];
         confirmed = r.data.confirmed || {};
-          openDays = r.data.openDays || openDays;
-          archived = r.data.archived || {};
+        openDays = r.data.openDays || openDays;
+        archived = r.data.archived || archived;
         blocked = r.data.blocked || {};
         renderList();
       } else if (r.status === 429) {
