@@ -236,6 +236,9 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
   text-align:right;padding-right:20px;}
 .oh-date{font-family:'Pretendard',sans-serif;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;text-align:right;
   background:rgba(0,0,0,.4);border-radius:999px;padding:8px 20px;}
+/* 설명 줄과 날짜 사이 가로선 — 묶음 폭만큼 꽉 차게 그어 두 줄이 한 덩어리로 묶여 보이게 */
+.oh-dsep{align-self:stretch;height:2px;background:rgba(255,255,255,.75);border-radius:2px;
+  margin:3px 0 4px;box-shadow:0 1px 3px rgba(0,0,0,.35);}
 .oh-store-wrap{display:flex;align-items:center;gap:14px;flex-shrink:0;}
 .oh-store{font-family:'Pretendard',sans-serif;background:rgba(0,0,0,.4);color:#fff;font-weight:350;border-radius:999px;padding:8px 20px;white-space:nowrap;}
 .oh-logo{width:52px;height:52px;object-fit:contain;display:block;border-radius:50%;
@@ -246,7 +249,7 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
   padding:2px 10px;border-radius:6px;letter-spacing:-.2px;
   vertical-align:middle;margin-left:8px;white-space:nowrap;
 }
-.reprint-badge{background:#0d1580;color:#fff;}
+.reprint-badge{background:#fff266;color:#000;}
 .special-badge{background:#111;color:#fff;text-shadow:none!important;font-weight:300;}
 
 /* 그리드 — flex 1 = 남은 공간 꽉 채움 */
@@ -622,8 +625,8 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
       <div class="field"><input type="range" id="ohGradCompress" min="0" max="60" value="0" oninput="syncOhGrad()"/></div></div>
     <div class="sec">재판 배지</div>
     <div class="frow pair"><span class="flbl">배경 / 글자색</span>
-      <div class="field"><input type="color" id="badgeBg" value="#0d1580" oninput="syncBadgeStyle();saveState()" style="width:100%;height:28px;border:none;background:none;cursor:pointer;padding:0;border-radius:6px;"/></div>
-      <div class="field"><input type="color" id="badgeFg" value="#ffffff" oninput="syncBadgeStyle();saveState()" style="width:100%;height:28px;border:none;background:none;cursor:pointer;padding:0;border-radius:6px;"/></div></div>
+      <div class="field"><input type="color" id="badgeBg" value="#fff266" oninput="syncBadgeStyle();saveState()" style="width:100%;height:28px;border:none;background:none;cursor:pointer;padding:0;border-radius:6px;"/></div>
+      <div class="field"><input type="color" id="badgeFg" value="#000000" oninput="syncBadgeStyle();saveState()" style="width:100%;height:28px;border:none;background:none;cursor:pointer;padding:0;border-radius:6px;"/></div></div>
     <div class="frow"><span class="flbl">글자그림자</span>
       <div class="field"><button id="badgeBlurBtn" class="ptab" style="width:100%;padding:5px 0;font-size:14px" onclick="toggleBadgeBlur()">OFF</button></div></div>
     <div class="sec">푸터</div>
@@ -853,6 +856,7 @@ function makePosterWrap(pg) {
             <div class="oh-store-wrap">
               <div class="oh-date-wrap" id="ohDateWrap${pg}">
                 <div class="oh-dlabel" id="ohLabel${pg}">예약기간 및 할인혜택</div>
+                <div class="oh-dsep" id="ohSep${pg}"></div>
                 <div class="oh-date" id="ohDate${pg}">6/4~7/12</div>
               </div>
               <img class="oh-logo" id="ohLogo${pg}" alt="MH"/>
@@ -1879,6 +1883,8 @@ function syncOpenHeader() {
     const lEl = $(`#ohLabel${p}`);
     if (lEl) { lEl.textContent = lb; lEl.dataset.baseSize = lbSize; lEl.style.fontSize = lbSize;
       lEl.style.display = (!lb || pageOpenOn[i] === false) ? 'none' : ''; }
+    const sepEl = $(`#ohSep${p}`);
+    if (sepEl) sepEl.style.display = (!lb || pageOpenOn[i] === false) ? 'none' : '';
     const wEl = $(`#ohDateWrap${p}`);
     if (wEl) wEl.style.display = pageOpenOn[i] === false ? 'none' : '';
     const sEl = $(`#ohStore${p}`); if (sEl) { sEl.textContent = s; sEl.dataset.baseSize = sSize; sEl.style.fontSize = sSize; }
@@ -2050,8 +2056,8 @@ function syncGrad() {
 }
 let badgeBlur = false;
 function syncBadgeStyle() {
-  const bg = $('#badgeBg') ? $('#badgeBg').value : '#0d1580';
-  const fg = $('#badgeFg') ? $('#badgeFg').value : '#ffffff';
+  const bg = $('#badgeBg') ? $('#badgeBg').value : '#fff266';
+  const fg = $('#badgeFg') ? $('#badgeFg').value : '#000000';
   let style = document.getElementById('badgeDynStyle');
   if (!style) { style = document.createElement('style'); style.id='badgeDynStyle'; document.head.appendChild(style); }
   const shadowRule = badgeBlur ? '' : 'text-shadow:none!important;';
@@ -2344,8 +2350,8 @@ function igPaint(canvas, card) {
 function igLabel(it) {
   let n = (it.name || '').trim() || '이름없음';
   const b = [];
-  if (it.re) b.push('재판');
-  if (it.fp) b.push('초회특전');
+  if (it.reprint) b.push('재판');
+  if (it.special) b.push('초회특전');
   if (b.length) n += '_' + b.join('·');
   return n;
 }
@@ -3046,8 +3052,8 @@ function buildState() {
       gradOpacity: $('#gradOpacity') ? $('#gradOpacity').value : '88',
       gradCompress: $('#gradCompress') ? $('#gradCompress').value : '0',
       footerOffset: $('#footerOffset') ? $('#footerOffset').value : '0',
-      badgeBg: $('#badgeBg') ? $('#badgeBg').value : '#0d1580',
-      badgeFg: $('#badgeFg') ? $('#badgeFg').value : '#ffffff',
+      badgeBg: $('#badgeBg') ? $('#badgeBg').value : '#fff266',
+      badgeFg: $('#badgeFg') ? $('#badgeFg').value : '#000000',
       badgeBlur,
       headerOn: $('#chkHeader') ? $('#chkHeader').checked : true,
       headerPad: $('#headerPad') ? $('#headerPad').value : '30',
@@ -3257,6 +3263,9 @@ ensurePosterWrap(1);
 
 // 베이지 배경 휠 → 미리보기 확대/축소
 document.getElementById('stage').addEventListener('wheel', e => {
+  // 상세컷 화면에서는 이 자리가 미리보기 확대가 아니라 그냥 세로 스크롤이어야 한다.
+  // 막아버리면 카드 목록이 휠로 안 내려감
+  if (e.currentTarget.classList.contains('detailmode')) return;
   if (e.target.closest('.poster-wrap, .stage-toolbar')) return;
   e.preventDefault();
   const delta = e.deltaY > 0 ? -2 : 2;
