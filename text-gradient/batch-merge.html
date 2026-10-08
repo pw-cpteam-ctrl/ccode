@@ -813,18 +813,26 @@ function saveFilesSoon(){
 /* 창을 떠나기 직전에 아직 안 끝난 저장을 마무리한다.
    localStorage 쓰기는 즉시 끝나므로 새로고침 직전이라도 작업 내용은 확실히 남는다.
    사진 원본(수백 MB)은 즉시 쓸 방법이 없어, 그것만 안 끝났을 때 한 번 붙잡아 물어본다 */
-function flushSavesNow(){
+// 새로고침 한 번에 beforeunload·pagehide·visibilitychange가 줄줄이 들어온다. 그대로 두면 사진이
+// 수백 장일 때 같은 저장이 세 번 겹쳐 돌아 새로고침이 눈에 띄게 느려진다 → 한 번만 돌게 묶는다.
+// heavy는 사진 원본(수백 MB)까지 다시 쓸지 여부. 탭만 잠깐 바꾼 경우에는 작업 내용만 적는다
+let _flushAt = 0;
+function flushSavesNow(heavy){
   if (!items.length) return;
+  const now = Date.now();
+  if (now - _flushAt < 1500) return;
+  _flushAt = now;
   clearTimeout(_saveMetaT);
-  writeMetaBackup(itemsMetaSnapshot());   // 동기 — 반드시 남는다
-  saveMetaToCache();                      // 저장소에도 시도 (못 끝내도 위 백업이 있다)
-  clearTimeout(_saveFilesT);
-  if (_filesDirty) saveFilesToCache();
+  if (_metaDirty) {
+    writeMetaBackup(itemsMetaSnapshot());  // 동기 — 반드시 남는다
+    saveMetaToCache();                     // 저장소에도 시도 (못 끝내도 위 백업이 있다)
+  }
+  if (heavy && _filesDirty) { clearTimeout(_saveFilesT); saveFilesToCache(); }
 }
-window.addEventListener('pagehide', flushSavesNow);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSavesNow(); });
+window.addEventListener('pagehide', () => flushSavesNow(true));
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSavesNow(false); });
 window.addEventListener('beforeunload', (e) => {
-  flushSavesNow();
+  flushSavesNow(true);
   if (!_filesDirty) return;               // 작업 내용은 이미 남겼으므로 굳이 붙잡지 않는다
   e.preventDefault();
   e.returnValue = '';
