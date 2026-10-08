@@ -249,9 +249,12 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
   text-align:right;padding-right:20px;}
 .oh-date{font-family:'Pretendard',sans-serif;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.5px;text-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap;text-align:right;
   background:rgba(0,0,0,.4);border-radius:999px;padding:8px 20px;}
-/* 설명 줄과 날짜 사이 가로선 — 묶음 폭만큼 꽉 차게 그어 두 줄이 한 덩어리로 묶여 보이게 */
-.oh-dsep{align-self:stretch;height:2px;background:rgba(255,255,255,.75);border-radius:2px;
-  margin:3px 0 4px;box-shadow:0 1px 3px rgba(0,0,0,.35);}
+/* 설명 줄과 날짜 사이 가로선.
+   선을 그냥 끼워 넣으면 굵기·간격을 바꿀 때마다 글자 사이가 벌어져 글자가 따라 움직였음.
+   높이가 고정된 빈 칸을 하나 두고 그 안에 선을 띄워, 선만 위아래로 오가게 함 */
+.oh-sepslot{align-self:stretch;position:relative;height:12px;flex:0 0 auto;}
+.oh-dsep{position:absolute;left:0;right:0;top:50%;height:2px;
+  background:rgba(255,255,255,.75);border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.35);}
 .oh-store-wrap{display:flex;align-items:center;gap:14px;flex-shrink:0;}
 .oh-store{font-family:'Pretendard',sans-serif;background:rgba(0,0,0,.4);color:#fff;font-weight:350;border-radius:999px;padding:8px 20px;white-space:nowrap;}
 .oh-logo{width:52px;height:52px;object-fit:contain;display:block;border-radius:50%;
@@ -655,9 +658,9 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
             <div class="field"><input type="range" id="ohDateSize" min="12" max="48" value="22" oninput="syncOpenHeader()"/></div></div>
           <div class="frow"><span class="flbl">설명 크기</span>
             <div class="field"><input type="range" id="ohLabelSize" min="8" max="36" value="14" oninput="syncOpenHeader()"/></div></div>
-          <div class="frow pair"><span class="flbl">구분선<br>굵기 / 간격</span>
+          <div class="frow pair"><span class="flbl">구분선<br>굵기 / 위치</span>
             <div class="field"><input type="range" id="ohSepW" min="0" max="6" value="2" oninput="syncOpenHeader()" title="0으로 두면 선이 사라집니다"/></div>
-            <div class="field"><input type="range" id="ohSepGap" min="0" max="18" value="4" oninput="syncOpenHeader()"/></div></div>
+            <div class="field"><input type="range" id="ohSepGap" min="-6" max="6" value="0" oninput="syncOpenHeader()" title="가운데가 기본 — 왼쪽으로 가면 선이 위로, 오른쪽으로 가면 아래로"/></div></div>
         </div>
       </div>
     </details>
@@ -903,7 +906,7 @@ function makePosterWrap(pg) {
             <div class="oh-store-wrap">
               <div class="oh-date-wrap" id="ohDateWrap${pg}">
                 <div class="oh-dlabel" id="ohLabel${pg}">예약기간 및 할인혜택</div>
-                <div class="oh-dsep" id="ohSep${pg}"></div>
+                <div class="oh-sepslot" id="ohSepSlot${pg}"><div class="oh-dsep" id="ohSep${pg}"></div></div>
                 <div class="oh-date" id="ohDate${pg}">6/4~7/12</div>
               </div>
               <img class="oh-logo" id="ohLogo${pg}" alt="MH"/>
@@ -1930,13 +1933,16 @@ function syncOpenHeader() {
     const lEl = $(`#ohLabel${p}`);
     if (lEl) { lEl.textContent = lb; lEl.dataset.baseSize = lbSize; lEl.style.fontSize = lbSize;
       lEl.style.display = (!lb || pageOpenOn[i] === false) ? 'none' : ''; }
-    const sepEl = $(`#ohSep${p}`);
-    if (sepEl) {
+    const sepEl = $(`#ohSep${p}`), slotEl = $(`#ohSepSlot${p}`);
+    if (sepEl && slotEl) {
       const sw = $('#ohSepW') ? +$('#ohSepW').value : 2;
-      const sg = $('#ohSepGap') ? +$('#ohSepGap').value : 4;
+      const sg = $('#ohSepGap') ? +$('#ohSepGap').value : 0;   // 가운데가 0, 음수면 위로
       sepEl.style.height = sw + 'px';
-      sepEl.style.margin = sg + 'px 0';
-      sepEl.style.display = (!lb || !sw || pageOpenOn[i] === false) ? 'none' : '';
+      sepEl.style.transform = `translateY(calc(-50% + ${sg}px))`;
+      const on = !(!lb || !sw || pageOpenOn[i] === false);
+      sepEl.style.display = on ? '' : 'none';
+      // 빈 칸은 선을 꺼도 그대로 둬야 글자 자리가 안 흔들림 (설명 줄 자체가 없을 때만 접음)
+      slotEl.style.display = (!lb || pageOpenOn[i] === false) ? 'none' : '';
     }
     const wEl = $(`#ohDateWrap${p}`);
     if (wEl) wEl.style.display = pageOpenOn[i] === false ? 'none' : '';
@@ -3157,7 +3163,7 @@ function buildState() {
       ohLabel: $('#inOhLabel') ? $('#inOhLabel').value : '',
       ohLabelSize: $('#ohLabelSize') ? $('#ohLabelSize').value : '14',
       ohSepW: $('#ohSepW') ? $('#ohSepW').value : '2',
-      ohSepGap: $('#ohSepGap') ? $('#ohSepGap').value : '4',
+      ohSepGap: $('#ohSepGap') ? $('#ohSepGap').value : '0',
       ohStoreSize: $('#ohStoreSize') ? $('#ohStoreSize').value : '34',
       ohTitleFontWeight: $('#ohTitleFontWeight') ? $('#ohTitleFontWeight').value : '900',
       ohBoxMode,
@@ -3275,7 +3281,11 @@ async function loadState() {
     if (st.ohLabel != null && $('#inOhLabel')) $('#inOhLabel').value = st.ohLabel;
     if (st.ohLabelSize && $('#ohLabelSize')) $('#ohLabelSize').value = st.ohLabelSize;
     if (st.ohSepW != null && $('#ohSepW')) $('#ohSepW').value = st.ohSepW;
-    if (st.ohSepGap != null && $('#ohSepGap')) $('#ohSepGap').value = st.ohSepGap;
+    if (st.ohSepGap != null && $('#ohSepGap')) {
+      // 예전에는 '간격'(0~18)이었고 지금은 '위치'(-6~6)라 뜻이 달라, 범위를 벗어나면 가운데로
+      const g = +st.ohSepGap;
+      $('#ohSepGap').value = (g >= -6 && g <= 6) ? g : 0;
+    }
     if (st.ohStoreSize && $('#ohStoreSize')) $('#ohStoreSize').value = st.ohStoreSize;
     if (st.ohTitleFontWeight && $('#ohTitleFontWeight')) $('#ohTitleFontWeight').value = st.ohTitleFontWeight;
     if (st.ohOn && $('#chkOpenHeader')) $('#chkOpenHeader').checked = true;
