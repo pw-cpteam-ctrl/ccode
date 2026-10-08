@@ -1121,7 +1121,10 @@ function toggleAllStockTrends(forceOpen) {
 // SNS 화면 <-> 재고 화면 전환. 리포트를 두 번 만들지 않고 파일 하나로 끝내기 위한 것이라,
 // 어느 화면을 보고 있는지는 주소 끝(#sns / #stock)에 남긴다 — 그 상태 그대로 링크로 넘길 수 있게.
 function switchView(view) {
-  var v = view === 'stock' ? 'stock' : 'sns';
+  // 대소문자를 가리지 않는다 — 팀원이 #Stock으로 쳤다가 아무 반응이 없어서 "안 나온다"고
+  // 한 적이 있다. ===는 글자를 그대로 대조하기 때문에 'Stock' === 'stock'이 거짓이다.
+  // 소문자로 내려놓고 비교하면 #STOCK·#StOcK까지 전부 한 번에 들어온다(목록 불필요).
+  var v = String(view || '').trim().toLowerCase() === 'stock' ? 'stock' : 'sns';
   if (v === 'stock' && !document.querySelector('.stock-section')) v = 'sns';
   // 한 번 #stock으로 들어오면 그 뒤로는 탭이 계속 보임 — 안 그러면 SNS로 돌아간 순간
   // 돌아올 길이 없어져서 주소를 매번 다시 쳐야 함(새로고침하면 다시 숨겨짐).
@@ -1141,7 +1144,7 @@ function toggleStockCol(on) {
 window.addEventListener('hashchange', function () {
   switchView(location.hash.slice(1));
 });
-if (location.hash.slice(1) === 'stock') switchView('stock');
+if (String(location.hash.slice(1)).trim().toLowerCase() === 'stock') switchView('stock');
 </script>
 ${needsTwitterWidget ? '<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>' : ''}
 ${needsInstagramWidget ? '<script async src="https://www.instagram.com/embed.js"></script>' : ''}

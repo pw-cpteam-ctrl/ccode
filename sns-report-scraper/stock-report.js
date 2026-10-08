@@ -703,19 +703,25 @@ function renderStockRatioSectionHtml(comparison) {
   // 짝지어진 상품이 하나도 없을 때도 섹션 자체는 보여주고 이유를 적어둠 — 재고를 넣기로
   // 선택했는데 아무것도 안 보이면 "왜 안 나오지"로 헤매게 되므로.
   const body = rows.length === 0
-    ? `<tr><td colspan="5" class="empty">PW/BH 상품명이 짝지어진 항목이 없어서 비교할 게 없음 — 스냅샷이 더 쌓이거나 양쪽에 같은 상품이 올라오면 표시됩니다.</td></tr>`
-    : rows.map((row, i) => {
+    ? `<tr><td colspan="6" class="empty">PW/BH 상품명이 짝지어진 항목이 없어서 비교할 게 없음 — 스냅샷이 더 쌓이거나 양쪽에 같은 상품이 올라오면 표시됩니다.</td></tr>`
+    : (() => { let rankNo = 0; return rows.map((row, i) => {
     const rowId = `stock-trend-${i}`;
     const chart = stockTrendChart(row.pwSeries, row.bhSeries, row.pw.name, row.bh.name, { mode: 'index' });
+    // 행은 이미 많이 팔린 순으로 정렬돼 있는데 번호가 없어서 "몇 위인지" 한눈에 안 보였다.
+    // 판매 추정이 안 되는 상품(재판·입고 등 totalSold가 없는 것)은 순위를 비워 둔다 —
+    // 번호를 붙이면 "안 팔린 꼴찌"로 읽히는데, 실제로는 못 센 것이라 뜻이 완전히 다르다.
+    const hasSold = typeof row.pw.totalSold === 'number' || typeof row.bh.totalSold === 'number';
+    const rankCell = hasSold ? `<b>${++rankNo}</b>` : '<span class="na-rank" title="재판·입고 상품이라 판매 추정을 하지 않음">–</span>';
     return `<tr>
+        <td class="sd-rank">${rankCell}</td>
         <td class="sd-name" title="PW: ${escapeHtml(row.pw.name)} · BH: ${escapeHtml(row.bh.name)}">${escapeHtml(row.pw.name)}</td>
         <td>${escapeHtml(shareText(row.pw, row.bh))}</td>
         <td>${escapeHtml(deltaRatePairText(row.pwSeries, row.bhSeries, 1))}</td>
         <td>${escapeHtml(deltaRatePairText(row.pwSeries, row.bhSeries, 2))}</td>
         <td><button class="toggle-btn" onclick="toggleStockTrend('${rowId}', this)">▶ 보기</button></td>
       </tr>
-      <tr class="trend-row" id="${rowId}"><td colspan="5">${chart}</td></tr>`;
-      }).join('');
+      <tr class="trend-row" id="${rowId}"><td colspan="6">${chart}</td></tr>`;
+      }).join(); })();
 
   return `
   <section class="platform stock-section">
@@ -733,12 +739,14 @@ function renderStockRatioSectionHtml(comparison) {
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th>상품 (PW 기준)</th><th>점유율 (PW : BH)</th><th>직전 대비</th><th>그 전 대비</th><th>추이</th>
+          <th>순위</th><th>상품 (PW 기준)</th><th>점유율 (PW : BH)</th><th>직전 대비</th><th>그 전 대비</th><th>추이</th>
         </tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>
     <div class="foot">
+      ※ <b>순위는 양사 합산 판매추정이 많은 순</b>입니다 — 개수 자체는 공개하지 않고 순서만 보여줍니다.
+      "–"는 재판·입고 상품이라 판매 추정을 하지 않은 것으로, <b>안 팔렸다는 뜻이 아닙니다.</b><br>
       ※ "점유율"은 PW/BH 판매추정치 합산을 100으로 봤을 때의 비중입니다(개수 비공개).<br>
       ※ "직전/그 전 대비"는 그 사이 누적 판매추정이 몇 % 늘었는지입니다 — 스냅샷이 그만큼
       쌓이지 않은 상품은 "-"로 남습니다.<br>
@@ -796,6 +804,8 @@ function renderStockSectionHtml(comparison) {
 
 const STOCK_SECTION_STYLE = `
 .stock-section{margin-top:8px}
+.sd-rank{text-align:center;width:52px;white-space:nowrap;color:#111}
+.na-rank{color:#9aa3b2}
 .stock-store{margin-bottom:20px}
 .stock-store h3{font-size:14px;margin:0 0 8px;color:#374151}
 .sd-rank{font-size:15px;font-weight:700;width:38px;text-align:center}

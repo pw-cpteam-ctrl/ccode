@@ -665,6 +665,54 @@ check('html-report: SNS 표 우측 매출 칸(PW vs BH 분할 바) + 하단 재�
     '재고 히스토리가 아예 없으면(null) 하단 섹션도 안 나와야 함');
 });
 
+check('stock-report: 재고 표에 순위 번호 — 많이 팔린 순, 못 센 상품은 번호 대신 "–"', () => {
+  // 정렬은 원래 많이 팔린 순이었는데 번호가 없어서 몇 위인지 한눈에 안 보였다.
+  // 핵심은 "번호를 붙이되, 판매 추정이 안 되는 상품에는 안 붙이는 것" —
+  // 재판·입고 상품에 번호를 매기면 "안 팔린 꼴찌"로 읽히는데 실제로는 못 센 것이다.
+  const mk = (takenAt, pwStocks, bhStocks) => ({
+    takenAt,
+    stores: {
+      PW: [
+        { productId: 'P1', name: '[예약] 우르키오라 시파 룩업 l 블리치', price: 47000, stock: pwStocks[0] },
+        { productId: 'P2', name: '[예약] 그림죠 재거잭 룩업 l 블리치', price: 47000, stock: pwStocks[1] },
+        { productId: 'P3', name: '[예약] 메가캣 프로젝트 블리치냥 l 블리치 (재판)', price: 8000, stock: pwStocks[2] },
+      ],
+      BH: [
+        { productId: 'Q1', name: '[예약] 룩업 우르키오라 시파 l 블리치 27.05', price: 47000, stock: bhStocks[0] },
+        { productId: 'Q2', name: '[예약] 룩업 그림죠 재거잭 l 블리치 27.05', price: 47000, stock: bhStocks[1] },
+        { productId: 'Q3', name: '[예약] 메가캣 프로젝트 블리치냥 l 블리치 27.02', price: 8000, stock: bhStocks[2] },
+      ],
+    },
+  });
+  const comparison = buildStockComparison({ snapshots: [
+    mk('2026-09-28T00:00:00.000Z', [9980, 9500, 300], [4990, 4800, 160]),
+    mk('2026-10-08T00:00:00.000Z', [9900, 9000, 288], [4950, 4500, 150]),
+  ]});
+  // 그림죠(1,000개) > 우르키오라(100개) > 메가캣 재판(재고 288이라 추정 안 함)
+  const html = buildHtmlReport(report, comparison, { stockMode: 'ratio' });
+  assert.ok(html.includes('<th>순위</th>'), '순위 열이 있어야 함');
+
+  const seen = [...html.matchAll(/<td class="sd-rank">([\s\S]*?)<\/td>\s*<td class="sd-name"[^>]*>([\s\S]*?)<\/td>/g)]
+    .map(m => ({ rank: m[1].replace(/<[^>]+>/g, '').trim(), name: m[2] }));
+  assert.ok(seen.length >= 2, `재고 표 행을 못 읽음 (읽은 행 ${seen.length}개)`);
+  assert.ok(/그림죠/.test(seen[0].name), `많이 팔린 그림죠가 1위여야 함 — 실제 1위: ${seen[0].name}`);
+  assert.strictEqual(seen[0].rank, '1', '첫 행 번호는 1');
+  assert.strictEqual(seen[1].rank, '2', '둘째 행 번호는 2');
+
+  const reissue = seen.find(n => /메가캣/.test(n.name));
+  if (reissue) assert.strictEqual(reissue.rank, '–', '재판 상품은 번호 대신 "–" (안 팔린 게 아니라 못 센 것)');
+
+  // 순위를 붙였다고 개수가 새어 나가면 안 됨 — 대외비 방침은 그대로.
+  // SNS 쪽 목업에도 비슷한 숫자가 있어서, 재고 섹션만 잘라서 본다.
+  // 섹션 끝까지만 자른다 — 파일 끝까지 보면 뒤따르는 SNS/스크립트의 숫자까지 걸려서
+  // 엉뚱한 곳을 유출로 신고하게 된다(처음에 실제로 그렇게 헛짚었다).
+  const secStart = html.indexOf('<section class="platform stock-section">');
+  const stockOnly = html.slice(secStart, html.indexOf('</section>', secStart));
+  for (const leak of ['1,000', '9,000', '9,900', '4,500', '500개', '100개']) {
+    assert.ok(!stockOnly.includes(leak), `순위를 붙여도 판매 개수·재고 수량은 파일에 없어야 함 — "${leak}"가 재고 섹션에 들어감`);
+  }
+});
+
 check('html-report: 재고는 한 파일 안에서 탭으로 분리 — 첫 화면은 SNS만, 표 안 📦 칸은 기본 접힘 (2026-09-08)', () => {
   // "리포트 한 장에 정보가 너무 많다"는 피드백을 리포트를 두 번 만드는 걸로 풀면 일이 늘어나므로,
   // 수집 한 번 = 파일 한 개로 두고 보는 화면만 나눔. 회귀 시 재고가 첫 화면에 다시 깔림.
@@ -692,7 +740,10 @@ check('html-report: 재고는 한 파일 안에서 탭으로 분리 — 첫 화�
   assert.ok(!/<button class="viewtab active"/.test(html), '기본 상태에서 활성 탭 표시가 미리 박혀 있으면 안 됨(진입 시 계산)');
   assert.ok(html.includes('body.view-sns .stock-section{display:none}'), 'SNS 화면에서는 재고 섹션이 가려져야 함');
   assert.ok(html.includes('body.view-stock .platform:not(.stock-section){display:none}'), '재고 화면에서는 SNS 섹션이 가려져야 함');
-  assert.ok(html.includes("location.hash.slice(1) === 'stock'"), '주소 끝 #stock으로 재고 화면에 바로 들어갈 수 있어야 함');
+  assert.ok(/location\.hash\.slice\(1\)[\s\S]{0,40}toLowerCase\(\) === 'stock'/.test(html), '주소 끝 #stock으로 재고 화면에 바로 들어갈 수 있어야 함');
+  // 팀원이 #Stock으로 쳤다가 아무 반응이 없어서 "안 나온다"고 한 실제 사고 — ===는 글자를
+  // 그대로 대조해서 'Stock' === 'stock'이 거짓이다. 소문자로 내려놓고 비교해야 한다.
+  assert.ok(/switchView\(view\) \{[\s\S]{0,260}toLowerCase\(\) === 'stock'/.test(html), '#Stock·#STOCK처럼 대문자로 쳐도 들어가야 함');
 
   // 표 안 📦 칸: 마크업은 있되(체크박스로 켤 수 있게) 기본은 접혀 있어야 함
   assert.ok(html.includes('body:not(.show-stockcol) .stock-col{display:none}'), '표 안 📦 칸은 기본으로 접혀 있어야 함');
