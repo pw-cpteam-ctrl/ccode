@@ -261,6 +261,16 @@ button:disabled{opacity:.4;cursor:default;}
 #editPhoto{position:absolute;user-select:none;-webkit-user-drag:none;cursor:grab;}
 #editOverlay{position:absolute;inset:0;pointer-events:none;}
 #editControls{width:180px;display:flex;flex-direction:column;gap:8px;}
+/* 가장자리 자르기 칸 — 사진 전체를 작게 깔고, 잘려 나갈 바깥쪽은 어둡게 덮어 한눈에 보이게 한다 */
+#cropBox{position:relative;width:180px;background:#2a2620;border-radius:6px;overflow:hidden;
+  user-select:none;touch-action:none;}
+#cropBox canvas{display:block;width:100%;height:auto;}
+#cropBox .cropShade{position:absolute;background:rgba(20,16,10,.62);pointer-events:none;}
+#cropBox .cropLine{position:absolute;background:#4a7cff;box-shadow:0 0 0 1px rgba(255,255,255,.65);}
+#cropBox .cropLine[data-edge="t"],#cropBox .cropLine[data-edge="b"]{left:0;right:0;height:3px;margin-top:-1px;cursor:ns-resize;}
+#cropBox .cropLine[data-edge="l"],#cropBox .cropLine[data-edge="r"]{top:0;bottom:0;width:3px;margin-left:-1px;cursor:ew-resize;}
+/* 선 자체는 얇아서 잡기 어려우므로, 보이지 않는 넓은 손잡이를 선 위에 덧댄다 */
+#cropBox .cropLine::after{content:'';position:absolute;inset:-7px;}
 #editControls .hint{font-size:11px;color:#7d7568;line-height:1.5;}
 .swatch{width:24px;height:24px;border-radius:50%;border:1px solid #ccc;cursor:pointer;display:inline-block;}
 #exportStatus{font-size:12px;color:#555;margin-top:8px;}
@@ -350,7 +360,7 @@ button:disabled{opacity:.4;cursor:default;}
    left/right를 양쪽에 주고 margin:auto로 가운데에 두면 미리보기 폭을 전부 쓴다 */
 #selBar{position:absolute;left:14px;right:14px;margin:0 auto;width:max-content;max-width:calc(100% - 28px);
   bottom:14px;z-index:50;
-  display:flex;align-items:center;gap:7px;padding:8px 11px;
+  display:flex;align-items:center;gap:6px;padding:8px 10px;
   flex-wrap:wrap;justify-content:center;row-gap:6px;
   /* 떠 있는 막대라 뒤 사진이 비치면 글자가 안 읽힌다 — 불투명 배경과 테두리를 확실히 준다
      (막대를 띄우는 과정에서 이 두 줄이 사라져 투명해졌던 것을 되살림) */
@@ -468,6 +478,7 @@ button:disabled{opacity:.4;cursor:default;}
       <div><b>고르는 방법</b> — ① 빈 곳에서 마우스로 드래그해 사각형으로 쓸어 담기(Ctrl 누른 채면 기존 선택에 더하기) ② 칸 파일명 왼쪽 체크박스, <b>Shift+클릭</b>이면 사이 전부 ③ 폴더 머리의 "폴더 전체 선택"</div>
       <div><b>순서 바꾸기</b> — 칸에 마우스를 올리면 나오는 ≡ 를 끌기 (여러 장 선택 중이면 전부 같이 이동)</div>
       <div><b>흰 배경 지우기</b> — 상품 사진 자체에 흰 배경이 있어 배경색과 안 맞을 때 씁니다. 사진 바깥쪽과 이어진 흰 부분만 지우므로 상품 안의 흰색(포장·라벨)은 남습니다. 한 번 더 누르면 원래대로</div>
+      <div><b>여백 자르기</b> — 사진 위아래·양옆에 띠처럼 붙은 흰색·검은색 여백을 찾아 잘라냅니다. 띠를 못 찾았거나 더 다듬고 싶으면 칸을 눌러 크게보기에서 <b>네 변의 파란 선을 끌어</b> 직접 자르면 됩니다</div>
       <label class="helpRemember"><input type="checkbox" id="gridHelpRemember"/> 다음부터 접어두기</label>
     </div>
   </details>
@@ -476,7 +487,7 @@ button:disabled{opacity:.4;cursor:default;}
     <span id="selAction" style="color:#1a3d8f;font-weight:400;"></span>
     <select id="selOverlaySel"><option value="__ph__">고른 사진에 투명 배정 ▾</option></select>
     <label style="display:flex;align-items:center;gap:5px;">확대/축소
-      <input type="range" id="selZoom" min="20" max="400" value="100" style="width:96px;"/>
+      <input type="range" id="selZoom" min="20" max="400" value="100" style="width:84px;"/>
       <b id="selZoomVal" style="min-width:40px;">100%</b>
     </label>
     <button id="btnSelBadgeFlip">뱃지 좌우</button>
@@ -484,6 +495,7 @@ button:disabled{opacity:.4;cursor:default;}
     <button id="btnSelSplit" title="고른 사진 2장을 한 아트보드에 위아래로 담습니다 (캐러셀 장수를 줄일 때)">2분할 합치기</button>
     <button id="btnSelFrameOff" title="고른 사진에서 제목 이미지를 화면에서 끕니다. 배정은 그대로 남아 있어 언제든 다시 켤 수 있습니다">투명 끄기</button>
     <button id="btnSelFrameOn" title="고른 사진에 배정된 제목 이미지를 다시 켭니다">투명 켜기</button>
+    <button id="btnSelTrim" title="사진 위아래·양옆에 띠처럼 붙은 흰색·검은색 여백을 찾아 잘라냅니다. 한 번 더 누르면 원래대로 돌아옵니다">여백 자르기</button>
     <button id="btnSelWhiteCut" title="상품 사진 바깥쪽의 흰 배경을 투명하게 지워 아래 배경색이 그대로 비치게 합니다. 한 번 더 누르면 원래대로 돌아옵니다">흰 배경 지우기</button>
     <button id="btnSelDelete" style="background:#fff0f0;border-color:#e05d5d;color:#b33;">선택 삭제</button>
     <span class="selDiv"></span>
@@ -567,6 +579,22 @@ button:disabled{opacity:.4;cursor:default;}
         <span class="swatch" id="bgWhite" style="background:#fff;"></span>
         <span class="swatch" id="bgAuto" style="background:linear-gradient(135deg,#f90,#09f);"></span>
         <input type="color" id="bgCustom" value="#ffffff"/>
+      </div>
+      <!-- 사진 가장자리 잘라내기 — 사진 전체를 작게 보여주고 네 변의 선을 끌어서 자른다.
+           크게보기 화면은 이미 확대·이동된 상태라 잘라낼 가장자리가 화면 밖에 있는 경우가 많아,
+           여기에 사진 전체가 보이는 작은 칸을 따로 두었다 -->
+      <div style="margin-top:4px;">가장자리 자르기</div>
+      <div id="cropBox">
+        <canvas id="cropCv"></canvas>
+        <div class="cropShade" data-edge="t"></div><div class="cropShade" data-edge="b"></div>
+        <div class="cropShade" data-edge="l"></div><div class="cropShade" data-edge="r"></div>
+        <div class="cropLine" data-edge="t"></div><div class="cropLine" data-edge="b"></div>
+        <div class="cropLine" data-edge="l"></div><div class="cropLine" data-edge="r"></div>
+      </div>
+      <div class="hint" id="cropInfo">네 변의 파란 선을 끌어서 자릅니다</div>
+      <div style="display:flex;gap:6px;">
+        <button id="btnCropAuto" style="flex:1;" title="사진 가장자리에 붙은 흰색·검은색 띠를 찾아서 자동으로 잘라냅니다">자동 잘라내기</button>
+        <button id="btnCropReset" style="flex:1;">자르기 해제</button>
       </div>
       <button id="btnResetItem">위치/배율 초기화</button>
       <button id="btnDownloadItem">이 사진만 PNG 다운로드</button>
@@ -654,6 +682,7 @@ function itemsMetaSnapshot(){
       storeName: it.storeName || '', badgeSide: it.badgeSide || 'left',
       isMain: !!it.isMain, noFrame: !!it.noFrame,
       whiteCut: !!it.whiteCut,   // 예전 저장분에는 없는 칸 — 없으면 "안 지움"으로 읽힌다
+      crop: cropOf(it),          // 잘라낸 양(원본 기준 비율). 안 잘랐으면 null
       // 2분할 정보 — 예전 저장분에는 없는 칸이라, 없으면 한 장짜리로 읽힌다
       split: isSplit(it) ? { name2: it.split.name2, gap: it.split.gap,
                              crops: it.split.crops.map(c => ({ ...c })) } : null,
@@ -777,6 +806,7 @@ async function restoreFromCache(){
       storeName: m.storeName ?? DEFAULT_STORE_NAME, badgeSide: m.badgeSide || 'left',
       isMain: !!m.isMain, noFrame: !!m.noFrame,
       whiteCut: !!m.whiteCut,   // 예전 저장분엔 없는 값이라 기본 false
+      crop: m.crop ? { ...m.crop } : null,
       split: null,  // 아래에서 되살린다 (예전 저장분엔 이 칸이 없어 한 장짜리로 남는다)
     });
     // 2분할이었으면 아래 칸 사진도 되살린다. 아래 칸만 깨져 있으면 2분할을 포기하고
@@ -1245,7 +1275,7 @@ function undoSnapshot(){
       offX: it.offX || 0, offY: it.offY || 0,
       bg: it.bg, storeName: it.storeName || '', badgeSide: it.badgeSide || 'left',
       isMain: !!it.isMain, noFrame: !!it.noFrame, folder: it.folder || '',
-      whiteCut: !!it.whiteCut,
+      whiteCut: !!it.whiteCut, crop: cropOf(it),
       // 2분할은 통째로 기억한다 (합치기·풀기도 되돌릴 수 있게)
       split: it.split ? { ...it.split, crops: it.split.crops.map(c => ({ ...c })) } : null,
     })),
@@ -1290,7 +1320,9 @@ function undo(){
       it.bg = m.bg; it.storeName = m.storeName; it.badgeSide = m.badgeSide;
       it.isMain = m.isMain; it.noFrame = m.noFrame; it.folder = m.folder;
       it.split = m.split ? { ...m.split, crops: m.split.crops.map(c => ({ ...c })) } : null;
-      if (!!it.whiteCut !== !!m.whiteCut) { it.whiteCut = !!m.whiteCut; dropWhiteCutCache(it); }
+      if (!!it.whiteCut !== !!m.whiteCut || cropSig(it) !== cropSig(m)) {
+        it.whiteCut = !!m.whiteCut; it.crop = m.crop ? { ...m.crop } : null; dropWhiteCutCache(it);
+      }
       it._thumbSrc2 = null;
     }
     items.length = 0;
@@ -1473,6 +1505,7 @@ function setSelectionFrame(on){
     + ' Ctrl+Z로 되돌릴 수 있습니다.');
 }
 $('#btnSelWhiteCut').addEventListener('click', toggleWhiteCutSelected);
+$('#btnSelTrim').addEventListener('click', trimSelected);
 $('#btnSelFrameOff').addEventListener('click', () => setSelectionFrame(false));
 $('#btnSelFrameOn').addEventListener('click', () => setSelectionFrame(true));
 // ---------- 키보드로 순서 옮기기 ----------
@@ -2158,7 +2191,7 @@ function setSelectionZoom(pct){
   if (!list.length) return;
   for (const t of list) {
     if (!t.photoImg) continue;
-    const pw = t.photoImg.naturalWidth, ph = t.photoImg.naturalHeight;
+    const { w: pw, h: ph } = photoSizeOf(t);
     // 슬라이더는 전체보기보다 더 작게(사방 여백) 줄이는 것까지 허용
     t.zoom = Math.max(MIN_ZOOM_HARD, Math.min(4, pct / 100));
     clampFocus(t);
@@ -2287,11 +2320,15 @@ function readableTextColor(hex){
 // 뱃지 그림자 캐시 — 뱃지 모양·크기·좌표는 아이템이 몇 개든 항상 똑같아서(색상/문구만 다름),
 // 그림자(shadowBlur)는 좌/우 각각 딱 1번만 오프스크린에 그려두고 그 이후로는 이미지로 붙여넣기만 한다.
 // (그림자만 남기고 도형 몸통은 destination-out으로 지워서 halo만 캐싱)
+// 리본 뱃지 치수 — 뱃지 몸통과 그림자가 같은 값을 써야 해서 한 곳에 모아 둔다
+// (예전엔 두 군데에 같은 숫자를 적어 둬서, 한쪽만 고치면 그림자가 몸통과 어긋났다)
+// 폭 183 → 189: "10월"처럼 두 자리가 되면 글자가 가장자리에 붙어 답답해 보여 좌우로 3px씩 넓혔다.
+// 가운데 위치는 그대로 두려고 시작점(offsetX)을 넓힌 만큼의 절반인 3px 왼쪽으로 당겼다
+const BADGE_GEOM = { bw: 189, bh: 240, notch: 45, radius: 0, offsetX: 74, offsetY: 0 };
 const badgeShadowCache = {};
 function getBadgeShadowSprite(side){
   if (badgeShadowCache[side]) return badgeShadowCache[side];
-  const bw = 183, bh = 240, notch = 45, radius = 0;
-  const offsetX = 77, offsetY = 0;
+  const { bw, bh, notch, radius, offsetX, offsetY } = BADGE_GEOM;
   const flatH = bh - notch;
   const pad = 40; // 블러 18 + 오프셋(9,5) 감안한 여유
   const c = document.createElement('canvas');
@@ -2328,9 +2365,8 @@ function getBadgeShadowSprite(side){
 function drawBadge(ctx, it, opts){
   const withShadow = !opts || opts.shadow !== false;
   const side = it.badgeSide || 'left';
-  // badge-tuner.html에서 확정한 값 그대로 (조정 도구는 삭제 예정)
-  const bw = 183, bh = 240, notch = 45, radius = 0;
-  const offsetX = 77, offsetY = 0;
+  // 치수는 BADGE_GEOM 한 곳에서만 관리한다 (그림자도 같은 값을 쓴다)
+  const { bw, bh, notch, radius, offsetX, offsetY } = BADGE_GEOM;
   const flatH = bh - notch;
 
   // 월 리본 뱃지는 폴더 대표(표지) 한 장에만 올린다 — 나머지 사진엔 필요 없음.
@@ -2495,7 +2531,8 @@ function focusYRange(it, overflowY){
 }
 function clampFocus(it){
   it.focusX = clamp01(it.focusX ?? 0.5);
-  const { dh } = coverCropRect(it.photoImg.naturalWidth, it.photoImg.naturalHeight, CW, CH, 0.5, 0.5, it.zoom);
+  const { w: _pw, h: _ph } = photoSizeOf(it);
+  const { dh } = coverCropRect(_pw, _ph, CW, CH, 0.5, 0.5, it.zoom);
   const r = focusYRange(it, dh - CH);
   it.focusY = Math.max(r.min, Math.min(r.max, it.focusY ?? 0.5));
   // 옮겨둔 위치는 지우지 않고(사용자가 일부러 그렇게 둔 것), 배율이 바뀌어 사진이 화면에서
@@ -2527,7 +2564,8 @@ function bottomRoomOf(it){
   return Math.max(MAX_BOTTOM_GAP, covered);
 }
 function panRange(it){
-  const base = coverCropRect(it.photoImg.naturalWidth, it.photoImg.naturalHeight, CW, CH, it.focusX, it.focusY, it.zoom);
+  const { w: _pw, h: _ph } = photoSizeOf(it);
+  const base = coverCropRect(_pw, _ph, CW, CH, it.focusX, it.focusY, it.zoom);
   const { dw, dh } = base;
   return {
     base,
@@ -2555,14 +2593,15 @@ function movePanBy(it, dxPix, dyPix){
   it.offY = ny - r.base.dy;
 }
 function geomOf(it){
-  const g = coverCropRect(it.photoImg.naturalWidth, it.photoImg.naturalHeight, CW, CH, it.focusX, it.focusY, it.zoom);
+  const { w: _pw, h: _ph } = photoSizeOf(it);
+  const g = coverCropRect(_pw, _ph, CW, CH, it.focusX, it.focusY, it.zoom);
   return { dw: g.dw, dh: g.dh, dx: g.dx + (it.offX || 0), dy: g.dy + (it.offY || 0) };
 }
 // 예전 방식(scaleMul + ox/oy)으로 저장된 조정값을 새 방식으로 옮긴다 — 이미 작업해둔 사진들의
 // 위치/배율이 틀어지지 않게 하려는 것. 옛 필드는 지우지 않고 그대로 남겨둔다
 function migrateGeom(it){
   if (it.focusX != null && it.focusY != null && it.zoom != null) return;
-  const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
+  const { w: pw, h: ph } = photoSizeOf(it);
   it.zoom = (it.scaleMul ?? 1) / SLOP; // 새 계산식에 SLOP이 들어가므로 그만큼 빼줘야 같은 크기가 된다
   const eff = Math.max(CW / pw, CH / ph) * SLOP * it.zoom;
   const ovX = pw * eff - CW, ovY = ph * eff - CH;
@@ -2572,7 +2611,7 @@ function migrateGeom(it){
 // 새 방식 값에서 옛 필드를 거꾸로 계산해 같이 저장해둔다 — 혹시 예전 버전 화면으로 되돌아가도
 // 작업물이 그대로 보이게 하는 안전장치
 function legacyGeomOf(it){
-  const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
+  const { w: pw, h: ph } = photoSizeOf(it);
   const { dw, dh } = coverCropRect(pw, ph, CW, CH, it.focusX, it.focusY, it.zoom);
   return {
     scaleMul: (it.zoom ?? 1) * SLOP,
@@ -2611,16 +2650,21 @@ const THUMB_SRC_MAX = 480;
 const SPLIT_GAP_DEFAULT = 40;
 function isSplit(it){ return !!(it && it.split && it.split.img2); }
 function getThumbSource2(it){
-  if (it._thumbSrc2 && it._thumbSrc2Cut === !!it.whiteCut) return it._thumbSrc2;
+  const sig = cropSig(it) + (it.whiteCut ? 'W' : '-');
+  if (it._thumbSrc2 && it._thumbSrc2Sig === sig) return it._thumbSrc2;
+  // 2분할의 아래 칸에도 위 칸과 같은 설정을 적용한다 (한 아트보드 안에서 따로 노는 게 더 이상하다)
   const im = it.split.img2;
-  const pw = im.naturalWidth || im.width, ph = im.naturalHeight || im.height;
+  const ow = im.naturalWidth || im.width, oh = im.naturalHeight || im.height;
+  const crop = cropOf(it);
+  const sx = crop ? Math.round(ow * crop.l) : 0, sy = crop ? Math.round(oh * crop.t) : 0;
+  const { w: pw, h: ph } = crop ? croppedSize(ow, oh, crop) : { w: ow, h: oh };
   const scale = Math.min(1, THUMB_SRC_MAX / Math.max(pw, ph));
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.round(pw * scale));
   c.height = Math.max(1, Math.round(ph * scale));
-  c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+  c.getContext('2d').drawImage(im, sx, sy, pw, ph, 0, 0, c.width, c.height);
   it._thumbSrc2 = it.whiteCut ? cutWhiteCanvas(c, c.width, c.height) : c;
-  it._thumbSrc2Cut = !!it.whiteCut;
+  it._thumbSrc2Sig = sig;
   return it._thumbSrc2;
 }
 // 고른 2장을 한 장으로 합친다 — 앞의 것이 위 칸, 뒤의 것이 아래 칸
@@ -2661,9 +2705,9 @@ function unsplitItem(it){
                       it.split.img2.naturalHeight || it.split.img2.height, CW, CH),
     storeName: it.storeName, badgeSide: it.badgeSide,
     isMain: false, noFrame: true,
-    // 2분할일 때 흰 배경 지우기는 위·아래 칸에 똑같이 적용되므로, 꺼낸 사진도 그 설정을
-    // 그대로 가져간다 (안 넘기면 푸는 순간 혼자만 흰 배경이 되살아나 보인다)
-    whiteCut: !!it.whiteCut,
+    // 2분할일 때 흰 배경 지우기·가장자리 자르기는 위·아래 칸에 똑같이 적용되므로, 꺼낸 사진도
+    // 그 설정을 그대로 가져간다 (안 넘기면 푸는 순간 혼자만 원래대로 되살아나 보인다)
+    whiteCut: !!it.whiteCut, crop: cropOf(it),
   };
   it.split = null;
   it._thumbSrc2 = null;
@@ -2675,16 +2719,102 @@ function unsplitItem(it){
   log(`2분할을 풀어 "${born.photoName}"을 따로 꺼냈습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
 }
 function getThumbSourceCanvas(it){
-  if (it._thumbSrc && it._thumbSrcCut === !!it.whiteCut) return it._thumbSrc;
-  const pw = it.photoImg.naturalWidth, ph = it.photoImg.naturalHeight;
+  const sig = cropSig(it) + (it.whiteCut ? 'W' : '-');
+  if (it._thumbSrc && it._thumbSrcSig === sig) return it._thumbSrc;
+  const img = it.photoImg;
+  const ow = img.naturalWidth, oh = img.naturalHeight;
+  const crop = cropOf(it);
+  // 잘라낸 부분만 축소본에 담는다 (원본 전체를 줄인 뒤 다시 자르면 가장자리가 한 줄씩 어긋난다)
+  const sx = crop ? Math.round(ow * crop.l) : 0, sy = crop ? Math.round(oh * crop.t) : 0;
+  const { w: pw, h: ph } = photoSizeOf(it);
   const scale = Math.min(1, THUMB_SRC_MAX / Math.max(pw, ph));
   const tw = Math.max(1, Math.round(pw * scale)), th = Math.max(1, Math.round(ph * scale));
   const c = document.createElement('canvas');
   c.width = tw; c.height = th;
-  c.getContext('2d').drawImage(it.photoImg, 0, 0, tw, th);
+  c.getContext('2d').drawImage(img, sx, sy, pw, ph, 0, 0, tw, th);
   it._thumbSrc = it.whiteCut ? cutWhiteCanvas(c, tw, th) : c;
-  it._thumbSrcCut = !!it.whiteCut;
+  it._thumbSrcSig = sig;
   return it._thumbSrc;
+}
+
+// ---------- 사진 가장자리 잘라내기 ----------
+// 본사 사진은 위아래(또는 양옆)에 흰색·검은색 띠가 붙어 오는 경우가 많다. 그대로 올리면
+// 아트보드 배경색과 어긋나 네모 자국이 보이므로 그 띠만 잘라낸다.
+// 잘라낼 양은 원본 기준 "비율"(0~1)로 들고 있어서, 사진 크기가 달라도 그대로 쓸 수 있다.
+// 예전 저장분에는 it.crop 칸이 없어 undefined로 읽히고, 그러면 안 자른 것으로 동작한다
+const CROP_MAX = 0.45;   // 한 변에서 잘라낼 수 있는 최대치 (사진이 사라져 버리는 것을 막는 안전선)
+function cropOf(it){
+  const c = it && it.crop;
+  if (!c) return null;
+  const t = c.t || 0, r = c.r || 0, b = c.b || 0, l = c.l || 0;
+  return (t || r || b || l) ? { t, r, b, l } : null;
+}
+function cropSig(it){ const c = cropOf(it); return c ? `${c.t},${c.r},${c.b},${c.l}` : '-'; }
+function croppedSize(pw, ph, c){
+  return { w: Math.max(1, Math.round(pw * (1 - c.l - c.r))), h: Math.max(1, Math.round(ph * (1 - c.t - c.b))) };
+}
+// 사진의 "지금 쓰는" 크기 — 잘라냈으면 잘라낸 뒤 크기. 자리·배율 계산은 전부 이 값을 기준으로 한다
+// (원본 크기를 그대로 쓰면 잘라낸 사진이 엉뚱한 자리에 놓인다)
+function photoSizeOf(it){
+  const img = it.photoImg;
+  const pw = img.naturalWidth || img.width, ph = img.naturalHeight || img.height;
+  const c = cropOf(it);
+  return c ? croppedSize(pw, ph, c) : { w: pw, h: ph };
+}
+function cropCanvas(img, c){
+  const pw = img.naturalWidth || img.width, ph = img.naturalHeight || img.height;
+  const { w, h } = croppedSize(pw, ph, c);
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  out.getContext('2d').drawImage(img, Math.round(pw * c.l), Math.round(ph * c.t), w, h, 0, 0, w, h);
+  return out;
+}
+// 가장자리에 붙은 한 가지 색 띠를 자동으로 찾는다.
+// 원본 전체를 훑으면 수백 장에서 느리므로 작게 줄인 사본에서 찾는다 — 띠의 "비율"만 알면 되므로
+// 줄여도 결과는 같다. 한 줄 안의 색이 거의 같고, 바깥 첫 줄 색과도 비슷하면 띠로 본다
+const TRIM_SAMPLE_MAX = 240;
+const TRIM_TOL = 12;
+function detectMarginCrop(img){
+  const pw = img.naturalWidth || img.width, ph = img.naturalHeight || img.height;
+  const scale = Math.min(1, TRIM_SAMPLE_MAX / Math.max(pw, ph));
+  const w = Math.max(8, Math.round(pw * scale)), h = Math.max(8, Math.round(ph * scale));
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, w, h);
+  let d;
+  try { d = ctx.getImageData(0, 0, w, h).data; } catch (err) { return null; } // 픽셀을 못 읽으면 포기
+  const at = (x, y) => { const i = (y * w + x) * 4; return [d[i], d[i+1], d[i+2]]; };
+  // 한 줄(가로 또는 세로)이 기준색과 거의 같은 한 가지 색인지
+  const lineIsFlat = (fixed, horizontal, ref) => {
+    const n = horizontal ? w : h;
+    for (let k = 0; k < n; k++) {
+      const [r, g, b] = horizontal ? at(k, fixed) : at(fixed, k);
+      if (Math.abs(r - ref[0]) > TRIM_TOL || Math.abs(g - ref[1]) > TRIM_TOL || Math.abs(b - ref[2]) > TRIM_TOL) return false;
+    }
+    return true;
+  };
+  // 흰색이나 검은색 띠만 자른다. "한 가지 색이면 자른다"로 두면, 배경이 단색인 상품 사진에서
+  // 배경 전체가 여백으로 보여 상품 코앞까지 잘려 나간다 (갈색 나무 배경 사진에서 실제로 그랬다)
+  const isPaperOrInk = ([r, g, b]) =>
+    (r >= 240 && g >= 240 && b >= 240) || (r <= 24 && g <= 24 && b <= 24);
+  const scan = (horizontal, fromStart) => {
+    const n = horizontal ? h : w;
+    const first = fromStart ? 0 : n - 1;
+    const ref = horizontal ? at(Math.floor(w / 2), first) : at(first, Math.floor(h / 2));
+    if (!isPaperOrInk(ref)) return 0;
+    if (!lineIsFlat(first, horizontal, ref)) return 0;   // 가장자리부터 한 색이 아니면 자를 게 없다
+    let cut = 0;
+    const limit = Math.floor(n * CROP_MAX);
+    for (let k = 0; k < limit; k++) {
+      const idx = fromStart ? k : n - 1 - k;
+      if (!lineIsFlat(idx, horizontal, ref)) break;
+      cut = k + 1;
+    }
+    return cut / n;
+  };
+  const crop = { t: scan(true, true), b: scan(true, false), l: scan(false, true), r: scan(false, false) };
+  return (crop.t || crop.b || crop.l || crop.r) ? crop : null;
 }
 
 // ---------- 흰 배경 지우기 ----------
@@ -2734,24 +2864,63 @@ function cutWhiteCanvas(src, w, h){
 const FULL_CUT_MAX = 4;
 const _fullCutCache = new Map();
 function photoSourceOf(it, img, slot){
-  if (!it.whiteCut || !img) return img;
-  const key = it.uid == null ? null : it.uid + '#' + (slot || 0);
+  if (!img) return img;
+  const crop = cropOf(it);
+  if (!crop && !it.whiteCut) return img;
+  // 잘라내기·흰 배경 설정이 바뀌면 만들어둔 결과를 쓰면 안 되므로 설정값까지 이름표에 넣는다
+  const key = it.uid == null ? null : `${it.uid}#${slot || 0}#${cropSig(it)}#${it.whiteCut ? 'W' : '-'}`;
   if (key && _fullCutCache.has(key)) {
     const hit = _fullCutCache.get(key);
     _fullCutCache.delete(key); _fullCutCache.set(key, hit); // 최근 쓴 것으로 올림
     return hit;
   }
-  const c = cutWhiteCanvas(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
+  let out = crop ? cropCanvas(img, crop) : img;   // 먼저 자르고 (작아진 만큼 다음 계산도 빨라진다)
+  if (it.whiteCut) out = cutWhiteCanvas(out, out.naturalWidth || out.width, out.naturalHeight || out.height);
   if (key) {
-    _fullCutCache.set(key, c);
+    _fullCutCache.set(key, out);
     while (_fullCutCache.size > FULL_CUT_MAX) _fullCutCache.delete(_fullCutCache.keys().next().value);
   }
-  return c;
+  return out;
 }
-// 흰 배경 설정이 바뀐 칸은 만들어둔 결과를 버려야 다음 그리기에서 새로 계산된다
+// 잘라내기·흰 배경 설정이 바뀐 칸은 만들어둔 결과를 버려야 다음 그리기에서 새로 계산된다
 function dropWhiteCutCache(it){
-  it._thumbSrc = null; it._thumbSrcCut = null; it._thumbSrc2 = null; it._thumbSrc2Cut = null;
-  if (it.uid != null) { _fullCutCache.delete(it.uid + '#0'); _fullCutCache.delete(it.uid + '#1'); }
+  it._thumbSrc = null; it._thumbSrcSig = null; it._thumbSrc2 = null; it._thumbSrc2Sig = null;
+  if (it.uid == null) return;
+  for (const k of [..._fullCutCache.keys()]) if (k.startsWith(it.uid + '#')) _fullCutCache.delete(k);
+}
+// 고른 사진의 가장자리 여백을 한 번에 잘라낸다 (하나라도 안 잘린 게 있으면 전부 자르기,
+// 전부 잘려 있으면 전부 해제). 띠를 못 찾은 사진은 건드리지 않고 몇 장이 그랬는지 알려준다
+function trimSelected(){
+  const list = selectedItems();
+  if (!list.length) return;
+  ensureUids();
+  const doTrim = list.some(it => !cropOf(it));
+  const btn = $('#btnSelTrim');
+  if (btn) { btn.disabled = true; btn.textContent = doTrim ? '잘라내는 중…' : '되돌리는 중…'; }
+  reportAction(`${list.length}장 여백 ${doTrim ? '잘라내는 중…' : '되돌리는 중…'}`);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    try {
+      pushUndo(doTrim ? `여백 잘라내기 ${list.length}장` : `여백 자르기 해제 ${list.length}장`);
+      let done = 0;
+      for (const it of list) {
+        const next = doTrim ? detectMarginCrop(it.photoImg) : null;
+        if (doTrim && !next) continue;          // 띠가 없는 사진은 그대로 둔다
+        it.crop = next;
+        clampFocus(it);
+        dropWhiteCutCache(it);
+        done++;
+      }
+      renderGrid();
+      saveMetaToCache();
+      reportAction(`${done}장 여백 ${doTrim ? '잘라냄' : '되돌림'}`);
+      const skipped = list.length - done;
+      log(`${done}장의 가장자리 여백을 ${doTrim ? '잘라냈습니다' : '되돌렸습니다'}.`
+        + (skipped ? ` (${skipped}장은 잘라낼 띠를 찾지 못해 그대로 뒀습니다 — 칸을 눌러 크게보기에서 직접 자를 수 있습니다)` : '')
+        + ' Ctrl+Z로 되돌릴 수 있습니다.');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '여백 자르기'; }
+    }
+  }));
 }
 // 고른 사진의 흰 배경을 지웠다 되돌렸다 한 번에 전환한다 (하나라도 꺼져 있으면 전부 켜기)
 function toggleWhiteCutSelected(){
@@ -3504,7 +3673,7 @@ $('#grid').addEventListener('wheel', e => {
   const factor = e.deltaY < 0 ? 1.07 : 1 / 1.07; // 휠 한 칸당 7%
   for (const t of targets) {
     if (!t.photoImg) continue;
-    const pw = t.photoImg.naturalWidth, ph = t.photoImg.naturalHeight;
+    const { w: pw, h: ph } = photoSizeOf(t);
     // 최소 배율은 사진 비율마다 다르므로 칸마다 따로 계산해서 막는다
     // Shift를 누르면 전체보기보다 더 작게(사방 여백)까지 축소 허용
     const minZoom = e.shiftKey ? MIN_ZOOM_HARD : defaultZoom(pw, ph, CW, CH);
@@ -3719,7 +3888,8 @@ function updateEditorBadge(){
 function openEditor(idx){
   curItem = items[idx];
   openSplitEditor(curItem);          // 2분할이면 전용 캔버스를 켜고, 아니면 꺼둔다
-  editPhoto.src = curItem.photoImg.src;
+  setEditPhotoSrc(curItem);
+  renderCropBox(curItem);
   // noFrame(제목 빼기)을 확인하지 않아서, 제목을 뺀 장을 눌러 크게 보면 뺀 제목이 다시 얹혀
   // 보였다. 미리보기·저장은 noFrame을 보는데 편집기만 안 봐서 화면끼리 어긋난 것
   if (curItem.overlayImg && !curItem.noFrame) {
@@ -3782,10 +3952,108 @@ $('#btnCloseEditor').addEventListener('click', () => {
   curItem = null;
   saveMetaToCache(); // 닫을 때는 디바운스 없이 바로 확정 저장
 });
+// 크게보기에 띄우는 사진 — 잘라내기·흰 배경 지우기를 적용한 결과를 보여줘야 한다.
+// 예전에는 원본을 그대로 띄워서, 흰 배경을 지운 장을 크게 보면 지우기 전 모습이 나왔다
+// (보면서 위치를 맞추는 화면인데 미리보기·저장 결과와 달라 혼란스러웠음)
+function setEditPhotoSrc(it){
+  const src = photoSourceOf(it, it.photoImg, 0);
+  editPhoto.src = (src === it.photoImg) ? it.photoImg.src : src.toDataURL();
+}
+
+/* ── 가장자리 자르기 칸 ──
+   크게보기 화면은 이미 확대·이동된 상태라 잘라낼 가장자리가 화면 밖에 있는 경우가 많다.
+   그래서 사진 전체가 보이는 작은 칸을 따로 두고, 거기서 네 변의 선을 끌어 자르게 했다. */
+const cropBox = $('#cropBox'), cropCv = $('#cropCv');
+const CROP_BOX_W = 180;
+function renderCropBox(it){
+  if (!it) return;
+  const img = it.photoImg;
+  const ow = img.naturalWidth || img.width, oh = img.naturalHeight || img.height;
+  const h = Math.max(40, Math.round(CROP_BOX_W * oh / ow));
+  cropCv.width = CROP_BOX_W; cropCv.height = h;
+  cropCv.getContext('2d').drawImage(img, 0, 0, CROP_BOX_W, h);   // 자르기 전 원본을 깔아야 어디를 자르는지 보인다
+  updateCropOverlay(it);
+}
+function updateCropOverlay(it){
+  const c = cropOf(it) || { t: 0, r: 0, b: 0, l: 0 };
+  const pct = v => (v * 100) + '%';
+  const shade = e => cropBox.querySelector(`.cropShade[data-edge="${e}"]`);
+  const line = e => cropBox.querySelector(`.cropLine[data-edge="${e}"]`);
+  Object.assign(shade('t').style, { left: 0, right: 0, top: 0, height: pct(c.t) });
+  Object.assign(shade('b').style, { left: 0, right: 0, bottom: 0, height: pct(c.b) });
+  Object.assign(shade('l').style, { top: pct(c.t), bottom: pct(c.b), left: 0, width: pct(c.l) });
+  Object.assign(shade('r').style, { top: pct(c.t), bottom: pct(c.b), right: 0, width: pct(c.r) });
+  line('t').style.top = pct(c.t);
+  line('b').style.bottom = pct(c.b);
+  line('l').style.left = pct(c.l);
+  line('r').style.right = pct(c.r);
+  const { w, h } = photoSizeOf(it);
+  const any = c.t || c.r || c.b || c.l;
+  $('#cropInfo').textContent = any
+    ? `자른 뒤 ${w}×${h} (위 ${Math.round(c.t*100)}% · 아래 ${Math.round(c.b*100)}% · 좌 ${Math.round(c.l*100)}% · 우 ${Math.round(c.r*100)}%)`
+    : '네 변의 파란 선을 끌어서 자릅니다';
+}
+// 잘라내기를 바꾼 뒤 공통으로 할 일 — 만들어둔 결과를 버리고, 크게보기·미리보기를 다시 그린다
+function applyCropChange(it, { grouped } = {}){
+  dropWhiteCutCache(it);
+  clampFocus(it);
+  setEditPhotoSrc(it);
+  updateCropOverlay(it);
+  updateEditorGeom();
+  refreshThumb(it);
+  if (grouped) saveMetaSoon(); else saveMetaToCache();
+}
+let _cropDrag = null;
+cropBox.querySelectorAll('.cropLine').forEach(line => {
+  line.addEventListener('mousedown', e => {
+    if (!curItem) return;
+    e.preventDefault(); e.stopPropagation();
+    pushUndoGrouped('crop', '가장자리 자르기', 900);
+    const c = cropOf(curItem) || { t: 0, r: 0, b: 0, l: 0 };
+    curItem.crop = { ...c };
+    _cropDrag = { edge: line.dataset.edge, rect: cropBox.getBoundingClientRect() };
+  });
+});
+window.addEventListener('mousemove', e => {
+  if (!_cropDrag || !curItem) return;
+  const { edge, rect } = _cropDrag;
+  const fx = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+  const fy = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
+  const c = curItem.crop;
+  // 반대쪽 선을 넘어가 사진이 뒤집히는 일이 없도록, 남는 부분이 최소 10%는 되게 막는다
+  const cap = (v, opposite) => Math.min(CROP_MAX, Math.max(0, Math.min(v, 1 - opposite - 0.1)));
+  if (edge === 't') c.t = cap(fy, c.b);
+  else if (edge === 'b') c.b = cap(1 - fy, c.t);
+  else if (edge === 'l') c.l = cap(fx, c.r);
+  else c.r = cap(1 - fx, c.l);
+  applyCropChange(curItem, { grouped: true });
+});
+window.addEventListener('mouseup', () => {
+  if (!_cropDrag) return;
+  _cropDrag = null;
+  if (curItem) saveMetaToCache();
+});
+$('#btnCropAuto').addEventListener('click', () => {
+  if (!curItem) return;
+  const found = detectMarginCrop(curItem.photoImg);
+  if (!found) { log('이 사진에서는 잘라낼 가장자리 띠를 찾지 못했습니다. 선을 끌어서 직접 잘라 주세요.'); return; }
+  pushUndo('자동 잘라내기');
+  curItem.crop = found;
+  applyCropChange(curItem);
+  log(`자동으로 잘랐습니다 — 위 ${Math.round(found.t*100)}% · 아래 ${Math.round(found.b*100)}% · 좌 ${Math.round(found.l*100)}% · 우 ${Math.round(found.r*100)}%. Ctrl+Z로 되돌릴 수 있습니다.`);
+});
+$('#btnCropReset').addEventListener('click', () => {
+  if (!curItem || !cropOf(curItem)) return;
+  pushUndo('자르기 해제');
+  curItem.crop = null;
+  applyCropChange(curItem);
+});
+
 $('#btnResetItem').addEventListener('click', () => {
   curItem.focusX = 0.5; curItem.focusY = 0.5;
   curItem.offX = 0; curItem.offY = 0; // 끌어서 옮긴 것도 같이 되돌림
-  curItem.zoom = defaultZoom(curItem.photoImg.naturalWidth, curItem.photoImg.naturalHeight, CW, CH);
+  const { w: _pw, h: _ph } = photoSizeOf(curItem);
+  curItem.zoom = defaultZoom(_pw, _ph, CW, CH);
   updateEditorGeom();
   saveMetaSoon();
 });
@@ -3814,7 +4082,7 @@ function extractDominantColor(img){
 $('#editClip').addEventListener('wheel', e => {
   if (!curItem) return;
   e.preventDefault();
-  const pw = curItem.photoImg.naturalWidth, ph = curItem.photoImg.naturalHeight;
+  const { w: pw, h: ph } = photoSizeOf(curItem);
   const minZoom = e.shiftKey ? MIN_ZOOM_HARD : defaultZoom(pw, ph, CW, CH);
   curItem.zoom = Math.max(minZoom, Math.min(4, (curItem.zoom ?? 1) * (e.deltaY < 0 ? 1.07 : 1 / 1.07)));
   clampFocus(curItem);
