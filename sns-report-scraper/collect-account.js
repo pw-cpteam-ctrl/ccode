@@ -62,7 +62,7 @@ async function main() {
   }
 
   console.log(`📥 @${handle} 트위터 게시물 수집 시작 (${startDate} ~ ${endDate})`);
-  const posts = await collectTwitter({ account: handle, sessionFile: SESSION_FILE, startDate, endDate });
+  const { posts } = await collectTwitter({ account: handle, sessionFile: SESSION_FILE, startDate, endDate });
   console.log(`✅ 수집 완료: 게시물 ${posts.length}건`);
 
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });

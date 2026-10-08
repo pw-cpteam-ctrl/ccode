@@ -85,22 +85,50 @@ function applyBrandToConfig(brand) {
   // { twitter: { pw: [게시물 객체...], bh: [...] }, instagram: {...} } 형태 — 있으면 실제
   // 수집분에 "(수동 추가)" 계정으로 합쳐진 뒤 평소처럼 자동 매칭이 다시 돌아감.
   CONFIG.manualPostsPath = brand.paths.manualPosts;
+  CONFIG.followerHistoryPath = brand.paths.followerHistory;
   CONFIG.own = brand.own.filter(a => a.account);
   CONFIG.competitors = brand.competitors.filter(a => a.account);
 }
 
-async function collectAll(accounts) {
+/**
+ * 팔로워 수를 시점별로 쌓는다(재고 스냅샷과 같은 방식).
+ * 파일 모양: { snapshots: [ { takenAt, accounts: [ {platform, account, side, followers, from, approx} ] } ] }
+ * 못 읽은 계정(followers=null)도 빼지 않고 그대로 남긴다 — 빼버리면 나중에 추이를 볼 때
+ * "그날은 안 쟀다"와 "그날은 0명이었다"가 구분이 안 된다.
+ */
+function saveFollowerSnapshot(historyPath, collections) {
+  if (!historyPath || collections.length === 0) return;
+  const accounts = collections.map(c => ({
+    platform: c.platform,
+    account: c.account,
+    side: c.side,
+    followers: c.followers?.count ?? null,
+    from: c.followers?.from ?? 'none',   // 'api'면 정확, 'dom'이면 화면 줄임 표기라 근사치
+    approx: Boolean(c.followers?.approx),
+  }));
+  fs.mkdirSync(path.dirname(historyPath), { recursive: true });
+  const history = fs.existsSync(historyPath)
+    ? JSON.parse(fs.readFileSync(historyPath, 'utf-8'))
+    : { snapshots: [] };
+  history.snapshots.push({ takenAt: new Date().toISOString(), accounts });
+  fs.writeFileSync(historyPath, JSON.stringify(history, null, 2));
+  const shown = accounts.map(a => `${a.side} ${a.platform} ${a.followers ?? '못 읽음'}${a.approx ? '~' : ''}`).join(' · ');
+  console.log(`👥 팔로워 스냅샷 저장: ${historyPath} (누적 ${history.snapshots.length}개) — ${shown}`);
+}
+
+async function collectAll(accounts, side) {
   const collections = [];
   for (const acc of accounts) {
     const collector = acc.platform === 'twitter' ? collectTwitter : collectInstagram;
-    const posts = await collector({
+    // 수집기는 { posts, followers } 를 돌려준다 — 프로필 페이지를 여는 김에 팔로워도 같이 읽는다.
+    const { posts, followers } = await collector({
       account: acc.account,
       sessionFile: acc.sessionFile,
       startDate: CONFIG.startDate,
       endDate: CONFIG.endDate,
       headless: acc.headless ?? false,
     });
-    collections.push({ platform: acc.platform, account: acc.account, posts });
+    collections.push({ platform: acc.platform, account: acc.account, posts, followers, side });
   }
   return collections;
 }
@@ -207,8 +235,8 @@ async function main() {
   const ownToCollect = platformFilter ? CONFIG.own.filter(a => a.platform === platformFilter) : CONFIG.own;
   const competitorsToCollect = platformFilter ? CONFIG.competitors.filter(a => a.platform === platformFilter) : CONFIG.competitors;
 
-  const ownFresh = await collectAll(ownToCollect);
-  const competitorsFresh = await collectAll(competitorsToCollect);
+  const ownFresh = await collectAll(ownToCollect, 'PW');
+  const competitorsFresh = await collectAll(competitorsToCollect, 'BH');
 
   // 특정 플랫폼만 다시 수집했으면, 캐시에 남아있던 다른 플랫폼 데이터는 그대로 보존 —
   // 안 그러면 예전에 수집해둔 트위터/인스타 데이터가 통째로 사라짐(데이터 손실 방지 우선).
@@ -232,6 +260,13 @@ async function main() {
   };
   fs.writeFileSync(CONFIG.cachePath, JSON.stringify(cacheData, null, 2));
   console.log(`💾 원본 수집 데이터 캐시 저장: ${CONFIG.cachePath}`);
+
+  // 팔로워는 재고와 같은 성격(그 시점의 값)이라, 덮어쓰지 않고 시점마다 쌓는다.
+  // 한 시점만 있으면 "지금 몇 명"밖에 모르지만, 쌓이면 "얼마나 빠르게 느는가"를 볼 수 있다.
+  // 경쟁사 분석에서 정작 필요한 건 규모가 아니라 증가 속도였는데 그걸 못 봤던 적이 있다.
+  // 이번에 수집하지 않은 플랫폼(platformFilter)은 이번 스냅샷에 넣지 않는다 — 예전 값을
+  // 지금 시점 값인 것처럼 적어두면 추이가 거짓말을 하게 된다.
+  saveFollowerSnapshot(CONFIG.followerHistoryPath, [...ownFresh, ...competitorsFresh]);
 
   // 위 cachePath는 "가장 최근 수집"만 남기고 매번 덮어써져서, 기간을 나눠서 여러 번 수집하면
   // (예: 6/10~13, 6/18~22, 6/27~30을 각각 실행) 예전 기간의 원본은 사라짐 — 나중에 여러 기간을

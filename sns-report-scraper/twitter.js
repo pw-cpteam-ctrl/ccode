@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { watchFollowers } = require('./follower-count');
 
 /**
  * X(트위터) 프로필 게시물 수집 — 예전 수동 방식(브라우저 JS 주입 + 대화창 누적)을
@@ -10,6 +11,9 @@ const { chromium } = require('playwright');
  * @param {string} opts.startDate   'YYYY-MM-DD' (KST 기준, 포함)
  * @param {string} opts.endDate     'YYYY-MM-DD' (KST 기준, 포함)
  * @param {boolean} [opts.headless] 기본 false — 처음엔 눈으로 확인 추천
+ * @returns {Promise<{posts: object[], followers: {count:number|null, from:string, approx:boolean}}>}
+ *   예전에는 게시물 배열만 돌려줬는데, 프로필 페이지를 어차피 여니까 팔로워도 같이 주워오도록
+ *   바꾸면서 모양이 { posts, followers }로 바뀌었다. 부르는 쪽 3군데도 같이 고쳤다.
  */
 async function collectTwitter({ account, sessionFile, startDate, endDate, headless = false }) {
   const browser = await chromium.launch({ headless });
@@ -21,8 +25,14 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
   const rangeStartUTC = new Date(`${startDate}T00:00:00+09:00`);
   const rangeEndUTC = new Date(`${endDate}T23:59:59+09:00`);
 
+  // 팔로워 가로채기는 반드시 goto '전에' 걸어야 한다 — 뒤에 걸면 이미 지나간 응답을 놓친다.
+  const followerWatch = watchFollowers(page, { platform: 'twitter', account });
+
   await page.goto(`https://x.com/${account}`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(3000);
+
+  const followers = await followerWatch.read();
+  console.log(`[twitter:${account}] 팔로워 ${followers.count ?? '못 읽음'}${followers.approx ? ' (화면 줄임 표기라 근사치)' : ''}`);
 
   await page.evaluate(() => {
     window._tweetData = [];
@@ -162,7 +172,7 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
   console.log(`[twitter:${account}] 수집 완료: ${((endTime - startTime) / 1000 / 60).toFixed(1)}분, 원본 ${allTweets.length}건 → 기간 필터링 후 ${filtered.length}건 (리트윗/고정 게시물은 원본 수집 단계에서 이미 제외됨)`);
 
   await browser.close();
-  return filtered;
+  return { posts: filtered, followers };
 }
 
 module.exports = { collectTwitter };

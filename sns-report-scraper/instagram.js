@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
 const { applyStealth, STEALTH_LAUNCH_ARGS, STEALTH_CONTEXT_OPTIONS } = require('./browser-stealth');
+const { watchFollowers } = require('./follower-count');
 
 /**
  * 인스타그램 프로필 게시물 수집 초안. 아직 실제 로그인 세션으로 테스트 못 해봤음.
@@ -12,6 +13,8 @@ const { applyStealth, STEALTH_LAUNCH_ARGS, STEALTH_CONTEXT_OPTIONS } = require('
  * @param {string} opts.startDate   'YYYY-MM-DD' (KST 기준, 포함)
  * @param {string} opts.endDate     'YYYY-MM-DD' (KST 기준, 포함)
  * @param {boolean} [opts.headless] 기본 false
+ * @returns {Promise<{posts: object[], followers: {count:number|null, from:string, approx:boolean}}>}
+ *   트위터 쪽과 같은 이유로 { posts, followers } 모양이다(프로필 페이지를 여는 김에 팔로워도 수집).
  */
 async function collectInstagram({ account, sessionFile, startDate, endDate, headless = false }) {
   const browser = await chromium.launch({ headless, args: STEALTH_LAUNCH_ARGS });
@@ -47,8 +50,14 @@ async function collectInstagram({ account, sessionFile, startDate, endDate, head
   }
 
   // ── Step 1: 프로필 그리드에서 게시물 링크 수집 ──
+  // 팔로워 가로채기는 반드시 goto '전에' 걸어야 한다 — 뒤에 걸면 이미 지나간 응답을 놓친다.
+  const followerWatch = watchFollowers(page, { platform: 'instagram', account });
+
   await page.goto(`https://www.instagram.com/${account}/`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(3000);
+
+  const followers = await followerWatch.read();
+  console.log(`[instagram:${account}] 팔로워 ${followers.count ?? '못 읽음'}${followers.approx ? ' (화면 줄임 표기라 근사치)' : ''}`);
 
   const links = new Set();
   const orderedLinks = []; // 발견 순서 보존 (그리드는 최신→과거 순으로 쌓임)
@@ -169,7 +178,7 @@ async function collectInstagram({ account, sessionFile, startDate, endDate, head
   console.log(`[instagram:${account}] 수집 완료: ${((endTime - startTime) / 1000 / 60).toFixed(1)}분, 링크 ${links.size}개 → 파싱 성공 ${results.length}건 → 기간 필터링 후 ${filtered.length}건`);
 
   await browser.close();
-  return filtered;
+  return { posts: filtered, followers };
 }
 
 module.exports = { collectInstagram };

@@ -32,7 +32,8 @@ async function main() {
   const sessionFile = platform === 'twitter' ? './x-session.json' : './instagram-session.json';
   const collector = platform === 'twitter' ? collectTwitter : collectInstagram;
 
-  const posts = await collector({ account, sessionFile, startDate, endDate, headless: false });
+  const { posts, followers } = await collector({ account, sessionFile, startDate, endDate, headless: false });
+  console.log(`팔로워: ${followers.count ?? '못 읽음'} (출처 ${followers.from}${followers.approx ? ', 근사치' : ''})`);
 
   console.log(`\n총 ${posts.length}건 수집됨:\n`);
   console.log(JSON.stringify(posts, null, 2));

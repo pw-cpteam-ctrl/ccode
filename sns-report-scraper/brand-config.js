@@ -130,6 +130,8 @@ function loadBrand(key = DEFAULT_BRAND) {
       configDir,
       cache: path.join(dataDir, '_last-collection.json'),
       stockHistory: path.join(dataDir, '_stock-history.json'),
+      // 팔로워도 재고처럼 시점마다 쌓는다(덮어쓰지 않음) — 규모보다 증가 속도를 보려는 것.
+      followerHistory: path.join(dataDir, '_follower-history.json'),
       lastRun: path.join(dataDir, '_last-run.json'),
       excel: path.join(dataDir, 'sns-report.xlsx'),
       periodCacheDir: path.join(dataDir, 'period-cache'),
