@@ -804,8 +804,8 @@ function renderStockSectionHtml(comparison) {
 
 const STOCK_SECTION_STYLE = `
 .stock-section{margin-top:8px}
-.sd-rank{text-align:center;width:52px;white-space:nowrap;color:#111}
-.na-rank{color:#9aa3b2}
+/* .sd-rank는 아래 재고 목록 표에 이미 정의돼 있어 그대로 쓴다(중복 정의하면 뒤엣것에 덮인다) */
+.na-rank{color:#9aa3b2;font-weight:400}
 .stock-store{margin-bottom:20px}
 .stock-store h3{font-size:14px;margin:0 0 8px;color:#374151}
 .sd-rank{font-size:15px;font-weight:700;width:38px;text-align:center}
