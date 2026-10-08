@@ -10,13 +10,26 @@ rem 지난번에 받아둔 새 업데이트 도구가 있으면 먼저 자기 �
 rem 예전에는 "update.bat을 지우고 _update-new.bat의 이름을 바꿔주세요"라고 사람에게
 rem 부탁했는데, 그 안내문이 깨져서 보이지도 않았고 아무도 바꾸지 않아 이 파일만 계속
 rem 옛 버전으로 남았다. 사람 손을 빌리지 않고 여기서 끝낸다.
+rem 옆에 받아둔 것이 '더 새 것일 때만' 바꾼다. 예전 방식이 남겨둔 낡은 _update-new.bat이
+rem 그대로 있으면, 아무 검사 없이 바꿨다가 방금 고친 것을 옛 버전으로 되돌려버린다
+rem (실제로 그럴 뻔했다). 더 오래된 것이면 쓰지 않고 지운다.
 if exist "_update-new.bat" (
+  set "SELFNEW="
+  for /f %%R in ('powershell -NoProfile -Command "if((Get-Item '_update-new.bat').LastWriteTime -gt (Get-Item 'update.bat').LastWriteTime){'NEW'}else{'OLD'}"') do set "SELFNEW=%%R"
+  goto :selfcheck
+)
+goto :afterself
+:selfcheck
+if "%SELFNEW%"=="NEW" (
   copy /y "_update-new.bat" "update.bat" >nul
   del "_update-new.bat" >nul 2>&1
   echo 업데이트 도구를 새 버전으로 바꿨습니다. 새 창에서 다시 시작합니다...
   start "" "%~f0"
   exit /b
 )
+echo 옆에 있던 낡은 업데이트 도구 사본(_update-new.bat)을 지웁니다.
+del "_update-new.bat" >nul 2>&1
+:afterself
 
 set "OWNER=pw-cpteam-ctrl"
 set "REPO=ccode"
