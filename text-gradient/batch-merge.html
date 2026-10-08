@@ -732,6 +732,7 @@ function itemsMetaSnapshot(){
 // "폴더 a b" + "c" 가 같은 이름표가 되어버리는 사고를 막을 수 있다
 function photoCacheKey(folder, name){ return (folder || '') + '\n' + name; }
 async function saveFilesToCache(){
+  if (skipEmptySave('원본 파일')) return;
   const photoBlobs = {}, overlayBlobs = {};
   for (const it of items) {
     photoBlobs[photoCacheKey(it.folder, it.photoName)] = it.photoFile;
@@ -746,7 +747,17 @@ async function saveOverlayPoolToCache(){
   try { await queueIdbSet('overlay_pool', overlayFiles); }
   catch (e) { log('투명 이미지 후보 캐시 저장 실패'); }
 }
+// 사진이 0장인 상태는 저장하지 않는다 — 안전장치.
+// 불러오기가 어떤 이유로든 실패해 화면이 비었을 때 그대로 저장이 돌면, 멀쩡히 남아 있던 저장본을
+// 빈 내용으로 덮어써서 되살릴 길이 없어진다. 일부러 비우는 "새로 시작"은 저장을 거치지 않고
+// 저장소를 직접 지우므로 이 제한의 영향을 받지 않는다
+function skipEmptySave(what){
+  if (items.length) return false;
+  console.warn('[안전장치] 사진이 0장이라 ' + what + ' 저장을 건너뜀 (기존 저장본 보호)');
+  return true;
+}
 async function saveMetaToCache(){
+  if (skipEmptySave('작업 내용')) return;
   try { localStorage.setItem('batch_merge_meta_backup', JSON.stringify(itemsMetaSnapshot())); } catch(e) {}
   await queueIdbSet('items_meta', itemsMetaSnapshot());
 }
