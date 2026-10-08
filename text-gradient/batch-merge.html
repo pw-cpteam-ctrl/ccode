@@ -1591,8 +1591,22 @@ function looksLikeImageFile(f){
   return !f.type && /\.(jpe?g|png|gif|webp|bmp|avif|heic|heif|tiff?)$/i.test(f.name);
 }
 $('#inPhotoFolder').addEventListener('change', async (e) => {
-  const files = Array.from(e.target.files).filter(looksLikeImageFile);
-  if (!files.length) { log('폴더에서 이미지 파일을 못 찾음'); return; }
+  // 고른 폴더 "바로 안"에 있는 사진만 쓴다. 브라우저는 고른 폴더의 하위 폴더까지 전부 넘겨주는데,
+  // 그대로 받으면 원본·썸네일 같은 보조 폴더 사진까지 섞여 들어온다
+  const picked = Array.from(e.target.files);
+  const topLevel = picked.filter(f => {
+    const rel = f.webkitRelativePath || '';
+    return !rel || rel.split('/').length <= 2;   // "고른폴더/파일" 까지만
+  });
+  const skippedDeep = picked.length - topLevel.length;
+  const files = topLevel.filter(looksLikeImageFile);
+  if (!files.length) {
+    log(skippedDeep
+      ? `고른 폴더 바로 안에는 사진이 없습니다. 하위 폴더 안의 ${skippedDeep}개는 불러오지 않습니다 — 그 하위 폴더를 직접 골라 주세요.`
+      : '폴더에서 이미지 파일을 못 찾음');
+    return;
+  }
+  if (skippedDeep) log(`하위 폴더 안의 ${skippedDeep}개는 제외했습니다 (고른 폴더 바로 안의 사진만 불러옵니다).`);
   // 폴더 먼저 정렬하고 그 안에서 파일명 순 — 이렇게 해야 같은 폴더 사진이 붙어서 들어옴
   files.sort((a, b) => naturalCompare(folderOfFile(a), folderOfFile(b)) || naturalCompare(a.name, b.name));
 
@@ -2761,6 +2775,30 @@ function photoSizeOf(it){
   const c = cropOf(it);
   return c ? croppedSize(pw, ph, c) : { w: pw, h: ph };
 }
+// 잘라내기를 바꾸되 "화면에 보이는 크기와 자리"는 그대로 둔다.
+// 아무 보정 없이 자르면 사진이 저절로 확대된다 — 배율이 "아트보드를 꽉 채우는 크기 × zoom"으로
+// 계산되는데, 자르면 사진이 작아져 꽉 채우는 데 필요한 배율이 커지기 때문이다.
+// 확대는 사람이 휠로 하는 것이지 자르기가 멋대로 할 일이 아니므로, 잘라낸 만큼 zoom과 위치를
+// 거꾸로 보정해서 남은 부분이 있던 자리에 그대로 있게 한다 (잘려 나간 자리에는 배경색이 보인다)
+function setCropKeepingView(it, nextCrop){
+  const img = it.photoImg;
+  const PW = img.naturalWidth || img.width, PH = img.naturalHeight || img.height;
+  const before = geomOf(it);
+  const sz0 = photoSizeOf(it);
+  const perPixel = before.dw / sz0.w;            // 원본 1픽셀이 화면에서 차지하는 크기
+  const c0 = cropOf(it) || { t: 0, r: 0, b: 0, l: 0 };
+  const originX = before.dx - PW * c0.l * perPixel;   // 자르기 전 원본 사진의 왼쪽 위 모서리 자리
+  const originY = before.dy - PH * c0.t * perPixel;
+
+  it.crop = nextCrop;
+  const sz1 = photoSizeOf(it);
+  const baseEff = Math.max(CW / sz1.w, CH / sz1.h) * SLOP;
+  it.zoom = Math.max(MIN_ZOOM_HARD, Math.min(4, perPixel / baseEff));  // 같은 배율이 되도록 되돌림
+  const c1 = cropOf(it) || { t: 0, r: 0, b: 0, l: 0 };
+  const g = coverCropRect(sz1.w, sz1.h, CW, CH, it.focusX, it.focusY, it.zoom);
+  it.offX = (originX + PW * c1.l * perPixel) - g.dx;
+  it.offY = (originY + PH * c1.t * perPixel) - g.dy;
+}
 function cropCanvas(img, c){
   const pw = img.naturalWidth || img.width, ph = img.naturalHeight || img.height;
   const { w, h } = croppedSize(pw, ph, c);
@@ -2894,7 +2932,9 @@ function trimSelected(){
   const list = selectedItems();
   if (!list.length) return;
   ensureUids();
-  const doTrim = list.some(it => !cropOf(it));
+  // 하나라도 잘려 있으면 "해제"로 본다. 반대로 "안 잘린 게 하나라도 있으면 자르기"로 하면,
+  // 잘라낼 띠가 없는 사진이 섞여 있을 때 그 한 장 때문에 영원히 해제로 넘어가지 않는다
+  const doTrim = !list.some(it => cropOf(it));
   const btn = $('#btnSelTrim');
   if (btn) { btn.disabled = true; btn.textContent = doTrim ? '잘라내는 중…' : '되돌리는 중…'; }
   reportAction(`${list.length}장 여백 ${doTrim ? '잘라내는 중…' : '되돌리는 중…'}`);
@@ -2905,8 +2945,7 @@ function trimSelected(){
       for (const it of list) {
         const next = doTrim ? detectMarginCrop(it.photoImg) : null;
         if (doTrim && !next) continue;          // 띠가 없는 사진은 그대로 둔다
-        it.crop = next;
-        clampFocus(it);
+        setCropKeepingView(it, next);           // 자른다고 사진이 저절로 확대되지는 않게
         dropWhiteCutCache(it);
         done++;
       }
@@ -3996,7 +4035,6 @@ function updateCropOverlay(it){
 // 잘라내기를 바꾼 뒤 공통으로 할 일 — 만들어둔 결과를 버리고, 크게보기·미리보기를 다시 그린다
 function applyCropChange(it, { grouped } = {}){
   dropWhiteCutCache(it);
-  clampFocus(it);
   setEditPhotoSrc(it);
   updateCropOverlay(it);
   updateEditorGeom();
@@ -4009,8 +4047,6 @@ cropBox.querySelectorAll('.cropLine').forEach(line => {
     if (!curItem) return;
     e.preventDefault(); e.stopPropagation();
     pushUndoGrouped('crop', '가장자리 자르기', 900);
-    const c = cropOf(curItem) || { t: 0, r: 0, b: 0, l: 0 };
-    curItem.crop = { ...c };
     _cropDrag = { edge: line.dataset.edge, rect: cropBox.getBoundingClientRect() };
   });
 });
@@ -4019,13 +4055,14 @@ window.addEventListener('mousemove', e => {
   const { edge, rect } = _cropDrag;
   const fx = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
   const fy = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
-  const c = curItem.crop;
+  const c = { ...(cropOf(curItem) || { t: 0, r: 0, b: 0, l: 0 }) };
   // 반대쪽 선을 넘어가 사진이 뒤집히는 일이 없도록, 남는 부분이 최소 10%는 되게 막는다
   const cap = (v, opposite) => Math.min(CROP_MAX, Math.max(0, Math.min(v, 1 - opposite - 0.1)));
   if (edge === 't') c.t = cap(fy, c.b);
   else if (edge === 'b') c.b = cap(1 - fy, c.t);
   else if (edge === 'l') c.l = cap(fx, c.r);
   else c.r = cap(1 - fx, c.l);
+  setCropKeepingView(curItem, c);
   applyCropChange(curItem, { grouped: true });
 });
 window.addEventListener('mouseup', () => {
@@ -4038,14 +4075,14 @@ $('#btnCropAuto').addEventListener('click', () => {
   const found = detectMarginCrop(curItem.photoImg);
   if (!found) { log('이 사진에서는 잘라낼 가장자리 띠를 찾지 못했습니다. 선을 끌어서 직접 잘라 주세요.'); return; }
   pushUndo('자동 잘라내기');
-  curItem.crop = found;
+  setCropKeepingView(curItem, found);
   applyCropChange(curItem);
   log(`자동으로 잘랐습니다 — 위 ${Math.round(found.t*100)}% · 아래 ${Math.round(found.b*100)}% · 좌 ${Math.round(found.l*100)}% · 우 ${Math.round(found.r*100)}%. Ctrl+Z로 되돌릴 수 있습니다.`);
 });
 $('#btnCropReset').addEventListener('click', () => {
   if (!curItem || !cropOf(curItem)) return;
   pushUndo('자르기 해제');
-  curItem.crop = null;
+  setCropKeepingView(curItem, null);
   applyCropChange(curItem);
 });
 
