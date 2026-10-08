@@ -1976,7 +1976,12 @@ async function assignOverlayMany(list, name){
     else if (band.top >= 1) log(`"${name}" 제목이 위 ${Math.round(band.top)}px를 덮음 → 사진을 그만큼 더 아래로 끌 수 있음`);
     else log(`"${name}" 제목은 가로 전체를 덮는 불투명한 띠가 없어서(좌우 여백이 있거나 반투명) 사진 이동 범위는 그대로임`);
   }
+  // "★ 대표만 투명 남기기"를 한 번 누르면 대표가 아닌 장에 "제목 숨김"이 남는데, 그 뒤에 제목을
+  // 배정해도 숨김이 안 풀려서 표지에만 제목이 보였다. 제목을 고르는 것은 "이 제목을 쓰겠다"는
+  // 뜻이므로 숨김을 함께 풀어 준다 (다시 숨기고 싶으면 "투명 끄기" 버튼이 그대로 있다)
+  let unhidden = 0;
   for (const it of list) {
+    if (name && it.noFrame) { it.noFrame = false; unhidden++; }
     it.overlayName = name || null;
     it.overlayFile = file;
     it.overlayImg = img;
@@ -1984,6 +1989,7 @@ async function assignOverlayMany(list, name){
     updateOverlaySelect(it);
     syncOverlayCell(it);
   }
+  if (unhidden) log(`그중 ${unhidden}장은 "제목 숨김" 상태였는데 제목을 배정하면서 같이 켰습니다. 다시 숨기려면 "투명 끄기"를 쓰세요.`);
   updateListProgress();
   refreshFolderHeads();   // 폴더 머리의 배정 현황·드롭다운도 같이 맞춤
   updateSortButton();     // 제목이 배정되면 그 폴더의 작품이 확정되므로 정렬 대상 수도 달라진다
