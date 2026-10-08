@@ -73,9 +73,15 @@ async function main() {
     : null;
   const stockComparison = stockHistory ? buildStockComparison(stockHistory) : null;
 
+  // 팔로워 추이는 재고와 달리 대외비가 아니라(계정 화면에 들어가면 누구나 보이는 수)
+  // 재고 탭이 아니라 첫 화면에 그대로 띄운다. 기록 파일이 없으면 블록이 안 나올 뿐 오류는 아니다.
+  const followerHistory = fs.existsSync(brand.paths.followerHistory)
+    ? JSON.parse(fs.readFileSync(brand.paths.followerHistory, 'utf-8'))
+    : null;
+
   const htmlOutputPath = archiveAndGetPath(brand.paths.htmlDir, brand.paths.htmlBaseName, 'html');
   saveHtmlReport(report, htmlOutputPath, stockComparison, {
-    brandLabel: brand.label, stockMode,
+    brandLabel: brand.label, stockMode, followerHistory,
     keyword, keywordExcluded: { pw: ownFiltered.excluded, bh: bhFiltered.excluded },
   });
   console.log(`✅ HTML 저장 완료: ${htmlOutputPath} (브라우저로 열어서 확인, 이전 파일은 ${path.relative(__dirname, brand.paths.htmlDir)}/old/로 이동됨)`);

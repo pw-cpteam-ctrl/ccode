@@ -1649,6 +1649,35 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
     assert.ok(!/<div class="pw" style="width:100%">/.test(html), '한쪽만 읽혔는데 막대를 꽉 채우면 안 됨');
   });
 
+  check('html-report: 팔로워 추이는 첫 화면에 바로 보이고, 기록이 없으면 블록 자체가 안 나와야 함', () => {
+    // 재고와 달리 팔로워는 대외비가 아니라 숫자를 그대로 적는다(계정 화면에 들어가면 보이는 수).
+    // 다만 "지금 몇 명"만 보면 기반이 큰 쪽이 항상 이긴 것처럼 보여서 잘못된 결론을 낸 적이
+    // 있다 — 그래서 증감·증가율이 함께 나오는지까지 검사한다.
+    const followerHistory = { snapshots: [
+      { takenAt: '2026-09-10T03:00:00.000Z', accounts: [
+        { platform: 'twitter', account: 'pw_x', side: 'PW', followers: 160000, from: 'api', approx: false },
+        { platform: 'twitter', account: 'bh_x', side: 'BH', followers: 81000, from: 'api', approx: false },
+      ] },
+      { takenAt: '2026-10-08T03:00:00.000Z', accounts: [
+        { platform: 'twitter', account: 'pw_x', side: 'PW', followers: 161000, from: 'api', approx: false },
+        { platform: 'twitter', account: 'bh_x', side: 'BH', followers: 82000, from: 'api', approx: false },
+      ] },
+    ] };
+    const html = buildHtmlReport(report, null, { followerHistory });
+    assert.ok(html.includes('👥 팔로워 추이'), '팔로워 블록이 리포트에 들어가야 함');
+    assert.ok(html.includes('161,000') && html.includes('82,000'), '현재 팔로워 수가 그대로 나와야 함');
+    assert.ok(html.includes('+1,000'), '직전 수집 대비 증감이 나와야 함');
+    assert.ok(html.includes('%p'), '양사 증가 속도 비교(몇 %p 차이)가 나와야 함');
+    assert.ok(html.includes('body.view-stock .follower-section{display:none}'),
+      '재고 탭으로 넘어가면 팔로워 블록은 숨겨져야 함(재고 화면은 재고만)');
+    // 블록이 SNS 섹션보다 위에 있어야 "전면"이다 — 밑에 묻히면 요청한 의미가 없음
+    assert.ok(html.indexOf('👥 팔로워 추이') < html.indexOf('id="platform-twitter"'),
+      '팔로워 블록은 SNS 표보다 위에 있어야 함');
+
+    assert.strictEqual(buildHtmlReport(report, null, {}).includes('팔로워 추이'), false,
+      '기록 파일이 아직 없으면 빈 블록을 띄우지 말고 아예 안 나와야 함');
+  });
+
   console.log(`\n(생성된 검증용 엑셀 파일: ${outPath} — 직접 열어서 표 형태도 확인 가능)`);
   if (process.exitCode) {
     console.error('\n일부 검증 실패');

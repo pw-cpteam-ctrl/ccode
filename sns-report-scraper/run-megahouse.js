@@ -331,9 +331,16 @@ async function main() {
     : null;
   const stockComparison = stockHistory ? buildStockComparison(stockHistory) : null;
 
+  // 팔로워 추이는 재고와 달리 대외비가 아니라(계정 화면에 들어가면 누구나 보이는 수)
+  // 재고 탭 뒤가 아니라 첫 화면에 그대로 띄운다. 바로 위에서 이번 스냅샷을 저장했으므로
+  // 여기서 다시 읽으면 방금 잰 값까지 포함된다.
+  const followerHistory = fs.existsSync(CONFIG.followerHistoryPath)
+    ? JSON.parse(fs.readFileSync(CONFIG.followerHistoryPath, 'utf-8'))
+    : null;
+
   const htmlOutputPath = archiveAndGetPath(CONFIG.htmlOutputDir, CONFIG.htmlOutputBaseName, 'html');
   saveHtmlReport(report, htmlOutputPath, stockComparison, {
-    brandLabel: brand.label, stockMode,
+    brandLabel: brand.label, stockMode, followerHistory,
     keyword, keywordExcluded: { pw: ownFiltered.excluded, bh: bhFiltered.excluded },
   });
   console.log(`✅ HTML 저장 완료: ${htmlOutputPath} (브라우저로 열어서 확인, 이전 파일은 ${path.relative(__dirname, CONFIG.htmlOutputDir)}/old/로 이동됨)`);

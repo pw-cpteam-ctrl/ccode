@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { formatTakenAt, rankStockProducts, assignStockMatches, renderStockSectionHtml, renderStockRatioSectionHtml, STOCK_SECTION_STYLE } = require('./stock-report');
 const { extractKeywords, PLATFORM_TEXT_FIELD } = require('./aggregate');
+const { renderFollowerSectionHtml, FOLLOWER_SECTION_STYLE } = require('./follower-report');
 
 const FIELD_LABELS = { likes: '좋아요', retweets: '리트윗', comments: '댓글' };
 const FIELD_ICONS = { likes: '♥️', retweets: '♻️', comments: '💬' };
@@ -412,6 +413,9 @@ function buildHtmlReport(report, stockComparison = null, options = {}) {
   const showStock = Boolean(stockComparison) && stockMode !== 'none';
   const platformKeys = Object.keys(report.platforms);
   const sections = platformKeys.map(key => renderPlatformSection(key, report.platforms[key], stockComparison, stockMode)).join('\n');
+  // 팔로워 추이 — 기록(_follower-history.json)이 아직 없으면 빈 문자열이라 블록 자체가 안 나온다.
+  // 옛날에 수집해둔 캐시로 리포트만 다시 만들 때도 깨지지 않게, 없으면 조용히 비우는 쪽으로 둔다.
+  const followerSection = renderFollowerSectionHtml(options.followerHistory || null);
   const needsTwitterWidget = platformKeys.includes('twitter');
   const needsInstagramWidget = platformKeys.includes('instagram');
   const titleText = brandLabel ? `${brandLabel} SNS 성과 비교 리포트` : 'SNS 성과 비교 리포트';
@@ -555,6 +559,7 @@ body:not(.show-stockcol) .stock-col{display:none}
   .card-groups{width:100%}
 }
 ${STOCK_SECTION_STYLE}
+${FOLLOWER_SECTION_STYLE}
 </style></head><body class="view-sns"><div class="wrap">
 <h1>📊 ${escapeHtml(titleText)}</h1>
 <div class="sub">${brandLabel ? `브랜드: <b>${escapeHtml(brandLabel)}</b> · ` : ''}수집 기간: ${escapeHtml(report.startDate)} ~ ${escapeHtml(report.endDate)} · 생성: ${escapeHtml(report.generatedAt)} · <b>PW=자사, BH=경쟁사</b> · 랭킹: PW+BH 지표 합산순${showStock ? '' : ' · SNS 전용(재고 미포함)'}</div>
@@ -564,6 +569,7 @@ ${showStock ? `<div class="viewtabs">
   <label class="stockcol-toggle" title="SNS 표의 맨 오른쪽에 상품별 PW:BH 재고 점유율 칸을 붙입니다."><input type="checkbox" id="stockColToggle" onchange="toggleStockCol(this.checked)"> 표 안에 📦 재고 칸 같이 보기</label>
 </div>` : ''}
 ${keyword ? `<div class="filter-banner">🔍 키워드 <b>'${escapeHtml(keyword)}'</b> 필터가 적용된 리포트입니다${keywordExcluded ? ` — 이 조건에 안 맞아서 빠진 게시물 PW ${keywordExcluded.pw}건 · BH ${keywordExcluded.bh}건` : ''}<br><span class="filter-banner-sub">한쪽에만 걸린 상품은 짝이 없어 "매칭 안 됨"으로 빠집니다. 전체를 보려면 키워드를 비우고 다시 만들면 됩니다.</span></div>` : ''}
+${followerSection}
 ${sections}
 <div class="foot">
 ※ 상품명은 게시물 본문에서 자동 추출(당사: 첫 줄 / 경쟁사: 링크 줄 위) 후, 키워드 2개 이상 겹치는 게시물끼리 그룹화한 결과입니다.<br>
