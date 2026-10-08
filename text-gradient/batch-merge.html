@@ -565,7 +565,13 @@ button:disabled{opacity:.4;cursor:default;}
             <option value="900">900 Black</option>
           </select>
         </label>
-        <label>뱃지 색상 <input type="color" id="badgeColor" value="#ffd400"/></label>
+        <!-- 월이 "10월"처럼 두 자리가 되면 글자가 꽉 차 보여서, 크기와 자간을 직접 맞출 수 있게 둔다 -->
+        <label>월 글자 크기 <input type="range" id="badgeMonthSize" min="40" max="110" value="80" style="width:110px;"/><b id="badgeMonthSizeVal" style="min-width:34px;">80</b></label>
+        <label>월 자간 <input type="range" id="badgeTracking" min="-20" max="20" value="0" style="width:110px;"/><b id="badgeTrackingVal" style="min-width:34px;">0</b></label>
+        <!-- 색상은 고르는 것 말고 코드로도 넣을 수 있게. 브랜드 색을 코드로 받아 적을 때 필요하다 -->
+        <label>뱃지 색상 <input type="color" id="badgeColor" value="#ffd400"/>
+          <input type="text" id="badgeColorHex" value="#ffd400" spellcheck="false"
+                 style="width:84px;font-family:inherit;font-size:12px;padding:4px 6px;border:1px solid #ccc4b4;border-radius:6px;text-transform:lowercase;"/></label>
         <span>스토어명 글자색
           <button id="btnStoreBlack" class="storeColorBtn">검정</button><button id="btnStoreWhite" class="storeColorBtn">흰색</button>
         </span>
@@ -1308,7 +1314,7 @@ function undoSnapshot(){
       // 2분할은 통째로 기억한다 (합치기·풀기도 되돌릴 수 있게)
       split: it.split ? { ...it.split, crops: it.split.crops.map(c => ({ ...c })) } : null,
     })),
-    settings: { badgeMonth, badgeColor, badgeWeight, storeTextColor },
+    settings: { badgeMonth, badgeColor, badgeWeight, storeTextColor, badgeMonthSize, badgeTracking },
   };
 }
 // 조작을 하기 "직전"에 부른다. label은 되돌리기 버튼에 그대로 보인다
@@ -1359,8 +1365,14 @@ function undo(){
     if (state.settings) {
       badgeMonth = state.settings.badgeMonth; badgeColor = state.settings.badgeColor;
       badgeWeight = state.settings.badgeWeight; storeTextColor = state.settings.storeTextColor;
+      // 예전에 쌓아둔 되돌리기 기록에는 이 두 값이 없으므로 기본값으로 읽는다
+      badgeMonthSize = state.settings.badgeMonthSize ?? 80;
+      badgeTracking = state.settings.badgeTracking ?? 0;
       $('#badgeMonth').value = badgeMonth; $('#badgeColor').value = badgeColor;
+      $('#badgeColorHex').value = badgeColor;
       $('#badgeWeight').value = String(badgeWeight);
+      $('#badgeMonthSize').value = String(badgeMonthSize); $('#badgeMonthSizeVal').textContent = badgeMonthSize;
+      $('#badgeTracking').value = String(badgeTracking); $('#badgeTrackingVal').textContent = badgeTracking;
       for (const k of Object.keys(badgeShadowCache)) delete badgeShadowCache[k];
       updateStoreColorButtons();
       saveBadgeSettings();
@@ -2333,14 +2345,20 @@ $('#btnApplyList').addEventListener('click', async () => {
 
 // ---------- 3번째 레이어: 월 리본 뱃지 + 스토어명 (둘 다 캔버스에 코드로 직접 그림, 이미지 아님) ----------
 let badgeMonth = '', badgeWeight = 700, badgeColor = '#ffd400', storeTextColor = '#111111';
+// 월 글자 크기·자간 — 예전 저장분에는 없는 값이라 ?? 로 기본값을 깔아 둔다
+let badgeMonthSize = 80, badgeTracking = 0;
 function loadBadgeSettings(){
   try {
     const s = JSON.parse(localStorage.getItem('batch_merge_badge_settings') || 'null');
-    if (s) { badgeMonth = s.month || ''; badgeWeight = s.weight || 700; badgeColor = s.color || '#ffd400'; storeTextColor = s.storeTextColor || '#111111'; }
+    if (s) { badgeMonth = s.month || ''; badgeWeight = s.weight || 700; badgeColor = s.color || '#ffd400'; storeTextColor = s.storeTextColor || '#111111';
+      badgeMonthSize = s.monthSize ?? 80; badgeTracking = s.tracking ?? 0; }
   } catch (e) {}
   $('#badgeMonth').value = badgeMonth;
   $('#badgeWeight').value = String(badgeWeight);
   $('#badgeColor').value = badgeColor;
+  $('#badgeColorHex').value = badgeColor;
+  $('#badgeMonthSize').value = String(badgeMonthSize); $('#badgeMonthSizeVal').textContent = badgeMonthSize;
+  $('#badgeTracking').value = String(badgeTracking); $('#badgeTrackingVal').textContent = badgeTracking;
   // 휠 확대/축소 켜둔 상태도 기억한다 — 새로고침마다 꺼져서 "갑자기 휠이 안 먹는다"로 보였음
   try {
     const s2 = JSON.parse(localStorage.getItem('batch_merge_badge_settings') || 'null');
@@ -2354,6 +2372,7 @@ function updateStoreColorButtons(){
 }
 function saveBadgeSettings(){
   localStorage.setItem('batch_merge_badge_settings', JSON.stringify({ month: badgeMonth, weight: badgeWeight, color: badgeColor, storeTextColor,
+    monthSize: badgeMonthSize, tracking: badgeTracking,
     wheelZoom: $('#thumbZoomToggle').checked }));
 }
 
@@ -2492,8 +2511,15 @@ function drawBadge(ctx, it, opts){
   ctx.fillStyle = readableTextColor(badgeColor);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  ctx.font = `${badgeWeight} 80px 'S-Core Dream'`;
-  ctx.fillText(badgeMonth ? `${badgeMonth}월` : '', bw / 2, 100);
+  // 월 글자는 크기·자간을 설정에서 조절한다. 자간을 주면 브라우저가 마지막 글자 뒤에도 그만큼을
+  // 붙여 재기 때문에, 가운데 정렬이 그 절반만큼 왼쪽으로 밀린다 → 절반을 더해 되돌린다.
+  // 자간은 이 캔버스에 계속 남으므로 다 쓰고 바로 0으로 되돌려야 아래 글자까지 벌어지지 않는다
+  ctx.font = `${badgeWeight} ${badgeMonthSize}px 'S-Core Dream'`;
+  const canTrack = 'letterSpacing' in ctx;
+  if (canTrack) ctx.letterSpacing = badgeTracking + 'px';
+  const monthBaseline = 100 + (badgeMonthSize - 80) * 0.5;   // 크기를 키워도 글자가 위로 치솟지 않게
+  ctx.fillText(badgeMonth ? `${badgeMonth}월` : '', bw / 2 + (canTrack ? badgeTracking / 2 : 0), monthBaseline);
+  if (canTrack) ctx.letterSpacing = '0px';
   ctx.font = `${badgeWeight} 39px 'S-Core Dream'`;
   ctx.fillText('신제품', bw / 2, 146);
   ctx.restore();
@@ -3745,6 +3771,34 @@ $('#badgeWeight').addEventListener('change', e => {
   saveBadgeSettings();
   renderGrid();
 });
+$('#badgeMonthSize').addEventListener('input', e => {
+  badgeMonthSize = Number(e.target.value);
+  $('#badgeMonthSizeVal').textContent = badgeMonthSize;
+  saveBadgeSettings();
+  renderGrid();
+});
+$('#badgeTracking').addEventListener('input', e => {
+  badgeTracking = Number(e.target.value);
+  $('#badgeTrackingVal').textContent = badgeTracking;
+  saveBadgeSettings();
+  renderGrid();
+});
+// 색상은 고르는 칸과 코드 칸 둘 중 어느 쪽을 바꿔도 나머지가 따라오게 한다.
+// 코드 칸은 다 치기 전(#ff 같은 중간 상태)에는 반영하지 않고, 올바른 코드가 됐을 때만 적용한다
+function setBadgeColor(c, from){
+  badgeColor = c;
+  if (from !== 'picker') $('#badgeColor').value = c;
+  if (from !== 'hex') $('#badgeColorHex').value = c;
+  saveBadgeSettings();
+  renderGrid();
+}
+$('#badgeColorHex').addEventListener('input', e => {
+  let v = e.target.value.trim().toLowerCase();
+  if (/^[0-9a-f]{6}$/.test(v)) v = '#' + v;                 // # 없이 쳐도 받아 준다
+  if (/^#[0-9a-f]{3}$/.test(v)) v = '#' + v.slice(1).split('').map(c => c + c).join('');  // #fc0 → #ffcc00
+  if (!/^#[0-9a-f]{6}$/.test(v)) return;                    // 아직 덜 친 상태면 그대로 둔다
+  setBadgeColor(v, 'hex');
+});
 function setStoreTextColor(c){
   storeTextColor = c;
   updateStoreColorButtons();
@@ -3789,11 +3843,7 @@ $('#gridHelpRemember').addEventListener('change', (e) => {
 });
 $('#btnStoreBlack').addEventListener('click', () => setStoreTextColor('#111111'));
 $('#btnStoreWhite').addEventListener('click', () => setStoreTextColor('#ffffff'));
-$('#badgeColor').addEventListener('input', e => {
-  badgeColor = e.target.value;
-  saveBadgeSettings();
-  renderGrid();
-});
+$('#badgeColor').addEventListener('input', e => setBadgeColor(e.target.value, 'picker'));
 loadBadgeSettings();
 // 폰트가 늦게 로딩되는 경우 대비 — 로딩 끝나면 뱃지 글자를 실제 폰트로 다시 그림
 document.fonts.ready.then(() => { if (items.length) renderGrid(); });
