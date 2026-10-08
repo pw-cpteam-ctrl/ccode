@@ -210,6 +210,19 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 .dctlhint{font-size:11.5px;color:#7d7870;}
 .dempty{padding:60px 20px;text-align:center;color:#8a857c;font-size:14px;line-height:1.9;}
 
+/* ══ 디자인 탭: 매달 바꾸는 것 / 한 번 맞추는 것 분리 ══ */
+.thisMonth{background:#eef3fc;border:1px solid #cfe0f7;border-radius:9px;padding:9px 11px 5px;}
+.thisMonth .frow{margin-bottom:6px;}
+.fold{border:1px solid var(--ui-border);border-radius:9px;background:var(--ui-card);margin-top:9px;overflow:hidden;}
+.fold>summary{list-style:none;cursor:pointer;padding:10px 12px;font-size:12.5px;font-weight:700;
+  display:flex;align-items:center;gap:8px;}
+.fold>summary::-webkit-details-marker{display:none;}
+.fold>summary::after{content:'▾';color:var(--ui-sub);font-size:11px;transition:transform .15s;}
+.fold[open]>summary::after{transform:rotate(180deg);}
+.fold>summary .cnt{font-size:11px;font-weight:600;color:var(--ui-sub);margin-left:auto;margin-right:6px;}
+.fold .body{padding:4px 12px 10px;border-top:1px solid var(--ui-border);}
+#hdKind .ptab.on{background:var(--ui-accent);border-color:var(--ui-accent);color:#fff;}
+
 /* ══ 상세컷 ══ */
 .igmode{flex:1;}
 .igmode.on{background:var(--ui-accent);border-color:var(--ui-accent);color:#fff;}
@@ -559,101 +572,135 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
 
   <!-- ══ 디자인 (헤더 · 배지 · 푸터 · 로고) ══ -->
   <div class="gpane" id="sec-layout">
-    <div class="sec">프리뷰용 헤더</div>
-    <div class="frow"><span class="flbl">헤더 표시</span>
-      <div class="fin"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="chkHeader" checked onchange="toggleHeader()"/> 사용</label>
-        <span style="font-size:12.5px;color:var(--ui-sub);white-space:nowrap">꺼짐 여백</span>
-        <input type="range" id="headerPad" min="5" max="120" value="30" oninput="toggleHeader()" style="flex:1"/></div></div>
-    <div class="frow trio"><span class="flbl">월 / 차수<br>/ 오픈일</span>
-      <div class="field"><input type="text" id="inMonth" value="6월"/></div>
-      <div class="field"><select id="titleSeq" onchange="syncHeader()" title="같은 달에 두 번 나갈 때 타이틀 뒤에 -2, -3처럼 붙임"
-        style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:5px 4px;font-size:13px;font-family:inherit;">
-        <option value="">—</option><option value="2">-2</option><option value="3">-3</option>
-        <option value="4">-4</option><option value="5">-5</option></select></div>
-      <div class="field openbox">
-        <input type="text" id="inOpen" value="6/4"/>
-      </div></div>
-    <div class="frow"><span class="flbl">날짜 표시</span>
-      <div class="field" id="openPageBtns" title="불 켜진 페이지에만 날짜가 보입니다"></div></div>
-    <div class="frow pair"><span class="flbl">스토어명<br>글자 / 굵기</span>
-      <div class="field"><input type="text" id="inStore" value="메가하우스 공식 스토어"/></div>
-      <div class="field">
-        <select id="storeFontWeight" onchange="syncHeader()" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:6px 8px;font-size:14px;font-family:inherit;">
-          <option value="100">1—Thin</option><option value="200">2—ExtraLight</option><option value="300">3—Light</option>
-          <option value="400">4—Regular</option><option value="500" selected>5—Medium</option><option value="600">6—SemiBold</option>
-          <option value="700">7—Bold</option><option value="800">8—ExtraBold</option>
-        </select>
+    <!-- 매달 실제로 바꾸는 것만 위에 모음. 나머지(크기·위치·색)는 한 번 맞춰놓고
+         안 건드리는 값이라 아래 접힌 묶음으로 내렸음 -->
+    <div class="sec">이번 달</div>
+    <div class="thisMonth">
+      <div id="tmPreview">
+        <div class="frow trio"><span class="flbl">월 / 차수<br>/ 오픈일</span>
+          <div class="field"><input type="text" id="inMonth" value="6월"/></div>
+          <div class="field"><select id="titleSeq" onchange="syncHeader()" title="같은 달에 두 번 나갈 때 타이틀 뒤에 -2, -3처럼 붙임"
+            style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:5px 4px;font-size:13px;font-family:inherit;">
+            <option value="">—</option><option value="2">-2</option><option value="3">-3</option>
+            <option value="4">-4</option><option value="5">-5</option></select></div>
+          <div class="field openbox"><input type="text" id="inOpen" value="6/4"/></div></div>
       </div>
-    </div>
-    <div class="frow pair"><span class="flbl">스토어명<br>크기 / 위치</span>
-      <div class="field"><input type="range" id="storeFontSize" min="14" max="40" value="22" oninput="syncHeader()"/></div>
-      <div class="field"><input type="range" id="storeOffset" min="-400" max="400" value="0" oninput="syncHeader()"/></div></div>
-    <div class="frow"><span class="flbl">타이틀 크기</span>
-      <div class="field"><input type="range" id="titleFontSize" min="40" max="120" value="92" oninput="syncHeader()"/></div></div>
-    <div class="sec">오픈용 헤더</div>
-    <div class="frow"><span class="flbl">사용</span>
-      <div class="fin"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="chkOpenHeader" onchange="toggleOpenHeader()"/> 검정 그라데이션 오버레이로 전환</label></div></div>
-    <div class="frow pair"><span class="flbl">타이틀 / 날짜</span>
-      <div class="field"><input type="text" id="inOhTitle" value="26년 6월 신제품"/></div>
-      <div class="field"><input type="text" id="inOhDate" value="6/4~7/12"/></div></div>
-    <div class="frow"><span class="flbl">타이틀 굵기</span>
-      <div class="field">
-        <select id="ohTitleFontWeight" onchange="syncOpenHeader()" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:6px 8px;font-size:14px;font-family:inherit;">
-          <option value="300">3—Light</option>
-          <option value="400">4—Regular</option>
-          <option value="500">5—Medium</option>
-          <option value="600">6—SemiBold</option>
-          <option value="700">7—Bold</option>
-          <option value="900" selected>9—Black</option>
-        </select>
+      <div id="tmOpen" style="display:none">
+        <div class="frow"><span class="flbl">타이틀</span>
+          <div class="field"><input type="text" id="inOhTitle" value="26년 6월 신제품"/></div></div>
+        <div class="frow pair"><span class="flbl">날짜 / 설명</span>
+          <div class="field"><input type="text" id="inOhDate" value="6/4~7/12"/></div>
+          <div class="field"><input type="text" id="inOhLabel" value="예약기간 및 할인혜택"/></div></div>
       </div>
+      <div class="frow"><span class="flbl">날짜 표시</span>
+        <div class="field" id="openPageBtns" title="불 켜진 페이지에만 날짜가 보입니다"></div></div>
+      <div class="frow"><span class="flbl">푸터 문구</span>
+        <div class="field"><select id="footerPreset" onchange="applyFooterPreset()"
+          style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:5px 6px;font-size:12.5px;font-family:inherit;">
+          <option value="국내외 사정에 따라 출시 시점 등 일부 사항이 변동될 수 있습니다.">1. 국내외 사정에 따라 출시 시점 등…</option>
+          <option value="메가하우스 공식 스토어 | MEGAHOUSE OFFICIAL STORE | AUTHORIZED DISTRIBUTOR IN KOREA">2. 메가하우스 공식 스토어 | MEGAHOUSE … | …</option>
+          <option value="__custom__">3. 그 외 직접 입력</option>
+        </select></div></div>
+      <div class="frow" id="footerCustomRow" style="display:none"><span class="flbl">직접 입력</span>
+        <div class="field"><input type="text" id="inFooter" value="국내외 사정에 따라 출시 시점 등 일부 사항이 변동될 수 있습니다."/></div></div>
     </div>
-    <div class="frow pair"><span class="flbl">날짜 위 설명<br>글자 / 크기</span>
-      <div class="field"><input type="text" id="inOhLabel" value="예약기간 및 할인혜택"/></div>
-      <div class="field"><input type="range" id="ohLabelSize" min="8" max="36" value="14" oninput="syncOpenHeader()"/></div></div>
-    <div class="frow pair"><span class="flbl">크기<br>타이틀 / 날짜</span>
-      <div class="field"><input type="range" id="ohTitleSize" min="20" max="80" value="38" oninput="syncOpenHeader()"/></div>
-      <div class="field"><input type="range" id="ohDateSize" min="12" max="48" value="22" oninput="syncOpenHeader()"/></div></div>
-    <div class="frow pair"><span class="flbl">날짜 박스<br>색 / 투명도</span>
-      <div class="field"><button id="ohBoxBtn" class="ptab" style="width:100%;padding:5px 0;font-size:14px" onclick="toggleOhBox()">검정</button></div>
-      <div class="field"><input type="range" id="ohBoxOpacity" min="0" max="100" value="40" oninput="applyOhBox();saveState()"/></div></div>
-    <div class="frow pair"><span class="flbl">그라데이션<br>시작 / 퍼짐</span>
-      <div class="field"><input type="range" id="ohGradStart" min="0" max="90" value="0" oninput="syncOhGrad()"/></div>
-      <div class="field"><input type="range" id="ohGradSpread" min="10" max="90" value="60" oninput="syncOhGrad()"/></div></div>
-    <div class="frow pair"><span class="flbl">그라데이션<br>농도 / 압축</span>
-      <div class="field"><input type="range" id="ohGradOpacity" min="0" max="100" value="60" oninput="syncOhGrad()"/></div>
-      <div class="field"><input type="range" id="ohGradCompress" min="0" max="60" value="0" oninput="syncOhGrad()"/></div></div>
-    <div class="sec">재판 배지</div>
-    <div class="frow pair"><span class="flbl">배경 / 글자색</span>
-      <div class="field"><input type="color" id="badgeBg" value="#fff266" oninput="syncBadgeStyle();saveState()" style="width:100%;height:28px;border:none;background:none;cursor:pointer;padding:0;border-radius:6px;"/></div>
-      <div class="field"><input type="color" id="badgeFg" value="#000000" oninput="syncBadgeStyle();saveState()" style="width:100%;height:28px;border:none;background:none;cursor:pointer;padding:0;border-radius:6px;"/></div></div>
-    <div class="frow"><span class="flbl">글자그림자</span>
-      <div class="field"><button id="badgeBlurBtn" class="ptab" style="width:100%;padding:5px 0;font-size:14px" onclick="toggleBadgeBlur()">OFF</button></div></div>
-    <div class="sec">푸터</div>
-    <div class="frow"><span class="flbl">문구</span>
-      <div class="field"><select id="footerPreset" onchange="applyFooterPreset()"
-        style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:5px 6px;font-size:12.5px;font-family:inherit;">
-        <option value="국내외 사정에 따라 출시 시점 등 일부 사항이 변동될 수 있습니다.">1. 국내외 사정에 따라 출시 시점 등…</option>
-        <option value="메가하우스 공식 스토어 | MEGAHOUSE OFFICIAL STORE | AUTHORIZED DISTRIBUTOR IN KOREA">2. 메가하우스 공식 스토어 | MEGAHOUSE … | …</option>
-        <option value="__custom__">3. 그 외 직접 입력</option>
-      </select></div></div>
-    <div class="frow" id="footerCustomRow" style="display:none"><span class="flbl">직접 입력</span>
-      <div class="field"><input type="text" id="inFooter" value="국내외 사정에 따라 출시 시점 등 일부 사항이 변동될 수 있습니다."/></div></div>
-    <div class="frow pair"><span class="flbl">크기 / 위치</span>
-      <div class="field"><input type="range" id="footerFontSize" min="10" max="28" value="18" oninput="syncHeader()"/></div>
-      <div class="field"><input type="range" id="footerOffset" min="-400" max="400" value="0" oninput="syncHeader()"/></div></div>
-    <div class="frow"><span class="flbl">푸터 높이</span>
-      <div class="field"><input type="range" id="footerHeight" min="40" max="160" value="54" oninput="syncHeader()"/></div></div>
-    <hr class="pdiv">
-    <div class="sec" style="margin-top:0">로고</div>
-    <div class="frow pair"><span class="flbl">크기<br>상단 / 하단</span>
-      <div class="field"><input type="range" id="logoSize" min="32" max="120" value="64" oninput="syncLogoSize()"/></div>
-      <div class="field"><input type="range" id="pwLogoSize" min="16" max="100" value="32" oninput="syncLogoSize()"/></div></div>
 
-    <details class="logos" style="margin-top:8px">
-      <summary>로고 직접 교체</summary>
-      <div class="field" style="margin-top:7px"><label>메가하우스 로고</label><input type="file" id="logoMega" accept="image/*"/></div>
-      <div class="field"><label>PW: 로고</label><input type="file" id="logoPW" accept="image/*"/></div>
+    <div class="sec">헤더 종류</div>
+    <div class="frow"><span class="flbl">쓰는 헤더</span>
+      <div class="fin" id="hdKind">
+        <button class="ptab" style="flex:1;padding:6px 0" onclick="setHeaderKind('preview')">프리뷰용</button>
+        <button class="ptab" style="flex:1;padding:6px 0" onclick="setHeaderKind('open')">오픈용</button>
+        <button class="ptab" style="flex:1;padding:6px 0" onclick="setHeaderKind('none')">없음</button>
+      </div></div>
+    <!-- 실제 상태는 예전부터 쓰던 체크박스가 들고 있음(저장·복원 경로를 그대로 두려고).
+         화면에는 위 버튼 세 개만 보이고, 체크박스는 그 버튼이 대신 눌러준다 -->
+    <div style="display:none">
+      <input type="checkbox" id="chkHeader" checked onchange="toggleHeader();syncHeaderKind()"/>
+      <input type="checkbox" id="chkOpenHeader" onchange="toggleOpenHeader();syncHeaderKind()"/>
+    </div>
+    <div class="frow" id="rowHeaderPad" style="display:none"><span class="flbl">헤더 끈 자리<br>여백</span>
+      <div class="field"><input type="range" id="headerPad" min="5" max="120" value="30" oninput="toggleHeader()"/></div></div>
+
+    <details class="fold" id="foldType">
+      <summary>글자 크기 · 위치 <span class="cnt" id="cntType"></span></summary>
+      <div class="body">
+        <div id="typePreview">
+          <div class="frow pair"><span class="flbl">스토어명<br>글자 / 굵기</span>
+            <div class="field"><input type="text" id="inStore" value="메가하우스 공식 스토어"/></div>
+            <div class="field">
+              <select id="storeFontWeight" onchange="syncHeader()" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:6px 8px;font-size:14px;font-family:inherit;">
+                <option value="100">1—Thin</option><option value="200">2—ExtraLight</option><option value="300">3—Light</option>
+                <option value="400">4—Regular</option><option value="500" selected>5—Medium</option><option value="600">6—SemiBold</option>
+                <option value="700">7—Bold</option><option value="800">8—ExtraBold</option>
+              </select>
+            </div>
+          </div>
+          <div class="frow pair"><span class="flbl">스토어명<br>크기 / 위치</span>
+            <div class="field"><input type="range" id="storeFontSize" min="14" max="40" value="22" oninput="syncHeader()"/></div>
+            <div class="field"><input type="range" id="storeOffset" min="-400" max="400" value="0" oninput="syncHeader()"/></div></div>
+          <div class="frow"><span class="flbl">타이틀 크기</span>
+            <div class="field"><input type="range" id="titleFontSize" min="40" max="120" value="92" oninput="syncHeader()"/></div></div>
+        </div>
+        <div id="typeOpen" style="display:none">
+          <div class="frow"><span class="flbl">타이틀 굵기</span>
+            <div class="field">
+              <select id="ohTitleFontWeight" onchange="syncOpenHeader()" style="width:100%;background:var(--ui-card);border:1px solid var(--ui-border);color:var(--ui-text);border-radius:6px;padding:6px 8px;font-size:14px;font-family:inherit;">
+                <option value="300">3—Light</option><option value="400">4—Regular</option><option value="500">5—Medium</option>
+                <option value="600">6—SemiBold</option><option value="700">7—Bold</option><option value="900" selected>9—Black</option>
+              </select>
+            </div>
+          </div>
+          <div class="frow pair"><span class="flbl">크기<br>타이틀 / 날짜</span>
+            <div class="field"><input type="range" id="ohTitleSize" min="20" max="80" value="38" oninput="syncOpenHeader()"/></div>
+            <div class="field"><input type="range" id="ohDateSize" min="12" max="48" value="22" oninput="syncOpenHeader()"/></div></div>
+          <div class="frow"><span class="flbl">설명 크기</span>
+            <div class="field"><input type="range" id="ohLabelSize" min="8" max="36" value="14" oninput="syncOpenHeader()"/></div></div>
+          <div class="frow pair"><span class="flbl">구분선<br>굵기 / 간격</span>
+            <div class="field"><input type="range" id="ohSepW" min="0" max="6" value="2" oninput="syncOpenHeader()" title="0으로 두면 선이 사라집니다"/></div>
+            <div class="field"><input type="range" id="ohSepGap" min="0" max="18" value="4" oninput="syncOpenHeader()"/></div></div>
+        </div>
+      </div>
+    </details>
+
+    <details class="fold">
+      <summary>색 · 투명도 <span class="cnt" id="cntColor"></span></summary>
+      <div class="body">
+        <div class="frow pair"><span class="flbl">재판 배지<br>배경 / 글자</span>
+          <div class="field"><input type="color" id="badgeBg" value="#fff266" oninput="syncBadgeStyle();saveState()" style="width:100%;height:28px;border:none;background:none;cursor:pointer;padding:0;border-radius:6px;"/></div>
+          <div class="field"><input type="color" id="badgeFg" value="#000000" oninput="syncBadgeStyle();saveState()" style="width:100%;height:28px;border:none;background:none;cursor:pointer;padding:0;border-radius:6px;"/></div></div>
+        <div class="frow"><span class="flbl">배지 그림자</span>
+          <div class="field"><button id="badgeBlurBtn" class="ptab" style="width:100%;padding:5px 0;font-size:14px" onclick="toggleBadgeBlur()">OFF</button></div></div>
+        <div id="colorOpen" style="display:none">
+          <div class="frow pair"><span class="flbl">날짜 박스<br>색 / 투명도</span>
+            <div class="field"><button id="ohBoxBtn" class="ptab" style="width:100%;padding:5px 0;font-size:14px" onclick="toggleOhBox()">검정</button></div>
+            <div class="field"><input type="range" id="ohBoxOpacity" min="0" max="100" value="40" oninput="applyOhBox();saveState()"/></div></div>
+          <div class="frow pair"><span class="flbl">그라데이션<br>시작 / 퍼짐</span>
+            <div class="field"><input type="range" id="ohGradStart" min="0" max="90" value="0" oninput="syncOhGrad()"/></div>
+            <div class="field"><input type="range" id="ohGradSpread" min="10" max="90" value="60" oninput="syncOhGrad()"/></div></div>
+          <div class="frow pair"><span class="flbl">그라데이션<br>농도 / 압축</span>
+            <div class="field"><input type="range" id="ohGradOpacity" min="0" max="100" value="60" oninput="syncOhGrad()"/></div>
+            <div class="field"><input type="range" id="ohGradCompress" min="0" max="60" value="0" oninput="syncOhGrad()"/></div></div>
+        </div>
+      </div>
+    </details>
+
+    <details class="fold">
+      <summary>푸터 · 로고 <span class="cnt">슬라이더 5</span></summary>
+      <div class="body">
+        <div class="frow pair"><span class="flbl">푸터<br>크기 / 위치</span>
+          <div class="field"><input type="range" id="footerFontSize" min="10" max="28" value="18" oninput="syncHeader()"/></div>
+          <div class="field"><input type="range" id="footerOffset" min="-400" max="400" value="0" oninput="syncHeader()"/></div></div>
+        <div class="frow"><span class="flbl">푸터 높이</span>
+          <div class="field"><input type="range" id="footerHeight" min="40" max="160" value="54" oninput="syncHeader()"/></div></div>
+        <div class="frow pair"><span class="flbl">로고 크기<br>상단 / 하단</span>
+          <div class="field"><input type="range" id="logoSize" min="32" max="120" value="64" oninput="syncLogoSize()"/></div>
+          <div class="field"><input type="range" id="pwLogoSize" min="16" max="100" value="32" oninput="syncLogoSize()"/></div></div>
+        <details class="logos" style="margin-top:8px">
+          <summary>로고 직접 교체</summary>
+          <div class="field" style="margin-top:7px"><label>메가하우스 로고</label><input type="file" id="logoMega" accept="image/*"/></div>
+          <div class="field"><label>PW: 로고</label><input type="file" id="logoPW" accept="image/*"/></div>
+        </details>
+      </div>
     </details>
   </div>
 
@@ -1884,7 +1931,13 @@ function syncOpenHeader() {
     if (lEl) { lEl.textContent = lb; lEl.dataset.baseSize = lbSize; lEl.style.fontSize = lbSize;
       lEl.style.display = (!lb || pageOpenOn[i] === false) ? 'none' : ''; }
     const sepEl = $(`#ohSep${p}`);
-    if (sepEl) sepEl.style.display = (!lb || pageOpenOn[i] === false) ? 'none' : '';
+    if (sepEl) {
+      const sw = $('#ohSepW') ? +$('#ohSepW').value : 2;
+      const sg = $('#ohSepGap') ? +$('#ohSepGap').value : 4;
+      sepEl.style.height = sw + 'px';
+      sepEl.style.margin = sg + 'px 0';
+      sepEl.style.display = (!lb || !sw || pageOpenOn[i] === false) ? 'none' : '';
+    }
     const wEl = $(`#ohDateWrap${p}`);
     if (wEl) wEl.style.display = pageOpenOn[i] === false ? 'none' : '';
     const sEl = $(`#ohStore${p}`); if (sEl) { sEl.textContent = s; sEl.dataset.baseSize = sSize; sEl.style.fontSize = sSize; }
@@ -2870,6 +2923,41 @@ function syncOpenBtn() {
   });
 }
 
+/* 헤더는 프리뷰용·오픈용 중 하나만 쓰는데 설정이 둘 다 떠 있어 난잡했음.
+   고른 쪽 설정만 보여주고, 상태 자체는 예전부터 쓰던 체크박스가 그대로 들고 있음 */
+function setHeaderKind(kind) {
+  const h = $('#chkHeader'), o = $('#chkOpenHeader');
+  if (!h || !o) return;
+  h.checked = (kind !== 'none');
+  o.checked = (kind === 'open');
+  toggleHeader();
+  toggleOpenHeader();
+  syncHeaderKind();
+  if (_bootDone) saveState();
+}
+function currentHeaderKind() {
+  const h = $('#chkHeader'), o = $('#chkOpenHeader');
+  if (!h || !h.checked) return 'none';
+  return (o && o.checked) ? 'open' : 'preview';
+}
+function syncHeaderKind() {
+  const kind = currentHeaderKind();
+  const btns = document.querySelectorAll('#hdKind .ptab');
+  ['preview','open','none'].forEach((k, i) => { if (btns[i]) btns[i].classList.toggle('on', k === kind); });
+  const show = (id, on) => { const el = $(id); if (el) el.style.display = on ? '' : 'none'; };
+  show('#tmPreview',  kind === 'preview');
+  show('#tmOpen',     kind === 'open');
+  show('#typePreview',kind === 'preview');
+  show('#typeOpen',   kind === 'open');
+  show('#colorOpen',  kind === 'open');
+  show('#rowHeaderPad', kind === 'none');   // 헤더를 껐을 때만 그 자리 여백을 조절할 일이 있음
+  const ft = $('#cntType'), fc = $('#cntColor');
+  if (ft) ft.textContent = kind === 'open' ? '슬라이더 5' : kind === 'preview' ? '슬라이더 3' : '헤더 없음';
+  if (fc) fc.textContent = kind === 'open' ? '8개' : '3개';
+  const fold = $('#foldType');
+  if (fold && kind === 'none') fold.open = false;
+}
+
 // 푸터 문구: 자주 쓰는 두 개는 고르기만 하고, 나머지는 직접 입력칸을 열어줌
 function applyFooterPreset() {
   const sel = $('#footerPreset'), row = $('#footerCustomRow'), inp = $('#inFooter');
@@ -3068,6 +3156,8 @@ function buildState() {
       ohDateSize: $('#ohDateSize') ? $('#ohDateSize').value : '22',
       ohLabel: $('#inOhLabel') ? $('#inOhLabel').value : '',
       ohLabelSize: $('#ohLabelSize') ? $('#ohLabelSize').value : '14',
+      ohSepW: $('#ohSepW') ? $('#ohSepW').value : '2',
+      ohSepGap: $('#ohSepGap') ? $('#ohSepGap').value : '4',
       ohStoreSize: $('#ohStoreSize') ? $('#ohStoreSize').value : '34',
       ohTitleFontWeight: $('#ohTitleFontWeight') ? $('#ohTitleFontWeight').value : '900',
       ohBoxMode,
@@ -3184,6 +3274,8 @@ async function loadState() {
     if (st.ohDateSize && $('#ohDateSize')) $('#ohDateSize').value = st.ohDateSize;
     if (st.ohLabel != null && $('#inOhLabel')) $('#inOhLabel').value = st.ohLabel;
     if (st.ohLabelSize && $('#ohLabelSize')) $('#ohLabelSize').value = st.ohLabelSize;
+    if (st.ohSepW != null && $('#ohSepW')) $('#ohSepW').value = st.ohSepW;
+    if (st.ohSepGap != null && $('#ohSepGap')) $('#ohSepGap').value = st.ohSepGap;
     if (st.ohStoreSize && $('#ohStoreSize')) $('#ohStoreSize').value = st.ohStoreSize;
     if (st.ohTitleFontWeight && $('#ohTitleFontWeight')) $('#ohTitleFontWeight').value = st.ohTitleFontWeight;
     if (st.ohOn && $('#chkOpenHeader')) $('#chkOpenHeader').checked = true;
@@ -3217,6 +3309,7 @@ ensurePosterWrap(1);
   syncHeader();
   syncLogoSize();
   syncBadgeStyle();
+  syncHeaderKind();
   syncGrad();
   refresh(true);
 
