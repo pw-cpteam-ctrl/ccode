@@ -588,6 +588,8 @@ button:disabled{opacity:.4;cursor:default;}
   <span class="bstat" id="bottomStat">사진 0장</span>
   <span class="bbar"><i id="bottomBar"></i></span>
   <span id="exportStatus"></span>
+  <!-- 저장이 끝났는지 눈으로 보이게 — 언제 새로고침해도 되는지 알 수 없어 작업이 날아간 적이 있다 -->
+  <span id="saveState" style="font-size:11.5px;color:#7d7568;margin-left:10px;"></span>
   <span class="bspacer"></span>
   <button id="btnUndoAction" style="display:none;">↩ 되돌리기</button>
   <button id="btnStartOver">새로 시작 (캐시 지우기)</button>
@@ -697,11 +699,14 @@ function idbDel(key){
   }));
 }
 
-// 저장 호출 직렬화 (연속 호출 시 순서 뒤바뀜 방지)
-let _saveQueue = Promise.resolve();
+// 저장 호출 직렬화 (연속 호출 시 순서 뒤바뀜 방지).
+// 줄을 하나만 쓰면 사진 원본(수백 MB) 저장이 도는 동안 뒤에 선 "작업 내용" 저장이 몇 초씩
+// 기다리게 된다. 그 사이에 새로고침하면 마지막 작업분만 통째로 사라진다 → 줄을 둘로 나눈다
+const _saveQueues = { meta: Promise.resolve(), files: Promise.resolve() };
 function queueIdbSet(key, val){
-  _saveQueue = _saveQueue.then(() => idbSet(key, val)).catch(e => console.error('저장 실패:', e));
-  return _saveQueue;
+  const lane = key === 'files' ? 'files' : 'meta';
+  _saveQueues[lane] = _saveQueues[lane].then(() => idbSet(key, val)).catch(e => console.error('저장 실패:', e));
+  return _saveQueues[lane];
 }
 
 function itemsMetaSnapshot(){
@@ -732,7 +737,7 @@ function itemsMetaSnapshot(){
 // "폴더 a b" + "c" 가 같은 이름표가 되어버리는 사고를 막을 수 있다
 function photoCacheKey(folder, name){ return (folder || '') + '\n' + name; }
 async function saveFilesToCache(){
-  if (skipEmptySave('원본 파일')) return;
+  if (skipEmptySave('원본 파일')) { _filesDirty = false; updateSaveState(); return; }
   const photoBlobs = {}, overlayBlobs = {};
   for (const it of items) {
     photoBlobs[photoCacheKey(it.folder, it.photoName)] = it.photoFile;
@@ -742,6 +747,7 @@ async function saveFilesToCache(){
   }
   try { await queueIdbSet('files', { photoBlobs, overlayBlobs }); }
   catch (e) { log('원본 파일 캐시 저장 실패 — 브라우저 저장공간이 부족할 수 있음'); }
+  _filesDirty = false; updateSaveState();
 }
 async function saveOverlayPoolToCache(){
   try { await queueIdbSet('overlay_pool', overlayFiles); }
@@ -756,13 +762,37 @@ function skipEmptySave(what){
   console.warn('[안전장치] 사진이 0장이라 ' + what + ' 저장을 건너뜀 (기존 저장본 보호)');
   return true;
 }
+/* ── 저장 상태 ──
+   "작업이 70% 상태로 돌아갔다"는 신고의 원인은 저장이 늦게 도는 사이에 새로고침이 끼어든 것이다.
+   저장이 끝났는지 눈에 보이게 하고, 아직 안 끝났으면 떠나기 전에 한 번 더 붙잡는다 */
+const META_AT_KEY = 'batch_merge_meta_backup_at';
+let _metaDirty = false, _filesDirty = false;
+function updateSaveState(){
+  const el = document.getElementById('saveState');
+  if (!el) return;
+  if (!items.length) { el.textContent = ''; return; }
+  el.textContent = (_metaDirty || _filesDirty) ? '● 저장 중…' : '✓ 저장됨';
+  el.style.color = (_metaDirty || _filesDirty) ? '#b36b00' : '#3a7d3a';
+}
+// 작업 내용은 localStorage에도 같이 적어 둔다. localStorage 쓰기는 즉시 끝나므로 새로고침 직전에도
+// 확실히 남고, 되살릴 때 저장소 쪽보다 최신이면 이쪽을 쓴다
+function writeMetaBackup(snapshot){
+  try {
+    localStorage.setItem('batch_merge_meta_backup', JSON.stringify(snapshot));
+    localStorage.setItem(META_AT_KEY, String(Date.now()));
+  } catch (e) {}
+}
 async function saveMetaToCache(){
   if (skipEmptySave('작업 내용')) return;
-  try { localStorage.setItem('batch_merge_meta_backup', JSON.stringify(itemsMetaSnapshot())); } catch(e) {}
-  await queueIdbSet('items_meta', itemsMetaSnapshot());
+  const snap = itemsMetaSnapshot();
+  writeMetaBackup(snap);
+  await queueIdbSet('items_meta', snap);
+  await queueIdbSet('items_meta_at', Date.now());
+  _metaDirty = false; updateSaveState();
 }
 let _saveMetaT;
 function saveMetaSoon(){
+  _metaDirty = true; updateSaveState();
   clearTimeout(_saveMetaT);
   // 300장이면 설정값 저장에 178ms가 걸린다. 순서를 바꾼 직후에 이게 겹쳐 돌면 화면이 두 번
   // 멈춘 것처럼 느껴졌다 → 잠깐 기다린 뒤, 브라우저가 한가한 틈에 저장한다.
@@ -776,9 +806,29 @@ function saveMetaSoon(){
 // 바로 저장하지 않고 잠깐 기다렸다가 마지막 한 번만 저장한다
 let _saveFilesT;
 function saveFilesSoon(){
+  _filesDirty = true; updateSaveState();
   clearTimeout(_saveFilesT);
   _saveFilesT = setTimeout(saveFilesToCache, 1500);
 }
+/* 창을 떠나기 직전에 아직 안 끝난 저장을 마무리한다.
+   localStorage 쓰기는 즉시 끝나므로 새로고침 직전이라도 작업 내용은 확실히 남는다.
+   사진 원본(수백 MB)은 즉시 쓸 방법이 없어, 그것만 안 끝났을 때 한 번 붙잡아 물어본다 */
+function flushSavesNow(){
+  if (!items.length) return;
+  clearTimeout(_saveMetaT);
+  writeMetaBackup(itemsMetaSnapshot());   // 동기 — 반드시 남는다
+  saveMetaToCache();                      // 저장소에도 시도 (못 끝내도 위 백업이 있다)
+  clearTimeout(_saveFilesT);
+  if (_filesDirty) saveFilesToCache();
+}
+window.addEventListener('pagehide', flushSavesNow);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSavesNow(); });
+window.addEventListener('beforeunload', (e) => {
+  flushSavesNow();
+  if (!_filesDirty) return;               // 작업 내용은 이미 남겼으므로 굳이 붙잡지 않는다
+  e.preventDefault();
+  e.returnValue = '';
+});
 
 function loadImageFromBlob(blob){
   return new Promise((res, rej) => {
@@ -811,15 +861,26 @@ async function restoreFromCache(){
   await new Promise(r => requestAnimationFrame(r)); // 화면에 실제로 그려지고 나서 무거운 작업 시작
   // 사진 뭉치·설정값·투명 목록은 서로 상관이 없는데 예전에는 하나씩 차례로 기다렸다.
   // 한꺼번에 요청하면 셋 중 가장 오래 걸리는 시간만큼만 기다리면 된다 (체감 대기 시간이 크게 줄어듦)
-  const [filesData, metaFromIdb, overlayPool] = await Promise.all([
+  const [filesData, metaFromIdb, overlayPool, metaAt] = await Promise.all([
     idbGet('files').catch(() => null),
     idbGet('items_meta').catch(() => null),
     idbGet('overlay_pool').catch(() => null),
+    idbGet('items_meta_at').catch(() => null),
   ]);
+  // 작업 내용은 저장소와 localStorage 두 군데에 적어 둔다. 창을 떠나기 직전에는 localStorage만
+  // 제때 적히는 경우가 있어(저장소 쓰기는 중간에 끊긴다), 더 나중에 적힌 쪽을 쓴다.
+  // 예전 저장분에는 적힌 시각이 없으므로, 그때는 지금까지처럼 저장소 쪽을 먼저 쓴다
   let itemsMeta = metaFromIdb;
-  if (!itemsMeta) {
-    const backup = localStorage.getItem('batch_merge_meta_backup');
-    if (backup) itemsMeta = JSON.parse(backup);
+  let backupMeta = null, backupAt = 0;
+  try {
+    const raw = localStorage.getItem('batch_merge_meta_backup');
+    if (raw) backupMeta = JSON.parse(raw);
+    backupAt = Number(localStorage.getItem(META_AT_KEY)) || 0;
+  } catch (e) {}
+  if (!itemsMeta && backupMeta) itemsMeta = backupMeta;
+  else if (backupMeta && backupAt && backupAt > (Number(metaAt) || 0)) {
+    itemsMeta = backupMeta;
+    log('마지막 작업분이 저장소에 다 적히기 전에 창이 닫혀서, 더 최신인 예비 기록으로 되살립니다.');
   }
   if (!filesData || !itemsMeta || !itemsMeta.length) { showLoadingScreen(false); return false; }
 
