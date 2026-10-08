@@ -2283,7 +2283,7 @@ function igSlots(card) {
 function igCrop(it, slotCount, w, h) {
   const key = slotCount === 1 ? 'igSolo' : 'igHalf';
   if (!it[key]) {
-    const img = _igImgs.get(it.id);
+    const img = igImg(it.id);
     const pw = img ? (img.naturalWidth||img.width) : w, ph = img ? (img.naturalHeight||img.height) : h;
     it[key] = { fx:0.5, fy:0.5, zoom: igContainZoom(pw, ph, w, h) };
   }
@@ -2291,14 +2291,27 @@ function igCrop(it, slotCount, w, h) {
 }
 /* 사진을 미리 다 읽어둔다 — 캔버스는 다 읽힌 그림만 그릴 수 있어서 */
 function igPreload() {
-  const jobs = igItems().filter(it => !_igImgs.has(it.id)).map(it => new Promise(res => {
+  // 담아둔 그림을 칸 번호만으로 찾으면, 같은 칸의 사진을 다른 걸로 바꿔도 번호는 그대로라
+  // 예전 사진을 계속 쓰게 됨(마토메에서 바꾼 사진이 상세컷에 안 보이던 문제).
+  // 사진 자체도 같이 적어두고 달라졌으면 다시 읽는다
+  const jobs = igItems().filter(it => {
+    const hit = _igImgs.get(it.id);
+    return !hit || hit.src !== it.src;
+  }).map(it => new Promise(res => {
     const img = new Image();
-    img.onload = () => { _igImgs.set(it.id, img); res(); };
+    img.onload = () => {
+      _igImgs.set(it.id, { src: it.src, img });
+      // 사진이 바뀌면 예전 사진 기준으로 잡아둔 자리는 맞지 않으므로 처음 자리로 되돌린다
+      delete it.igSolo; delete it.igHalf;
+      res();
+    };
     img.onerror = () => res();   // 깨진 사진 하나 때문에 전체가 멈추지 않게
     img.src = it.src;
   }));
   return Promise.all(jobs);
 }
+/* 담아둔 그림 꺼내기 */
+function igImg(id) { const hit = _igImgs.get(id); return hit ? hit.img : null; }
 
 /* 카드 한 장 그리기 — 작은 썸네일과 큰 미리보기가 이 함수 하나를 배율만 바꿔 쓴다
    (따로 그리면 한쪽만 고쳐서 둘이 달라 보이는 문제가 생김) */
@@ -2309,7 +2322,7 @@ function igDrawCard(ctx, card) {
   const slots = igSlots(card);
   card.items.forEach((it, i) => {
     const sl = slots[i]; if (!sl) return;
-    const img = _igImgs.get(it.id); if (!img) return;
+    const img = igImg(it.id); if (!img) return;
     const c = igCrop(it, card.items.length, sl.w, sl.h);
     ctx.save();
     ctx.beginPath(); ctx.rect(sl.x, sl.y, sl.w, sl.h); ctx.clip();
@@ -2338,7 +2351,9 @@ function igLabel(it) {
 }
 function igFileName(card, idx) {
   const base = card.items.map(igLabel).join('+').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '');
-  return String(idx + 1).padStart(2, '0') + '_' + base + '.png';
+  // 마토메 포스터 파일과 한 폴더에 섞여도 구분되게 접미사를 붙인다
+  const kind = card.items.length === 2 ? 'split' : 'solo';
+  return String(idx + 1).padStart(2, '0') + '_' + base + '_' + kind + '.png';
 }
 
 /* ── 사이드바 ── */
@@ -2524,7 +2539,7 @@ function igRenderOne() {
       const dy = (e.clientY - drag.y) * (IG_H / r.height);
       drag.x = e.clientX; drag.y = e.clientY;
       drag.moved += Math.abs(dx) + Math.abs(dy);
-      const img = _igImgs.get(drag.it.id); if (!img) return;
+      const img = igImg(drag.it.id); if (!img) return;
       const pw = img.naturalWidth||img.width, ph = img.naturalHeight||img.height;
       const c = igCrop(drag.it, drag.card.items.length, drag.slot.w, drag.slot.h);
       const rc = igCoverRect(pw, ph, drag.slot.w, drag.slot.h, c.fx, c.fy, c.zoom);
@@ -2546,7 +2561,7 @@ function igRenderOne() {
     cv.addEventListener('wheel', e => {
       const s = slotAt(e.clientY); if (!s || !s.it) return;
       e.preventDefault();
-      const img = _igImgs.get(s.it.id); if (!img) return;
+      const img = igImg(s.it.id); if (!img) return;
       const pw = img.naturalWidth||img.width, ph = img.naturalHeight||img.height;
       const c = igCrop(s.it, s.card.items.length, s.slot.w, s.slot.h);
       const min = igContainZoom(pw, ph, s.slot.w, s.slot.h);
