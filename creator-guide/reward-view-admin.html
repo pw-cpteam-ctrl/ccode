@@ -71,6 +71,8 @@
   }
   .mini:hover { background: #fafaf9; }
   .mini.is-done { border-color: var(--green); color: var(--green); }
+  /* 업로드가 확인된 건은 초안 날짜에 금을 긋는다 — 기다리는 날짜가 아니게 되므로 */
+  td.draft.is-uploaded { text-decoration: line-through; color: var(--ink-400); }
 
   table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 1px var(--line); }
   th, td { padding: 11px 12px; text-align: left; font-size: 13.5px; border-bottom: 1px solid var(--line); }
@@ -445,7 +447,7 @@
   // 노션에 그대로 붙여넣을 수 있게 탭으로 구분한 표를 만든다.
   // 최신 제출만 담는다 — 지난 제출까지 넘어가면 중복 행이 생긴다.
   function tableText() {
-    var head = ['활동명', '네이버 아이디', '초안 공유 예정일', 'D-day', '수령 방식', '예상 지급 시기', '보상 형태', '희망 상품', '제출 시각', '확정'];
+    var head = ['활동명', '네이버 아이디', '초안 공유 예정일', 'D-day', '수령 방식', '예상 지급 시기', '보상 형태', '희망 상품', '제출 시각', '업로드'];
     var lines = [head.join('\t')];
     visibleRows().filter(function (r) { return r.latest && !isArchived(r); }).forEach(function (r) {
       lines.push([
@@ -462,7 +464,7 @@
         REWARD[r.reward] || r.reward,
         r.wish || '',
         fmtAt(r.at),
-        isConfirmed(r) ? '확정' : '',
+        isConfirmed(r) ? '확인함' : '',
       ].join('\t'));
     });
     return lines.join('\n');
@@ -795,7 +797,7 @@
               : esc(r.nick))
           : '<span class="old-child">↳ ' + esc(r.nick) + '</span> <span class="old-note">지난 제출</span>') + '</td>' +
         '<td class="naver" title="' + esc(r.naver || '') + '"><span class="roll"><span>' + esc(r.naver || '-') + '</span></span></td>' +
-        '<td>' + esc(fmtDate(r.draftDate)) + '</td>' +
+        '<td class="draft' + (isOn ? ' is-uploaded' : '') + '">' + esc(fmtDate(r.draftDate)) + '</td>' +
         '<td><span class="dday' + ddayClass(r.draftDate) + '">' + esc(fmtDday(r.draftDate)) + '</span></td>' +
         '<td><span class="tag ' + esc(r.track) + '">' + esc(TRACK[r.track] || r.track) + '</span></td>' +
         '<td class="paycell">' + payCell(r) + '</td>' +
@@ -804,7 +806,7 @@
         '<td>' + esc(fmtAt(r.at)) + '</td>' +
         '<td>' + (r.latest
           ? '<button class="mini' + (isOn ? ' is-done' : '') + '" data-nick="' + esc(r.roundKey) + '" data-legacy="' + esc(confirmed[r.nick] ? r.nick : '') + '" data-on="' + (isOn ? '1' : '0') + '">' +
-            (isOn ? '✓ 확정됨' : '확정하기') + '</button>'
+            (isOn ? '✓ 확인함' : '업로드 확인') + '</button>'
           : '') + '</td>' +
         '</tr>';
     }).join('');
@@ -826,14 +828,14 @@
       openBox() +
       (list.length
         ? '<div class="scroll"><table><thead><tr>' +
-          '<th class="pick"></th><th>활동명</th><th>네이버 아이디</th><th>초안 공유 예정일</th><th>D-day</th><th>수령 방식</th><th>예상 지급 시기</th><th>보상 형태</th><th>희망 상품</th><th>제출 시각</th><th>확정</th>' +
+          '<th class="pick"></th><th>활동명</th><th>네이버 아이디</th><th>초안 공유 예정일</th><th>D-day</th><th>수령 방식</th><th>예상 지급 시기</th><th>보상 형태</th><th>희망 상품</th><th>제출 시각</th><th>업로드</th>' +
           '</tr></thead><tbody>' + body + '</tbody></table></div>'
         : '<div class="empty">아직 접수된 내용이 없습니다.</div>') +
       pickBar() +
       blockedBox() +
       '<p class="foot">‘표 전체 복사’는 최신 제출만 담습니다. 노션 표에 그대로 붙여넣을 수 있어요.<br />' +
       '이 기기에서는 2일간 코드를 다시 묻지 않습니다. 공용 PC라면 ‘잠그기’를 눌러주세요.<br />' +
-      '‘확정하기’는 담당자가 확인을 마쳤다는 표시입니다. 크리에이터가 다시 내는 것을 막지는 않으니, 확정 뒤에 새 제출이 보이면 다시 확인해 주세요.</p>' +
+      '‘업로드 확인’은 콘텐츠가 올라온 것을 담당자가 확인했다는 표시입니다. 누르면 초안 공유 예정일에 금이 그어져, 아직 안 올라온 건만 눈에 들어옵니다.</p>' +
       '</div>';
 
     var q = document.getElementById('q');
