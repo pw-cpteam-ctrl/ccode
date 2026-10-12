@@ -189,6 +189,17 @@ async function main() {
     ? JSON.parse(fs.readFileSync(brand.paths.stockHistory, 'utf-8'))
     : null;
   const stockComparison = stockHistory ? buildStockComparison(stockHistory) : null;
+
+  // 재고가 리포트에 들어갔는지, 안 들어갔으면 왜인지 화면에 적는다.
+  // #stock을 쳤는데 아무 반응이 없어 한참 헤맨 적이 있다. 그때 파일에는 재고 섹션 자체가
+  // 없었는데(그래서 보여줄 게 없었는데), 실행 화면만 봐서는 그걸 알 길이 없었다.
+  if (stockComparison && stockMode !== 'none') {
+    console.log(`📦 재고 포함 — 리포트 주소 끝에 #stock 을 붙이면 재고 탭이 열립니다(스냅샷 ${stockComparison.snapshotCount}개).`);
+  } else if (stockMode === 'none') {
+    console.log('📦 재고 미포함(설정이 none) — 넣으려면 끝에 stock=ratio 를 붙여서 다시 돌리세요.');
+  } else {
+    console.log(`📦 재고 미포함 — 재고 기록이 없습니다(${path.relative(__dirname, brand.paths.stockHistory)}). 먼저 node naver-stock-snapshot.js 를 돌리세요.`);
+  }
   const followerHistory = fs.existsSync(brand.paths.followerHistory)
     ? JSON.parse(fs.readFileSync(brand.paths.followerHistory, 'utf-8'))
     : null;
