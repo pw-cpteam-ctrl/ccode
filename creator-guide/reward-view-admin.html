@@ -86,7 +86,7 @@
   /* 같은 사람이 여러 번 낸 경우, 지난 제출은 흐리게 해서 최신만 눈에 들어오게 한다 */
   tr.is-old td { color: var(--ink-400); background: #fcfcfb; }
   tr.is-old td.nick { font-weight: 400; }
-  .old-note { font-size: 11.5px; color: var(--ink-400); }
+  .old-note { font-size: 11.5px; color: var(--ink-400); white-space: nowrap; }
   /* 접속일 기준 남은 날짜. 오늘·임박·지남만 색으로 구분해 눈에 걸리게 한다. */
   .dday {
     display: inline-block; padding: 2px 7px; border-radius: 6px;
@@ -120,13 +120,12 @@
   td.wish { min-width: 13ch; }
   /* 세 단계로 가라앉힌다 — 이번 달·날짜 지남 → 지난 달 → 담당자가 내린 건.
      어느 것도 지우지 않는다. 기록은 남고 눈에 덜 걸리게만 한다. */
-  tr.is-past td { color: #8a8a85; background: #fbfbfa; }
-  tr.is-past td.nick { font-weight: 400; }
-  tr.is-past .tag, tr.is-past .dday { opacity: .6; }
-
-  tr.is-oldmonth td { color: #a3a3a0; background: #f6f6f4; }
-  tr.is-oldmonth td.nick { font-weight: 400; }
-  tr.is-oldmonth .tag, tr.is-oldmonth .dday { opacity: .45; }
+  /* 지급이 남아 있는 건은 또렷한 검정으로 둔다 — 지금 챙길 것 */
+  tbody td { color: #000; }
+  /* 지급까지 끝난 건만 가라앉힌다 */
+  tr.is-done td { color: #a3a3a0; background: #f6f6f4; }
+  tr.is-done td.nick { font-weight: 400; }
+  tr.is-done .tag, tr.is-done .dday { opacity: .45; }
 
   tr.is-archived td { color: #9c9c99; background: #ebebe8; }
   tr.is-archived td.nick { font-weight: 400; text-decoration: line-through; }
@@ -174,18 +173,19 @@
   .open-reset { padding: 5px 9px; font-size: 12px; }
   .open-foot { margin: 12px 0 0; font-size: 12px; color: var(--ink-500); }
   /* 지난 제출 접기 — 같은 분이 여러 번 낸 것은 최신 한 줄로 모으고, 눌러서 편다 */
+  td.nick { white-space: nowrap; }
   .old-toggle {
-    display: inline-flex; align-items: center; gap: 6px;
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
     background: none; border: 0; padding: 0; font: inherit; font-weight: 700;
     color: inherit; cursor: pointer; text-align: left;
   }
   .old-arrow { display: inline-block; transition: transform .15s; color: var(--ink-400); }
   .old-toggle[aria-expanded="true"] .old-arrow { transform: rotate(90deg); }
   .old-n {
-    font-size: 11px; font-weight: 600; color: var(--ink-500);
+    font-size: 11px; font-weight: 600; color: var(--ink-500); white-space: nowrap;
     background: #f1f5f9; border-radius: 999px; padding: 2px 7px;
   }
-  .old-child { color: var(--ink-400); }
+  .old-child { color: var(--ink-400); white-space: nowrap; }
 
   /* 예상 지급 시기 — 날짜를 위에, 무엇인지 아래에 작게 */
   td.paycell { white-space: nowrap; }
@@ -561,19 +561,30 @@
     return out;
   }
 
-  // 그 건이 어느 오픈 회차에 속하는지 — 초안 날짜 이후로 가장 가까운 오픈일이다.
+  // 그 건이 어느 오픈 회차에 속하는지.
+  //
+  // 처음엔 '초안 날짜 이후로 가장 가까운 오픈일'로 봤는데, 오픈이 지난 뒤에
+  // 초안을 주시는 경우(10월 8일 오픈인데 초안이 10월 15일)가 전부 다음 달
+  // 회차로 밀려 지급일이 한 달씩 늦게 나왔다. 앞뒤를 가리지 않고 가장 가까운
+  // 오픈일을 그 건의 회차로 본다.
   function openDateFor(draftDate) {
     var p = String(draftDate || '').split('-');
     if (p.length !== 3) return null;
     var y = +p[0], m = +p[1];
     var set = function (yy, mm) {
-      var key = yy + '-' + String(mm).padStart(2, '0');
-      return new Date(yy, mm - 1, openDays[key] == null ? firstThursday(yy, mm) : openDays[key]);
+      var yy2 = yy + Math.floor((mm - 1) / 12);
+      var mm2 = ((mm - 1) % 12 + 12) % 12 + 1;
+      var key = yy2 + '-' + String(mm2).padStart(2, '0');
+      return new Date(yy2, mm2 - 1, openDays[key] == null ? firstThursday(yy2, mm2) : openDays[key]);
     };
-    var here = set(y, m);
     var draft = new Date(y, m - 1, +p[2]);
-    if (draft <= here) return here;
-    return m === 12 ? set(y + 1, 1) : set(y, m + 1);
+    var best = null, gap = Infinity;
+    [m - 1, m, m + 1].forEach(function (mm) {
+      var d = set(y, mm);
+      var g = Math.abs(d - draft);
+      if (g < gap) { gap = g; best = d; }
+    });
+    return best;
   }
 
   function plusDays(base, n) {
@@ -652,12 +663,14 @@
   //   past      이번 달인데 날짜는 지남 — 마무리 확인이 남아 있을 수 있음
   //   oldmonth  지난 달 이전 — 끝난 회차
   function rowAge(r) {
-    var v = String(r.draftDate || '');
-    if (v.length !== 10) return '';
-    var now = new Date();
-    var thisMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-    if (v.slice(0, 7) < thisMonth) return 'oldmonth';
-    return ddayNum(v) < 0 ? 'past' : '';
+    // 기준은 초안 날짜가 아니라 '마지막 지급 예정일'이다. 초안 날짜가 지났어도
+    // 지급이 남아 있으면 아직 챙겨야 할 건이라 또렷하게 두고, 지급까지 끝난
+    // 건만 가라앉힌다.
+    var open = openDateFor(r.draftDate);
+    if (!open) return '';
+    var last = new Date(open); last.setDate(last.getDate() + 40);
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    return last < today ? 'done' : '';
   }
 
   function isArchived(r) { return !!archived[r.roundKey]; }
