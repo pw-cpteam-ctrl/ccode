@@ -98,7 +98,7 @@
   .tag.split::before { background: #2563eb; }
   .tag.after::before { background: #d97706; }
   /* 보상 형태도 배경을 빼고 글자색만 남긴다. 무엇인지는 앞의 그림으로 읽힌다. */
-  .tag.coupon { background: none; padding: 2px 0; color: #6d28d9; }
+  .tag.coupon { background: none; padding: 2px 0; color: #15803d; }
   .tag.goods { background: none; padding: 2px 0; color: #be185d; }
   .tag.coupon::before { content: '💵 '; }
   .tag.goods::before { content: '🧸 '; }
@@ -119,7 +119,7 @@
   /* 아이디를 메일 주소로 적는 분이 있어 한 칸이 길어지면 표 전체가 밀려
      오른쪽이 잘렸다. 10자 남짓에서 끊고, 누르면 그 칸만 전부 펼친다.
      (마우스를 올려도 전체가 말풍선으로 뜨고, 복사 표에는 늘 전체가 들어간다) */
-  td.naver { max-width: 22ch; }
+  td.naver { max-width: 11ch; }
   /* 긴 아이디는 칸 안에서 좌우로 천천히 오가게 둔다. 한 칸씩 눌러서 펼치면
      여러 건을 훑어볼 때 매번 눌러야 해서, 가만히 둬도 전체가 읽히게 한다.
      움직이는 거리에 맞춰 시간을 주므로 길수록 느리게 흐른다. */
@@ -140,7 +140,7 @@
   /* 희망 상품은 반대로 너무 좁아 글이 계속 접혔다. 아이디 칸만큼은 준다. */
   /* 희망 상품도 한 줄로 둔다. 줄바꿈을 허용했더니 긴 상품명 하나 때문에
      그 행만 두 배로 높아져 표가 들쑥날쑥했다. 넘치면 아이디처럼 흐른다. */
-  td.wish { min-width: 13ch; max-width: 26ch; }
+  td.wish { min-width: 12ch; max-width: 12ch; }
   td.wish .roll { display: block; overflow: hidden; white-space: nowrap; }
   td.wish .roll > span { display: inline-block; }
   /* 세 단계로 가라앉힌다 — 이번 달·날짜 지남 → 지난 달 → 담당자가 내린 건.
@@ -162,7 +162,9 @@
   tr.is-picked td.nick { font-weight: 700; }
   th.pick, td.pick { width: 30px; padding-right: 0; }
   td.pick input { pointer-events: none; }  /* 고르기는 줄 전체를 끄는 것으로 한다 */
-  tbody tr { cursor: default; user-select: none; }
+  /* 글자를 복사할 수 있어야 한다. 끌어서 고르는 동안에만 선택을 막는다. */
+  tbody tr { cursor: default; }
+  body.is-dragging, body.is-dragging tbody tr { user-select: none; }
 
   /* 고른 뒤 나오는 아래쪽 띠 */
   .pickbar {
@@ -486,7 +488,7 @@
   // 노션에 그대로 붙여넣을 수 있게 탭으로 구분한 표를 만든다.
   // 최신 제출만 담는다 — 지난 제출까지 넘어가면 중복 행이 생긴다.
   function tableText() {
-    var head = ['활동명', '네이버 아이디', '초안 공유 예정일', 'D-day', '수령 방식', '예상 지급 시기', '보상 형태', '희망 상품', '제출 시각', '업로드'];
+    var head = ['활동명', '네이버 아이디', '초안 공유 예정일', 'D-day', '수령 방식', '예상 지급 시기', '보상 형태', '희망 상품', '제출 시각', '업로드', '리워드 지급 확인'];
     var lines = [head.join('\t')];
     visibleRows().filter(function (r) { return r.latest && !isArchived(r); }).forEach(function (r) {
       lines.push([
@@ -504,6 +506,7 @@
         r.wish || '',
         fmtAt(r.at),
         isConfirmed(r) ? '확인함' : '',
+        isArchived(r) ? '지급함' : '',
       ].join('\t'));
     });
     return lines.join('\n');
@@ -825,6 +828,7 @@
         if (e.button !== 0) return;
         if (e.target.closest('button')) return;   // 확정 버튼 등은 그대로 눌리게
         drag.on = true; startIdx = i;
+        document.body.classList.add('is-dragging');
         base = {};
         Object.keys(picked).forEach(function (k) { if (picked[k]) base[k] = true; });
         paint(i);
@@ -839,6 +843,7 @@
   document.addEventListener('mouseup', function () {
     if (!drag.on) return;
     drag.on = false;
+    document.body.classList.remove('is-dragging');
     renderList();   // 아래 띠를 다시 그린다
   });
 
@@ -888,6 +893,10 @@
           ? '<button class="mini' + (isOn ? ' is-done' : '') + '" data-nick="' + esc(r.roundKey) + '" data-legacy="' + esc(confirmed[r.nick] ? r.nick : '') + '" data-on="' + (isOn ? '1' : '0') + '">' +
             (isOn ? '✓ 확인함' : '업로드 확인') + '</button>'
           : '') + '</td>' +
+        '<td>' + (r.latest
+          ? '<button class="mini reward-btn' + (isArchived(r) ? ' is-done' : '') + '" data-reward="' + esc(r.roundKey) + '" data-on="' + (isArchived(r) ? '1' : '0') + '">' +
+            (isArchived(r) ? '✓ 지급함' : '리워드 확인') + '</button>'
+          : '') + '</td>' +
         '</tr>';
     }).join('');
 
@@ -908,7 +917,7 @@
       openBox() +
       (list.length
         ? '<div class="scroll"><table><thead><tr>' +
-          '<th class="pick"></th><th>활동명</th><th>네이버 아이디</th><th>초안 공유 예정일</th><th>D-day</th><th>수령 방식</th><th>예상 지급 시기</th><th>보상 형태</th><th>희망 상품</th><th>제출 시각</th><th>업로드</th>' +
+          '<th class="pick"></th><th>활동명</th><th>네이버 아이디</th><th>초안 공유 예정일</th><th>D-day</th><th>수령 방식</th><th>예상 지급 시기</th><th>보상 형태</th><th>희망 상품</th><th>제출 시각</th><th>업로드</th><th>리워드 지급 확인</th>' +
           '</tr></thead><tbody>' + body + '</tbody></table></div>'
         : '<div class="empty">아직 접수된 내용이 없습니다.</div>') +
       pickBar() +
@@ -949,6 +958,19 @@
     });
     var tbl = root.querySelector('table');
     if (tbl) bindDragPick(tbl);
+    Array.prototype.forEach.call(root.querySelectorAll('.reward-btn'), function (b) {
+      b.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var on = b.getAttribute('data-on') !== '1';
+        b.disabled = true; b.textContent = '처리 중…';
+        api({ code: code, action: on ? 'archive' : 'unarchive', keys: [b.getAttribute('data-reward')] })
+          .then(function (r) {
+            if (r.status === 200 && r.data.ok) { archived = r.data.archived || {}; renderList(); }
+            else { b.disabled = false; b.textContent = '다시 시도'; }
+          }).catch(function () { b.disabled = false; b.textContent = '다시 시도'; });
+      });
+    });
     var arch = document.getElementById('arch');
     if (arch) arch.addEventListener('click', function () { saveArchive(true); });
     var unarch = document.getElementById('unarch');
