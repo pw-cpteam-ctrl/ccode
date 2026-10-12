@@ -25,7 +25,12 @@
      화면이 넓으면 그만큼 쓰고, 좁은 화면에서는 그대로 화면 폭에 맞춘다. */
   /* 표가 쓰는 만큼만 차지하고 가운데 둔다. 화면 폭에 억지로 맞추면 남는 공간이
      칸 사이로 뿌려지거나 빈 칸으로 남아 표가 헐거워 보인다. */
-  .wrap { width: fit-content; max-width: 100%; margin: 0 auto; padding: 24px 16px 60px; }
+  /* 폭은 표가 정한다. 표만 가로로 밀리고 위쪽 상자들은 짧게 남으면 선이 어긋나
+     보여서, 페이지 전체가 표 폭을 따라간다(좁은 화면에서는 페이지가 가로로 밀린다). */
+  .wrap { max-width: 100%; margin: 0 auto; padding: 24px 16px 60px; box-sizing: border-box; }
+  /* 위쪽 상자들은 표 폭에 맞춘다(아래 fitToTable이 재서 넣는다). 표는 내용만큼만
+     쓰므로, 폭을 CSS로 맞출 방법이 없어 그린 뒤에 재서 맞춘다. */
+  .fitw { width: var(--tablew, auto); max-width: 100%; box-sizing: border-box; }
 
   /* ─── 코드 입력 ─── */
   .gate { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -85,7 +90,7 @@
 
   /* 내용만큼만 늘어나되 화면보다 좁아지지는 않게. 폭을 화면에 억지로 맞추면
      긴 희망 상품이 서너 줄로 접혀 행이 부푼다. */
-  table { width: max-content; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 1px var(--line); }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 1px var(--line); }
   th, td { padding: 11px 8px; text-align: left; font-size: 13.5px; border-bottom: 1px solid var(--line); }
   th { background: #fafaf9; font-size: 11.5px; font-weight: 700; color: var(--ink-500); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
   tr:last-child td { border-bottom: 0; }
@@ -143,7 +148,10 @@
   /* 희망 상품도 한 줄로 둔다. 줄바꿈을 허용했더니 긴 상품명 하나 때문에
      그 행만 두 배로 높아져 표가 들쑥날쑥했다. 넘치면 아이디처럼 흐른다. */
   /* 한글 12자 기준. ch는 숫자 폭이라 한글로 치면 절반밖에 안 들어간다. */
-  td.wish { min-width: 12em; max-width: 12em; }
+  /* 남는 폭은 전부 이 칸이 가져간다 — 글자가 가장 모자란 칸이라서다.
+     나머지 열은 내용 폭에 고정해(width:1px) 남는 자리가 칸마다 뿌려지지 않게 한다. */
+  th.wishcol, td.wish { width: 100%; min-width: 12em; }
+  thead th:not(.wishcol), tbody td:not(.wish) { width: 1px; }
   /* 두 줄로 쪼개지던 칸들 */
   td .tag, th:nth-child(9), td:nth-child(9), td:nth-child(10) { white-space: nowrap; }
   td.wish .roll { display: block; overflow: hidden; white-space: nowrap; }
@@ -787,7 +795,7 @@
         '</div>';
     }).join('');
 
-    return '<details class="open-box"><summary>오픈 날짜 관리 ' +
+    return '<details class="open-box fitw"><summary>오픈 날짜 관리 ' +
       '<span class="open-sum">기본은 매달 첫 목요일 · 다른 날이면 여기서 바꾸세요</span></summary>' +
       '<div class="open-list">' + rows + '</div>' +
       '<p class="open-foot" id="open-msg">바꾸면 가이드 페이지의 달력과 이벤트 일정에 바로 반영됩니다.</p>' +
@@ -941,6 +949,16 @@
     renderList();   // 아래 띠를 다시 그린다
   });
 
+  // 표를 그린 뒤 그 폭을 재서 위쪽 상자들에 넣어 준다. 표만 넓고 상자는 짧으면
+  // 세로선이 어긋나 보인다. 창 크기가 바뀌면 다시 잰다.
+  function fitToTable() {
+    var t = root.querySelector('table');
+    if (!t) return;
+    var w = Math.ceil(t.getBoundingClientRect().width);
+    root.style.setProperty('--tablew', w + 'px');
+  }
+  window.addEventListener('resize', function () { fitToTable(); });
+
   function renderList() {
     var list = visibleRows();
     var liveRows = list.filter(function (r) { return r.latest && !isArchived(r); });
@@ -1015,13 +1033,13 @@
 
     root.innerHTML =
       '<div class="wrap">' +
-      '<div class="head"><h1>진행 정보 접수 현황</h1>' +
+      '<div class="head fitw"><h1>진행 정보 접수 현황</h1>' +
       '<span class="count">진행 ' + liveRows.length + '건' +
       (doneCount ? ' · 내려둔 건 ' + doneCount + '건' : '') +
       ' · 전체 기록 ' + list.length + '건</span></div>' +
       '<p class="sub">같은 분이 <b>' + ROUND_GAP_DAYS + '일 안에</b> 다시 내신 것은 고쳐 내신 것으로 보고 <b>마지막 제출</b>만 유효합니다(지난 제출은 흐리게 표시). ' +
       '그보다 간격이 벌어지면 <b>다른 차수</b>로 보고 각각 따로 남습니다 — 같은 분과 달마다 협업하는 경우를 위해서입니다.</p>' +
-      '<div class="bar">' +
+      '<div class="bar fitw">' +
       '<input class="search" id="q" type="search" placeholder="활동명으로 찾기" value="' + esc(keyword) + '" />' +
       '<button class="mini" id="copy">표 전체 복사</button>' +
       '<button class="mini" id="reload">새로고침</button>' +
@@ -1037,7 +1055,7 @@
         : '<div class="empty">아직 접수된 내용이 없습니다.</div>') +
       pickBar() +
       blockedBox() +
-      '<p class="foot">‘표 전체 복사’는 최신 제출만 담습니다. 노션 표에 그대로 붙여넣을 수 있어요.<br />' +
+      '<p class="foot fitw">‘표 전체 복사’는 최신 제출만 담습니다. 노션 표에 그대로 붙여넣을 수 있어요.<br />' +
       '이 기기에서는 2일간 코드를 다시 묻지 않습니다. 공용 PC라면 ‘잠그기’를 눌러주세요.<br />' +
       '맨 앞 네모 칸을 위아래로 끌면 여러 건을 한 번에 고를 수 있습니다.<br />' +
       '‘업로드 확인’은 콘텐츠가 올라온 것을 담당자가 확인했다는 표시입니다. 누르면 초안 공유 예정일에 금이 그어져, 아직 안 올라온 건만 눈에 들어옵니다.</p>' +
@@ -1079,6 +1097,7 @@
         renderList();
       });
     });
+    fitToTable();
     var tbl = root.querySelector('table');
     if (tbl) bindDragPick(tbl);
     Array.prototype.forEach.call(root.querySelectorAll('.reward-btn'), function (b) {
