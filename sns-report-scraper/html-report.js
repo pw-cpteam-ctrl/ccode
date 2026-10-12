@@ -31,8 +31,21 @@ function formatRatioCard(pwTotal, bhTotal) {
 // PW 파랑/BH 빨강 그대로 써서 식별 기준을 하나로 유지.
 function pieCard(field, pwTotal, bhTotal) {
   const total = pwTotal + bhTotal;
-  const pwPct = total > 0 ? (pwTotal / total) * 100 : 50;
-  const pwShare = total > 0 ? Math.round((pwTotal / total) * 100) : 0;
+  // 양쪽 다 0이면 비율을 적지 않는다. 예전엔 0÷0을 'PW 0% / BH 100%'로 그려서, 데이터가
+  // 아예 없는 상황을 "경쟁사 압승"으로 읽히게 만들었다(실제로 그렇게 읽혔다). 숫자가
+  // 없다는 것과 졌다는 것은 완전히 다른 얘기라, 없을 때는 없다고 적는다.
+  if (total <= 0) {
+    return `
+      <div class="card piecard">
+        <div class="k">PW vs BH ${FIELD_LABELS[field] || field} 비율</div>
+        <div class="pie-row">
+          <div class="piechart none" title="양쪽 다 값이 없어서 비율을 낼 수 없습니다."></div>
+          <div class="pie-legend"><span class="na">비교할 값 없음</span></div>
+        </div>
+      </div>`;
+  }
+  const pwPct = (pwTotal / total) * 100;
+  const pwShare = Math.round(pwPct);
   const bhShare = 100 - pwShare;
   return `
       <div class="card piecard">
@@ -443,6 +456,8 @@ section.platform{margin-bottom:36px}
 .piechart{width:44px;height:44px;border-radius:50%;flex:none;box-shadow:0 0 0 1px #eef0f4 inset}
 .pie-legend{display:flex;flex-direction:column;gap:2px;font-size:12px;font-weight:700}
 .pie-legend .pw{color:#1971c2}.pie-legend .bh{color:#c0504d}
+.pie-legend .na{color:#9099a6;font-weight:400;font-size:11px}
+.piechart.none{background:#eef0f4}
 .table-wrap{overflow-x:auto;background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 table{width:100%;border-collapse:collapse;white-space:nowrap}
 th{background:#3b5bdb;color:#fff;font-size:12px;padding:10px 8px;position:sticky;top:0}

@@ -1678,6 +1678,20 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
       '기록 파일이 아직 없으면 빈 블록을 띄우지 말고 아예 안 나와야 함');
   });
 
+  check('html-report: 양쪽 다 0일 때 비율을 "PW 0% / BH 100%"로 그리지 않아야 함', () => {
+    // 수집 기간에 경쟁사가 아무것도 안 올리면 매칭이 0건이 되고 합계도 0:0이 된다.
+    // 그때 0÷0을 비율로 그리면 "경쟁사 100%"가 떠서, 데이터가 없는 상황이 완패로 읽힌다.
+    const empty = buildComparisonReport({
+      startDate: '2026-10-12', endDate: '2026-10-12',
+      own: [{ platform: 'twitter', account: 'pw', posts: [] }],
+      competitors: [{ platform: 'twitter', account: 'bh', posts: [] }],
+      manualMatches: {}, ignorePosts: {},
+    });
+    const html = buildHtmlReport(empty, null, {});
+    assert.ok(html.includes('비교할 값 없음'), '값이 없으면 없다고 적어야 함');
+    assert.strictEqual(html.includes('BH 100%'), false, '0:0을 경쟁사 100%로 그리면 안 됨');
+  });
+
   console.log(`\n(생성된 검증용 엑셀 파일: ${outPath} — 직접 열어서 표 형태도 확인 가능)`);
   if (process.exitCode) {
     console.error('\n일부 검증 실패');
