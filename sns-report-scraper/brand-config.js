@@ -231,7 +231,49 @@ function readLastRun(brand) {
   }
 }
 
+
+/**
+ * "리포트에 재고를 넣을까" 설정을 명령어 인자에서 읽는다.
+ *
+ * 왜 여러 모양을 다 받나 — 원래는 stock=ratio 라고 정확히 써야만 켜졌다. 'ratio'라는 말을
+ * 외워서 등호까지 맞춰 치는 게 번거롭고, 한 글자만 틀려도 조용히 꺼진 채로 리포트가 만들어져
+ * "#stock을 쳐도 안 열린다"는 쪽으로 돌아왔다(실제로 그랬다). 사람이 칠 법한 모양을 전부
+ * 같은 뜻으로 받는 편이 외울 것도 없고 조용히 틀릴 일도 없다.
+ *
+ *   stock        stock=r     stock=ratio   stock=on    → 넣는다
+ *   stock=n      stock=none  stock=off     nostock     → 안 넣는다
+ *
+ * 모르는 값이 오면 조용히 넘어가지 않고 알려준 뒤 기본값을 쓴다 — 조용히 넘어가는 게
+ * 바로 위에서 말한 그 사고다.
+ */
+const STOCK_ON = ['', 'r', 'ratio', 'y', 'yes', 'on', '1', 'true'];
+const STOCK_OFF = ['n', 'no', 'none', 'off', '0', 'false'];
+
+function parseStockMode(args, defaultMode = 'ratio') {
+  for (const raw of args || []) {
+    const a = String(raw).replace(/^--?/, '').trim();
+    if (a.toLowerCase() === 'stock') return 'ratio';
+    if (a.toLowerCase() === 'nostock') return 'none';
+    const eq = a.indexOf('=');
+    if (eq === -1 || a.slice(0, eq).toLowerCase() !== 'stock') continue;
+    const v = a.slice(eq + 1).trim().toLowerCase();
+    if (STOCK_ON.includes(v)) return 'ratio';
+    if (STOCK_OFF.includes(v)) return 'none';
+    console.warn(`⚠️ stock=${v} 는 모르는 값이라 무시합니다 — 넣으려면 stock, 빼려면 stock=none 으로 쓰세요.`);
+    return defaultMode;
+  }
+  return defaultMode;
+}
+
+/** 위에서 이미 처리한 재고 인자인지 — 날짜나 키워드로 오해하지 않게 걸러낼 때 쓴다. */
+function isStockArg(arg) {
+  const a = String(arg).replace(/^--?/, '').trim().toLowerCase();
+  return a === 'stock' || a === 'nostock' || a.startsWith('stock=');
+}
+
 module.exports = {
+  parseStockMode,
+  isStockArg,
   BRANDS_DIR,
   TEMPLATES_DIR,
   ensureBrandFiles,

@@ -8,7 +8,8 @@
  *
  * 사용법: node rebuild-report.js                        — 메가하우스(기본)
  *        node rebuild-report.js brand=goodsmile        — 굿스마일
- *        node rebuild-report.js stock=ratio            — 재고 비율/지수까지 리포트에 포함
+ *        node rebuild-report.js stock                  — 재고 비율/지수까지 리포트에 포함
+ *        node rebuild-report.js stock=none             — 재고 빼고 SNS만
  */
 const fs = require('fs');
 const path = require('path');
@@ -17,13 +18,12 @@ const { saveReportToExcel } = require('./excel');
 const { saveHtmlReport } = require('./html-report');
 const { buildStockComparison } = require('./stock-report');
 const { archiveAndGetPath } = require('./report-archive');
-const { prepareBrand, parseBrandArg } = require('./brand-config');
+const { prepareBrand, parseBrandArg, parseStockMode } = require('./brand-config');
 
 async function main() {
   const { brandKey, rest } = parseBrandArg(process.argv.slice(2));
   const brand = prepareBrand(brandKey);
-  const stockArg = rest.find(a => /^--?stock=(none|ratio)$/.test(a) || /^stock=(none|ratio)$/.test(a));
-  const stockMode = stockArg ? stockArg.split('=')[1] : brand.defaultStockMode;
+  const stockMode = parseStockMode(rest, brand.defaultStockMode);
   // 같은 캐시로 키워드만 바꿔가며 몇 초 만에 다시 볼 수 있게 하는 것이 이 스크립트의 요점
   const keywordArg = rest.find(a => /^--?keyword=/.test(a) || /^keyword=/.test(a));
   const keyword = keywordArg ? keywordArg.slice(keywordArg.indexOf('=') + 1).trim() : '';

@@ -11,7 +11,7 @@
  *
  * 사용법:
  *   node merge-report.js 2026-10-01 2026-10-12          — 그 기간에 걸친 캐시를 전부 합침
- *   node merge-report.js 2026-10-01 2026-10-12 stock=ratio
+ *   node merge-report.js 2026-10-01 2026-10-12 stock        — 재고까지 같이(#stock 탭)
  *   node merge-report.js --list                          — 어떤 기간들이 쌓여 있는지만 보여줌
  *
  * 원본 캐시 파일은 건드리지 않는다. 합치는 건 이번 리포트를 만드는 동안 메모리 안에서만
@@ -24,7 +24,7 @@ const { saveReportToExcel } = require('./excel');
 const { saveHtmlReport } = require('./html-report');
 const { buildStockComparison } = require('./stock-report');
 const { archiveAndGetPath } = require('./report-archive');
-const { prepareBrand, parseBrandArg } = require('./brand-config');
+const { prepareBrand, parseBrandArg, parseStockMode } = require('./brand-config');
 
 /** 게시 시각(ISO)을 한국 날짜(YYYY-MM-DD)로. 서버 시간대에 안 휘둘리게 시간대를 직접 지정한다. */
 function kstDate(iso) {
@@ -183,8 +183,7 @@ async function main() {
   const sheetName = await saveReportToExcel(report, brand.paths.excel);
   console.log(`✅ 엑셀 저장 완료: ${brand.paths.excel} (시트: ${sheetName})`);
 
-  const stockArg = rest.find(a => /^--?stock=(none|ratio)$/.test(a) || /^stock=(none|ratio)$/.test(a));
-  const stockMode = stockArg ? stockArg.split('=')[1] : brand.defaultStockMode;
+  const stockMode = parseStockMode(rest, brand.defaultStockMode);
   const stockHistory = stockMode !== 'none' && fs.existsSync(brand.paths.stockHistory)
     ? JSON.parse(fs.readFileSync(brand.paths.stockHistory, 'utf-8'))
     : null;
@@ -196,7 +195,7 @@ async function main() {
   if (stockComparison && stockMode !== 'none') {
     console.log(`📦 재고 포함 — 리포트 주소 끝에 #stock 을 붙이면 재고 탭이 열립니다(스냅샷 ${stockComparison.snapshotCount}개).`);
   } else if (stockMode === 'none') {
-    console.log('📦 재고 미포함(설정이 none) — 넣으려면 끝에 stock=ratio 를 붙여서 다시 돌리세요.');
+    console.log('📦 재고 미포함(설정이 none) — 넣으려면 끝에 stock 을 붙여서 다시 돌리세요.');
   } else {
     console.log(`📦 재고 미포함 — 재고 기록이 없습니다(${path.relative(__dirname, brand.paths.stockHistory)}). 먼저 node naver-stock-snapshot.js 를 돌리세요.`);
   }

@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const { getProductStock, getProductStockAllPages, extractNotifyCount } = require('./naver-stock');
 const { prepareBrand, parseBrandArg } = require('./brand-config');
+const { appendFollowerSnapshot } = require('./follower-history');
 
 /**
  * 브랜드 설정의 스토어 목록을 실제 수집에 쓰는 형태로 변환.
@@ -79,6 +80,28 @@ async function captureSnapshot(brandOrKey) {
   fs.writeFileSync(historyPath, JSON.stringify(history, null, 2));
 
   console.log(`✅ 스냅샷 저장 완료: ${historyPath} (누적 ${history.snapshots.length}개)`);
+
+  // 관심고객수는 재고가 아니라 '그 시점에 몇 명인가'라서, 팔로워와 같은 기록에도 같이 쌓는다.
+  // 예전엔 전체 수집(run-megahouse)을 돌 때만 쌓여서, 재고만 따로 찍으면 리포트 맨 위
+  // 추이 블록의 관심고객수가 옛날 값에 멈춰 있었다. 재고를 찍었다는 건 스토어를 열어
+  // 그 순간의 관심고객수를 실제로 읽었다는 뜻이므로, 그때마다 같이 남기는 게 맞다.
+  const notifyAccounts = Object.entries(snapshot.notify || {})
+    .map(([side, n]) => ({
+      platform: 'naver',
+      account: side === 'PW' ? '자사 스토어' : '경쟁사 스토어',
+      side,
+      followers: n?.count ?? null,
+      from: n?.from ?? 'none',
+      approx: false,            // 페이지에 적힌 숫자를 그대로 읽은 값이라 줄임 표기가 아니다
+      label: n?.label ?? null,  // '관심고객수'인지 '알림받기'인지 — 스토어 종류마다 다르다
+    }));
+  const rows = appendFollowerSnapshot(brand.paths.followerHistory, notifyAccounts);
+  if (rows !== null) {
+    const shown = notifyAccounts
+      .map(a => `${a.side} ${a.followers === null ? '못 읽음' : a.followers.toLocaleString('ko-KR')}`).join(' · ');
+    console.log(`👥 관심고객수도 추이 기록에 저장: ${brand.paths.followerHistory} (누적 ${rows}개) — ${shown}`);
+  }
+
   return snapshot;
 }
 
