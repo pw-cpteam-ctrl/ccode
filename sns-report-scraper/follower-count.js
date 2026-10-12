@@ -97,7 +97,33 @@ function watchFollowers(page, { platform, account }) {
       try {
         if (typeof fromApi === 'number') return { count: fromApi, from: 'api', approx: false };
 
-        // 2순위 — 화면 글자. 못 읽어도 수집 자체는 계속돼야 하므로 예외를 밖으로 던지지 않는다.
+        // 2순위(인스타 전용) — 프로필 화면에서 내부 주소를 직접 한 번 더 불러본다.
+        //
+        // 왜 필요한가: 인스타는 화면에 '2.3만'처럼 줄여서 적는다. 그걸 되돌리면 23,000이
+        // 되는데, 실제로 23,145명에서 23,480명으로 늘어도 표기는 계속 '2.3만'이라 기록도
+        // 계속 23,000이다. 몇 주 내내 '변화 없음'으로 있다가 2.4만이 되는 순간 갑자기
+        // 1,000명 뛴 것처럼 찍힌다 — 추이를 보려고 만든 기능인데 가짜 계단만 남는다.
+        // (실측 2026-10-12: PW 23000~, BH 14000~ 둘 다 이 줄임 표기에 걸렸다.)
+        //
+        // 1순위(응답 가로채기)가 비는 이유는 이 주소를 페이지가 항상 부르지는 않기 때문이다.
+        // 안 불렀으면 우리가 직접 부르면 된다. 페이지 안에서 부르므로 로그인 상태가 그대로
+        // 따라가고, 바깥에서 부를 때처럼 막히지 않는다.
+        if (!isX) {
+          const exact = await page.evaluate(async (acct) => {
+            try {
+              const res = await fetch(`/api/v1/users/web_profile_info/?username=${encodeURIComponent(acct)}`, {
+                headers: { 'x-ig-app-id': '936619743392459' },  // 이 값이 없으면 인스타가 거절한다
+                credentials: 'include',
+              });
+              if (!res.ok) return null;
+              return await res.json();
+            } catch { return null; }
+          }, account).catch(() => null);
+          const c = exact ? findInstagramFollowers(exact, account) : null;
+          if (typeof c === 'number') return { count: c, from: 'api-direct', approx: false };
+        }
+
+        // 3순위 — 화면 글자. 못 읽어도 수집 자체는 계속돼야 하므로 예외를 밖으로 던지지 않는다.
         const text = await page.evaluate((isX) => {
           if (isX) {
             const a = document.querySelector('a[href$="/verified_followers"], a[href$="/followers"]');
