@@ -166,7 +166,7 @@
   /* 끌어서 고르는 중 */
   tr.is-picked td { background: #eff6ff; color: var(--ink); }
   tr.is-picked td.nick { font-weight: 700; }
-  th.pick, td.pick { width: 30px; padding-right: 0; }
+  th.pick, td.pick { width: 30px; padding-right: 0; cursor: cell; }
   td.pick input { pointer-events: none; }  /* 고르기는 줄 전체를 끄는 것으로 한다 */
   /* 글자를 복사할 수 있어야 한다. 끌어서 고르는 동안에만 선택을 막는다. */
   tbody tr { cursor: default; }
@@ -229,11 +229,26 @@
 
   /* 예상 지급 시기 — 날짜를 위에, 무엇인지 아래에 작게 */
   td.paycell { white-space: nowrap; }
-  .pay { display: inline-flex; flex-direction: column; line-height: 1.3; }
-  .pay b { font-size: 13px; font-weight: 700; }
+  .pay-cond { font-weight: 600; opacity: .75; }
+  /* 열 제목을 눌러 정렬 기준을 바꾼다. 바에 버튼을 더 두지 않으려고 이렇게 했다. */
+  th.sortable { cursor: pointer; }
+  th.sortable:hover { color: var(--ink); }
+  th.sortable.is-on { color: #1d4ed8; }
+  .sort-ar { font-size: 9px; }
+
+  /* 가까운 지급끼리 묶어 주는 머리줄 */
+  tr.grouprow td {
+    background: #f8fafc; padding: 7px 10px; border-bottom: 1px solid var(--line);
+  }
+  .group-when { font-size: 11.5px; font-weight: 800; color: #0b3d91; letter-spacing: -0.01em; }
+  .group-n {
+    margin-left: 7px; font-size: 10.5px; font-weight: 700; color: var(--ink-500);
+    background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px;
+  }
+  .paid-note { display: block; font-size: 10.5px; color: var(--ink-400); margin-top: 3px; white-space: nowrap; }
   .paychip {
-    display: inline-block; align-self: flex-start;
-    padding: 2px 8px; border-radius: 7px; letter-spacing: -0.01em;
+    display: inline-block; font-size: 13px; font-weight: 700;
+    padding: 3px 9px; border-radius: 7px; letter-spacing: -0.01em;
   }
   .paychip.now { background: #cfe3ff; color: #0b3d91; font-weight: 800; }
   .paychip.left { background: #eef4fb; color: #3b6aa8; font-weight: 700; }
@@ -273,6 +288,13 @@
   var picked = {};    // 지금 드래그로 고른 건 (화면에서만 쓰는 임시 값)
   var openRounds = {};// 지난 제출을 펼쳐 둔 차수
   var trackOver = {}; // 담당자가 바꾼 수령 방식 (차수 열쇠 → {track})
+  // 정렬 기준. 'pay'는 다음 지급일 순(기본), 'draft'는 초안 공유 예정일 순.
+  // 열 제목을 눌러 바꾸고, 고른 기준은 이 기기에 남는다.
+  var SORT_KEY = 'cg-admin-sort';
+  var sortBy = (function () {
+    try { return localStorage.getItem(SORT_KEY) === 'draft' ? 'draft' : 'pay'; }
+    catch (e) { return 'pay'; }
+  })();
   var keyword = '';
 
   function esc(s) {
@@ -466,11 +488,17 @@
       // 담당자가 내려 둔 건은 날짜와 상관없이 맨 아래로 보낸다.
       var aa = archived[a.roundKey] ? 1 : 0, ab = archived[b.roundKey] ? 1 : 0;
       if (aa !== ab) return aa - ab;
-      var da = keyDate[a.roundKey] || '', db = keyDate[b.roundKey] || '';
-      if (da !== db) {
-        if (!da) return 1;           // 날짜를 안 적은 건은 맨 아래
-        if (!db) return -1;
-        return db.localeCompare(da); // 먼 날짜가 위
+      if (sortBy === 'pay') {
+        // 다음에 나갈 날짜가 가까운 것부터. 지급을 챙길 때 쓰는 순서다.
+        var pa = nextPayTime(a), pb = nextPayTime(b);
+        if (pa !== pb) return pa - pb;
+      } else {
+        var da = keyDate[a.roundKey] || '', db = keyDate[b.roundKey] || '';
+        if (da !== db) {
+          if (!da) return 1;           // 날짜를 안 적은 건은 맨 아래
+          if (!db) return -1;
+          return db.localeCompare(da); // 먼 날짜가 위
+        }
       }
       if (a.latest !== b.latest) return a.latest ? -1 : 1;
       return String(b.at || '').localeCompare(String(a.at || ''));
@@ -672,28 +700,57 @@
     return days <= 7 ? 'now' : 'left';
   }
 
+  // 다음에 나갈 지급이 언제인지(밀리초). 선지급은 1차가 지났으면 정산일이다.
+  function nextPayTime(r) {
+    var open = openDateFor(r.draftDate);
+    if (!open) return Infinity;       // 날짜를 안 적은 건은 맨 뒤
+    var d = new Date(open);
+    d.setDate(d.getDate() + (trackOf(r) === 'split' && payWhen(open, 10) !== 'done' ? 10 : 40));
+    return d.getTime();
+  }
+
+  // 가까운 지급끼리 한 묶음으로 본다. 9월 후지급과 10월 선지급처럼 며칠 차이로
+  // 같이 나가는 건들이 목록에서 떨어져 있으면 두 번 일하게 된다.
+  var GROUP_GAP_DAYS = 10;
+
+  function payGroupLabel(t) {
+    if (!isFinite(t)) return '날짜 미정';
+    var d = new Date(t);
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var days = Math.round((d - today) / 864e5);
+    var when = (d.getMonth() + 1) + '/' + d.getDate();
+    if (days < 0) return '지난 지급';
+    if (days === 0) return when + ' 오늘 지급';
+    // 며칠 뒤인지까지 적으면 숫자가 또 늘어난다. 급한 것만 말로 집어 준다.
+    return days <= 7 ? (when + '부터 · 이번 주') : (when + '부터');
+  }
+
+  // 이 칸에는 '다음에 할 일' 한 줄만 둔다. 날짜 둘에 설명까지 쌓여 있으니
+  // 정작 얼마를 언제 줘야 하는지가 묻혔다. 끝난 차수는 지급 확인 칸으로 뺀다.
+  //   선지급 1차 전 — 10/18 · 1차 5만
+  //   선지급 1차 후 — 11/17 · 2차 5만 (750↑)
+  //   후지급        — 11/17 · 5만~10만 (정산 결과에 따라 갈려 미리 못 박는다)
   function payCell(r) {
     var p = payPlan(r);
     if (!p) return '<span class="pay-none">-</span>';
     var open = openDateFor(r.draftDate);
 
     if (trackOf(r) !== 'split') {
-      return '<span class="pay">' +
-        '<b class="paychip ' + payWhen(open, 40) + '">' + p.second + ' 전후</b>' +
-        '<em>정산 때 한 번에</em></span>';
+      return '<b class="paychip ' + payWhen(open, 40) + '">' + p.second + ' 주간 · 5만~10만</b>';
     }
+    if (payWhen(open, 10) === 'done') {
+      return '<b class="paychip ' + payWhen(open, 40) + '">' + p.second + ' 주간 · 2차 5만 <span class="pay-cond">(750↑)</span></b>';
+    }
+    return '<b class="paychip ' + payWhen(open, 10) + '">' + p.first + ' · 1차 5만</b>';
+  }
 
-    // 칩은 '다음에 실제로 나갈 차례'에 붙인다. 1차에 고정해 두었더니 1차가
-    // 지난 건은 칩이 지난 날짜에 붙어 회색이 되고, 정작 다음에 나갈 2차가 묻혔다.
-    var firstState = payWhen(open, 10);
-    if (firstState === 'done') {
-      return '<span class="pay">' +
-        '<b class="paychip ' + payWhen(open, 40) + '">2차 ' + p.second + ' 전후</b>' +
-        '<em>1차 ' + p.first + ' 지급함</em></span>';
-    }
-    return '<span class="pay">' +
-      '<b class="paychip ' + firstState + '">1차 ' + p.first + '</b>' +
-      '<em>2차 ' + p.second + ' 전후</em></span>';
+  // 1차가 이미 나간 건은 그 사실만 지급 확인 칸 밑에 작게 남긴다.
+  function paidNote(r) {
+    if (trackOf(r) !== 'split') return '';
+    var open = openDateFor(r.draftDate);
+    if (!open || payWhen(open, 10) !== 'done') return '';
+    var p = payPlan(r);
+    return '<span class="paid-note">1차 ' + p.first + ' 지급</span>';
   }
 
   function openBox() {
@@ -848,6 +905,9 @@
       tr.addEventListener('mousedown', function (e) {
         if (e.button !== 0) return;
         if (e.target.closest('button')) return;   // 확정 버튼 등은 그대로 눌리게
+        // 줄 어디서나 끌 수 있게 했더니 글자를 긁어 복사할 수가 없었다.
+        // 끌어서 고르는 것은 맨 앞 네모 칸에서만 시작한다.
+        if (!e.target.closest('td.pick, th.pick')) return;
         drag.on = true; startIdx = i;
         document.body.classList.add('is-dragging');
         base = {};
@@ -877,6 +937,8 @@
     var oldCount = {};
     list.forEach(function (r) { if (!r.latest) oldCount[r.roundKey] = (oldCount[r.roundKey] || 0) + 1; });
 
+    var lastGroupAt = null;   // 바로 앞 줄의 지급일 — 10일 넘게 벌어지면 새 묶음
+    var groupCount = {};
     var body = list.filter(function (r) {
       // 지난 제출은 그 차수를 펼쳤을 때만 보여준다. 평소에는 최신 한 줄만 남아
       // 목록이 사람 수만큼만 길어진다.
@@ -885,11 +947,28 @@
       var isOn = isConfirmed(r);
       var age = rowAge(r);
       var on = !!picked[r.roundKey];
+      // 지급일 순으로 볼 때만, 가까운 지급끼리 머리줄로 묶어 준다.
+      var head = '';
+      if (sortBy === 'pay' && r.latest && !isArchived(r)) {
+        var t = nextPayTime(r);
+        if (lastGroupAt === null || !isFinite(t) !== !isFinite(lastGroupAt) ||
+            (isFinite(t) && t - lastGroupAt > GROUP_GAP_DAYS * 864e5)) {
+          var same = list.filter(function (x) {
+            if (!x.latest || isArchived(x)) return false;
+            var xt = nextPayTime(x);
+            return isFinite(t) ? (isFinite(xt) && Math.abs(xt - t) <= GROUP_GAP_DAYS * 864e5) : !isFinite(xt);
+          }).length;
+          head = '<tr class="grouprow"><td colspan="12">' +
+            '<span class="group-when">' + esc(payGroupLabel(t)) + '</span>' +
+            '<span class="group-n">' + same + '건</span></td></tr>';
+          lastGroupAt = t;
+        }
+      }
       var cls = (r.latest ? '' : 'is-old') +
         (age ? ' is-' + age : '') +
         (isArchived(r) ? ' is-archived' : '') +
         (on ? ' is-picked' : '');
-      return '<tr class="' + cls.trim() + '" data-key="' + esc(r.roundKey) + '">' +
+      return head + '<tr class="' + cls.trim() + '" data-key="' + esc(r.roundKey) + '">' +
         '<td class="pick"><input type="checkbox"' + (on ? ' checked' : '') + ' aria-label="고르기" /></td>' +
         '<td class="nick" title="' + esc(r.nick) + '">' + (r.latest
           ? (oldCount[r.roundKey]
@@ -916,7 +995,7 @@
           : '') + '</td>' +
         '<td>' + (r.latest
           ? '<button class="mini reward-btn' + (isArchived(r) ? ' is-done' : '') + '" data-reward="' + esc(r.roundKey) + '" data-on="' + (isArchived(r) ? '1' : '0') + '">' +
-            (isArchived(r) ? '✓ 지급함' : '리워드 확인') + '</button>'
+            (isArchived(r) ? '✓ 지급함' : '리워드 확인') + '</button>' + paidNote(r)
           : '') + '</td>' +
         '</tr>';
     }).join('');
@@ -938,13 +1017,16 @@
       openBox() +
       (list.length
         ? '<div class="scroll"><table><thead><tr>' +
-          '<th class="pick"></th><th>활동명</th><th>네이버 아이디</th><th>초안 공유 예정일</th><th>D-day</th><th>수령 방식</th><th>예상 지급 시기</th><th>보상 형태</th><th class="wishcol">희망 상품</th><th>제출 시각</th><th>업로드</th><th>리워드 지급 확인</th>' +
+          '<th class="pick"></th><th>활동명</th><th>네이버 아이디</th><th class="sortable' + (sortBy === 'draft' ? ' is-on' : '') + '" data-sort="draft">초안 공유 예정일' + (sortBy === 'draft' ? ' <span class="sort-ar">▾</span>' : '') + '</th>' +
+          '<th>D-day</th><th>수령 방식</th>' +
+          '<th class="sortable' + (sortBy === 'pay' ? ' is-on' : '') + '" data-sort="pay">예상 지급 시기' + (sortBy === 'pay' ? ' <span class="sort-ar">▾</span>' : '') + '</th><th>보상 형태</th><th class="wishcol">희망 상품</th><th>제출 시각</th><th>업로드</th><th>리워드 지급 확인</th>' +
           '</tr></thead><tbody>' + body + '</tbody></table></div>'
         : '<div class="empty">아직 접수된 내용이 없습니다.</div>') +
       pickBar() +
       blockedBox() +
       '<p class="foot">‘표 전체 복사’는 최신 제출만 담습니다. 노션 표에 그대로 붙여넣을 수 있어요.<br />' +
       '이 기기에서는 2일간 코드를 다시 묻지 않습니다. 공용 PC라면 ‘잠그기’를 눌러주세요.<br />' +
+      '맨 앞 네모 칸을 위아래로 끌면 여러 건을 한 번에 고를 수 있습니다.<br />' +
       '‘업로드 확인’은 콘텐츠가 올라온 것을 담당자가 확인했다는 표시입니다. 누르면 초안 공유 예정일에 금이 그어져, 아직 안 올라온 건만 눈에 들어옵니다.</p>' +
       '</div>';
 
@@ -975,6 +1057,13 @@
         var next = now === 'split' ? 'after' : 'split';
         // 크리에이터가 낸 값으로 돌아온 것이면 바꾼 기록 자체를 지운다.
         saveTrack(b.getAttribute('data-track'), next === b.getAttribute('data-orig') ? '' : next);
+      });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('th.sortable'), function (th) {
+      th.addEventListener('click', function () {
+        sortBy = th.getAttribute('data-sort');
+        try { localStorage.setItem(SORT_KEY, sortBy); } catch (e) { /* 저장 못 해도 이번엔 적용된다 */ }
+        renderList();
       });
     });
     var tbl = root.querySelector('table');
