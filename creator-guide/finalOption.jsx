@@ -478,7 +478,7 @@ function ReplyForm({ draftDate, setDraftDate, trackId, rewardId, setRewardId, wi
               maxLength={60}
               value={wish}
               onChange={(e) => setWish(e.target.value)}
-              placeholder="예: 9월 ○○ 룩업"
+              placeholder="예: 9월 ○○ 룩업 / 팬 이벤트는 '이벤트'"
             />
             {/* '못 정했으면 상담 후 결정이라고 적으세요'라는 안내가 있었는데,
                 정해둔 사람까지 그쪽으로 새게 만들어 결국 담당자가 다시 물어보러

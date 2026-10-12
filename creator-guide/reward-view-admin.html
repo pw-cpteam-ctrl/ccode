@@ -173,6 +173,26 @@
   .open-row.is-set .open-note { color: #1d4ed8; }
   .open-reset { padding: 5px 9px; font-size: 12px; }
   .open-foot { margin: 12px 0 0; font-size: 12px; color: var(--ink-500); }
+  /* 지난 제출 접기 — 같은 분이 여러 번 낸 것은 최신 한 줄로 모으고, 눌러서 편다 */
+  .old-toggle {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: none; border: 0; padding: 0; font: inherit; font-weight: 700;
+    color: inherit; cursor: pointer; text-align: left;
+  }
+  .old-arrow { display: inline-block; transition: transform .15s; color: var(--ink-400); }
+  .old-toggle[aria-expanded="true"] .old-arrow { transform: rotate(90deg); }
+  .old-n {
+    font-size: 11px; font-weight: 600; color: var(--ink-500);
+    background: #f1f5f9; border-radius: 999px; padding: 2px 7px;
+  }
+  .old-child { color: var(--ink-400); }
+
+  /* 예상 지급 시기 — 날짜를 위에, 무엇인지 아래에 작게 */
+  td.paycell { white-space: nowrap; }
+  .pay { display: inline-flex; flex-direction: column; line-height: 1.3; }
+  .pay b { font-size: 13px; font-weight: 700; }
+  .pay em { font-style: normal; font-size: 11px; color: var(--ink-500); }
+  .pay-none { color: var(--ink-400); }
   .empty { padding: 40px 16px; text-align: center; color: var(--ink-500); }
   .scroll { overflow-x: auto; }
   .foot { margin-top: 14px; font-size: 12px; color: var(--ink-400); line-height: 1.6; }
@@ -204,6 +224,7 @@
   var openDays = {};  // 기본(첫 목요일)과 다른 달의 오픈 날짜. 'YYYY-MM': 일
   var archived = {};  // 담당자가 내려 둔 건 (차수 열쇠 기준)
   var picked = {};    // 지금 드래그로 고른 건 (화면에서만 쓰는 임시 값)
+  var openRounds = {};// 지난 제출을 펼쳐 둔 차수
   var keyword = '';
 
   function esc(s) {
@@ -424,7 +445,7 @@
   // 노션에 그대로 붙여넣을 수 있게 탭으로 구분한 표를 만든다.
   // 최신 제출만 담는다 — 지난 제출까지 넘어가면 중복 행이 생긴다.
   function tableText() {
-    var head = ['활동명', '네이버 아이디', '초안 공유 예정일', 'D-day', '보상 수령 방식', '보상 형태', '희망 상품', '제출 시각', '확정'];
+    var head = ['활동명', '네이버 아이디', '초안 공유 예정일', 'D-day', '수령 방식', '예상 지급 시기', '보상 형태', '희망 상품', '제출 시각', '확정'];
     var lines = [head.join('\t')];
     visibleRows().filter(function (r) { return r.latest && !isArchived(r); }).forEach(function (r) {
       lines.push([
@@ -433,6 +454,11 @@
         fmtDate(r.draftDate),
         fmtDday(r.draftDate),
         TRACK[r.track] || r.track,
+        (function () {
+          var p = payPlan(r);
+          if (!p) return '';
+          return r.track === 'split' ? ('1차 ' + p.first + ' / 2차 ' + p.second + ' 전후') : (p.second + ' 전후');
+        })(),
         REWARD[r.reward] || r.reward,
         r.wish || '',
         fmtAt(r.at),
@@ -533,6 +559,47 @@
       d.setMonth(d.getMonth() + 1);
     }
     return out;
+  }
+
+  // 그 건이 어느 오픈 회차에 속하는지 — 초안 날짜 이후로 가장 가까운 오픈일이다.
+  function openDateFor(draftDate) {
+    var p = String(draftDate || '').split('-');
+    if (p.length !== 3) return null;
+    var y = +p[0], m = +p[1];
+    var set = function (yy, mm) {
+      var key = yy + '-' + String(mm).padStart(2, '0');
+      return new Date(yy, mm - 1, openDays[key] == null ? firstThursday(yy, mm) : openDays[key]);
+    };
+    var here = set(y, m);
+    var draft = new Date(y, m - 1, +p[2]);
+    if (draft <= here) return here;
+    return m === 12 ? set(y + 1, 1) : set(y, m + 1);
+  }
+
+  function plusDays(base, n) {
+    var d = new Date(base); d.setDate(d.getDate() + n);
+    return (d.getMonth() + 1) + '/' + d.getDate();
+  }
+
+  // 가이드 기준(06 보상 탭)
+  //   선지급 — 오픈 후 10일차에 1차, 예약판매 정산(오픈일 D+40 전후)에 2차
+  //   후지급 — 정산 때 한 번에
+  function payPlan(r) {
+    var open = openDateFor(r.draftDate);
+    if (!open) return null;
+    if (r.track === 'split') {
+      return { first: plusDays(open, 10), second: plusDays(open, 40), open: plusDays(open, 0) };
+    }
+    return { first: null, second: plusDays(open, 40), open: plusDays(open, 0) };
+  }
+
+  function payCell(r) {
+    var p = payPlan(r);
+    if (!p) return '<span class="pay-none">-</span>';
+    if (r.track === 'split') {
+      return '<span class="pay"><b>1차 ' + p.first + '</b><em>2차 ' + p.second + ' 전후</em></span>';
+    }
+    return '<span class="pay"><b>' + p.second + ' 전후</b><em>정산 때 한 번에</em></span>';
   }
 
   function openBox() {
@@ -689,7 +756,15 @@
     var liveRows = list.filter(function (r) { return r.latest && !isArchived(r); });
     var doneCount = list.filter(function (r) { return r.latest && isArchived(r); }).length;
 
-    var body = list.map(function (r) {
+    // 같은 차수에 지난 제출이 몇 건인지 미리 센다 — 최신 줄에 '▸ 지난 제출 N건'을 붙이려고.
+    var oldCount = {};
+    list.forEach(function (r) { if (!r.latest) oldCount[r.roundKey] = (oldCount[r.roundKey] || 0) + 1; });
+
+    var body = list.filter(function (r) {
+      // 지난 제출은 그 차수를 펼쳤을 때만 보여준다. 평소에는 최신 한 줄만 남아
+      // 목록이 사람 수만큼만 길어진다.
+      return r.latest || openRounds[r.roundKey];
+    }).map(function (r) {
       var isOn = isConfirmed(r);
       var age = rowAge(r);
       var on = !!picked[r.roundKey];
@@ -699,11 +774,18 @@
         (on ? ' is-picked' : '');
       return '<tr class="' + cls.trim() + '" data-key="' + esc(r.roundKey) + '">' +
         '<td class="pick"><input type="checkbox"' + (on ? ' checked' : '') + ' aria-label="고르기" /></td>' +
-        '<td class="nick">' + esc(r.nick) + (r.latest ? '' : ' <span class="old-note">지난 제출</span>') + '</td>' +
+        '<td class="nick">' + (r.latest
+          ? (oldCount[r.roundKey]
+              ? '<button class="old-toggle" data-round="' + esc(r.roundKey) + '" aria-expanded="' + (openRounds[r.roundKey] ? 'true' : 'false') + '">' +
+                '<span class="old-arrow">›</span>' + esc(r.nick) +
+                '<span class="old-n">지난 제출 ' + oldCount[r.roundKey] + '건</span></button>'
+              : esc(r.nick))
+          : '<span class="old-child">↳ ' + esc(r.nick) + '</span> <span class="old-note">지난 제출</span>') + '</td>' +
         '<td class="naver" title="' + esc(r.naver || '') + '"><span class="roll"><span>' + esc(r.naver || '-') + '</span></span></td>' +
         '<td>' + esc(fmtDate(r.draftDate)) + '</td>' +
         '<td><span class="dday' + ddayClass(r.draftDate) + '">' + esc(fmtDday(r.draftDate)) + '</span></td>' +
         '<td><span class="tag ' + esc(r.track) + '">' + esc(TRACK[r.track] || r.track) + '</span></td>' +
+        '<td class="paycell">' + payCell(r) + '</td>' +
         '<td><span class="tag ' + esc(r.reward) + '">' + esc(REWARD[r.reward] || r.reward) + '</span></td>' +
         '<td class="wish">' + esc(r.wish || '-') + '</td>' +
         '<td>' + esc(fmtAt(r.at)) + '</td>' +
@@ -731,7 +813,7 @@
       openBox() +
       (list.length
         ? '<div class="scroll"><table><thead><tr>' +
-          '<th class="pick"></th><th>활동명</th><th>네이버 아이디</th><th>초안 공유 예정일</th><th>D-day</th><th>보상 수령 방식</th><th>보상 형태</th><th>희망 상품</th><th>제출 시각</th><th>확정</th>' +
+          '<th class="pick"></th><th>활동명</th><th>네이버 아이디</th><th>초안 공유 예정일</th><th>D-day</th><th>수령 방식</th><th>예상 지급 시기</th><th>보상 형태</th><th>희망 상품</th><th>제출 시각</th><th>확정</th>' +
           '</tr></thead><tbody>' + body + '</tbody></table></div>'
         : '<div class="empty">아직 접수된 내용이 없습니다.</div>') +
       pickBar() +
@@ -751,6 +833,15 @@
       try { nq.setSelectionRange(pos, pos); } catch (e) { /* 무시 */ }
     });
     document.getElementById('copy').addEventListener('click', function () { copyTable(this); });
+    Array.prototype.forEach.call(root.querySelectorAll('.old-toggle'), function (b) {
+      b.addEventListener('mousedown', function (e) { e.stopPropagation(); });  // 끌어서 고르기와 겹치지 않게
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var k = b.getAttribute('data-round');
+        if (openRounds[k]) delete openRounds[k]; else openRounds[k] = true;
+        renderList();
+      });
+    });
     var tbl = root.querySelector('table');
     if (tbl) bindDragPick(tbl);
     var arch = document.getElementById('arch');
