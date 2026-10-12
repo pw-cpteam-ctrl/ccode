@@ -79,14 +79,22 @@
   /* 업로드가 확인된 건은 초안 날짜에 금을 긋는다 — 기다리는 날짜가 아니게 되므로 */
   td.draft.is-uploaded { text-decoration: line-through; color: var(--ink-400); }
 
-  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 1px var(--line); }
+  /* 내용만큼만 늘어나되 화면보다 좁아지지는 않게. 폭을 화면에 억지로 맞추면
+     긴 희망 상품이 서너 줄로 접혀 행이 부푼다. */
+  table { width: max-content; min-width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 1px var(--line); }
   th, td { padding: 11px 12px; text-align: left; font-size: 13.5px; border-bottom: 1px solid var(--line); }
   th { background: #fafaf9; font-size: 11.5px; font-weight: 700; color: var(--ink-500); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
   tr:last-child td { border-bottom: 0; }
   td.nick { font-weight: 700; }
   .tag { display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 11.5px; font-weight: 700; }
-  .tag.split { background: #eff6ff; color: #1d4ed8; }
-  .tag.after { background: #fefce8; color: #a16207; }
+  /* 수령 방식은 칩 대신 앞에 점 하나로. 한 줄에 칩이 셋이나 되어 산만했다. */
+  .tag.split, .tag.after { background: none; padding: 2px 0; color: #000; }
+  .tag.split::before, .tag.after::before {
+    content: ''; display: inline-block; width: 7px; height: 7px;
+    border-radius: 50%; margin-right: 6px; vertical-align: 1px;
+  }
+  .tag.split::before { background: #2563eb; }
+  .tag.after::before { background: #d97706; }
   .tag.coupon { background: #f5f3ff; color: #6d28d9; }
   .tag.goods { background: #fdf2f8; color: #be185d; }
   .tag.ok { background: #f0fdf4; color: var(--green); }
@@ -124,7 +132,7 @@
     td.naver .roll.is-long > span { animation: none; }
   }
   /* 희망 상품은 반대로 너무 좁아 글이 계속 접혔다. 아이디 칸만큼은 준다. */
-  td.wish { min-width: 13ch; }
+  td.wish { min-width: 13ch; max-width: 28ch; }
   /* 세 단계로 가라앉힌다 — 이번 달·날짜 지남 → 지난 달 → 담당자가 내린 건.
      어느 것도 지우지 않는다. 기록은 남고 눈에 덜 걸리게만 한다. */
   /* 지급이 남아 있는 건은 또렷한 검정으로 둔다 — 지금 챙길 것 */
@@ -198,6 +206,13 @@
   td.paycell { white-space: nowrap; }
   .pay { display: inline-flex; flex-direction: column; line-height: 1.3; }
   .pay b { font-size: 13px; font-weight: 700; }
+  .paychip {
+    display: inline-block; align-self: flex-start;
+    padding: 2px 8px; border-radius: 7px; letter-spacing: -0.01em;
+  }
+  .paychip.soon { background: #e0efff; color: #0b3d91; }
+  .paychip.later { background: #f4f4f2; color: #6b6b66; font-weight: 600; }
+  .paychip.done { background: none; color: #a3a3a0; font-weight: 600; padding-left: 0; }
   .pay em { font-style: normal; font-size: 11px; color: var(--ink-500); }
   .pay-none { color: var(--ink-400); }
   .empty { padding: 40px 16px; text-align: center; color: var(--ink-500); }
@@ -614,13 +629,30 @@
     return { first: null, second: plusDays(open, 40), open: plusDays(open, 0) };
   }
 
+  // 다음 지급이 언제인지에 따라 칩 색을 나눈다.
+  //   soon  이번 달 안   — 지금 챙길 것
+  //   later 다음 달 이후 — 아직 멀었다
+  //   done  이미 지났다
+  function payWhen(dateStr, open, offset) {
+    var d = new Date(open); d.setDate(d.getDate() + offset);
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    if (d < today) return 'done';
+    var endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    return d <= endOfMonth ? 'soon' : 'later';
+  }
+
   function payCell(r) {
     var p = payPlan(r);
     if (!p) return '<span class="pay-none">-</span>';
+    var open = openDateFor(r.draftDate);
     if (trackOf(r) === 'split') {
-      return '<span class="pay"><b>1차 ' + p.first + '</b><em>2차 ' + p.second + ' 전후</em></span>';
+      return '<span class="pay">' +
+        '<b class="paychip ' + payWhen(p.first, open, 10) + '">1차 ' + p.first + '</b>' +
+        '<em>2차 ' + p.second + ' 전후</em></span>';
     }
-    return '<span class="pay"><b>' + p.second + ' 전후</b><em>정산 때 한 번에</em></span>';
+    return '<span class="pay">' +
+      '<b class="paychip ' + payWhen(p.second, open, 40) + '">' + p.second + ' 전후</b>' +
+      '<em>정산 때 한 번에</em></span>';
   }
 
   function openBox() {
