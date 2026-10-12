@@ -15,7 +15,10 @@
  */
 
 const SIDE_LABEL = { PW: '당사', BH: '경쟁사' };
-const PLATFORM_LABEL = { twitter: 'X (트위터)', instagram: '인스타그램' };
+// 네이버는 팔로워가 아니라 관심고객수(브랜드스토어는 '알림받기' 수)다. 이름이 다르니
+// 화면에도 다르게 적는다 — 같은 '팔로워'로 뭉뚱그리면 보는 사람이 다른 수치로 착각한다.
+const PLATFORM_LABEL = { twitter: 'X (트위터)', instagram: '인스타그램', naver: '네이버 스토어' };
+const PLATFORM_ORDER = ['twitter', 'instagram', 'naver'];
 
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -56,6 +59,7 @@ function buildFollowerSummary(history) {
       }
       const g = byKey.get(key);
       g.account = a.account || g.account;
+      if (a.label) g.label = a.label;   // '관심고객수'인지 '알림받기'인지
       g.points.push({
         takenAt: snap.takenAt,
         count: typeof a.followers === 'number' ? a.followers : null,
@@ -168,7 +172,7 @@ function renderPlatformBlock(platform, groups) {
   const tMax = times.length ? Math.max(...times) : 1;
 
   const cards = sides.map(g => `<div class="fo-card ${g.side === 'PW' ? 'pw' : 'bh'}">
-  <div class="fo-k">${SIDE_LABEL[g.side] || escapeHtml(g.side)} <span class="fo-acc">@${escapeHtml(g.account || '')}</span></div>
+  <div class="fo-k">${SIDE_LABEL[g.side] || escapeHtml(g.side)} <span class="fo-acc">${g.label ? escapeHtml(g.label) : '@' + escapeHtml(g.account || '')}</span></div>
   <div class="fo-v">${comma(g.latest)}${g.approx ? '<span class="fo-approx" title="계정 화면에 줄여서 표시된 숫자(1.6만 등)를 되돌린 값이라 실제와 몇십 명 차이 날 수 있습니다.">≈</span>' : ''}</div>
   <div class="fo-d">직전 대비 ${deltaHtml(g.deltaPrev)}${g.prevAt ? ` <span class="fo-when">(${shortDate(g.prevAt)} 기준)</span>` : ''}</div>
   <div class="fo-d">첫 기록 대비 ${deltaHtml(g.deltaFirst)} · ${ratePctHtml(g.ratePct)}${g.firstAt ? ` <span class="fo-when">(${shortDate(g.firstAt)}부터)</span>` : ''}</div>
@@ -201,7 +205,9 @@ function renderFollowerSectionHtml(history) {
   const summary = buildFollowerSummary(history);
   if (!summary) return '';
 
-  const platforms = [...new Set(summary.groups.map(g => g.platform))];
+  const seen = [...new Set(summary.groups.map(g => g.platform))];
+  const platforms = [...PLATFORM_ORDER.filter(p => seen.includes(p)),
+    ...seen.filter(p => !PLATFORM_ORDER.includes(p))];
   const blocks = platforms
     .map(p => renderPlatformBlock(p, summary.groups.filter(g => g.platform === p)))
     .filter(Boolean)
@@ -210,7 +216,7 @@ function renderFollowerSectionHtml(history) {
 
   return `<section class="follower-section">
   <div class="fo-head">
-    <h2>👥 팔로워 추이</h2>
+    <h2>👥 팔로워 · 관심고객 추이</h2>
     <span class="fo-sub">기준 ${escapeHtml(shortDate(summary.takenAt))} · 기록 ${summary.snapshotCount}회 누적 — 수집할 때마다 한 줄씩 쌓입니다</span>
   </div>
   ${blocks}
@@ -224,6 +230,7 @@ body.view-stock .follower-section{display:none}
 .fo-sub{color:#6b7280;font-size:12px}
 .fo-platform{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:14px 18px 16px;margin-bottom:12px}
 .fo-platform h3{margin:0 0 10px;font-size:14px;color:#374151}
+.fo-metric{font-weight:400;font-size:12px;color:#9099a6}
 .fo-cards{display:flex;gap:12px;flex-wrap:wrap}
 .fo-card{flex:1 1 240px;min-width:220px;border:1px solid #eef0f4;border-radius:10px;padding:12px 14px}
 .fo-card.pw{border-left:4px solid #1971c2}

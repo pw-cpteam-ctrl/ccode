@@ -375,10 +375,45 @@ async function fetchProductPage(url, { headless = false, warmupUrl = null } = {}
   }
 }
 
+/**
+ * 스토어의 관심고객수(브랜드스토어에서는 '알림받기' 수)를 페이지에서 읽음.
+ *
+ * 왜 이렇게 찾나 — 이 숫자는 페이지에 박힌 데이터 뭉치(__PRELOADED_STATE__) 안에
+ * interestCount 같은 이름표로 들어있지 않다. 실제로 조사해보니 화면에 그려진 글자로만 있었다:
+ *     <span ...>관심고객수 <!-- -->83,503</span>
+ * 그래서 이름을 추측해 찾는 방식으로는 영영 못 찾는다. 이름표 바로 뒤의 숫자를 읽는다.
+ *
+ * '바로 뒤'로 못 박은 이유 — 사이 간격을 넉넉히 열어두면 엉뚱하게 멀리 있는 숫자
+ * (상품 가격, 방문자 수 등)를 집어온다. 틀린 숫자가 추이로 쌓이는 건 숫자를 못 읽는
+ * 것보다 훨씬 위험해서, 이름표와 숫자 사이에 빈칸과 태그 말고 다른 글자가 끼면 버린다.
+ * 숫자 없이 '알림받기'라고만 쓰인 버튼도 이 규칙 덕분에 걸러진다.
+ */
+const NOTIFY_LABELS = ['관심고객수', '관심고객', '알림받기'];
+
+function extractNotifyCount(html) {
+  const text = String(html || '');
+  for (const label of NOTIFY_LABELS) {
+    let at = -1;
+    while ((at = text.indexOf(label, at + 1)) !== -1) {
+      const after = text.slice(at + label.length, at + label.length + 200)
+        .replace(/<!--[\s\S]*?-->/g, '')   // React가 글자 사이에 넣는 <!-- --> 표시
+        .replace(/<[^>]*>/g, '\u0001');    // 태그는 자리만 남겨서 글자끼리 들러붙지 않게
+      const m = after.match(/^[\s\u0001]{0,40}([0-9][0-9,]{0,12})/);
+      if (!m) continue;
+      const count = Number(m[1].replaceAll(',', ''));
+      if (Number.isFinite(count) && count > 0) return { count, label, from: 'html' };
+    }
+  }
+  return { count: null, label: null, from: 'none' };
+}
+
 // 상품 페이지 하나에서 재고/가격 레코드를 가져옴. 목록/메인 페이지에도 그대로 쓸 수 있음
 // (여러 상품이 한 페이지에 있으면 배열로 여러 건 반환).
+// onHtml을 주면 받아온 페이지 원본을 그대로 넘겨줌 — 재고를 보러 어차피 연 페이지에서
+// 관심고객수까지 같이 읽으려는 용도(페이지를 한 번 더 열지 않기 위해).
 async function getProductStock(url, opts) {
   const html = await fetchProductPage(url, opts);
+  if (opts?.onHtml) opts.onHtml(html);
   return extractFromHtml(html);
 }
 
@@ -396,7 +431,7 @@ function withPageParam(urlStr, pageNum) {
 // 안에서 다음 페이지로 넘어간" 것처럼 보이게 함(로그인 게이트가 이렇게 자연스럽게 이어진
 // 이동만 통과시키는 것으로 보임 — entryUrl 자체가 게이트를 우회하는 링크였음). 새로 나온
 // 상품이 없는 페이지를 만나면 마지막 페이지로 판단하고 멈춤.
-async function getProductStockAllPages(entryUrl, { headless = false, maxPages = 10, mobile = false, pageUrl = null } = {}) {
+async function getProductStockAllPages(entryUrl, { headless = false, maxPages = 10, mobile = false, pageUrl = null, onHtml = null } = {}) {
   const browser = await chromium.launch({ headless });
   const context = await browser.newContext(mobile ? { ...devices['iPhone 13'], locale: 'ko-KR' } : { locale: 'ko-KR' });
   const page = await context.newPage();
@@ -409,7 +444,9 @@ async function getProductStockAllPages(entryUrl, { headless = false, maxPages = 
       throw new Error(`HTTP ${firstResponse.status()} (${entryUrl})`);
     }
     await page.waitForTimeout(1500);
-    addRecords(extractFromHtml(await page.content()));
+    const firstHtml = await page.content();
+    if (onHtml) onHtml(firstHtml);   // 관심고객수는 첫 페이지(스토어 머리말)에만 있다
+    addRecords(extractFromHtml(firstHtml));
 
     let currentUrl = page.url();
     const canPaginate = Boolean(pageUrl) || /[?&]page=\d+/.test(currentUrl);
@@ -443,6 +480,7 @@ module.exports = {
   fetchProductPage,
   extractFromHtml,
   extractStockRecords,
+  extractNotifyCount,
   sanitizeJsonLiteral,
   extractAssignedJson,
   reconstructNextFlight,

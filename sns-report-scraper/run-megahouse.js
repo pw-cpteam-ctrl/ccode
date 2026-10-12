@@ -96,8 +96,8 @@ function applyBrandToConfig(brand) {
  * 못 읽은 계정(followers=null)도 빼지 않고 그대로 남긴다 — 빼버리면 나중에 추이를 볼 때
  * "그날은 안 쟀다"와 "그날은 0명이었다"가 구분이 안 된다.
  */
-function saveFollowerSnapshot(historyPath, collections) {
-  if (!historyPath || collections.length === 0) return;
+function saveFollowerSnapshot(historyPath, collections, extraAccounts = []) {
+  if (!historyPath || (collections.length === 0 && extraAccounts.length === 0)) return;
   const accounts = collections.map(c => ({
     platform: c.platform,
     account: c.account,
@@ -105,7 +105,7 @@ function saveFollowerSnapshot(historyPath, collections) {
     followers: c.followers?.count ?? null,
     from: c.followers?.from ?? 'none',   // 'api'면 정확, 'dom'이면 화면 줄임 표기라 근사치
     approx: Boolean(c.followers?.approx),
-  }));
+  })).concat(extraAccounts);
   fs.mkdirSync(path.dirname(historyPath), { recursive: true });
   const history = fs.existsSync(historyPath)
     ? JSON.parse(fs.readFileSync(historyPath, 'utf-8'))
@@ -266,7 +266,8 @@ async function main() {
   // 경쟁사 분석에서 정작 필요한 건 규모가 아니라 증가 속도였는데 그걸 못 봤던 적이 있다.
   // 이번에 수집하지 않은 플랫폼(platformFilter)은 이번 스냅샷에 넣지 않는다 — 예전 값을
   // 지금 시점 값인 것처럼 적어두면 추이가 거짓말을 하게 된다.
-  saveFollowerSnapshot(CONFIG.followerHistoryPath, [...ownFresh, ...competitorsFresh]);
+  // 저장은 조금 뒤 — 네이버 스토어의 관심고객수까지 같이 한 줄에 담으려고 기다린다.
+  // 따로 저장하면 한 번 수집에 스냅샷이 두 줄 생겨서 추이가 들쭉날쭉해진다.
 
   // 위 cachePath는 "가장 최근 수집"만 남기고 매번 덮어써져서, 기간을 나눠서 여러 번 수집하면
   // (예: 6/10~13, 6/18~22, 6/27~30을 각각 실행) 예전 기간의 원본은 사라짐 — 나중에 여러 기간을
@@ -313,15 +314,32 @@ async function main() {
   // 그러다 보니 며칠씩 안 찍혀서 추이 그래프가 마지막으로 찍은 날짜에서 멈춰있는 문제가
   // 있었음. 재고 사이트 접속이 실패해도(구조 변경 등) SNS 리포트 저장까지 막으면 안 되므로
   // 실패해도 여기서 삼키고 경고만 남김 — 데이터 유실 방지가 우선.
+  let stockSnapshot = null;
   if (withStock) {
     try {
-      await captureSnapshot(brand);
+      stockSnapshot = await captureSnapshot(brand);
     } catch (e) {
       console.warn(`⚠️ 재고 스냅샷 촬영 실패(SNS 리포트는 정상 진행): ${e.message}`);
     }
   } else {
     console.log('⏭️  재고 스냅샷 건너뜀(nostock) — SNS만 수집함');
   }
+
+  // 관심고객수(브랜드스토어는 '알림받기' 수)는 스토어를 여는 김에 같이 읽어둔 값이라,
+  // 팔로워와 같은 줄에 담는다 — 셋 다 "그 시점에 몇 명인가"라는 같은 성격이고, 리포트에서도
+  // 나란히 보여줘야 어느 쪽이 빨리 느는지 비교가 된다.
+  // nostock으로 돌려서 스토어를 아예 안 열었으면 이 줄은 비워둔다 — 예전 값을 지금 값인
+  // 것처럼 적어두면 추이가 거짓말을 한다.
+  const naverEntries = Object.entries(stockSnapshot?.notify || {}).map(([side, n]) => ({
+    platform: 'naver',
+    account: side === 'PW' ? '자사 스토어' : '경쟁사 스토어',
+    side,
+    followers: n?.count ?? null,
+    from: n?.from ?? 'none',
+    approx: false,                 // 페이지에 적힌 숫자를 그대로 읽은 것이라 줄임 표기가 아니다
+    label: n?.label ?? null,       // '관심고객수'인지 '알림받기'인지 — 스토어 종류마다 다르다
+  }));
+  saveFollowerSnapshot(CONFIG.followerHistoryPath, [...ownFresh, ...competitorsFresh], naverEntries);
 
   // 리포트에 재고를 넣을 때만 히스토리를 읽음. stockMode가 'none'이면 아예 안 읽고 안 넣음 —
   // "리포트 한 장에 정보가 너무 많아 정신없다"는 피드백 + 재고 수량은 대외비라 파일에

@@ -1664,17 +1664,17 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
       ] },
     ] };
     const html = buildHtmlReport(report, null, { followerHistory });
-    assert.ok(html.includes('👥 팔로워 추이'), '팔로워 블록이 리포트에 들어가야 함');
+    assert.ok(html.includes('👥 팔로워 · 관심고객 추이'), '팔로워 블록이 리포트에 들어가야 함');
     assert.ok(html.includes('161,000') && html.includes('82,000'), '현재 팔로워 수가 그대로 나와야 함');
     assert.ok(html.includes('+1,000'), '직전 수집 대비 증감이 나와야 함');
     assert.ok(html.includes('%p'), '양사 증가 속도 비교(몇 %p 차이)가 나와야 함');
     assert.ok(html.includes('body.view-stock .follower-section{display:none}'),
       '재고 탭으로 넘어가면 팔로워 블록은 숨겨져야 함(재고 화면은 재고만)');
     // 블록이 SNS 섹션보다 위에 있어야 "전면"이다 — 밑에 묻히면 요청한 의미가 없음
-    assert.ok(html.indexOf('👥 팔로워 추이') < html.indexOf('id="platform-twitter"'),
+    assert.ok(html.indexOf('👥 팔로워 · 관심고객 추이') < html.indexOf('id="platform-twitter"'),
       '팔로워 블록은 SNS 표보다 위에 있어야 함');
 
-    assert.strictEqual(buildHtmlReport(report, null, {}).includes('팔로워 추이'), false,
+    assert.strictEqual(buildHtmlReport(report, null, {}).includes('관심고객 추이'), false,
       '기록 파일이 아직 없으면 빈 블록을 띄우지 말고 아예 안 나와야 함');
   });
 

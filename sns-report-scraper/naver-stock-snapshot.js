@@ -19,7 +19,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { getProductStock, getProductStockAllPages } = require('./naver-stock');
+const { getProductStock, getProductStockAllPages, extractNotifyCount } = require('./naver-stock');
 const { prepareBrand, parseBrandArg } = require('./brand-config');
 
 /**
@@ -50,12 +50,25 @@ async function captureSnapshot(brandOrKey) {
   const takenAt = new Date().toISOString();
   const snapshot = { takenAt, stores: {} };
 
+  // 관심고객수(브랜드스토어는 '알림받기' 수)는 스토어 머리말에 있어서, 재고를 보려고
+  // 어차피 여는 그 페이지에서 같이 읽으면 된다 — 페이지를 한 번 더 열지 않는다.
+  // 못 읽은 스토어는 0이 아니라 null로 남긴다. 0으로 채우면 "관심고객이 0명으로 줄었다"는
+  // 거짓 추이가 쌓이는데, 그건 숫자를 못 읽는 것보다 훨씬 나쁘다.
+  snapshot.notify = {};
+
   for (const store of stores) {
     console.log(`📸 [${brand.label}] ${store.label} (${store.url}) 재고 수집 중...`);
     const fetchFn = store.paginate ? getProductStockAllPages : getProductStock;
-    const records = await fetchFn(store.url, { warmupUrl: store.warmupUrl, mobile: store.mobile, pageUrl: store.pageUrl });
+    let notify = { count: null, label: null, from: 'none' };
+    const records = await fetchFn(store.url, {
+      warmupUrl: store.warmupUrl,
+      mobile: store.mobile,
+      pageUrl: store.pageUrl,
+      onHtml: html => { notify = extractNotifyCount(html); },
+    });
     snapshot.stores[store.label] = records;
-    console.log(`  → ${records.length}건 수집`);
+    snapshot.notify[store.label] = notify;
+    console.log(`  → ${records.length}건 수집 · ${notify.label || '관심고객수'} ${notify.count === null ? '못 읽음' : notify.count.toLocaleString('ko-KR')}`);
   }
 
   fs.mkdirSync(path.dirname(historyPath), { recursive: true });
