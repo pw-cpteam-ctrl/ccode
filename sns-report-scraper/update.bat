@@ -4,32 +4,19 @@ cd /d %~dp0
 
 rem 2026-10-08: chcp 65001이 없어서 이 파일의 한글이 깨졌다. 깨진 바이트를 cmd가 명령어로
 rem 읽어버려서 "'p' is not recognized" 같은 오류가 줄줄이 뜨고, 정작 읽어야 할 안내문을
-rem 아무도 못 읽었다. start-dashboard.bat은 이미 chcp를 넣어둬서 멀쩡했는데 여기만 빠져 있었다.
+rem 아무도 못 읽었다. start-dashboard.bat은 이미 chcp를 넣어뒀는데 여기만 빠져 있었다.
 
-rem 지난번에 받아둔 새 업데이트 도구가 있으면 먼저 자기 자신부터 바꾸고 다시 시작한다.
-rem 예전에는 "update.bat을 지우고 _update-new.bat의 이름을 바꿔주세요"라고 사람에게
-rem 부탁했는데, 그 안내문이 깨져서 보이지도 않았고 아무도 바꾸지 않아 이 파일만 계속
-rem 옛 버전으로 남았다. 사람 손을 빌리지 않고 여기서 끝낸다.
-rem 옆에 받아둔 것이 '더 새 것일 때만' 바꾼다. 예전 방식이 남겨둔 낡은 _update-new.bat이
-rem 그대로 있으면, 아무 검사 없이 바꿨다가 방금 고친 것을 옛 버전으로 되돌려버린다
-rem (실제로 그럴 뻔했다). 더 오래된 것이면 쓰지 않고 지운다.
-if exist "_update-new.bat" (
-  set "SELFNEW="
-  for /f %%R in ('powershell -NoProfile -Command "if((Get-Item '_update-new.bat').LastWriteTime -gt (Get-Item 'update.bat').LastWriteTime){'NEW'}else{'OLD'}"') do set "SELFNEW=%%R"
-  goto :selfcheck
-)
-goto :afterself
-:selfcheck
-if "%SELFNEW%"=="NEW" (
-  copy /y "_update-new.bat" "update.bat" >nul
-  del "_update-new.bat" >nul 2>&1
-  echo 업데이트 도구를 새 버전으로 바꿨습니다. 새 창에서 다시 시작합니다...
-  start "" "%~f0"
-  exit /b
-)
-echo 옆에 있던 낡은 업데이트 도구 사본(_update-new.bat)을 지웁니다.
+rem 2026-10-12: 새 업데이트 도구를 날짜로 비교해서 적용하던 방식을 걷어냈다.
+rem   _update-new.bat은 copy로 만들어져서 'GitHub 압축파일 안의 날짜'(= 코드를 고친 날)를
+rem   물려받는데, 쓰는 사람의 update.bat에는 '마지막으로 받은 날'이 찍힌다. 그래서 받은 쪽이
+rem   항상 더 오래된 것으로 보여서, 매번 새 버전을 버리고 지웠다가 다음 실행 때 또 만들고를
+rem   끝없이 반복했다. 폴더에 _update-new.bat이 계속 남아 있던 게 그 증상이었다.
+rem   날짜는 애초에 믿을 게 못 되니 내용이 다른지만 보고, 교체도 다음 실행으로 미루지 말고
+rem   이번 실행 안에서 끝낸다. 그래야 폴더에 찌꺼기가 안 남는다.
+
+rem 지난 실행이 중간에 끊겨서 남은 찌꺼기 — 어차피 아래에서 새로 받으니 묻지 말고 지운다.
 del "_update-new.bat" >nul 2>&1
-:afterself
+del "_finish-update.bat" >nul 2>&1
 
 set "OWNER=pw-cpteam-ctrl"
 set "REPO=ccode"
@@ -94,15 +81,13 @@ for /d %%D in (%REPO%-*) do (
   rem 업데이트가 된 줄 알고 한참 헤맸다. robocopy는 성공해도 0이 아닌 값을 돌려주므로
   rem errorlevel 8 이상만 실패로 본다.
   robocopy "%%D\sns-report-scraper" "." /E /XD node node_modules reports /XF update.bat /NFL /NDL /NJH /NJS
-  rem 위에서 update.bat을 뺀 건 지금 실행 중이라 덮어쓸 수 없기 때문이다(아래에서 옆에 받아둔다).
+  rem 위에서 update.bat을 뺀 건 지금 실행 중이라 덮어쓸 수 없기 때문이다(맨 아래에서 처리).
   if errorlevel 8 (
     echo [실패] 파일 덮어쓰기 실패 — 대시보드 창이 열려 있으면 닫고 다시 실행해주세요.
     pause
     exit /b 1
   )
   set "APPLIED=1"
-  rem 이 파일은 지금 실행 중이라 덮어쓸 수 없어서 robocopy에서 뺐다. 옆에 받아두면
-  rem 다음 실행 때 맨 위에서 자동으로 교체된다.
   if exist "%%D\sns-report-scraper\update.bat" copy /y "%%D\sns-report-scraper\update.bat" "_update-new.bat" >nul
   rmdir /s /q "%%D"
 )
@@ -123,11 +108,46 @@ if exist node\node.exe (
   call npm install
 )
 
-if exist "_update-new.bat" (
-  fc /b "update.bat" "_update-new.bat" >nul 2>&1
-  if not errorlevel 1 del "_update-new.bat" >nul 2>&1
-)
+rem ── 업데이트 도구 자신 교체 ──
+rem 이 파일은 지금 실행 중이라 덮어쓸 수 없다(덮어쓰면 cmd가 읽던 위치가 어긋나 깨진다).
+rem 그래서 바꿔주는 역할만 하는 작은 파일을 만들어 띄우고, 이쪽은 바로 빠져나간다.
+rem 그 파일은 제 할 일을 마치면 자기 자신까지 지우므로 폴더에 아무것도 안 남는다.
+if not exist "_update-new.bat" goto :done
+fc /b "update.bat" "_update-new.bat" >nul 2>&1
+if errorlevel 1 goto :selfswap
+rem 내용이 같다 = 업데이트 도구는 그대로여도 된다.
+del "_update-new.bat" >nul 2>&1
+goto :done
 
+:selfswap
+echo.
+echo 업데이트 도구 자신도 바뀌었습니다 — 바꾸는 중...
+>"_finish-update.bat" (
+  echo @echo off
+  echo chcp 65001 ^>nul
+  rem 경로 끝 역슬래시가 따옴표를 잡아먹는 일이 있어 점 하나를 붙여둔다(폴더명에 띄어쓰기가 있어도 안전).
+  echo cd /d "%~dp0."
+  echo rem update.bat이 완전히 끝나기를 잠깐 기다린다 — 실행 중에는 못 덮어쓴다.
+  echo ping -n 3 127.0.0.1 ^>nul
+  echo copy /y "_update-new.bat" "update.bat" ^>nul
+  echo if errorlevel 1 ^(
+  echo   echo [실패] 업데이트 도구 교체 실패 — update.bat을 쓰는 창이 아직 열려 있을 수 있습니다.
+  echo   pause
+  echo   exit /b 1
+  echo ^)
+  echo del "_update-new.bat" ^>nul 2^>^&1
+  echo echo.
+  echo echo 업데이트 도구 자신도 새 버전으로 바꿨습니다.
+  echo echo 완료! 이제 start-dashboard.bat 을 실행하세요.
+  echo echo.
+  echo pause
+  echo rem 제 할 일을 마쳤으니 자기 자신을 지운다 — 폴더에 찌꺼기를 남기지 않기 위해서다.
+  echo del "%%~f0"
+)
+start "" "_finish-update.bat"
+exit /b
+
+:done
 echo.
 echo 완료! 이제 start-dashboard.bat 을 실행하세요.
 echo.
