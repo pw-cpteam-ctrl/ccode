@@ -25,6 +25,10 @@ const { prepareBrand, parseBrandArg } = require('./brand-config');
 // 이 조사의 목적 자체가 "실제로 어떤 이름인지"를 알아내는 것이라 일부러 느슨하게 잡았다.
 const NAME_HINT = /(notify|notification|interest|follow|subscrib|favorit|wish|zzim|bookmark|agree|member)/i;
 
+// 화면에 뜨는 이름이 스토어 종류마다 다르다 — 브랜드스토어는 '알림받기', 스마트스토어는
+// '관심고객수'. 하나만 찾다가 "글자는 있는데 숫자가 없다"로 헛걸음했다. 둘 다 본다.
+const LABEL_HINT = /(알림\s*받기|관심\s*고객|찜)/;
+
 /** 중첩된 객체를 전부 훑으면서 "이름이 수상하고 값이 숫자"인 것만 모은다. */
 function collectCandidates(root, label, out, maxNodes = 400000) {
   let n = 0;
@@ -91,6 +95,19 @@ async function main() {
     console.log(`\n================ ${store.label} ================`);
     console.log(`여는 중: ${store.url}`);
     const page = await context.newPage();
+
+    // 오가는 응답을 모아둔다. 반드시 페이지를 열기 "전에" 걸어야 한다 — 열고 나서 걸면
+    // 이미 지나간 응답을 통째로 놓친다(팔로워 수집에서 똑같은 함정을 겪었다).
+    const responses = [];
+    page.on('response', async res => {
+      try {
+        const ct = res.headers()['content-type'] || '';
+        if (!ct.includes('json')) return;
+        if (responses.length > 400) return;          // 너무 많이 쌓여 느려지지 않게
+        responses.push({ url: res.url(), json: await res.json() });
+      } catch { /* 본문이 이미 사라졌거나 JSON이 아님 — 조용히 넘어간다 */ }
+    });
+
     try {
       await page.goto(store.url, { waitUntil: 'domcontentloaded', timeout: 40000 });
       await page.waitForTimeout(2500);
@@ -110,27 +127,91 @@ async function main() {
       const cands = candidatesFromHtml(html);
       const uniq = [...new Map(cands.map(c => [`${c.key}=${c.value}`, c])).values()]
         .sort((a, b) => b.value - a.value);
-      console.log(`\n[1] 페이지 데이터에서 찾은 숫자 후보 ${uniq.length}건:`);
-      if (uniq.length === 0) console.log('  (없음)');
-      uniq.slice(0, 40).forEach(c => console.log(`  ${String(c.value).padStart(9)}  ← ${c.key}   (${c.where})`));
+      // 0은 거의 다 쓸데없는 값이라(쿠폰 점수 등) 숫자가 있는 것부터 보여준다.
+      const useful = uniq.filter(c => c.value > 0);
+      console.log(`\n[1] 페이지 데이터에서 찾은 숫자 후보 ${useful.length}건 (0은 ${uniq.length - useful.length}건 생략):`);
+      if (useful.length === 0) console.log('  (없음)');
+      useful.slice(0, 40).forEach(c => console.log(`  ${String(c.value).padStart(9)}  ← ${c.key}   (${c.where})`));
+
+      // 1-b) 이름으로 못 찾을 때의 마지막 수단 — 페이지 원본 글자에서 '관심고객/알림받기'가
+      //      나오는 자리 앞뒤를 그대로 떠온다. 데이터 안에 이름표와 숫자가 나란히 박혀 있으면
+      //      ("관심고객수":161234 같은 모양) 여기서 눈에 보인다. 키 이름을 추측하지 않아도 된다.
+      const rawHits = [];
+      const rawScan = new RegExp(LABEL_HINT.source + '|interestCount|notifyAgree|interestedCustomer', 'g');
+      let rh;
+      while ((rh = rawScan.exec(html)) !== null && rawHits.length < 12) {
+        rawHits.push(html.slice(Math.max(0, rh.index - 90), rh.index + 90).replace(/\s+/g, ' '));
+      }
+      console.log(`\n[1-b] 페이지 원본에서 '관심고객/알림받기' 글자가 나온 자리 ${rawHits.length}건:`);
+      if (rawHits.length === 0) console.log('  (없음)');
+      rawHits.forEach(t => console.log(`  …${t}…`));
 
       // 2) 화면 글자에서 '알림받기' 주변 숫자 찾기 — 1번이 비면 이쪽이라도 써야 한다.
-      //    다만 화면 글자는 '16만'처럼 줄어 나올 수 있어서 추이 추적엔 불리하다.
-      const domHits = await page.evaluate(() => {
+      //    처음엔 글자가 든 칸 하나만 봤는데, '알림받기'라는 글자만 잡히고 숫자는 안 잡혔다.
+      //    숫자가 바로 옆 칸에 따로 들어있는 구조라서다. 그래서 위로 3칸까지 올라가며
+      //    주변을 넓게 훑는다. 다만 화면 글자는 '16만'처럼 줄어 나올 수 있어 추이 추적엔 불리하다.
+      const domHits = await page.evaluate((labelSrc) => {
+        const labelRe = new RegExp(labelSrc);
         const hits = [];
         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
         let node;
         while ((node = walker.nextNode())) {
           const t = (node.textContent || '').trim();
-          if (!/알림받기|알림 받기/.test(t)) continue;
-          const box = node.parentElement?.closest('div,section,header,li') || node.parentElement;
-          hits.push({ text: t.slice(0, 60), around: (box?.innerText || '').replace(/\s+/g, ' ').slice(0, 160) });
+          if (!labelRe.test(t)) continue;
+          if (/__PRELOADED_STATE__|__next_f/.test(t)) continue;  // 스크립트 안의 글자는 [1]에서 이미 봤다
+          const chain = [];
+          let el = node.parentElement;
+          for (let up = 0; up < 4 && el; up += 1) {
+            chain.push({
+              위로: up,
+              태그: el.tagName.toLowerCase() + (el.className ? '.' + String(el.className).split(/\s+/)[0] : ''),
+              글자: (el.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+            });
+            el = el.parentElement;
+          }
+          hits.push({ text: t.slice(0, 40), chain });
         }
-        return hits.slice(0, 10);
-      });
-      console.log(`\n[2] 화면에서 '알림받기' 글자가 보인 곳 ${domHits.length}건:`);
+        return hits.slice(0, 6);
+      }, LABEL_HINT.source);
+      console.log(`\n[2] 화면에서 '알림받기/관심고객' 글자가 보인 곳 ${domHits.length}건 (위로 올라가며 주변 글자):`);
       if (domHits.length === 0) console.log('  (없음 — 로그인이 필요하거나 이 페이지엔 안 나오는 위치일 수 있습니다)');
-      domHits.forEach(h => console.log(`  "${h.text}"  →  주변 글자: ${h.around}`));
+      domHits.forEach(h => {
+        console.log(`  · "${h.text}"`);
+        h.chain.forEach(c => console.log(`      ${c.위로}칸 위 ${c.태그}: ${c.글자}`));
+      });
+
+      // 2-b) 화면 전체 글자에서 '알림받기' 앞뒤를 그대로 떠온다. 칸 구조와 상관없이
+      //      "알림받기 161,234" 같은 모양이 눈에 보이면 그게 답이다.
+      const flat = await page.evaluate(() => (document.body.innerText || '').replace(/\s+/g, ' '));
+      const around = [];
+      const scan = new RegExp(LABEL_HINT.source, 'g');
+      let hit;
+      while ((hit = scan.exec(flat)) !== null && around.length < 8) {
+        around.push(flat.slice(Math.max(0, hit.index - 40), hit.index + 40));
+      }
+      console.log(`\n[2-b] 화면 전체 글자에서 '알림받기/관심고객' 앞뒤 ${around.length}건:`);
+      if (around.length === 0) console.log('  (없음)');
+      around.forEach(s => console.log(`  …${s}…`));
+
+      // 3) 페이지가 뜬 뒤에 따로 불러오는 값일 수 있다 — 그 경우 [1]에는 절대 안 잡힌다.
+      //    오가는 응답을 받아두고 거기서도 똑같이 후보를 찾는다.
+      const xhr = [];
+      responses.forEach(r => collectCandidates(r.json, `응답 ${r.url}`, xhr));
+      const xhrUniq = [...new Map(xhr.map(c => [`${c.key}=${c.value}`, c])).values()]
+        .filter(c => c.value > 0)
+        .sort((a, b) => b.value - a.value);
+      console.log(`\n[3] 페이지가 따로 불러온 응답(${responses.length}건)에서 찾은 숫자 후보 ${xhrUniq.length}건:`);
+      if (xhrUniq.length === 0) console.log('  (없음)');
+      xhrUniq.slice(0, 30).forEach(c => console.log(`  ${String(c.value).padStart(9)}  ← ${c.key}   (${c.where})`));
+
+      // 3-b) 이름으로는 못 찾아도, 주소에 notify/interest 같은 말이 들어간 응답 자체가 단서다.
+      const notifyUrls = responses.filter(r => NAME_HINT.test(r.url));
+      console.log(`\n[3-b] 주소에 알림/관심 관련 낱말이 들어간 응답 ${notifyUrls.length}건:`);
+      if (notifyUrls.length === 0) console.log('  (없음)');
+      notifyUrls.slice(0, 10).forEach(r => {
+        console.log(`  ${r.url}`);
+        console.log(`      ${JSON.stringify(r.json).slice(0, 200)}`);
+      });
     } catch (e) {
       console.error(`❌ ${store.label} 열기 실패: ${e.message}`);
     } finally {
