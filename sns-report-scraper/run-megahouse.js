@@ -112,7 +112,8 @@ function saveFollowerSnapshot(historyPath, collections, extraAccounts = []) {
     : { snapshots: [] };
   history.snapshots.push({ takenAt: new Date().toISOString(), accounts });
   fs.writeFileSync(historyPath, JSON.stringify(history, null, 2));
-  const shown = accounts.map(a => `${a.side} ${a.platform} ${a.followers ?? '못 읽음'}${a.approx ? '~' : ''}`).join(' · ');
+  const shown = accounts.map(a =>
+    `${a.side} ${a.platform} ${a.followers ?? '못 읽음'}${a.approx ? '~' : ''}[${a.from}]`).join(' · ');
   console.log(`👥 팔로워 스냅샷 저장: ${historyPath} (누적 ${history.snapshots.length}개) — ${shown}`);
 }
 

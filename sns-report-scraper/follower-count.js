@@ -123,7 +123,47 @@ function watchFollowers(page, { platform, account }) {
           if (typeof c === 'number') return { count: c, from: 'api-direct', approx: false };
         }
 
-        // 3순위 — 화면 글자. 못 읽어도 수집 자체는 계속돼야 하므로 예외를 밖으로 던지지 않는다.
+        // 3순위(인스타 전용) — 화면에 적힌 글자 말고, 그 글자가 달고 있는 '정확한 수'를 본다.
+        //
+        // 인스타는 팔로워 수를 이렇게 그린다:  <span title="23,145">2.3만</span>
+        // 눈에 보이는 건 줄인 '2.3만'이지만, 마우스를 올렸을 때 뜨라고 정확한 수를 title에
+        // 같이 달아둔다. 글자만 읽으면 23,000이 되고 몇 주째 변화가 안 보이지만, title을
+        // 읽으면 23,145가 그대로 나온다. (2026-10-12: 내부 주소로 받아오는 2순위가 막혀서
+        // 여전히 23000~으로 찍혔다. 그래서 화면에서 정확한 수를 얻는 길을 하나 더 뒀다.)
+        if (!isX) {
+          // ⚠️ 숫자가 든 title이라고 아무거나 집으면 안 된다. 머리말 안에는 연도(2026) 같은
+          //    엉뚱한 title도 있어서, 그걸 팔로워 수로 적으면 기록이 통째로 망가진다.
+          //    그래서 "그 칸에 보이는 글자(2.3만)와 title(23,145)이 서로 맞는지"까지 본다.
+          //    되돌린 값과 20% 넘게 어긋나면 다른 뜻의 숫자로 보고 버린다.
+          const exactDom = await page.evaluate(() => {
+            const near = [...document.querySelectorAll('a[href*="/followers"], header section, header li')];
+            const found = [];
+            for (const box of near) {
+              for (const el of box.querySelectorAll('[title]')) {
+                const t = (el.getAttribute('title') || '').trim();
+                if (!/^\d[\d,]*$/.test(t)) continue;   // 쉼표만 들어간 순수 숫자여야 한다
+                const shown = (el.innerText || '').trim();
+                // 보이는 글자가 숫자 모양일 때만 후보로 친다. '2026년'처럼 단위가 붙은 글자를
+                // 허용하면 연도가 그대로 통과해버린다(실제로 통과했다).
+                if (!/^[\d.,]+\s*[KkMm만천억]?$/.test(shown)) continue;
+                found.push({ title: t, shown: shown.slice(0, 20) });
+              }
+            }
+            return found.slice(0, 5);
+          }).catch(() => null);
+          for (const cand of exactDom || []) {
+            const n = Number(cand.title.replaceAll(',', ''));
+            if (!Number.isFinite(n) || n <= 0) continue;
+            const shown = parseCount(cand.shown);
+            // 보이는 글자를 못 읽으면 대조할 길이 없으니 쓰지 않는다 — 추측으로 기록을 남기느니
+            // 아래 단계로 내려가 근사치라고 솔직히 적는 편이 낫다.
+            if (shown === null) continue;
+            if (Math.abs(n - shown) / Math.max(shown, 1) > 0.2) continue;
+            return { count: n, from: 'dom-title', approx: false };
+          }
+        }
+
+        // 4순위 — 화면 글자. 못 읽어도 수집 자체는 계속돼야 하므로 예외를 밖으로 던지지 않는다.
         const text = await page.evaluate((isX) => {
           if (isX) {
             const a = document.querySelector('a[href$="/verified_followers"], a[href$="/followers"]');
@@ -138,8 +178,14 @@ function watchFollowers(page, { platform, account }) {
           return li ? li.innerText : null;
         }, isX).catch(() => null);
 
+        // 줄임 표기(2.3만, 12.3K)를 되돌린 값만 근사치다. '23,145'처럼 쉼표만 든 숫자는
+        // 그대로 정확한 값이라 근사치로 깎아내릴 이유가 없다 — 무조건 근사치로 적어두면
+        // 나중에 "이 값은 못 믿는다"고 잘못 판단하게 된다.
         const n = parseCount(text);
-        if (typeof n === 'number') return { count: n, from: 'dom', approx: true };
+        if (typeof n === 'number') {
+          const shortened = /[KkMmBb만천억]/.test(String(text));
+          return { count: n, from: 'dom', approx: shortened };
+        }
         return { count: null, from: 'none', approx: false };
       } finally {
         page.off('response', onResponse);

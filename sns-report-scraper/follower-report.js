@@ -150,11 +150,13 @@ function racePiece(platform, pw, bh) {
   const name = PLATFORM_SHORT[platform] || platform;
   const diff = pw.ratePct - bh.ratePct;
   if (Math.abs(diff) < 0.005) {
-    return `<span class="fo-race even"><b>${escapeHtml(name)}</b> 양쪽 거의 같음</span>`;
+    // '거의 같음'이라고만 적으면 8.3만과 16.3만이 비슷하다는 말로 읽힌다(실제로 그렇게
+    // 읽혔다). 같은 건 규모가 아니라 늘어나는 속도라는 걸 문구에 박아둔다.
+    return `<span class="fo-race even"><b>${escapeHtml(name)}</b> 증가 속도 거의 같음</span>`;
   }
   const fast = diff > 0 ? '당사' : '경쟁사';
   const cls = diff > 0 ? 'pw' : 'bh';
-  return `<span class="fo-race ${cls}"><b>${escapeHtml(name)}</b> ${fast} +${Math.abs(diff).toFixed(2)}%p 빠름</span>`;
+  return `<span class="fo-race ${cls}"><b>${escapeHtml(name)}</b> ${fast}가 ${Math.abs(diff).toFixed(2)}%p 빨리 늚</span>`;
 }
 
 /**
