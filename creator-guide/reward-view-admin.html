@@ -84,7 +84,7 @@
   /* 내용만큼만 늘어나되 화면보다 좁아지지는 않게. 폭을 화면에 억지로 맞추면
      긴 희망 상품이 서너 줄로 접혀 행이 부푼다. */
   table { width: max-content; min-width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 1px var(--line); }
-  th, td { padding: 11px 12px; text-align: left; font-size: 13.5px; border-bottom: 1px solid var(--line); }
+  th, td { padding: 11px 8px; text-align: left; font-size: 13.5px; border-bottom: 1px solid var(--line); }
   th { background: #fafaf9; font-size: 11.5px; font-weight: 700; color: var(--ink-500); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
   tr:last-child td { border-bottom: 0; }
   td.nick { font-weight: 700; }
@@ -141,6 +141,11 @@
   /* 희망 상품도 한 줄로 둔다. 줄바꿈을 허용했더니 긴 상품명 하나 때문에
      그 행만 두 배로 높아져 표가 들쑥날쑥했다. 넘치면 아이디처럼 흐른다. */
   td.wish { min-width: 12ch; max-width: 12ch; }
+  /* 남는 폭을 열마다 조금씩 나눠 주면 '여백 전용 칸'이 생긴다. 맨 끝에 빈 열을
+     두어 남는 폭을 전부 그쪽으로 흘려보낸다. */
+  th.filler, td.filler { width: 100%; padding: 0; }
+  /* 두 줄로 쪼개지던 칸들 */
+  td .tag, th:nth-child(9), td:nth-child(9), td:nth-child(10) { white-space: nowrap; }
   td.wish .roll { display: block; overflow: hidden; white-space: nowrap; }
   td.wish .roll > span { display: inline-block; }
   /* 세 단계로 가라앉힌다 — 이번 달·날짜 지남 → 지난 달 → 담당자가 내린 건.
@@ -229,8 +234,8 @@
     display: inline-block; align-self: flex-start;
     padding: 2px 8px; border-radius: 7px; letter-spacing: -0.01em;
   }
-  .paychip.soon { background: #e0efff; color: #0b3d91; }
-  .paychip.later { background: #f4f4f2; color: #6b6b66; font-weight: 600; }
+  .paychip.now { background: #cfe3ff; color: #0b3d91; font-weight: 800; }
+  .paychip.left { background: #eef4fb; color: #3b6aa8; font-weight: 700; }
   .paychip.done { background: none; color: #a3a3a0; font-weight: 600; padding-left: 0; }
   .pay em { font-style: normal; font-size: 11px; color: var(--ink-500); }
   .pay-none { color: var(--ink-400); }
@@ -653,26 +658,41 @@
   //   soon  이번 달 안   — 지금 챙길 것
   //   later 다음 달 이후 — 아직 멀었다
   //   done  이미 지났다
-  function payWhen(dateStr, open, offset) {
+  // 색은 '며칠 남았는지'로 나눈다. 이번 달인지로 나눴더니 월말과 월초가 하루
+  // 차이로 색이 뒤집혀, 같은 '곧'인데 달라 보였다.
+  //   now   7일 이내 — 이번 주에 나간다
+  //   left  아직 남음
+  //   done  이미 지났다
+  function payWhen(open, offset) {
     var d = new Date(open); d.setDate(d.getDate() + offset);
     var today = new Date(); today.setHours(0, 0, 0, 0);
-    if (d < today) return 'done';
-    var endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    return d <= endOfMonth ? 'soon' : 'later';
+    var days = Math.round((d - today) / 864e5);
+    if (days < 0) return 'done';
+    return days <= 7 ? 'now' : 'left';
   }
 
   function payCell(r) {
     var p = payPlan(r);
     if (!p) return '<span class="pay-none">-</span>';
     var open = openDateFor(r.draftDate);
-    if (trackOf(r) === 'split') {
+
+    if (trackOf(r) !== 'split') {
       return '<span class="pay">' +
-        '<b class="paychip ' + payWhen(p.first, open, 10) + '">1차 ' + p.first + '</b>' +
-        '<em>2차 ' + p.second + ' 전후</em></span>';
+        '<b class="paychip ' + payWhen(open, 40) + '">' + p.second + ' 전후</b>' +
+        '<em>정산 때 한 번에</em></span>';
+    }
+
+    // 칩은 '다음에 실제로 나갈 차례'에 붙인다. 1차에 고정해 두었더니 1차가
+    // 지난 건은 칩이 지난 날짜에 붙어 회색이 되고, 정작 다음에 나갈 2차가 묻혔다.
+    var firstState = payWhen(open, 10);
+    if (firstState === 'done') {
+      return '<span class="pay">' +
+        '<b class="paychip ' + payWhen(open, 40) + '">2차 ' + p.second + ' 전후</b>' +
+        '<em>1차 ' + p.first + ' 지급함</em></span>';
     }
     return '<span class="pay">' +
-      '<b class="paychip ' + payWhen(p.second, open, 40) + '">' + p.second + ' 전후</b>' +
-      '<em>정산 때 한 번에</em></span>';
+      '<b class="paychip ' + firstState + '">1차 ' + p.first + '</b>' +
+      '<em>2차 ' + p.second + ' 전후</em></span>';
   }
 
   function openBox() {
@@ -897,6 +917,7 @@
           ? '<button class="mini reward-btn' + (isArchived(r) ? ' is-done' : '') + '" data-reward="' + esc(r.roundKey) + '" data-on="' + (isArchived(r) ? '1' : '0') + '">' +
             (isArchived(r) ? '✓ 지급함' : '리워드 확인') + '</button>'
           : '') + '</td>' +
+        '<td class="filler"></td>' +
         '</tr>';
     }).join('');
 
@@ -917,7 +938,7 @@
       openBox() +
       (list.length
         ? '<div class="scroll"><table><thead><tr>' +
-          '<th class="pick"></th><th>활동명</th><th>네이버 아이디</th><th>초안 공유 예정일</th><th>D-day</th><th>수령 방식</th><th>예상 지급 시기</th><th>보상 형태</th><th>희망 상품</th><th>제출 시각</th><th>업로드</th><th>리워드 지급 확인</th>' +
+          '<th class="pick"></th><th>활동명</th><th>네이버 아이디</th><th>초안 공유 예정일</th><th>D-day</th><th>수령 방식</th><th>예상 지급 시기</th><th>보상 형태</th><th class="wishcol">희망 상품</th><th>제출 시각</th><th>업로드</th><th>리워드 지급 확인</th><th class="filler"></th>' +
           '</tr></thead><tbody>' + body + '</tbody></table></div>'
         : '<div class="empty">아직 접수된 내용이 없습니다.</div>') +
       pickBar() +
