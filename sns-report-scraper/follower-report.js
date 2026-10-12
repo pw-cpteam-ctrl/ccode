@@ -19,6 +19,8 @@ const SIDE_LABEL = { PW: '당사', BH: '경쟁사' };
 // 화면에도 다르게 적는다 — 같은 '팔로워'로 뭉뚱그리면 보는 사람이 다른 수치로 착각한다.
 const PLATFORM_LABEL = { twitter: 'X (트위터)', instagram: '인스타그램', naver: '네이버 스토어' };
 const PLATFORM_ORDER = ['twitter', 'instagram', 'naver'];
+// 칸이 좁아서 'X (트위터)' 같은 긴 이름은 안 들어간다 — 줄여 쓴다.
+const PLATFORM_SHORT = { twitter: 'X', instagram: '인스타', naver: '네이버' };
 
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -137,66 +139,50 @@ function ratePctHtml(p) {
 }
 
 /** 두 계정의 증가율을 한 줄로 비교해준다 — 표를 읽을 줄 몰라도 결론이 보이게. */
-function raceLine(pw, bh) {
+/**
+ * 한 플랫폼에서 양사 중 누가 더 빨리 늘었는지 한 조각으로. 여러 플랫폼 것을 한 줄에 잇는다.
+ *
+ * 늘어난 '사람 수'가 아니라 '증가율'로 비교하는 이유 — 기반이 두 배 큰 쪽은 가만히 있어도
+ * 늘어나는 사람 수가 더 많다. 절대값으로 비교하면 항상 큰 쪽이 이긴 것처럼 보인다.
+ */
+function racePiece(platform, pw, bh) {
   if (!pw || !bh || pw.ratePct === null || bh.ratePct === null) return '';
+  const name = PLATFORM_SHORT[platform] || platform;
   const diff = pw.ratePct - bh.ratePct;
-  if (Math.abs(diff) < 0.005) return '<div class="fo-race even">같은 기간 증가 속도가 양쪽 거의 같습니다.</div>';
+  if (Math.abs(diff) < 0.005) {
+    return `<span class="fo-race even"><b>${escapeHtml(name)}</b> 양쪽 거의 같음</span>`;
+  }
   const fast = diff > 0 ? '당사' : '경쟁사';
   const cls = diff > 0 ? 'pw' : 'bh';
-  return `<div class="fo-race ${cls}">같은 기간 <b>${fast}</b>가 더 빠르게 늘었습니다 — 차이 ${Math.abs(diff).toFixed(2)}%p</div>`;
+  return `<span class="fo-race ${cls}"><b>${escapeHtml(name)}</b> ${fast} +${Math.abs(diff).toFixed(2)}%p 빠름</span>`;
 }
 
-function renderPlatformBlock(platform, groups) {
-  const pw = groups.find(g => g.side === 'PW');
-  const bh = groups.find(g => g.side === 'BH');
-  const sides = [pw, bh].filter(Boolean);
-  if (sides.length === 0) return '';
+/**
+ * 칸 하나(= 한 플랫폼의 한쪽). 여섯 칸이 한 줄에 나란히 선다.
+ *
+ * 왜 플랫폼마다 상자를 따로 두지 않나 — 처음엔 플랫폼별로 상자를 만들고 그 안에 카드 둘,
+ * 비교 줄, 큰 그래프를 넣었더니 그게 셋 반복돼 리포트 첫 화면을 통째로 먹었다. 보려던 건
+ * 숫자 여섯 개인데 자리만 차지했다. 상자를 없애고 한 줄로 세우고, 그래프는 칸 안에
+ * 작게 넣고, 비교 줄 셋은 아래 한 줄로 합쳤다.
+ */
+function renderCell(g, minIdx, maxIdx, tMin, tMax) {
+  const side = g.side === 'PW' ? 'pw' : 'bh';
+  const plat = PLATFORM_SHORT[g.platform] || g.platform;
+  // 계정 아이디와 세는 대상 이름(관심고객수 등)은 마우스를 올리면 보이게 둔다 —
+  // 줄을 하나 더 쓰면 여섯 칸이 전부 그만큼 길어져서 다시 자리를 먹는다.
+  const tip = g.label ? `${g.label} (${g.account || ''})` : `@${g.account || ''}`;
+  const d = sparkPath(g.points, minIdx, maxIdx, tMin, tMax, 100, 24);
+  const line = d
+    ? `<svg class="fo-spark" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" fill="none" stroke="${side === 'pw' ? '#1971c2' : '#c0504d'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+    : '<div class="fo-spark-none" title="추이 선은 두 번째 수집부터 그려집니다">·</div>';
 
-  // 지수(첫 기록=100)로 바꿔서 두 선을 한 그림에 겹친다. 실제 수(16만 vs 8만)를 그대로
-  // 같은 축에 올리면 둘 다 거의 평평한 직선이 돼서 정작 보고 싶은 '기울기 차이'가 안 보인다.
-  const indices = sides.flatMap(g => {
-    const real = g.points.filter(p => typeof p.count === 'number');
-    if (real.length < 2) return [];
-    const base = real[0].count || 1;
-    return real.map(p => (p.count / base) * 100);
-  });
-  const hasLine = indices.length > 0;
-  const pad = 0.15;
-  const minIdx = hasLine ? Math.min(...indices) - pad : 100;
-  const maxIdx = hasLine ? Math.max(...indices) + pad : 100;
-  const W = 260, H = 54;
-  // 가로축 범위는 두 계정을 합친 전체 기간 — 양쪽을 같은 자로 재야 기울기를 비교할 수 있다.
-  const times = sides.flatMap(g => g.points.filter(p => typeof p.count === 'number'))
-    .map(p => new Date(p.takenAt).getTime()).filter(t => !Number.isNaN(t));
-  const tMin = times.length ? Math.min(...times) : 0;
-  const tMax = times.length ? Math.max(...times) : 1;
-
-  const cards = sides.map(g => `<div class="fo-card ${g.side === 'PW' ? 'pw' : 'bh'}">
-  <div class="fo-k">${SIDE_LABEL[g.side] || escapeHtml(g.side)} <span class="fo-acc">${g.label ? escapeHtml(g.label) : '@' + escapeHtml(g.account || '')}</span></div>
-  <div class="fo-v">${comma(g.latest)}${g.approx ? '<span class="fo-approx" title="계정 화면에 줄여서 표시된 숫자(1.6만 등)를 되돌린 값이라 실제와 몇십 명 차이 날 수 있습니다.">≈</span>' : ''}</div>
-  <div class="fo-d">직전 대비 ${deltaHtml(g.deltaPrev)}${g.prevAt ? ` <span class="fo-when">(${shortDate(g.prevAt)} 기준)</span>` : ''}</div>
-  <div class="fo-d">첫 기록 대비 ${deltaHtml(g.deltaFirst)} · ${ratePctHtml(g.ratePct)}${g.firstAt ? ` <span class="fo-when">(${shortDate(g.firstAt)}부터)</span>` : ''}</div>
-</div>`).join('\n');
-
-  const lines = hasLine ? sides.map(g => {
-    const d = sparkPath(g.points, minIdx, maxIdx, tMin, tMax, W, H);
-    if (!d) return '';
-    const color = g.side === 'PW' ? '#1971c2' : '#c0504d';
-    return `<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
-  }).join('') : '';
-
-  const chart = hasLine
-    ? `<div class="fo-chart">
-  <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" role="img" aria-label="팔로워 증가 속도 추이">${lines}</svg>
-  <div class="fo-chart-cap">첫 기록을 100으로 놓고 본 증가 속도 — <span class="pw">● 당사</span> <span class="bh">● 경쟁사</span> (선이 가파를수록 빨리 늚)</div>
-</div>`
-    : `<div class="fo-chart-empty">추이 선은 두 번째 수집부터 그려집니다 — 지금은 기록이 한 번뿐입니다.</div>`;
-
-  return `<div class="fo-platform">
-  <h3>${escapeHtml(PLATFORM_LABEL[platform] || platform)}</h3>
-  <div class="fo-cards">${cards}</div>
-  ${raceLine(pw, bh)}
-  ${chart}
+  return `<div class="fo-cell ${side}" title="${escapeHtml(tip)}">
+  <div class="fo-top"><b>${escapeHtml(plat)}</b> ${SIDE_LABEL[g.side] || escapeHtml(g.side)}</div>
+  <div class="fo-v">${comma(g.latest)}${g.approx ? '<span class="fo-approx" title="화면에 줄여서 표시된 숫자(2.3만 등)를 되돌린 값이라 실제와 차이가 날 수 있습니다.">≈</span>' : ''}</div>
+  <div class="fo-d">${g.deltaPrev === null && g.measured === 1
+    ? '<span class="fo-flat">첫 기록</span>'
+    : deltaHtml(g.deltaPrev) + (g.ratePct === null ? '' : `<span class="fo-rate"> · ${ratePctHtml(g.ratePct)}</span>`)}</div>
+  ${line}
 </div>`;
 }
 
@@ -208,53 +194,99 @@ function renderFollowerSectionHtml(history) {
   const seen = [...new Set(summary.groups.map(g => g.platform))];
   const platforms = [...PLATFORM_ORDER.filter(p => seen.includes(p)),
     ...seen.filter(p => !PLATFORM_ORDER.includes(p))];
-  const blocks = platforms
-    .map(p => renderPlatformBlock(p, summary.groups.filter(g => g.platform === p)))
-    .filter(Boolean)
-    .join('\n');
-  if (!blocks) return '';
+
+  const cells = [];
+  const races = [];
+  platforms.forEach(platform => {
+    const groups = summary.groups.filter(g => g.platform === platform);
+    const pw = groups.find(g => g.side === 'PW');
+    const bh = groups.find(g => g.side === 'BH');
+    const sides = [pw, bh].filter(Boolean);
+    if (sides.length === 0) return;
+
+    // 추이 선은 '첫 기록=100' 지수로 그린다. 16만과 8만을 같은 자에 그대로 올리면 둘 다
+    // 평평한 직선이 돼서 정작 보려던 기울기 차이가 안 보인다. 자(최솟값·최댓값·기간)는
+    // 같은 플랫폼의 양쪽이 공유해야 두 칸을 나란히 놓고 비교할 수 있다.
+    const indices = sides.flatMap(g => {
+      const real = g.points.filter(p => typeof p.count === 'number');
+      if (real.length < 2) return [];
+      const base = real[0].count || 1;
+      return real.map(p => (p.count / base) * 100);
+    });
+    const pad = 0.15;
+    const minIdx = indices.length ? Math.min(...indices) - pad : 100;
+    const maxIdx = indices.length ? Math.max(...indices) + pad : 100;
+    const times = sides.flatMap(g => g.points.filter(p => typeof p.count === 'number'))
+      .map(p => new Date(p.takenAt).getTime()).filter(t => !Number.isNaN(t));
+    const tMin = times.length ? Math.min(...times) : 0;
+    const tMax = times.length ? Math.max(...times) : 1;
+
+    sides.forEach(g => cells.push(renderCell(g, minIdx, maxIdx, tMin, tMax)));
+    const piece = racePiece(platform, pw, bh);
+    if (piece) races.push(piece);
+  });
+
+  if (cells.length === 0) return '';
+
+  // 네이버만 세는 대상이 팔로워가 아니다. 칸 안에 매번 적으면 여섯 칸이 다 길어져서,
+  // 아래에 한 번만 적어둔다 — 다른 수치로 착각하는 것만 막으면 된다.
+  const hasNaver = platforms.includes('naver');
+  const hasLine = cells.some(c => c.includes('<path'));
+  const notes = [
+    hasNaver ? '네이버는 팔로워가 아니라 <b>관심고객수</b>입니다.' : '',
+    hasLine
+      ? '숫자 아래 선은 첫 기록을 100으로 놓고 본 증가 속도입니다.'
+      : '추이 선은 두 번째 수집부터 그려집니다 — 지금은 기록이 한 번뿐입니다.',
+  ].filter(Boolean).join(' ');
+  const foot = [
+    races.length ? `<div class="fo-races">${races.join('')}</div>` : '',
+    notes ? `<div class="fo-note">${notes}</div>` : '',
+  ].filter(Boolean).join('\n  ');
 
   return `<section class="follower-section">
   <div class="fo-head">
     <h2>👥 팔로워 · 관심고객 추이</h2>
     <span class="fo-sub">기준 ${escapeHtml(shortDate(summary.takenAt))} · 기록 ${summary.snapshotCount}회 누적 — 수집할 때마다 한 줄씩 쌓입니다</span>
   </div>
-  ${blocks}
+  <div class="fo-box">
+    <div class="fo-grid">${cells.join('\n')}</div>
+    ${foot}
+  </div>
 </section>`;
 }
 
 const FOLLOWER_SECTION_STYLE = `
-.follower-section{margin-bottom:32px}
+.follower-section{margin-bottom:24px}
 body.view-stock .follower-section{display:none}
-.fo-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.fo-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px}
 .fo-sub{color:#6b7280;font-size:12px}
-.fo-platform{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:14px 18px 16px;margin-bottom:12px}
-.fo-platform h3{margin:0 0 10px;font-size:14px;color:#374151}
-.fo-metric{font-weight:400;font-size:12px;color:#9099a6}
-.fo-cards{display:flex;gap:12px;flex-wrap:wrap}
-.fo-card{flex:1 1 240px;min-width:220px;border:1px solid #eef0f4;border-radius:10px;padding:12px 14px}
-.fo-card.pw{border-left:4px solid #1971c2}
-.fo-card.bh{border-left:4px solid #c0504d}
-.fo-k{font-size:12px;color:#6b7280}
-.fo-acc{color:#9099a6;font-size:11px}
-.fo-v{font-size:24px;font-weight:700;margin:2px 0 6px;font-variant-numeric:tabular-nums}
-.fo-card.pw .fo-v{color:#1971c2}
-.fo-card.bh .fo-v{color:#c0504d}
-.fo-approx{font-size:13px;color:#9099a6;margin-left:3px;cursor:help}
-.fo-d{font-size:12px;color:#6b7280;line-height:1.7}
-.fo-when{color:#9aa3b2;font-size:11px}
+.fo-box{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:12px 14px 13px}
+/* 여섯 칸을 한 줄에. 좁은 화면에서는 저절로 3칸씩 두 줄로 접힌다 — 한 칸이 130px보다
+   좁아지면 숫자가 줄바꿈돼서 오히려 더 길어진다. */
+.fo-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.fo-cell{border:1px solid #eef0f4;border-radius:9px;padding:8px 10px 6px;min-width:0}
+.fo-cell.pw{border-left:3px solid #1971c2}
+.fo-cell.bh{border-left:3px solid #c0504d}
+.fo-top{font-size:11px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fo-top b{color:#374151}
+.fo-v{font-size:19px;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums;white-space:nowrap}
+.fo-cell.pw .fo-v{color:#1971c2}
+.fo-cell.bh .fo-v{color:#c0504d}
+.fo-approx{font-size:11px;color:#9099a6;margin-left:2px;cursor:help}
+.fo-d{font-size:11px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fo-rate{color:#9099a6}
 .fo-up{color:#2f9e44;font-weight:700}
 .fo-down{color:#c0504d;font-weight:700}
 .fo-flat{color:#9099a6}
-.fo-race{margin-top:10px;font-size:13px;padding:7px 12px;border-radius:8px;background:#f4f6fb;color:#374151}
+.fo-spark{display:block;width:100%;height:24px;margin-top:4px}
+.fo-spark-none{height:24px;margin-top:4px;color:#dfe3ea;font-size:11px;text-align:center;line-height:24px;cursor:help}
+.fo-races{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.fo-race{font-size:12px;padding:4px 10px;border-radius:7px;background:#f4f6fb;color:#374151}
 .fo-race.pw{background:#eef4ff;color:#1b4b9c}
 .fo-race.bh{background:#fff0f0;color:#9c3b38}
-.fo-chart{margin-top:12px}
-.fo-chart svg{display:block;background:#fafbfd;border-radius:8px}
-.fo-chart-cap{margin-top:5px;font-size:11px;color:#9099a6}
-.fo-chart-cap .pw{color:#1971c2}
-.fo-chart-cap .bh{color:#c0504d}
-.fo-chart-empty{margin-top:10px;font-size:12px;color:#9099a6}
+.fo-note{margin-top:7px;font-size:11px;color:#9099a6}
+@media (max-width:900px){.fo-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:520px){.fo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 `;
 
 module.exports = { buildFollowerSummary, renderFollowerSectionHtml, FOLLOWER_SECTION_STYLE };
