@@ -21,6 +21,9 @@ const CONFIRMED_PATH = 'creator-logs/confirmed.json';
 // 다 끝난 건을 담당자가 손으로 내려 두는 목록. 지운 것이 아니라 가려 두는 것이라
 // 기록은 그대로 남고, 언제든 되돌릴 수 있다.
 const ARCHIVED_PATH = 'creator-logs/archived.json';
+// 수령 방식을 담당자가 바꾼 건. 크리에이터가 낸 원래 값은 제출 기록에 그대로
+// 두고, 바뀐 값만 여기에 따로 적는다 — 무엇을 골랐고 지금 무엇인지 둘 다 남는다.
+const TRACK_PATH = 'creator-logs/track-override.json';
 const GUARD_PATH = 'creator-logs/admin-guard.json';
 const MAX_MONTHS = 6;   // 최근 몇 달치까지 훑을지
 // 확정 표시의 열쇠 길이 상한. 활동명(최대 20자)만 담던 자리였는데, 같은 분이
@@ -105,7 +108,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ ok: false }); return; }
   if (!isSameOrigin(req)) { res.status(403).json({ ok: false }); return; }
 
-  const { code, action, nick, ip: targetIp, month, day, keys } = req.body || {};
+  const { code, action, nick, ip: targetIp, month, day, keys, track } = req.body || {};
   if (!process.env.ADMIN_PASSWORD) {
     res.status(503).json({ ok: false, reason: 'unconfigured' });
     return;
@@ -250,6 +253,29 @@ export default async function handler(req, res) {
       return;
     }
 
+    // 수령 방식 바꾸기. track을 비우면 바꾼 기록을 지워 원래 제출값으로 돌아간다.
+    if (action === 'track') {
+      const key = String(nick || '').replace(/\s+/g, ' ').trim().slice(0, KEY_MAX);
+      if (!key) { res.status(400).json({ ok: false, reason: 'nick' }); return; }
+      const want = String(track || '');
+      if (want && want !== 'split' && want !== 'after') { res.status(400).json({ ok: false, reason: 'track' }); return; }
+
+      const f = await readGithubFile({ ...gh, path: TRACK_PATH });
+      let map = {};
+      if (f) { try { map = JSON.parse(f.content) || {}; } catch { map = {}; } }
+      if (want) map[key] = { track: want, at: new Date().toISOString() };
+      else delete map[key];
+
+      await writeGithubFile({
+        ...gh, path: TRACK_PATH,
+        content: JSON.stringify(map, null, 2) + '\n',
+        message: `creator-guide 수령 방식 ${want ? `변경 (${key} → ${want})` : `되돌림 (${key})`}`,
+        sha: f ? f.sha : undefined,
+      });
+      res.status(200).json({ ok: true, trackOverride: map });
+      return;
+    }
+
     if (action === 'confirm' || action === 'unconfirm') {
       const name = String(nick || '').replace(/\s+/g, ' ').trim().slice(0, KEY_MAX);
       if (!name) { res.status(400).json({ ok: false, reason: 'nick' }); return; }
@@ -282,6 +308,12 @@ export default async function handler(req, res) {
     }
     const { map } = await loadConfirmed(gh);
     // 오픈일도 같이 내려보낸다. 관리자 화면이 따로 한 번 더 부르지 않게 한다.
+    let trackOverride = {};
+    try {
+      const tf = await readGithubFile({ ...gh, path: TRACK_PATH });
+      if (tf) trackOverride = JSON.parse(tf.content) || {};
+    } catch (err) { console.error('[admin] 수령 방식 변경 목록 조회 실패:', err?.message || err); }
+
     let archived = {};
     try {
       const ar = await readGithubFile({ ...gh, path: ARCHIVED_PATH });
@@ -297,7 +329,7 @@ export default async function handler(req, res) {
     const blocked = Object.fromEntries(
       Object.entries(guard).filter(([, v]) => v?.blocked)
     );
-    res.status(200).json({ ok: true, rows, confirmed: map, blocked, openDays, archived });
+    res.status(200).json({ ok: true, rows, confirmed: map, blocked, openDays, archived, trackOverride });
   } catch (err) {
     console.error('[admin] 처리 실패:', err?.message || err);
     res.status(502).json({ ok: false, reason: 'io' });
