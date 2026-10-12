@@ -21,7 +21,9 @@
     -webkit-font-smoothing: antialiased;
     font-size: 14px; line-height: 1.5;
   }
-  .wrap { max-width: 1040px; margin: 0 auto; padding: 24px 16px 60px; }
+  /* 열이 늘어난 뒤로 1040px 안에서는 표가 늘 넘쳐 가로로 밀어 봐야 했다.
+     화면이 넓으면 그만큼 쓰고, 좁은 화면에서는 그대로 화면 폭에 맞춘다. */
+  .wrap { max-width: min(1600px, 100%); margin: 0 auto; padding: 24px 16px 60px; }
 
   /* ─── 코드 입력 ─── */
   .gate { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -75,7 +77,7 @@
   .tag-btn { border: 1px dashed transparent; cursor: pointer; font-family: inherit; }
   .tag-btn:hover { border-color: currentColor; }
   td.trackcell { white-space: nowrap; }
-  .track-note { display: block; font-size: 10.5px; color: var(--ink-400); margin-top: 3px; }
+  .track-note { display: block; font-size: 10.5px; color: var(--ink-400); margin-top: 2px; white-space: nowrap; }
   /* 업로드가 확인된 건은 초안 날짜에 금을 긋는다 — 기다리는 날짜가 아니게 되므로 */
   td.draft.is-uploaded { text-decoration: line-through; color: var(--ink-400); }
 
@@ -117,13 +119,14 @@
   /* 아이디를 메일 주소로 적는 분이 있어 한 칸이 길어지면 표 전체가 밀려
      오른쪽이 잘렸다. 10자 남짓에서 끊고, 누르면 그 칸만 전부 펼친다.
      (마우스를 올려도 전체가 말풍선으로 뜨고, 복사 표에는 늘 전체가 들어간다) */
-  td.naver { max-width: 11ch; }
+  td.naver { max-width: 22ch; }
   /* 긴 아이디는 칸 안에서 좌우로 천천히 오가게 둔다. 한 칸씩 눌러서 펼치면
      여러 건을 훑어볼 때 매번 눌러야 해서, 가만히 둬도 전체가 읽히게 한다.
      움직이는 거리에 맞춰 시간을 주므로 길수록 느리게 흐른다. */
   td.naver .roll { display: block; overflow: hidden; white-space: nowrap; }
   td.naver .roll > span { display: inline-block; }
-  td.naver .roll.is-long > span {
+  td.naver .roll.is-long > span,
+  td.wish .roll.is-long > span {
     animation: naver-roll var(--roll-sec, 6s) ease-in-out infinite alternate;
   }
   @keyframes naver-roll {
@@ -132,10 +135,14 @@
   }
   /* 화면 읽기 설정에서 움직임을 줄이도록 해 둔 경우엔 흐르지 않게 한다 */
   @media (prefers-reduced-motion: reduce) {
-    td.naver .roll.is-long > span { animation: none; }
+    td.naver .roll.is-long > span, td.wish .roll.is-long > span { animation: none; }
   }
   /* 희망 상품은 반대로 너무 좁아 글이 계속 접혔다. 아이디 칸만큼은 준다. */
-  td.wish { min-width: 13ch; max-width: 28ch; }
+  /* 희망 상품도 한 줄로 둔다. 줄바꿈을 허용했더니 긴 상품명 하나 때문에
+     그 행만 두 배로 높아져 표가 들쑥날쑥했다. 넘치면 아이디처럼 흐른다. */
+  td.wish { min-width: 13ch; max-width: 26ch; }
+  td.wish .roll { display: block; overflow: hidden; white-space: nowrap; }
+  td.wish .roll > span { display: inline-block; }
   /* 세 단계로 가라앉힌다 — 이번 달·날짜 지남 → 지난 달 → 담당자가 내린 건.
      어느 것도 지우지 않는다. 기록은 남고 눈에 덜 걸리게만 한다. */
   /* 지급이 남아 있는 건은 또렷한 검정으로 둔다 — 지금 챙길 것 */
@@ -144,6 +151,7 @@
   tr.is-done td { color: #a3a3a0; background: #f6f6f4; }
   tr.is-done td.nick { font-weight: 400; }
   tr.is-done .tag, tr.is-done .dday { opacity: .45; }
+  tr.is-done .mini { opacity: .5; }
 
   tr.is-archived td { color: #9c9c99; background: #ebebe8; }
   tr.is-archived td.nick { font-weight: 400; text-decoration: line-through; }
@@ -191,7 +199,13 @@
   .open-reset { padding: 5px 9px; font-size: 12px; }
   .open-foot { margin: 12px 0 0; font-size: 12px; color: var(--ink-500); }
   /* 지난 제출 접기 — 같은 분이 여러 번 낸 것은 최신 한 줄로 모으고, 눌러서 편다 */
+  /* 활동명은 다섯 자까지만 보여주고 넘치면 자른다. 전체는 마우스를 올리면 뜬다.
+     이름이 길거나 '지난 제출' 표시가 붙었다고 칸이 늘어나면 표 전체가 밀린다. */
   td.nick { white-space: nowrap; }
+  .nick-name {
+    display: inline-block; max-width: 5.2em; vertical-align: middle;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   .old-toggle {
     display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
     background: none; border: 0; padding: 0; font: inherit; font-weight: 700;
@@ -200,8 +214,8 @@
   .old-arrow { display: inline-block; transition: transform .15s; color: var(--ink-400); }
   .old-toggle[aria-expanded="true"] .old-arrow { transform: rotate(90deg); }
   .old-n {
-    font-size: 11px; font-weight: 600; color: var(--ink-500); white-space: nowrap;
-    background: #f1f5f9; border-radius: 999px; padding: 2px 7px;
+    font-size: 10.5px; font-weight: 700; color: var(--ink-500); white-space: nowrap;
+    background: #f1f5f9; border-radius: 999px; padding: 1px 6px;
   }
   .old-child { color: var(--ink-400); white-space: nowrap; }
 
@@ -851,24 +865,24 @@
         (on ? ' is-picked' : '');
       return '<tr class="' + cls.trim() + '" data-key="' + esc(r.roundKey) + '">' +
         '<td class="pick"><input type="checkbox"' + (on ? ' checked' : '') + ' aria-label="고르기" /></td>' +
-        '<td class="nick">' + (r.latest
+        '<td class="nick" title="' + esc(r.nick) + '">' + (r.latest
           ? (oldCount[r.roundKey]
               ? '<button class="old-toggle" data-round="' + esc(r.roundKey) + '" aria-expanded="' + (openRounds[r.roundKey] ? 'true' : 'false') + '">' +
-                '<span class="old-arrow">›</span>' + esc(r.nick) +
-                '<span class="old-n">지난 제출 ' + oldCount[r.roundKey] + '건</span></button>'
-              : esc(r.nick))
-          : '<span class="old-child">↳ ' + esc(r.nick) + '</span> <span class="old-note">지난 제출</span>') + '</td>' +
+                '<span class="old-arrow">›</span><span class="nick-name">' + esc(r.nick) + '</span>' +
+                '<span class="old-n">+' + oldCount[r.roundKey] + '</span></button>'
+              : '<span class="nick-name">' + esc(r.nick) + '</span>')
+          : '<span class="old-child">↳ <span class="nick-name">' + esc(r.nick) + '</span></span>') + '</td>' +
         '<td class="naver" title="' + esc(r.naver || '') + '"><span class="roll"><span>' + esc(r.naver || '-') + '</span></span></td>' +
         '<td class="draft' + (isOn ? ' is-uploaded' : '') + '">' + esc(fmtDate(r.draftDate)) + '</td>' +
         '<td><span class="dday' + ddayClass(r.draftDate) + '">' + esc(fmtDday(r.draftDate)) + '</span></td>' +
         '<td class="trackcell">' + (r.latest
           ? '<button class="tag tag-btn ' + esc(trackOf(r)) + '" data-track="' + esc(r.roundKey) + '" data-now="' + esc(trackOf(r)) + '" data-orig="' + esc(r.track) + '" title="눌러서 바꾸기">' +
             esc(TRACK[trackOf(r)] || trackOf(r)) + '</button>' +
-            (trackChanged(r) ? '<span class="track-note">담당자 변경 · 원래 ' + esc(TRACK[r.track] || r.track) + '</span>' : '')
+            (trackChanged(r) ? '<span class="track-note" title="담당자가 바꿈 · 원래 ' + esc(TRACK[r.track] || r.track) + '">원래 ' + esc(TRACK[r.track] || r.track) + '</span>' : '')
           : '<span class="tag ' + esc(trackOf(r)) + '">' + esc(TRACK[trackOf(r)] || trackOf(r)) + '</span>') + '</td>' +
         '<td class="paycell">' + payCell(r) + '</td>' +
         '<td><span class="tag ' + esc(r.reward) + '">' + esc(REWARD[r.reward] || r.reward) + '</span></td>' +
-        '<td class="wish">' + esc(r.wish || '-') + '</td>' +
+        '<td class="wish" title="' + esc(r.wish || '') + '"><span class="roll"><span>' + esc(r.wish || '-') + '</span></span></td>' +
         '<td>' + esc(fmtAt(r.at)) + '</td>' +
         '<td>' + (r.latest
           ? '<button class="mini' + (isOn ? ' is-done' : '') + '" data-nick="' + esc(r.roundKey) + '" data-legacy="' + esc(confirmed[r.nick] ? r.nick : '') + '" data-on="' + (isOn ? '1' : '0') + '">' +
@@ -955,7 +969,7 @@
     });
     // 칸보다 긴 아이디만 골라 흐르게 한다. 넘치는 만큼만 움직이면 되므로
     // 그 거리를 재서 넣어주고, 100px당 2초 정도로 속도를 맞춘다.
-    Array.prototype.forEach.call(root.querySelectorAll('td.naver .roll'), function (roll) {
+    Array.prototype.forEach.call(root.querySelectorAll('td.naver .roll, td.wish .roll'), function (roll) {
       var over = roll.firstChild.scrollWidth - roll.clientWidth;
       if (over <= 1) return;
       roll.classList.add('is-long');
