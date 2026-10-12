@@ -95,8 +95,11 @@
   }
   .tag.split::before { background: #2563eb; }
   .tag.after::before { background: #d97706; }
-  .tag.coupon { background: #f5f3ff; color: #6d28d9; }
-  .tag.goods { background: #fdf2f8; color: #be185d; }
+  /* 보상 형태도 배경을 빼고 글자색만 남긴다. 무엇인지는 앞의 그림으로 읽힌다. */
+  .tag.coupon { background: none; padding: 2px 0; color: #6d28d9; }
+  .tag.goods { background: none; padding: 2px 0; color: #be185d; }
+  .tag.coupon::before { content: '💵 '; }
+  .tag.goods::before { content: '🧸 '; }
   .tag.ok { background: #f0fdf4; color: var(--green); }
   /* 같은 사람이 여러 번 낸 경우, 지난 제출은 흐리게 해서 최신만 눈에 들어오게 한다 */
   tr.is-old td { color: var(--ink-400); background: #fcfcfb; }
