@@ -230,6 +230,8 @@
   /* 예상 지급 시기 — 날짜를 위에, 무엇인지 아래에 작게 */
   td.paycell { white-space: nowrap; }
   .pay-cond { font-weight: 600; opacity: .75; }
+  .pay { display: inline-flex; flex-direction: column; gap: 2px; line-height: 1.35; }
+  .pay em { font-style: normal; font-size: 11px; color: var(--ink-500); }
   /* 열 제목을 눌러 정렬 기준을 바꾼다. 바에 버튼을 더 두지 않으려고 이렇게 했다. */
   th.sortable { cursor: pointer; }
   th.sortable:hover { color: var(--ink); }
@@ -619,6 +621,12 @@
   // ─── 오픈 날짜 관리 ───
   // 기본은 매달 첫 목요일이고, 그와 다른 달만 여기에 적어 둔다.
   // 적어 둔 값은 비공개 저장소에 저장되어 가이드 페이지의 달력·일정에 쓰인다.
+  // 첫 목요일이 아닌 달. 가이드 화면(finalOption.jsx)에 적힌 것과 같은 값이다.
+  // 관리 화면에는 이 목록이 없어 저장된 값이 비면 첫 목요일로 계산했고,
+  // 10월 오픈을 10/1로 봐서 지급일이 일주일씩 당겨졌다.
+  // 여기서 지정해 저장하면 저장된 값이 늘 먼저다.
+  var OPEN_DAY_FALLBACK = { '2026-09': 10, '2026-10': 8 };
+
   function firstThursday(y, m) {   // m은 1부터
     var first = new Date(y, m - 1, 1);
     return 1 + ((4 - first.getDay() + 7) % 7);
@@ -654,7 +662,10 @@
       var yy2 = yy + Math.floor((mm - 1) / 12);
       var mm2 = ((mm - 1) % 12 + 12) % 12 + 1;
       var key = yy2 + '-' + String(mm2).padStart(2, '0');
-      return new Date(yy2, mm2 - 1, openDays[key] == null ? firstThursday(yy2, mm2) : openDays[key]);
+      var day = openDays[key];
+      if (day == null) day = OPEN_DAY_FALLBACK[key];
+      if (day == null) day = firstThursday(yy2, mm2);
+      return new Date(yy2, mm2 - 1, day);
     };
     var draft = new Date(y, m - 1, +p[2]);
     var best = null, gap = Infinity;
@@ -741,7 +752,9 @@
     if (payWhen(open, 10) === 'done') {
       return '<b class="paychip ' + payWhen(open, 40) + '">' + p.second + ' 주간 · 2차 5만 <span class="pay-cond">(750↑)</span></b>';
     }
-    return '<b class="paychip ' + payWhen(open, 10) + '">' + p.first + ' · 1차 5만</b>';
+    return '<span class="pay">' +
+      '<b class="paychip ' + payWhen(open, 10) + '">' + p.first + ' 주간 · 1차 5만</b>' +
+      '<em>2차 ' + p.second + ' 주간 · 5만 (750↑)</em></span>';
   }
 
   // 1차가 이미 나간 건은 그 사실만 지급 확인 칸 밑에 작게 남긴다.
@@ -756,7 +769,7 @@
   function openBox() {
     var rows = openMonths().map(function (key) {
       var p = key.split('-');
-      var base = firstThursday(+p[0], +p[1]);
+      var base = OPEN_DAY_FALLBACK[key] == null ? firstThursday(+p[0], +p[1]) : OPEN_DAY_FALLBACK[key];
       var set = openDays[key];
       var day = set == null ? base : set;
       return '<div class="open-row' + (set == null ? '' : ' is-set') + '">' +
