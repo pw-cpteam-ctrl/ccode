@@ -254,7 +254,7 @@ async function readTwitterPost(page, target) {
   page.on('response', onResponse);
 
   try {
-    await page.goto(target.url, { waitUntil: 'domcontentloaded' });
+    await gotoStable(page, target.url);
     // 게시물 상세 페이지엔 답글도 같은 article로 렌더링됨 — 본문 글이 그려질 때까지만 기다림.
     await page.waitForSelector('article[data-testid="tweet"]', { timeout: 20000 });
 
@@ -369,8 +369,38 @@ async function readInstagramPost(page, target) {
   }
 }
 
+
+/**
+ * 글 하나를 연다. 앞 글이 남긴 화면 이동에 가로채이면 다시 시도한다.
+ *
+ * 왜 필요한가 — 인스타는 한 페이지 안에서 주소만 바꿔 끼우는 방식(SPA)이라, 앞 글을
+ * 읽고 넘어간 뒤에도 그 글이 걸어둔 이동이 뒤늦게 실행될 때가 있다. 그러면 다음 글을
+ * 여는 중에 끼어들어서
+ *   Navigation to "...10월글" is interrupted by another navigation to "...9월글"
+ * 로 실패한다. 링크가 잘못된 게 아니라 순서가 꼬인 것이라, 그 글만 읽히지 않고 리포트에서
+ * 조용히 빠진다(실제로 10월 인스타 글 하나가 이렇게 빠졌다).
+ *
+ * 매번 빈 화면을 한 번 거쳐서 앞 글이 남긴 이동을 끊고 연다. 그래도 끼어들면 잠깐 기다렸다
+ * 다시 연다 — 두 번째에는 앞 글의 이동이 이미 끝나 있다.
+ */
+async function gotoStable(page, url, options = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await page.goto('about:blank').catch(() => {});
+      return await page.goto(url, { waitUntil: 'domcontentloaded', ...options });
+    } catch (err) {
+      lastError = err;
+      if (!/interrupted by another navigation/i.test(err.message)) throw err;
+      console.warn(`   (앞 글이 남긴 이동에 가로채여 다시 엽니다 — ${attempt}번째)`);
+      await page.waitForTimeout(800 * attempt);
+    }
+  }
+  throw lastError;
+}
+
 async function readInstagramPostInner(page, target, seen) {
-  await page.goto(target.url, { waitUntil: 'domcontentloaded' });
+  await gotoStable(page, target.url);
   // 인스타는 사진·캡션을 먼저 그리고 좋아요/댓글 숫자를 뒤늦게 채움 — 고정 대기로 읽으면
   // 게시물마다 성공/실패가 갈림(instagram.js에서 같은 문제를 겪고 대기 조건으로 바꿨음).
   await page.waitForFunction(() => {
@@ -630,6 +660,7 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
 }
 
 module.exports = {
+  gotoStable,
   collectPostsByLink, classifyUrl,
   readTwitterInPage, findTweetCountsInJson, readTwitterPost,
   readInstagramInPage, findInstagramCountsInJson, readInstagramPost,
