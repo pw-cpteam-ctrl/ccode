@@ -24,6 +24,55 @@ const { saveMatchupReport } = require('./matchup-report');
 const { archiveAndGetPath } = require('./report-archive');
 const { prepareBrand, parseBrandArg } = require('./brand-config');
 
+
+/**
+ * 링크 목록 파일을 읽는다. 문법이 틀렸을 때 "어디가 왜 틀렸는지"까지 알려준다.
+ *
+ * 왜 따로 만들었나 — 쉼표 하나 빠졌을 때 나오는 기본 오류가
+ *   SyntaxError: Expected ',' or ']' after array element in JSON at position 330 (line 7 column 5)
+ * 뒤에 호출 흔적 열 줄이 딸려 나오는 모양이라, 정작 "7번째 줄 끝에 쉼표를 찍으면 된다"는 걸
+ * 읽어내기 어렵다. 실제로 이 오류를 받고 파일명이 잘못된 줄 알았던 일이 있었다.
+ * 파일을 못 찾은 것과 내용이 틀린 것부터 분명히 갈라준다.
+ */
+function readInputJson(inputPath) {
+  const text = fs.readFileSync(inputPath, 'utf-8');
+
+  // 메모장에서 한글 입력 상태로 치면 따옴표가 " " ' ' 같은 모양으로 바뀌는데, 눈으로는
+  // 거의 구분이 안 되면서 JSON은 통째로 깨진다. 흔한 사고라 먼저 짚어준다.
+  const curly = text.match(/[“”‘’]/);
+  if (curly) {
+    const upto = text.slice(0, text.indexOf(curly[0]));
+    console.error(`❌ 파일 안의 따옴표 모양이 잘못됐습니다 (${upto.split('\n').length}번째 줄의 ${curly[0]}).`);
+    console.error('   한글 입력 상태로 친 따옴표라 생긴 문제입니다 — 곧은 따옴표(")로 바꿔주세요.');
+    process.exit(1);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    const at = /at position (\d+)/.exec(err.message);
+    const lineNo = at ? text.slice(0, Number(at[1])).split('\n').length : null;
+    console.error(`❌ 파일은 찾았지만 안의 내용이 JSON 문법에 안 맞습니다: ${path.basename(inputPath)}`);
+    if (lineNo) {
+      const lines = text.split('\n');
+      console.error(`   ${lineNo}번째 줄 근처입니다:`);
+      for (let i = Math.max(0, lineNo - 2); i < Math.min(lines.length, lineNo + 1); i += 1) {
+        console.error(`   ${String(i + 1).padStart(3)} | ${lines[i]}`);
+      }
+    }
+    console.error('   가장 흔한 원인은 줄 끝 쉼표입니다 — 각 줄 끝에 쉼표를 찍되, 마지막 한 줄만 안 찍습니다.');
+    console.error('   올바른 모양:');
+    console.error('     {');
+    console.error('       "title": "당사 이벤트 추이",');
+    console.error('       "pairs": [');
+    console.error('         { "label": "04-03 고죠 구매인증", "pw": "https://x.com/..." },');
+    console.error('         { "label": "04-30 5월 알림받기", "pw": "https://x.com/..." }');
+    console.error('       ]');
+    console.error('     }');
+    process.exit(1);
+  }
+}
+
 async function main() {
   const { brandKey, rest } = parseBrandArg(process.argv.slice(2));
   const brand = prepareBrand(brandKey);
@@ -39,7 +88,7 @@ async function main() {
     console.error(`❌ 입력 파일이 없음: ${inputPath}`);
     process.exit(1);
   }
-  const input = JSON.parse(fs.readFileSync(inputPath, 'utf-8'));
+  const input = readInputJson(inputPath);
   const title = (input.title || '').trim();
   const pairsIn = Array.isArray(input.pairs) ? input.pairs : [];
   if (pairsIn.length === 0) {
