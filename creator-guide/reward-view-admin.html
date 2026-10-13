@@ -152,7 +152,7 @@
   /* 한글 12자 기준. ch는 숫자 폭이라 한글로 치면 절반밖에 안 들어간다. */
   /* 남는 폭은 전부 이 칸이 가져간다 — 글자가 가장 모자란 칸이라서다.
      나머지 열은 내용 폭에 고정해(width:1px) 남는 자리가 칸마다 뿌려지지 않게 한다. */
-  th.wishcol, td.wish { width: 100%; min-width: 9em; }
+  th.wishcol, td.wish { width: 100%; min-width: 4em; }
   thead th:not(.wishcol), tbody td:not(.wish) { width: 1px; }
   /* 두 줄로 쪼개지던 칸들 */
   td .tag, th:nth-child(9), td:nth-child(9), td:nth-child(10) { white-space: nowrap; }
@@ -172,6 +172,12 @@
   tr.is-archived td.nick { font-weight: 400; text-decoration: line-through; }
   tr.is-archived .tag, tr.is-archived .dday { opacity: .35; }
   tr.is-archived .mini { opacity: .5; }
+  /* 1차만 지급한 건 — 아직 끝난 게 아니라 완료보다 옅게 둔다 */
+  tr.is-part td { color: #7a7a75; background: #fafaf9; }
+  tr.is-part td.nick { font-weight: 600; }
+  tr.is-part .tag, tr.is-part .dday { opacity: .6; }
+  .mini.is-part { border-color: #c2410c; color: #c2410c; }
+  tr.grouprow.is-settled .group-when { color: var(--ink-500); }
 
   /* 끌어서 고르는 중 */
   tr.is-picked td { background: #eff6ff; color: var(--ink); }
@@ -320,7 +326,7 @@
     if (p.length !== 3) return v || '-';
     var d = new Date(+p[0], +p[1] - 1, +p[2]);
     var w = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
-    return (+p[1]) + '월 ' + (+p[2]) + '일 (' + w + ')';
+    return (+p[1]) + '/' + (+p[2]) + ' (' + w + ')';
   }
 
   // 접속한 오늘을 기준으로 초안 공유 예정일까지 며칠 남았는지.
@@ -498,7 +504,8 @@
     out.forEach(function (r) { if (r.latest) keyDate[r.roundKey] = r.draftDate || ''; });
     return out.sort(function (a, b) {
       // 담당자가 내려 둔 건은 날짜와 상관없이 맨 아래로 보낸다.
-      var aa = archived[a.roundKey] ? 1 : 0, ab = archived[b.roundKey] ? 1 : 0;
+      var rank = function (x) { var st = archived[x.roundKey]; return !st ? 0 : (st.stage === 'part' ? 1 : 2); };
+      var aa = rank(a), ab = rank(b);
       if (aa !== ab) return aa - ab;
       if (sortBy === 'pay') {
         // 다음에 나갈 날짜가 가까운 것부터. 지급을 챙길 때 쓰는 순서다.
@@ -836,7 +843,17 @@
     return last < today ? 'done' : '';
   }
 
-  function isArchived(r) { return !!archived[r.roundKey]; }
+  // 지급 상태 — '' 진행 중 / 'part' 선지급 1차만 나감 / 'full' 다 나감
+  // 예전에 저장된 기록은 stage가 없으므로 'full'로 본다.
+  function payStage(r) {
+    var a = archived[r.roundKey];
+    if (!a) return '';
+    return a.stage === 'part' ? 'part' : 'full';
+  }
+  function isArchived(r) { return payStage(r) === 'full'; }
+  function isPartPaid(r) { return payStage(r) === 'part'; }
+  // 목록에서 내려가는 건 두 상태 모두 — 다만 서로 다른 칸에 모인다.
+  function isSettled(r) { return payStage(r) !== ''; }
 
   // 지금 적용되는 수령 방식. 담당자가 바꿨으면 그 값, 아니면 크리에이터가 낸 값.
   function trackOf(r) {
@@ -963,7 +980,8 @@
 
   function renderList() {
     var list = visibleRows();
-    var liveRows = list.filter(function (r) { return r.latest && !isArchived(r); });
+    var liveRows = list.filter(function (r) { return r.latest && !isSettled(r); });
+    var partCount = list.filter(function (r) { return r.latest && isPartPaid(r); }).length;
     var doneCount = list.filter(function (r) { return r.latest && isArchived(r); }).length;
 
     // 같은 차수에 지난 제출이 몇 건인지 미리 센다 — 최신 줄에 '▸ 지난 제출 N건'을 붙이려고.
@@ -971,6 +989,7 @@
     list.forEach(function (r) { if (!r.latest) oldCount[r.roundKey] = (oldCount[r.roundKey] || 0) + 1; });
 
     var lastGroupAt = null;   // 바로 앞 줄의 지급일 — 10일 넘게 벌어지면 새 묶음
+    var lastSettled = null;   // 바로 앞 줄의 지급 상태 — 바뀌면 구분 줄을 넣는다
     var groupCount = {};
     var body = list.filter(function (r) {
       // 지난 제출은 그 차수를 펼쳤을 때만 보여준다. 평소에는 최신 한 줄만 남아
@@ -982,12 +1001,23 @@
       var on = !!picked[r.roundKey];
       // 지급일 순으로 볼 때만, 가까운 지급끼리 머리줄로 묶어 준다.
       var head = '';
-      if (sortBy === 'pay' && r.latest && !isArchived(r)) {
+      // 1차만 지급 / 지급 완료 구간에도 구분 줄을 넣는다. 회색끼리 붙어 있어
+      // 어디부터가 끝난 건인지 눈으로 잡히지 않았다.
+      if (r.latest && isSettled(r)) {
+        var st = payStage(r);
+        if (st !== lastSettled) {
+          head = '<tr class="grouprow is-settled"><td colspan="12">' +
+            '<span class="group-when">' + (st === 'part' ? '1차만 지급함' : '지급 완료') + '</span>' +
+            '<span class="group-n">' + (st === 'part' ? partCount : doneCount) + '건</span></td></tr>';
+          lastSettled = st;
+        }
+      }
+      if (sortBy === 'pay' && r.latest && !isSettled(r)) {
         var t = nextPayTime(r);
         if (lastGroupAt === null || !isFinite(t) !== !isFinite(lastGroupAt) ||
             (isFinite(t) && t - lastGroupAt > GROUP_GAP_DAYS * 864e5)) {
           var same = list.filter(function (x) {
-            if (!x.latest || isArchived(x)) return false;
+            if (!x.latest || isSettled(x)) return false;
             var xt = nextPayTime(x);
             return isFinite(t) ? (isFinite(xt) && Math.abs(xt - t) <= GROUP_GAP_DAYS * 864e5) : !isFinite(xt);
           }).length;
@@ -999,7 +1029,7 @@
       }
       var cls = (r.latest ? '' : 'is-old') +
         (age ? ' is-' + age : '') +
-        (isArchived(r) ? ' is-archived' : '') +
+        (isArchived(r) ? ' is-archived' : '') + (isPartPaid(r) ? ' is-part' : '') +
         (on ? ' is-picked' : '');
       return head + '<tr class="' + cls.trim() + '" data-key="' + esc(r.roundKey) + '">' +
         '<td class="pick"><input type="checkbox"' + (on ? ' checked' : '') + ' aria-label="고르기" /></td>' +
@@ -1027,8 +1057,17 @@
             (isOn ? '✓ 확인함' : '업로드 확인') + '</button>'
           : '') + '</td>' +
         '<td>' + (r.latest
-          ? '<button class="mini reward-btn' + (isArchived(r) ? ' is-done' : '') + '" data-reward="' + esc(r.roundKey) + '" data-on="' + (isArchived(r) ? '1' : '0') + '">' +
-            (isArchived(r) ? '✓ 지급함' : '리워드 확인') + '</button>' + paidNote(r)
+          ? (function () {
+              var st = payStage(r);
+              var split = trackOf(r) === 'split';
+              // 선지급은 1차 → 전액 → 해제, 후지급은 전액 → 해제
+              var next = st === '' ? (split ? 'part' : 'full') : (st === 'part' ? 'full' : '');
+              var label = st === '' ? '리워드 확인' : (st === 'part' ? '✓ 1차 지급함' : '✓ 전액 지급함');
+              return '<button class="mini reward-btn' + (st ? ' is-done' : '') + (st === 'part' ? ' is-part' : '') + '"' +
+                ' data-reward="' + esc(r.roundKey) + '" data-next="' + next + '"' +
+                ' title="' + (split ? '누를 때마다 1차 지급 → 전액 지급 → 해제' : '누르면 지급 완료, 다시 누르면 해제') + '">' +
+                label + '</button>';
+            })() + paidNote(r)
           : '') + '</td>' +
         '</tr>';
     }).join('');
@@ -1037,7 +1076,8 @@
       '<div class="wrap">' +
       '<div class="head fitw"><h1>진행 정보 접수 현황</h1>' +
       '<span class="count">진행 ' + liveRows.length + '건' +
-      (doneCount ? ' · 내려둔 건 ' + doneCount + '건' : '') +
+      (partCount ? ' · 1차만 지급 ' + partCount + '건' : '') +
+      (doneCount ? ' · 지급 완료 ' + doneCount + '건' : '') +
       ' · 전체 기록 ' + list.length + '건</span></div>' +
       '<p class="sub">같은 분이 <b>' + ROUND_GAP_DAYS + '일 안에</b> 다시 내신 것은 고쳐 내신 것으로 보고 <b>마지막 제출</b>만 유효합니다(지난 제출은 흐리게 표시). ' +
       '그보다 간격이 벌어지면 <b>다른 차수</b>로 보고 각각 따로 남습니다 — 같은 분과 달마다 협업하는 경우를 위해서입니다.</p>' +
@@ -1050,9 +1090,9 @@
       openBox() +
       (list.length
         ? '<div class="scroll"><table><thead><tr>' +
-          '<th class="pick"></th><th>활동명</th><th>네이버 아이디</th><th class="sortable' + (sortBy === 'draft' ? ' is-on' : '') + '" data-sort="draft">초안 공유 예정일' + (sortBy === 'draft' ? ' <span class="sort-ar">▾</span>' : '') + '</th>' +
+          '<th class="pick"></th><th>활동명</th><th>네이버 ID</th><th class="sortable' + (sortBy === 'draft' ? ' is-on' : '') + '" data-sort="draft">초안 예정일' + (sortBy === 'draft' ? ' <span class="sort-ar">▾</span>' : '') + '</th>' +
           '<th>D-day</th><th>수령 방식</th>' +
-          '<th class="sortable' + (sortBy === 'pay' ? ' is-on' : '') + '" data-sort="pay">예상 지급 시기' + (sortBy === 'pay' ? ' <span class="sort-ar">▾</span>' : '') + '</th><th>보상 형태</th><th class="wishcol">희망 상품</th><th>제출 시각</th><th>업로드</th><th>리워드 지급 확인</th>' +
+          '<th class="sortable' + (sortBy === 'pay' ? ' is-on' : '') + '" data-sort="pay">예상 지급 시기' + (sortBy === 'pay' ? ' <span class="sort-ar">▾</span>' : '') + '</th><th>보상 형태</th><th class="wishcol">희망 상품</th><th>제출 시각</th><th>업로드</th><th>리워드 지급</th>' +
           '</tr></thead><tbody>' + body + '</tbody></table></div>'
         : '<div class="empty">아직 접수된 내용이 없습니다.</div>') +
       pickBar() +
@@ -1106,9 +1146,10 @@
       b.addEventListener('mousedown', function (e) { e.stopPropagation(); });
       b.addEventListener('click', function (e) {
         e.stopPropagation();
-        var on = b.getAttribute('data-on') !== '1';
+        var next = b.getAttribute('data-next');
         b.disabled = true; b.textContent = '처리 중…';
-        api({ code: code, action: on ? 'archive' : 'unarchive', keys: [b.getAttribute('data-reward')] })
+        api({ code: code, action: next ? 'archive' : 'unarchive',
+              keys: [b.getAttribute('data-reward')], stage: next || undefined })
           .then(function (r) {
             if (r.status === 200 && r.data.ok) { archived = r.data.archived || {}; renderList(); }
             else { b.disabled = false; b.textContent = '다시 시도'; }

@@ -241,7 +241,10 @@ export default async function handler(req, res) {
       let map = {};
       if (f) { try { map = JSON.parse(f.content) || {}; } catch { map = {}; } }
       const at = new Date().toISOString();
-      list.forEach((k) => { if (action === 'archive') map[k] = { at }; else delete map[k]; });
+      // stage: 'part'는 선지급 1차만 나간 중간 상태, 'full'은 다 나간 상태.
+      // 예전에 저장된 { at }만 있는 기록은 'full'로 본다.
+      const stage = String(req.body?.stage || 'full') === 'part' ? 'part' : 'full';
+      list.forEach((k) => { if (action === 'archive') map[k] = { at, stage }; else delete map[k]; });
 
       await writeGithubFile({
         ...gh, path: ARCHIVED_PATH,
