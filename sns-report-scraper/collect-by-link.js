@@ -195,6 +195,15 @@ function readTwitterInPage(postId) {
       likes: countOf('like', 'unlike'),
       retweets: countOf('retweet', 'unretweet'),
       quotes: quoteOf(),
+      // 조회수는 버튼이 아니라 통계 줄에 글자로만 있다("1.2만 조회수"). 원본 응답이 1순위이고
+      // 이건 그게 비었을 때의 대비책이라, 줄임 표기가 섞일 수 있다.
+      views: (function () {
+        for (const t of statTexts) {
+          const m = String(t).match(/([\d.,]+\s*[만천KM]?)\s*(조회|views?)/i);
+          if (m) return m[1].trim();
+        }
+        return null;
+      })(),
       statHrefs, statTexts,
       comments: countOf('reply'),
     };
@@ -229,6 +238,10 @@ function findTweetCountsInJson(root, postId) {
         retweets: legacy.retweet_count,
         likes: legacy.favorite_count,
         comments: legacy.reply_count,
+        // 조회수(노출). 글이 얼마나 퍼졌는지를 보는 유일한 직접 지표라, 반응 수와 나란히
+        // 두면 "많이 퍼져서 반응이 많았나, 적게 퍼졌는데도 반응이 좋았나"를 가를 수 있다.
+        // 문자열로 올 때가 있어 숫자로 바꿔둔다.
+        views: node.views && node.views.count != null ? Number(node.views.count) : null,
       };
     }
     for (const k of Object.keys(node)) stack.push(node[k]);
@@ -283,6 +296,7 @@ async function readTwitterPost(page, target) {
     if (seen.counts) {
       const pick = (v, fallback) => (typeof v === 'number' ? String(v) : fallback);
       parsed.quotes = pick(seen.counts.quotes, parsed.quotes);
+    parsed.views = pick(seen.counts.views, parsed.views);
       parsed.retweets = pick(seen.counts.retweets, parsed.retweets);
       parsed.likes = pick(seen.counts.likes, parsed.likes);
       parsed.comments = pick(seen.counts.comments, parsed.comments);
@@ -675,7 +689,7 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
         if (parsed.exactMatch === false) {
           results[i].warning = '주소의 글을 정확히 못 집어서 페이지 첫 번째 글을 읽었음 — 숫자가 맞는지 확인 필요';
         }
-        console.log(`[link] ✅ ${t.platform} ${t.url} — 좋아요 ${parsed.likes ?? '-'} · 리트윗 ${parsed.retweets ?? '-'} · 인용 ${parsed.quotes ?? '-'} · 댓글 ${parsed.comments ?? '-'}${parsed.countsFrom ? ` (출처: ${parsed.countsFrom === 'api' ? `${t.platform === 'instagram' ? '인스타' : 'X'} 원본 응답` : parsed.countsFrom === 'api-direct' ? '인스타에 직접 물어봄' : '화면'})` : ''}`);
+        console.log(`[link] ✅ ${t.platform} ${t.url} — 좋아요 ${parsed.likes ?? '-'} · 리트윗 ${parsed.retweets ?? '-'} · 인용 ${parsed.quotes ?? '-'} · 댓글 ${parsed.comments ?? '-'} · 조회 ${parsed.views ?? '-'}${parsed.countsFrom ? ` (출처: ${parsed.countsFrom === 'api' ? `${t.platform === 'instagram' ? '인스타' : 'X'} 원본 응답` : parsed.countsFrom === 'api-direct' ? '인스타에 직접 물어봄' : '화면'})` : ''}`);
 
         // 인용을 못 읽었으면 **추측을 반복하지 않기 위해** 그 페이지를 파일로 남긴다.
         // 그 파일만 있으면 실제 구조를 보고 한 번에 고칠 수 있음(지금까지 실제 X 화면을

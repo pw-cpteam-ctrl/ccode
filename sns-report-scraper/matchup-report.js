@@ -21,10 +21,22 @@ const METRICS = [
   { key: 'retweets', label: '리트윗', icon: '🔁' },
   { key: 'quotes', label: '인용', icon: '🗨️' },
   { key: 'comments', label: '댓글', icon: '💬' },
+  // 조회수는 '얼마나 퍼졌나'라서 반응 지표와 성격이 다르다. 맨 뒤에 둬서 섞이지 않게 한다.
+  { key: 'views', label: '조회수', icon: '👁️' },
 ];
 // 리트윗·인용은 X에만 있는 개념 — 인스타에서 값이 없는 걸 "못 읽음"으로 세면 합계 밑에
 // "못 읽어서 빠짐"이라는 있지도 않은 문제가 표시됨. 그래서 아예 해당 없음으로 처리.
-const X_ONLY_METRICS = new Set(['retweets', 'quotes']);
+// 조회수도 X만 공개한다(인스타는 영상에만 있고 사진 글엔 아예 없음).
+const X_ONLY_METRICS = new Set(['retweets', 'quotes', 'views']);
+
+// 조회수는 나중에 추가된 지표라, 그 전에 모아둔 글에는 아예 들어있지 않다. 값이 없는데
+// 칸을 만들면 "읽을 수 없었음"으로 떠서 수집 실패처럼 보인다 — 한쪽이라도 값이 있을 때만 그린다.
+const OPTIONAL_METRICS = new Set(['views']);
+
+function hasAnyValue(key, posts) {
+  if (!OPTIONAL_METRICS.has(key)) return true;
+  return posts.some(p => p && p[key] !== null && p[key] !== undefined && p[key] !== '');
+}
 
 function metricApplies(key, platform) {
   if (!X_ONLY_METRICS.has(key)) return true;
@@ -211,7 +223,8 @@ function renderSummary(pairs, collectedAt) {
 
   // 인스타만 넣은 리포트에서 리트윗·인용 줄이 "읽을 수 없었음"으로 남으면 있지도 않은
   // 문제처럼 보임 — 어느 쌍에도 해당되지 않는 지표는 요약에서도 줄 자체를 안 만듦
-  const shown = METRICS.filter(m => pairs.some(p => metricApplies(m.key, platformOf(p))));
+  const allPosts = pairs.flatMap(p => [p.pw, p.bh]);
+  const shown = METRICS.filter(m => pairs.some(p => metricApplies(m.key, platformOf(p))) && hasAnyValue(m.key, allPosts));
 
   const sums = {};
   for (const m of shown) {
@@ -251,7 +264,7 @@ function renderSummary(pairs, collectedAt) {
   const platforms = [...new Set(pairs.map(p => (p.pw && p.pw.platform) || (p.bh && p.bh.platform)).filter(Boolean))];
   const byPlatform = platforms.map(plat => {
     const inPlat = pairs.filter(p => ((p.pw && p.pw.platform) || (p.bh && p.bh.platform)) === plat);
-    const cells = METRICS.filter(m => metricApplies(m.key, plat)).map(m => {
+    const cells = METRICS.filter(m => metricApplies(m.key, plat) && hasAnyValue(m.key, inPlat.flatMap(p => [p.pw, p.bh]))).map(m => {
       const pick = side => inPlat.reduce((n, p) => {
         const v = p[side] ? parseCount(p[side][m.key]) : null;
         return v === null ? n : (n || 0) + v;
@@ -323,7 +336,7 @@ function renderPair(pair, index, collectedAt) {
       ${sideHead('경쟁사 (BH)', 'bh', bh, collectedAt)}
     </div>
     <div class="metric-cols">
-      ${METRICS.filter(m => metricApplies(m.key, metricPlatform)).map(m => {
+      ${METRICS.filter(m => metricApplies(m.key, metricPlatform) && hasAnyValue(m.key, [pw, bh])).map(m => {
         // X 전용 지표인데 한쪽이 인스타면 "못 읽은 것"이 아니라 "그 플랫폼에 없는 것" —
         // 같은 빈칸이라도 원인이 달라서 문구를 구분함(수집 실패로 오해하면 엉뚱한 데를 고침).
         const crossPlatform = X_ONLY_METRICS.has(m.key)
