@@ -626,10 +626,26 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
         // 인스타 지표를 원본 응답에서 못 받고 화면 읽기로 때웠으면 페이지를 남긴다.
         // 화면 읽기는 레이아웃이 조금만 달라도 **틀린 숫자를 성공처럼** 내놓기 때문에
         // (릴스에서 좋아요·댓글이 같은 값으로 나온 적 있음) 값의 유무가 아니라 출처로 판단한다.
+        // 같은 '화면에서 읽음'이라도 위험도가 다르다. 전부 같은 문구로 알리면 멀쩡한 건까지
+        // 의심하게 되고(실제로 "그래서 된 거냐"는 되물음이 왔다), 정작 위험한 건이 묻힌다.
+        // 세 경우를 갈라서 알리고, 수상할 때만 페이지를 남긴다.
         if (t.platform === 'instagram' && parsed.countsFrom !== 'api') {
-          console.log(`[link] ⚠️ 인스타 지표를 원본 응답이 아니라 화면에서 읽었음 — 숫자가 틀릴 수 있음`);
-          console.log(`[link] ⓘ 받아온 응답 주소: ${JSON.stringify(parsed.apiUrls || [])}`);
-          dumpPage(debugDir, `_debug-ig-${t.postId}.html`, pageHtml);
+          const txt = v => String(v ?? '');
+          const shortened = [parsed.likes, parsed.comments].some(v => /[만천억KkMmBb]/.test(txt(v)));
+          // 좋아요와 댓글이 똑같이 읽히는 건 엉뚱한 칸을 집었을 때 나오는 전형적인 증상이다
+          // (릴스에서 실제로 겪었음). 우연히 같을 수도 있지만 확인시키는 편이 안전하다.
+          const sameValue = parsed.likes != null && txt(parsed.likes) === txt(parsed.comments);
+          if (sameValue) {
+            console.log(`[link] ⚠️ 좋아요와 댓글이 ${txt(parsed.likes)}로 똑같이 읽혔습니다 — 화면에서 엉뚱한 칸을 집었을 때 나오는 증상입니다. 이 글은 직접 확인해주세요.`);
+          } else if (shortened) {
+            console.log(`[link] ⚠️ 화면에 줄여 적힌 숫자(1.2만 등)를 되돌린 값이라 실제와 차이가 납니다 — 추이 비교에는 쓰지 마세요.`);
+          } else {
+            console.log(`[link] ⓘ 원본 응답 대신 화면에서 읽었습니다. 줄임 없이 그대로 적힌 숫자라 값은 맞을 가능성이 높습니다(인스타는 1만 미만을 줄이지 않습니다).`);
+          }
+          if (sameValue || shortened) {
+            console.log(`[link] ⓘ 받아온 응답 주소: ${JSON.stringify(parsed.apiUrls || [])}`);
+            dumpPage(debugDir, `_debug-ig-${t.postId}.html`, pageHtml);
+          }
         }
 
         if (t.platform === 'twitter' && parsed.quotes === null) {
