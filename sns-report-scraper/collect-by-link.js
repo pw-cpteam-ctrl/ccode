@@ -399,6 +399,46 @@ async function gotoStable(page, url, options = {}) {
   throw lastError;
 }
 
+
+// 인스타 글 주소의 짧은 글자를 글 번호로 되돌린다. 인스타가 쓰는 64글자 표기법이다.
+const IG_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+function instagramShortcodeToMediaId(shortcode) {
+  let n = 0n;
+  for (const ch of String(shortcode || '')) {
+    const i = IG_ALPHABET.indexOf(ch);
+    if (i < 0) return null;          // 모르는 글자가 섞이면 번호를 못 만든다
+    n = n * 64n + BigInt(i);
+  }
+  return n > 0n ? n.toString() : null;
+}
+
+/**
+ * 정확한 좋아요·댓글 수를 인스타에 직접 물어본다. 못 받으면 null(그러면 화면 숫자를 쓴다).
+ * 화면 글자와 달리 줄임이 없어서 달별 비교에 쓸 수 있는 값이다.
+ */
+async function readInstagramExactCounts(page, target) {
+  const mediaId = instagramShortcodeToMediaId(target.postId);
+  if (!mediaId) return null;
+  const json = await page.evaluate(async (id) => {
+    try {
+      const res = await fetch(`/api/v1/media/${id}/info/`, {
+        headers: { 'x-ig-app-id': '936619743392459' },   // 이 값이 없으면 인스타가 거절한다
+        credentials: 'include',
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch { return null; }
+  }, mediaId).catch(() => null);
+
+  const item = json && Array.isArray(json.items) ? json.items[0] : null;
+  if (!item) return null;
+  const likes = typeof item.like_count === 'number' ? item.like_count : null;
+  const comments = typeof item.comment_count === 'number' ? item.comment_count : null;
+  if (likes === null && comments === null) return null;
+  return { likes, comments };
+}
+
 async function readInstagramPostInner(page, target, seen) {
   await gotoStable(page, target.url);
   // 인스타는 사진·캡션을 먼저 그리고 좋아요/댓글 숫자를 뒤늦게 채움 — 고정 대기로 읽으면
@@ -433,14 +473,31 @@ async function readInstagramPostInner(page, target, seen) {
     if (seen.counts.caption) out.text = out.text || seen.counts.caption;
     out.countsFrom = 'api';
   } else {
-    out.countsFrom = 'dom';
+    // 원본 응답이 안 잡혔으면 직접 물어본다.
+    //
+    // 왜 필요한가 — 한국어 인스타는 1,000이 넘으면 화면에 '1.4천'처럼 줄여 적는다. 그걸
+    // 되돌리면 1,400이 되는데 실제로는 1,350~1,449 사이 어떤 값이든 될 수 있다. 달마다
+    // 비교하려고 모으는 숫자인데 ±50씩 흔들리면 추이를 못 본다. 실제로 6~9월 좋아요가
+    // 전부 100 단위로 딱 떨어진 어림값으로 수집된 적이 있다(1,400/1,200/1,700/1,600).
+    //
+    // 글 주소의 짧은 글자(DeLv9twIGbD)에는 글 번호가 그대로 들어 있어서, 그걸 풀면 인스타에
+    // 정확한 수를 물어볼 수 있다. 페이지 안에서 부르므로 로그인 상태가 그대로 따라간다.
+    const exact = await readInstagramExactCounts(page, target);
+    if (exact) {
+      if (exact.likes !== null) out.likes = String(exact.likes);
+      if (exact.comments !== null) out.comments = String(exact.comments);
+      out.countsFrom = 'api-direct';
+    } else {
+      out.countsFrom = 'dom';
+    }
   }
   out.apiUrls = seen.apiUrls.slice(0, 20);
   // 원본 응답을 못 받았으면(화면 읽기로 때웠으면) 무조건 페이지를 남긴다.
   // ⚠️ 예전엔 "좋아요·댓글 둘 다 null일 때만" 남겼는데, 화면 읽기가 **틀린 숫자를 성공처럼**
   //   돌려주는 경우엔(실제로 릴스에서 좋아요 295·댓글 295로 같은 값이 나왔음) 조건에 안 걸려서
   //   진단 재료가 하나도 안 남았다. 값이 나왔는지가 아니라 **어디서 나왔는지**로 판단해야 한다.
-  out.pageHtml = out.countsFrom === 'api' ? null : await page.content();
+  // 정확한 수를 받아낸 경우(가로챘든 직접 물어봤든)는 진단할 게 없으니 페이지를 안 남긴다.
+  out.pageHtml = (out.countsFrom === 'api' || out.countsFrom === 'api-direct') ? null : await page.content();
   return out;
 }
 
@@ -618,7 +675,7 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
         if (parsed.exactMatch === false) {
           results[i].warning = '주소의 글을 정확히 못 집어서 페이지 첫 번째 글을 읽었음 — 숫자가 맞는지 확인 필요';
         }
-        console.log(`[link] ✅ ${t.platform} ${t.url} — 좋아요 ${parsed.likes ?? '-'} · 리트윗 ${parsed.retweets ?? '-'} · 인용 ${parsed.quotes ?? '-'} · 댓글 ${parsed.comments ?? '-'}${parsed.countsFrom ? ` (출처: ${parsed.countsFrom === 'api' ? `${t.platform === 'instagram' ? '인스타' : 'X'} 원본 응답` : '화면'})` : ''}`);
+        console.log(`[link] ✅ ${t.platform} ${t.url} — 좋아요 ${parsed.likes ?? '-'} · 리트윗 ${parsed.retweets ?? '-'} · 인용 ${parsed.quotes ?? '-'} · 댓글 ${parsed.comments ?? '-'}${parsed.countsFrom ? ` (출처: ${parsed.countsFrom === 'api' ? `${t.platform === 'instagram' ? '인스타' : 'X'} 원본 응답` : parsed.countsFrom === 'api-direct' ? '인스타에 직접 물어봄' : '화면'})` : ''}`);
 
         // 인용을 못 읽었으면 **추측을 반복하지 않기 위해** 그 페이지를 파일로 남긴다.
         // 그 파일만 있으면 실제 구조를 보고 한 번에 고칠 수 있음(지금까지 실제 X 화면을
@@ -629,7 +686,7 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
         // 같은 '화면에서 읽음'이라도 위험도가 다르다. 전부 같은 문구로 알리면 멀쩡한 건까지
         // 의심하게 되고(실제로 "그래서 된 거냐"는 되물음이 왔다), 정작 위험한 건이 묻힌다.
         // 세 경우를 갈라서 알리고, 수상할 때만 페이지를 남긴다.
-        if (t.platform === 'instagram' && parsed.countsFrom !== 'api') {
+        if (t.platform === 'instagram' && parsed.countsFrom !== 'api' && parsed.countsFrom !== 'api-direct') {
           const txt = v => String(v ?? '');
           const shortened = [parsed.likes, parsed.comments].some(v => /[만천억KkMmBb]/.test(txt(v)));
           // 좋아요와 댓글이 똑같이 읽히는 건 엉뚱한 칸을 집었을 때 나오는 전형적인 증상이다
@@ -677,6 +734,7 @@ async function collectPostsByLink({ urls, headless = true, xSessionFile = X_SESS
 
 module.exports = {
   gotoStable,
+  instagramShortcodeToMediaId,
   collectPostsByLink, classifyUrl,
   readTwitterInPage, findTweetCountsInJson, readTwitterPost,
   readInstagramInPage, findInstagramCountsInJson, readInstagramPost,
