@@ -394,10 +394,15 @@ h1{font-size:22px;margin:0 0 6px}
 .mcol .track.empty{background:repeating-linear-gradient(45deg,#eef1f6,#eef1f6 4px,#e3e8f0 4px,#e3e8f0 8px)}
 .mnote{font-size:10px;color:#9099a6;margin-top:5px;min-height:13px;line-height:1.3}
 .mna{font-size:12px;color:#9099a6;padding:6px 0}
-/* 미리보기 임베드가 화면을 너무 잡아먹어서 70%로 축소. zoom은 레이아웃 박스까지
-   같이 줄어서(transform과 달리) 밑에 빈 공간이 남지 않음 */
-.embed-shrink{zoom:.7}
-.embed-shrink blockquote{max-width:100%}
+/* 임베드 크기 — 예전엔 화면 축소(zoom 속성 70%)로 통째로 줄여 스크롤을 아꼈는데, 그러면 X는 줄어든 채로도
+   제 폭을 다시 잡는 반면 인스타는 처음 잰 폭으로 크기를 고정해버려서 둘이 눈에 띄게 달라졌다
+   (인스타만 훨씬 작게 나옴). 크기를 재는 방식이 서로 달라서 생긴 차이라, 줄이는 방식을 걷어내고
+   둘 다 같은 최대 폭으로 묶는다. 인스타 스크립트가 blockquote를 iframe으로 바꿔치기한 뒤에도
+   유지되도록 iframe까지 같이 지정한다(인스타가 제 인라인 폭을 박아넣기 때문에 !important 필요). */
+.embed-shrink{max-width:540px}
+.embed-shrink blockquote{width:100%;max-width:540px;min-width:0}
+.embed-shrink iframe.instagram-media{width:100%!important;max-width:540px!important;min-width:0!important;margin:0!important}
+.embed-shrink .twitter-tweet{max-width:540px!important}
 .sides{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
 .side{border:1px solid #e3e8f0;border-radius:10px;padding:10px 12px}
 .side h4{margin:0 0 6px;font-size:13px}

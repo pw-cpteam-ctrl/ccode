@@ -1582,7 +1582,7 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
     assert.ok(ig.includes('좋아요 + 댓글') && !ig.includes('좋아요 + 리트윗'), '합산 설명도 실제 지표만 적어야 함');
   });
 
-  check('맞대결 리포트: 본문 원문은 기본 접힘 + 임베드는 70%로 축소 (스크롤 절약)', () => {
+  check('맞대결 리포트: 본문 원문은 기본 접힘 + X와 인스타 임베드가 같은 폭 (한쪽만 작아지면 안 됨)', () => {
     const { buildMatchupReportHtml } = require('./matchup-report');
     const html = buildMatchupReportHtml({
       title: 't', collectedAt: '2026-09-08T00:00:00.000Z',
@@ -1591,7 +1591,13 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
     assert.ok(html.includes('<details class="body-details">'), '본문은 <details>로 감싸 접혀 있어야 함');
     assert.ok(!/<details class="body-details" open/.test(html), '기본이 펼침이면 안 됨(특수 상황용)');
     assert.ok(html.includes('토모에 넨도로이드 RT 이벤트!'), '접혀 있어도 내용은 파일 안에 있어야 함');
-    assert.ok(html.includes('.embed-shrink{zoom:.7}'), '임베드는 70%로 축소돼야 함');
+    // 예전엔 zoom으로 통째로 줄였는데, X는 줄어든 채로도 제 폭을 다시 잡고 인스타는 처음 잰
+    // 폭으로 고정돼버려서 인스타만 훨씬 작게 나왔다. 둘을 같은 최대 폭으로 묶는 규칙이 있어야 한다.
+    assert.strictEqual(/zoom\s*:/.test(html), false, '화면 축소로 줄이면 인스타만 작아지므로 쓰면 안 됨');
+    assert.ok(html.includes('.embed-shrink blockquote{width:100%;max-width:540px'), 'X·인스타 공통 최대 폭');
+    assert.ok(html.includes('iframe.instagram-media{width:100%!important;max-width:540px!important'),
+      '인스타는 blockquote가 iframe으로 바뀌므로 iframe에도 같은 폭을 박아둬야 함');
+    assert.ok(html.includes('.embed-shrink .twitter-tweet{max-width:540px!important}'), 'X도 같은 폭');
   });
 
   check('맞대결 리포트: 전체 스크린샷 버튼 — 여백 제외 + 파일명은 ASCII (한글이면 확장자까지 날아감)', () => {
