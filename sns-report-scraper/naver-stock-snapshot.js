@@ -95,11 +95,18 @@ async function captureSnapshot(brandOrKey) {
       approx: false,            // 페이지에 적힌 숫자를 그대로 읽은 값이라 줄임 표기가 아니다
       label: n?.label ?? null,  // '관심고객수'인지 '알림받기'인지 — 스토어 종류마다 다르다
     }));
-  const rows = appendFollowerSnapshot(brand.paths.followerHistory, notifyAccounts);
-  if (rows !== null) {
-    const shown = notifyAccounts
-      .map(a => `${a.side} ${a.followers === null ? '못 읽음' : a.followers.toLocaleString('ko-KR')}`).join(' · ');
-    console.log(`👥 관심고객수도 추이 기록에 저장: ${brand.paths.followerHistory} (누적 ${rows}개) — ${shown}`);
+  // 여기서 실패해도 재고 스냅샷은 이미 저장이 끝났다. 그대로 두면 부르는 쪽(run-megahouse)이
+  // "재고 스냅샷 촬영 실패"로 보고해서, 멀쩡히 저장된 재고를 의심하며 엉뚱한 데를 뒤지게 된다.
+  // 실패한 것이 무엇인지 그대로 말하고, 재고 쪽 결과는 그대로 돌려준다.
+  try {
+    const rows = appendFollowerSnapshot(brand.paths.followerHistory, notifyAccounts);
+    if (rows !== null) {
+      const shown = notifyAccounts
+        .map(a => `${a.side} ${a.followers === null ? '못 읽음' : a.followers.toLocaleString('ko-KR')}`).join(' · ');
+      console.log(`👥 관심고객수도 추이 기록에 저장: ${brand.paths.followerHistory} (누적 ${rows}개) — ${shown}`);
+    }
+  } catch (e) {
+    console.warn(`⚠️ 관심고객수를 추이 기록에 저장하지 못함(재고 스냅샷은 정상 저장됨): ${e.message}`);
   }
 
   return snapshot;

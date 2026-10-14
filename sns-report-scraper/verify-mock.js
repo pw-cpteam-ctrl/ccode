@@ -1698,6 +1698,24 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
     assert.strictEqual(html.includes('BH 100%'), false, '0:0을 경쟁사 100%로 그리면 안 됨');
   });
 
+  check('맞대결 리포트: 조회수는 칸으로만 보이고 "총 반응" 합계에는 들어가면 안 됨', () => {
+    // 조회수는 반응이 아니라 '얼마나 퍼졌나'라서 자릿수가 두 자리 더 크다. 합계에 같이
+    // 더했더니 14,838이던 총 반응이 1,057,461이 돼 98%가 조회수인 숫자가 됐다.
+    const { buildMatchupReportHtml } = require('./matchup-report');
+    const rows = [[248,106,74,402,82615],[752,416,255,930,247493]];
+    const html = buildMatchupReportHtml({
+      title: 't', collectedAt: '2026-10-13T00:00:00.000Z',
+      pairs: rows.map((r, i) => ({ label: (i + 1) + '월', pw: { ok: true, platform: 'twitter',
+        url: 'https://x.com/a/status/' + i, datetime: '2026-06-26T00:00:00.000Z',
+        likes: String(r[0]), retweets: String(r[1]), quotes: String(r[2]), comments: String(r[3]), views: String(r[4]) }, bh: null })),
+    });
+    const want = rows.reduce((s, r) => s + r[0] + r[1] + r[2] + r[3], 0).toLocaleString();
+    assert.ok(html.includes('조회수'), '조회수 칸 자체는 있어야 함');
+    assert.ok(html.includes(want), `총 반응은 조회수를 뺀 ${want} 이어야 함`);
+    const caption = (html.match(/<div class="sub-extra">([^<]*)</) || [])[1] || '';
+    assert.strictEqual(/조회수/.test(caption), false, '무엇을 더했는지 설명에도 조회수가 들어가면 안 됨');
+  });
+
   console.log(`\n(생성된 검증용 엑셀 파일: ${outPath} — 직접 열어서 표 형태도 확인 가능)`);
   if (process.exitCode) {
     console.error('\n일부 검증 실패');

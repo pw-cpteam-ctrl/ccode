@@ -33,6 +33,11 @@ const X_ONLY_METRICS = new Set(['retweets', 'quotes', 'views']);
 // 칸을 만들면 "읽을 수 없었음"으로 떠서 수집 실패처럼 보인다 — 한쪽이라도 값이 있을 때만 그린다.
 const OPTIONAL_METRICS = new Set(['views']);
 
+// '총 반응' 합계에서 빼는 지표. 조회수는 반응이 아니라 '얼마나 퍼졌나'라서, 같이 더하면
+// 자릿수가 달라 합계를 통째로 잡아먹는다(실제로 14,838이 1,057,461이 돼 98%가 조회수였다).
+// 칸으로는 보여주되 합계에는 넣지 않는다.
+const NOT_REACTION = new Set(['views']);
+
 function hasAnyValue(key, posts) {
   if (!OPTIONAL_METRICS.has(key)) return true;
   return posts.some(p => p && p[key] !== null && p[key] !== undefined && p[key] !== '');
@@ -244,13 +249,14 @@ function renderSummary(pairs, collectedAt) {
 
   // 한쪽 지표를 하나도 못 읽었으면 합계를 0으로 내놓으면 안 됨 — 0은 "반응이 없었다"는
   // 뜻이 돼서 상대가 100%를 채운 막대로 그려지고, 못 읽은 게 압패한 것처럼 보임.
-  const totalOf = side => (shown.every(m => sums[m.key][side] === null)
+  const summed = shown.filter(m => !NOT_REACTION.has(m.key));
+  const totalOf = side => (summed.every(m => sums[m.key][side] === null)
     ? null
-    : shown.reduce((n, m) => (sums[m.key][side] === null ? n : n + sums[m.key][side]), 0));
-  const anyTotal = shown.some(m => sums[m.key].pw !== null || sums[m.key].bh !== null);
+    : summed.reduce((n, m) => (sums[m.key][side] === null ? n : n + sums[m.key][side]), 0));
+  const anyTotal = summed.some(m => sums[m.key].pw !== null || sums[m.key].bh !== null);
   // 무엇을 더한 값인지는 실제로 합계에 들어간 지표로 적음 — 인스타만 넣은 리포트에서
   // "좋아요 + 리트윗 + 인용 + 댓글"이라고 써두면 있지도 않은 지표를 더한 것처럼 보임
-  const totalCaption = shown
+  const totalCaption = summed
     .filter(m => sums[m.key].pw !== null || sums[m.key].bh !== null)
     .map(m => m.label).join(' + ');
   const missingNote = acc => {
