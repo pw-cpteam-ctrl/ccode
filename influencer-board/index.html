@@ -153,7 +153,8 @@
   /* 남는 폭은 전부 이 칸이 가져간다 — 글자가 가장 모자란 칸이라서다.
      나머지 열은 내용 폭에 고정해(width:1px) 남는 자리가 칸마다 뿌려지지 않게 한다. */
   th.wishcol, td.wish { width: 100%; min-width: 4em; }
-  thead th:not(.wishcol), tbody td:not(.wish) { width: 1px; }
+  /* 접수 목록 표 전용. 쿠폰 표(.cptable)는 자기 규칙으로 폭을 정한다 — 여기 걸리면 폰 카드 칸이 0으로 눌린다 */
+  table:not(.cptable) thead th:not(.wishcol), table:not(.cptable) tbody td:not(.wish) { width: 1px; }
   /* 두 줄로 쪼개지던 칸들 */
   td .tag, th:nth-child(9), td:nth-child(9), td:nth-child(10) { white-space: nowrap; }
   td.wish .roll { display: block; overflow: hidden; white-space: nowrap; }
