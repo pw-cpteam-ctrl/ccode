@@ -339,6 +339,27 @@
   .s-done { opacity: .5; }
   .st-when { font-size: 12px; color: var(--ink-500); text-align: right; }
   .st-track { font-size: 11px; color: var(--ink-400); text-align: right; }
+
+  /* ─── 쿠폰 발급 ─── */
+  .cp-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .cp-sp { flex: 1; }
+  .cp-n { font-size: 13px; font-weight: 700; color: var(--ink-500); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .seg-b { padding: 8px 12px; font-size: 13px; font-weight: 600; background: #fff; border: 0; cursor: pointer; color: var(--ink-500); font-family: inherit; }
+  .seg-b + .seg-b { border-left: 1px solid var(--line); }
+  .seg-b.is-on { background: var(--ink); color: #fff; }
+  .mini:disabled { opacity: .45; cursor: default; }
+  .cp-warn { font-size: 12px; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 7px 10px; margin: 0 0 10px; }
+  .cptable { border-collapse: collapse; font-size: 13px; width: 100%; }
+  .cptable th { text-align: left; font-size: 12px; color: var(--ink-500); font-weight: 700; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .cptable td { padding: 9px 10px; border-bottom: 1px solid #f5f5f4; vertical-align: middle; white-space: nowrap; }
+  .cptable tr.is-late td { background: #fef2f2; }
+  .cp-id b { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; user-select: all; }
+  .cp-turn { font-weight: 700; }
+  .cp-amt b { margin-right: 6px; }
+  .cp-note { font-size: 11.5px; font-weight: 700; color: #9a3412; background: #ffedd5; border-radius: 5px; padding: 1px 6px; }
+  .cp-when { font-weight: 600; }
+  .cp-late { margin-left: 6px; font-size: 11px; font-weight: 800; color: var(--red); }
 </style>
 </head>
 <body>
@@ -377,9 +398,9 @@
     catch (e) { return 'pay'; }
   })();
   var keyword = '';
-  // 보는 화면. 'list' 접수 목록 / 'round' 회차 현황. 고른 화면은 이 기기에 남는다.
+  // 보는 화면. 'list' 접수 목록 / 'round' 회차 현황 / 'coupon' 쿠폰 발급. 고른 화면은 이 기기에 남는다.
   var VIEW_KEY = 'ib-view';
-  var VIEWS = { list: '접수 목록', round: '회차 현황' };
+  var VIEWS = { list: '접수 목록', round: '회차 현황', coupon: '쿠폰 발급' };
   var view = (function () {
     try { var v = localStorage.getItem(VIEW_KEY); return VIEWS[v] ? v : 'list'; }
     catch (e) { return 'list'; }
@@ -1223,6 +1244,115 @@
       '전원 지급이 끝난 회차는 여기서 빠집니다.</p>';
   }
 
+  // ─── 쿠폰 발급 목록 ────────────────────────────────────────
+  // 왜 있나: 쿠폰 한 건 발급에 10분쯤 걸리는데, 그중 상당 부분이 접수 목록에서
+  // 아이디·금액·상품을 찾아 옮겨 적는 시간이다. 지급할 차례가 된 건만 모아
+  // 발급 화면에 넣을 값 그대로 보여주고, 표 복사·CSV로 꺼낼 수 있게 한다.
+  // CSV는 나중에 브라우저 자동 입력에 그대로 넣을 입력값으로도 쓴다.
+  //
+  // 금액은 사람이 판단할 부분(2차 750↑ 여부, 후지급 정산 결과)을 확정하지 않는다.
+  // 화면에는 '확인 필요'를 붙이고, CSV에는 그 조건 설명을 빼고 값만 넣는다.
+  var COUPON_DAYS = 7;   // '이번 주까지' = 오늘부터 이 날짜 안에 지급할 것 + 밀린 것
+  var couponRange = 'soon';   // 'soon' 이번 주까지 / 'all' 대기 전체 (화면에서만 쓰는 값)
+
+  function couponItems() {
+    var limit = addDays(dayStart(new Date()), COUPON_DAYS);
+    return visibleRows().filter(function (r) { return r.latest; }).map(function (r) {
+      var s = stageOf(r);
+      if (s.id !== 'pay1' && s.id !== 'settle') return null;
+      if (couponRange === 'soon' && !(s.when && s.when <= limit)) return null;
+      var split = trackOf(r) === 'split';
+      var goods = r.reward === 'goods';
+      var turn = s.id === 'pay1' ? '1차' : (split ? '2차' : '전액');
+      var amount, note;
+      if (goods) { amount = ''; note = ''; }
+      else if (turn === '1차') { amount = '5만'; note = ''; }
+      else if (turn === '2차') { amount = '5만'; note = '750↑ 확인 필요'; }
+      else { amount = '5만~10만'; note = '정산 후 확정'; }
+      return {
+        r: r, turn: turn, when: s.when, stage: s.id,
+        type: goods ? '상품 쿠폰' : '금액 쿠폰',
+        amount: amount, note: note, wish: goods ? (r.wish || '') : ''
+      };
+    }).filter(Boolean).sort(function (a, b) {
+      return (a.when ? a.when.getTime() : Infinity) - (b.when ? b.when.getTime() : Infinity);
+    });
+  }
+
+  var COUPON_HEAD = ['네이버 ID', '활동명', '차수', '쿠폰 유형', '금액', '상품', '지급 예정일'];
+  function couponRow(x) {
+    return [x.r.naver || '', x.r.nick, x.turn, x.type, x.amount, x.wish, x.when ? md(x.when) : ''];
+  }
+
+  function couponCopy(btn) {
+    var lines = [COUPON_HEAD.join('\t')].concat(couponItems().map(function (x) { return couponRow(x).join('\t'); }));
+    var text = lines.join('\n');
+    var done = function () {
+      btn.textContent = '복사됨'; btn.classList.add('is-done');
+      setTimeout(function () { btn.textContent = '표 복사'; btn.classList.remove('is-done'); }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
+    } else { fallback(text, done); }
+  }
+
+  function couponCsv() {
+    var cell = function (v) {
+      var t = String(v == null ? '' : v);
+      return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+    };
+    var lines = [COUPON_HEAD].concat(couponItems().map(couponRow)).map(function (row) { return row.map(cell).join(','); });
+    // 엑셀이 한글을 깨뜨리지 않게 맨 앞에 BOM을 붙인다.
+    var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    var t = new Date();
+    a.href = URL.createObjectURL(blob);
+    // 파일 이름은 영문으로 둔다. 한글 이름은 브라우저에 따라 'download'로 바뀌어 저장됐다.
+    a.download = 'coupon-list-' + t.getFullYear() + String(t.getMonth() + 1).padStart(2, '0') + String(t.getDate()).padStart(2, '0') + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+
+  function couponBox() {
+    var items = couponItems();
+    var today = dayStart(new Date());
+    var rowsHtml = items.map(function (x) {
+      var late = x.when && x.when < today;
+      return '<tr' + (late ? ' class="is-late"' : '') + '>' +
+        '<td class="cp-id"><b>' + esc(x.r.naver || '-') + '</b></td>' +
+        '<td>' + esc(x.r.nick) + '</td>' +
+        '<td><span class="cp-turn">' + esc(x.turn) + '</span></td>' +
+        '<td><span class="tag ' + esc(x.r.reward) + '">' + esc(x.type) + '</span></td>' +
+        '<td class="cp-amt">' + (x.amount ? '<b>' + esc(x.amount) + '</b>' : '') +
+          (x.wish ? '<b>' + esc(x.wish) + '</b>' : '') +
+          (x.note ? '<span class="cp-note">' + esc(x.note) + '</span>' : '') + '</td>' +
+        '<td class="cp-when">' + (x.when ? md(x.when) : '-') + (late ? '<span class="cp-late">지남</span>' : '') + '</td>' +
+        '<td><button class="mini cp-pay" data-key="' + esc(x.r.roundKey) + '" data-stage="' + (x.stage === 'pay1' ? 'part' : 'full') + '">' +
+          (x.stage === 'pay1' ? '1차 지급함' : '지급 완료') + '</button></td>' +
+        '</tr>';
+    }).join('');
+    return '<section class="rbox">' +
+      '<div class="cp-bar">' +
+        '<div class="seg" role="group">' +
+          '<button class="seg-b' + (couponRange === 'soon' ? ' is-on' : '') + '" data-range="soon">이번 주까지</button>' +
+          '<button class="seg-b' + (couponRange === 'all' ? ' is-on' : '') + '" data-range="all">대기 전체</button>' +
+        '</div>' +
+        '<span class="cp-n">' + items.length + '건</span>' +
+        '<span class="cp-sp"></span>' +
+        '<button class="mini" id="cp-copy"' + (items.length ? '' : ' disabled') + '>표 복사</button>' +
+        '<button class="mini" id="cp-csv"' + (items.length ? '' : ' disabled') + '>CSV 내려받기</button>' +
+      '</div>' +
+      '<p class="cp-warn">⚠ 네이버 ID(개인정보)가 들어 있습니다. 내려받은 파일·복사한 표는 공유 범위에 주의해 주세요.</p>' +
+      (items.length
+        ? '<div class="scroll"><table class="cptable"><thead><tr>' +
+          '<th>네이버 ID</th><th>활동명</th><th>차수</th><th>쿠폰 유형</th><th>금액 / 상품</th><th>지급 예정일</th><th></th>' +
+          '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>'
+        : '<div class="empty">' + (couponRange === 'soon' ? '이번 주까지 지급할 건이 없습니다.' : '지급을 기다리는 건이 없습니다.') + '</div>') +
+      '</section>' +
+      '<p class="foot">업로드 확인이 된 건만 이 목록에 들어옵니다. 발급을 마치면 오른쪽 버튼을 눌러 주세요 — 접수 목록의 ‘리워드 지급’ 표시와 같은 값이라 양쪽에 함께 반영됩니다.<br />' +
+      '2차(750↑ 여부)와 후지급(정산 결과) 금액은 확인 후 발급해 주세요. CSV에는 이 조건 설명 없이 값만 들어갑니다.</p>';
+  }
+
   function viewTabs() {
     return '<div class="tabs" role="tablist">' + Object.keys(VIEWS).map(function (k) {
       return '<button class="tab' + (view === k ? ' is-on' : '') + '" role="tab" aria-selected="' + (view === k) + '" data-view="' + k + '">' + VIEWS[k] + '</button>';
@@ -1331,7 +1461,7 @@
       (doneCount ? ' · 지급 완료 ' + doneCount + '건' : '') +
       ' · 전체 기록 ' + list.length + '건</span></div>' +
       viewTabs() +
-      (view === 'round' ? '' :
+      (view !== 'list' ? '' :
       '<p class="sub">같은 분이 <b>' + ROUND_GAP_DAYS + '일 안에</b> 다시 내신 것은 고쳐 내신 것으로 보고 <b>마지막 제출</b>만 유효합니다(지난 제출은 흐리게 표시). ' +
       '그보다 간격이 벌어지면 <b>다른 차수</b>로 보고 각각 따로 남습니다 — 같은 분과 달마다 협업하는 경우를 위해서입니다.</p>') +
       '<div class="bar fitw">' +
@@ -1340,7 +1470,7 @@
       '<button class="mini" id="reload">새로고침</button>' +
       '<button class="mini" id="lock">잠그기</button>' +
       '</div>' +
-      (view === 'round' ? roundBox() : openBox() +
+      (view === 'round' ? roundBox() : view === 'coupon' ? couponBox() : openBox() +
       (list.length
         ? '<div class="scroll"><table><thead><tr>' +
           '<th class="pick"></th><th>활동명</th><th>네이버 ID</th><th class="sortable' + (sortBy === 'draft' ? ' is-on' : '') + '" data-sort="draft">초안 예정일' + (sortBy === 'draft' ? ' <span class="sort-ar">▾</span>' : '') + '</th>' +
@@ -1350,7 +1480,7 @@
         : '<div class="empty">아직 접수된 내용이 없습니다.</div>') +
       pickBar()) +
       blockedBox() +
-      (view === 'round' ? '' : '<p class="foot fitw">‘표 전체 복사’는 최신 제출만 담습니다. 노션 표에 그대로 붙여넣을 수 있어요.<br />' +
+      (view !== 'list' ? '' : '<p class="foot fitw">‘표 전체 복사’는 최신 제출만 담습니다. 노션 표에 그대로 붙여넣을 수 있어요.<br />' +
       '이 기기에서는 2일간 코드를 다시 묻지 않습니다. 공용 PC라면 ‘잠그기’를 눌러주세요.<br />' +
       '맨 앞 네모 칸을 위아래로 끌면 여러 건을 한 번에 고를 수 있습니다.<br />' +
       '‘업로드 확인’은 콘텐츠가 올라온 것을 담당자가 확인했다는 표시입니다. 누르면 초안 공유 예정일에 금이 그어져, 아직 안 올라온 건만 눈에 들어옵니다.</p>') +
@@ -1371,6 +1501,23 @@
         view = b.getAttribute('data-view');
         try { localStorage.setItem(VIEW_KEY, view); } catch (e) { /* 저장 못 해도 이번엔 바뀐다 */ }
         renderList();
+      });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('.seg-b'), function (b) {
+      b.addEventListener('click', function () { couponRange = b.getAttribute('data-range'); renderList(); });
+    });
+    var cpCopy = document.getElementById('cp-copy');
+    if (cpCopy) cpCopy.addEventListener('click', function () { couponCopy(cpCopy); });
+    var cpCsv = document.getElementById('cp-csv');
+    if (cpCsv) cpCsv.addEventListener('click', couponCsv);
+    Array.prototype.forEach.call(root.querySelectorAll('.cp-pay'), function (b) {
+      b.addEventListener('click', function () {
+        b.disabled = true; b.textContent = '처리 중…';
+        api({ code: code, action: 'archive', keys: [b.getAttribute('data-key')], stage: b.getAttribute('data-stage') })
+          .then(function (r) {
+            if (r.status === 200 && r.data.ok) { archived = r.data.archived || {}; renderList(); }
+            else { b.disabled = false; b.textContent = '다시 시도'; }
+          }).catch(function () { b.disabled = false; b.textContent = '다시 시도'; });
       });
     });
     Array.prototype.forEach.call(root.querySelectorAll('.old-toggle'), function (b) {
