@@ -1311,8 +1311,15 @@
   }
 
   var COUPON_HEAD = ['네이버 ID', '활동명', '차수', '쿠폰 유형', '금액', '상품', '지급 예정일'];
+  // 엑셀·시트는 =, +, -, @ 로 시작하는 칸을 수식으로 실행한다. 희망 상품·아이디는
+  // 크리에이터가 직접 쓴 글이라, 그대로 내보내면 열자마자 수식이 돌 수 있다.
+  // 앞에 작은따옴표를 붙여 글자로만 읽히게 한다(표 복사·CSV 둘 다 이 함수를 지난다).
+  function sheetSafe(v) {
+    var t = String(v == null ? '' : v);
+    return /^[=+\-@\t\r]/.test(t) ? "'" + t : t;
+  }
   function couponRow(x) {
-    return [x.r.naver || '', x.r.nick, x.turn, x.type, x.amount, x.wish, x.when ? md(x.when) : ''];
+    return [x.r.naver || '', x.r.nick, x.turn, x.type, x.amount, x.wish, x.when ? md(x.when) : ''].map(sheetSafe);
   }
 
   function couponCopy(btn) {
@@ -1423,7 +1430,7 @@
       var c = candidates[n] || {};
       return '<tr>' +
         '<td class="cd-name"><b>' + esc(n) + '</b></td>' +
-        '<td>' + (c.link ? '<a class="cd-link" href="' + esc(c.link) + '" target="_blank" rel="noopener noreferrer">열기</a>' : '<span class="cd-none">-</span>') + '</td>' +
+        '<td>' + (/^https?:\/\//i.test(c.link || '') ? '<a class="cd-link" href="' + esc(c.link) + '" target="_blank" rel="noopener noreferrer">열기</a>' : '<span class="cd-none">-</span>') + '</td>' +
         '<td><span class="cd-st' + (st.done ? ' is-done' : '') + '">' + esc(st.text) + '</span></td>' +
         '<td class="cd-mail">메일 추출 연결 전</td>' +
         '<td><button class="mini cd-del" data-name="' + esc(n) + '">삭제</button></td>' +
