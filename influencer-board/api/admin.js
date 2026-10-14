@@ -34,6 +34,13 @@ const ARCHIVED_PATH = 'creator-logs/archived.json';
 // 두고, 바뀐 값만 여기에 따로 적는다 — 무엇을 골랐고 지금 무엇인지 둘 다 남는다.
 const TRACK_PATH = 'creator-logs/track-override.json';
 const GUARD_PATH = 'creator-logs/admin-guard.json';
+// 노션에서 최종 확정된 후보. 후보 탐색·팀 의견·탈락 기록은 노션에 두고, 여기에는
+// 확정된 사람만 담는다(이중 입력을 만들지 않으려고). 기존 파일을 고치지 않고
+// 새 파일을 나란히 둔다 — 없으면 빈 목록으로 본다.
+const CANDIDATES_PATH = 'creator-logs/candidates.json';
+const CAND_NAME_MAX = 40;
+const CAND_LINK_MAX = 200;
+const CAND_BATCH_MAX = 200;
 const MAX_MONTHS = 6;   // 최근 몇 달치까지 훑을지
 // 확정 표시의 열쇠 길이 상한. 활동명(최대 20자)만 담던 자리였는데, 같은 분이
 // 달마다 다시 협업하는 경우가 있어 "활동명 | 차수 시작일" 형태로 바뀌었다.
@@ -288,6 +295,40 @@ export default async function handler(req, res) {
       return;
     }
 
+    // 확정 후보 추가 / 삭제. 추가는 여러 건을 한 번에 받는다(노션 표를 붙여넣어 올리므로).
+    // 활동명이 열쇠이고, 이미 있는 이름은 새로 쓰지 않고 건너뛴다.
+    if (action === 'cand-add' || action === 'cand-remove') {
+      const f = await readGithubFile({ ...gh, path: CANDIDATES_PATH });
+      let map = {};
+      if (f) { try { map = JSON.parse(f.content) || {}; } catch { map = {}; } }
+      const clean = (v, max) => String(v || '').replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, max);
+      let added = 0;
+      if (action === 'cand-add') {
+        const items = (Array.isArray(req.body?.items) ? req.body.items : []).slice(0, CAND_BATCH_MAX);
+        const at = new Date().toISOString();
+        items.forEach((it) => {
+          const name = clean(it?.name, CAND_NAME_MAX);
+          if (!name || map[name]) return;
+          const link = clean(it?.link, CAND_LINK_MAX);
+          map[name] = { at, ...(/^https?:\/\//.test(link) ? { link } : {}) };
+          added++;
+        });
+        if (!added) { res.status(200).json({ ok: true, candidates: map, added: 0 }); return; }
+      } else {
+        const name = clean(nick, CAND_NAME_MAX);
+        if (!name) { res.status(400).json({ ok: false, reason: 'nick' }); return; }
+        delete map[name];
+      }
+      await writeGithubFile({
+        ...gh, path: CANDIDATES_PATH,
+        content: JSON.stringify(map, null, 2) + '\n',
+        message: `creator-guide 확정 후보 ${action === 'cand-add' ? `추가 ${added}건` : '삭제'}`,
+        sha: f ? f.sha : undefined,
+      });
+      res.status(200).json({ ok: true, candidates: map, added });
+      return;
+    }
+
     if (action === 'confirm' || action === 'unconfirm') {
       const name = String(nick || '').replace(/\s+/g, ' ').trim().slice(0, KEY_MAX);
       if (!name) { res.status(400).json({ ok: false, reason: 'nick' }); return; }
@@ -341,7 +382,12 @@ export default async function handler(req, res) {
     const blocked = Object.fromEntries(
       Object.entries(guard).filter(([, v]) => v?.blocked)
     );
-    res.status(200).json({ ok: true, rows, confirmed: map, blocked, openDays, archived, trackOverride });
+    let candidates = {};
+    try {
+      const cf = await readGithubFile({ ...gh, path: CANDIDATES_PATH });
+      if (cf) candidates = JSON.parse(cf.content) || {};
+    } catch (err) { console.error('[admin] 확정 후보 조회 실패:', err?.message || err); }
+    res.status(200).json({ ok: true, rows, confirmed: map, blocked, openDays, archived, trackOverride, candidates });
   } catch (err) {
     console.error('[admin] 처리 실패:', err?.message || err);
     res.status(502).json({ ok: false, reason: 'io' });
