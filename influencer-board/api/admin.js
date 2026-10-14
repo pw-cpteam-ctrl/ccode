@@ -23,6 +23,7 @@ import { readGithubFile, writeGithubFile } from '../lib/github.js';
 // 가이드(creator-guide/api/open-days.js)가 크리에이터 화면에 날짜를 보여주려고
 // 같은 파일을 읽는다. 경로를 바꾸면 두 곳을 같이 바꿔야 한다.
 // (폴더끼리 파일을 불러 쓰지 않으려고 값만 따로 적어 둔다 — CLAUDE.md 3번)
+// 가이드 쪽 사본: creator-guide/api/open-days.js의 OPEN_DAYS_PATH (값은 같아야 함)
 const OPEN_DAYS_PATH = 'creator-logs/open-days.json';
 
 const CONFIRMED_PATH = 'creator-logs/confirmed.json';

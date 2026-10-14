@@ -15,6 +15,7 @@
 
 import { readGithubFile } from '../lib/github.js';
 
+// 인플 보드 쪽 사본: influencer-board/api/admin.js의 OPEN_DAYS_PATH (값은 같아야 함)
 export const OPEN_DAYS_PATH = 'creator-logs/open-days.json';
 
 function isSameOrigin(req) {
