@@ -361,10 +361,10 @@
   /* 폰처럼 좁은 화면에서는 표 대신 건마다 카드로 쌓는다 — 옆으로 밀지 않고 금액·지급일·버튼이 다 보이게 */
   @media (max-width: 640px) {
     .cptable thead { display: none; }
-    .cptable, .cptable tbody, .cptable tr, .cptable td { display: block; width: auto; }
-    .cptable tr { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; padding: 10px 2px; border-bottom: 1px solid var(--line); }
-    .cptable td { border: 0; padding: 0; white-space: normal; }
-    .cptable td:nth-child(7) { grid-column: 1 / -1; padding-top: 6px; }
+    .cptable, .cptable tbody { display: block; width: 100%; }
+    .cptable tr { display: block; padding: 10px 2px; border-bottom: 1px solid var(--line); }
+    .cptable td { display: inline-block; vertical-align: middle; border: 0; padding: 2px 14px 2px 0; white-space: nowrap; }
+    .cptable td:nth-child(5), .cptable td:nth-child(7) { display: block; padding: 4px 0 0; white-space: normal; }
   }
   .cp-id b { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; user-select: all; }
   .cp-turn { font-weight: 700; }
