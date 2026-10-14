@@ -1,0 +1,4 @@
+# influencer-board 폴더 전용 규칙 (폴더를 통째로 옮겨도 같이 다니게 여기 둔다).
+# 실제로 배포되는 폴더. vercel.json의 buildCommand가 매 배포마다 새로 만든다.
+dist/
+node_modules/
