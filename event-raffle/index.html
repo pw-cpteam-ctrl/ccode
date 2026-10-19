@@ -224,6 +224,8 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 /* 집계에서 "어느 칸을 볼지" 고르는 체크박스 — 제외(빨강)가 아니라 선택이라 단계 색을 쓴다 */
 .pick-label{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;cursor:pointer;user-select:none;}
 .pick-label input{margin:0;accent-color:var(--step,var(--brand));cursor:pointer;}
+.pick-label .muted-s{color:var(--muted);font-size:12.5px;}
+.pick-label.is-empty{opacity:.45;cursor:default;}
 
 /* ── 표 ──
    후보 표는 화면 높이(70vh) 안에서만 스크롤된다. 이 높이 제한이 있어야 th의 sticky도
@@ -335,6 +337,14 @@ tbody tr:hover .row-delete,tbody tr:focus-within .row-delete{visibility:visible;
         <div id="slotList"></div>
       </div>
       <div class="status" id="uploadStatus"></div>
+      <div class="field readable" id="sheetPickWrap" style="display:none;margin-top:14px;">
+        <label>이 파일에서 쓸 시트</label>
+        <p class="tbl-hint" style="margin:0 0 8px;">
+          시트마다 내용이 다를 수 있어요 (집계표 / 댓글 원본 등). <b>줄이 가장 많고 칸 구성이
+          같은 시트들</b>을 기본으로 골라뒀어요 — 필요하면 바꿔주세요.
+        </p>
+        <div class="btn-row" id="sheetPick" style="gap:8px 14px;flex-wrap:wrap;"></div>
+      </div>
     <div class="tbl-wrap" id="previewWrap" style="display:none;"></div>
     <div class="col-map" id="colMapWrap" style="display:none;">
       <div class="field">
@@ -447,6 +457,14 @@ tbody tr:hover .row-delete,tbody tr:focus-within .row-delete{visibility:visible;
 나루토 = 나루토, 우즈마키, naruto
 사스케 = 사스케, 우치하, sasuke"></textarea>
       </div>
+      <div class="field readable" id="tallyCountWrap" style="display:none;">
+        <label>세는 방법</label>
+        <p class="tbl-hint" style="margin:0 0 8px;">
+          이미 숫자가 집계된 표(예: <b>건수</b> 칸이 있는 통계 파일)면 그 숫자를 더해야 맞아요.
+          댓글 원본이면 "줄 수"를 고르세요.
+        </p>
+        <select id="tallyCountCol" style="max-width:420px;"></select>
+      </div>
       <div class="btn-row">
         <button type="button" onclick="runTally()">집계하기</button>
         <button type="button" class="secondary" onclick="copyTally()" id="btnCopyTally" style="display:none;">결과 복사</button>
@@ -469,6 +487,11 @@ tbody tr:hover .row-delete,tbody tr:focus-within .row-delete{visibility:visible;
 const $ = s => document.querySelector(s);
 
 let participants = [];  // 업로드된 원본 행 (세션 중에만 메모리에 존재, 저장 안 함)
+// 이번에 올린 파일의 모든 시트 [{이름, 행들, 칸들}] 와, 그중 쓰기로 고른 시트 이름들.
+// (applySlot이 이 둘을 쓰는데 그 함수가 위에 있어서, 선언을 여기로 올려둔다)
+let 읽은시트들 = [];        // [{이름, 행들, 칸들}] — 이번에 올린 파일의 모든 시트
+let 쓸시트 = new Set();
+
 let candidates = [];    // [{ row, reason }]
 let lastWinners = [];   // [{ row, reason }]
 let contentColumn = ''; // 필터링 조건이 적용될 "댓글/후기 본문" 컬럼명
@@ -567,9 +590,21 @@ function applySlot(s) {
   }
   participants = JSON.parse(JSON.stringify(rows));
   lastFileName = s.fileName || lastFileName;
-  const allColumns = Object.keys(participants[0]);
+  const allColumns = [...new Set(participants.flatMap(r => Object.keys(r)))];
   $('#fileName').textContent = s.fileName || '(파일명 없음)';
-  $('#uploadStatus').textContent = `${participants.length}명 인식 완료 (이 PC에 저장된 최근 파일에서 불러옴)`;
+  /* 캐시에는 "그때 쓰기로 한 시트"만 저장돼 있다. 그래서 여기서는 시트를 더 좁힐 수는
+     있어도 안 썼던 시트를 되살릴 수는 없다 — 그건 파일을 다시 올려야 한다.
+     되살린 줄들에 붙어 있는 시트 표시로 고르개를 다시 만들어둔다. */
+  읽은시트들 = [...new Set(participants.map(r => r.시트).filter(Boolean))].map(이름 => {
+    const 행들 = participants.filter(r => r.시트 === 이름).map(({ 시트, ...나머지 }) => 나머지);
+    return { 이름, 행들, 칸들: [...new Set(행들.flatMap(r => Object.keys(r)))] };
+  });
+  쓸시트 = new Set(읽은시트들.map(s2 => s2.이름));
+  시트고르개그리기();
+  // 캐시에서 불러올 때도 시트별 줄 수를 같이 보여준다 — 이게 없으면 "시트가 몇 개
+  // 읽혔는지" 확인할 방법이 캐시 경로에만 없어서, 한 시트가 빠졌는지 알 수가 없다.
+  $('#uploadStatus').textContent =
+    `${participants.length}명 인식 완료 (이 PC에 저장된 최근 파일에서 불러옴)${시트별요약(participants)}`;
   populateColumnSelectors(allColumns, participants);
   if (s.contentColumn && allColumns.includes(s.contentColumn)) {
     contentColumn = s.contentColumn;
@@ -709,6 +744,77 @@ function 시트를행으로(sheet) {
   return 행들;
 }
 
+/* ── 여러 시트 중 "어느 걸 쓸지" 고르기 ──
+   한 파일에 성격이 다른 시트가 같이 들어있는 경우가 흔하다. 실제 사례 ▶
+     X·인스타·합산  = 이미 집계된 통계표 (IP/캐릭터/건수/비율)
+     X_raw·인스타_raw = 진짜 댓글 원본 (닉네임/아이디/댓글/링크)
+   예전엔 이걸 전부 한 표에 때려 넣었다. 그러면 칸이 11개로 불어나고 대부분 비어 있어서,
+   본문 칸 자동 추정이 "비율" 같은 엉뚱한 칸을 고르고 추첨 명단도 뒤죽박죽이 된다.
+   그래서 전부 읽어두되, 쓸 시트는 사람이 고르게 한다. */
+/* 줄이 가장 많은 시트를 기준으로, 칸 구성이 비슷한 시트들을 같이 고른다.
+   "똑같은 칸"을 요구하면 안 된다 — 같은 성격의 시트라도 칸 하나가 다른 일이 흔하다
+   (X_raw는 "트윗링크", 인스타_raw는 "링크"처럼). 실제로 그 둘이 서로 다른 묶음으로
+   갈라져서 한쪽만 골라진 적이 있다. 그래서 절반 이상 겹치면 같은 성격으로 본다. */
+function 기본으로쓸시트(시트들) {
+  const 있는것 = 시트들.filter(s => s.행들.length);
+  if (있는것.length <= 1) return 있는것.map(s => s.이름);
+  const 가장큰것 = 있는것.reduce((a, b) => (b.행들.length > a.행들.length ? b : a));
+  const 기준 = new Set(가장큰것.칸들.filter(c => c !== '시트'));
+  const 닮았나 = (s) => {
+    const 내칸 = s.칸들.filter(c => c !== '시트');
+    if (!내칸.length || !기준.size) return false;
+    const 겹침 = 내칸.filter(c => 기준.has(c)).length;
+    return 겹침 / Math.min(내칸.length, 기준.size) >= 0.6;
+  };
+  return 있는것.filter(닮았나).map(s => s.이름);
+}
+
+function 시트고르개그리기() {
+  const wrap = $('#sheetPickWrap');
+  const 있는것 = 읽은시트들.filter(s => s.행들.length);
+  if (있는것.length <= 1) { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  $('#sheetPick').innerHTML = 읽은시트들.map(s => {
+    const 빔 = s.행들.length === 0;
+    const 칸미리 = s.칸들.slice(0, 4).join(', ') + (s.칸들.length > 4 ? ' …' : '');
+    return `<label class="pick-label${빔 ? ' is-empty' : ''}" title="${escapeHtml(s.칸들.join(', '))}">
+      <input type="checkbox" class="sheet-pick" value="${escapeHtml(s.이름)}"${
+        쓸시트.has(s.이름) ? ' checked' : ''}${빔 ? ' disabled' : ''}/>
+      <b>${escapeHtml(s.이름)}</b> <span class="muted-s">${s.행들.length}줄${
+        빔 ? '' : ` · ${escapeHtml(칸미리)}`}</span></label>`;
+  }).join('');
+  wrap.querySelectorAll('.sheet-pick').forEach(cb => cb.addEventListener('change', () => {
+    쓸시트 = new Set([...wrap.querySelectorAll('.sheet-pick:checked')].map(el => el.value));
+    시트적용();
+  }));
+}
+
+// 고른 시트들만 합쳐서 참가자 명단으로 삼는다
+function 시트적용() {
+  const 고른것 = 읽은시트들.filter(s => 쓸시트.has(s.이름) && s.행들.length);
+  const 여럿 = 고른것.length > 1;
+  const rows = 고른것.flatMap(s =>
+    여럿 ? s.행들.map(r => ({ 시트: s.이름, ...r })) : s.행들);
+  if (!rows.length) {
+    participants = [];
+    $('#uploadStatus').textContent = '쓸 시트를 하나 이상 골라주세요.';
+    $('#previewWrap').style.display = 'none';
+    resetDownstream();
+    return;
+  }
+  participants = rows;
+  const allColumns = [...new Set(rows.flatMap(r => Object.keys(r)))];
+  const 안쓴것 = 읽은시트들.filter(s => s.행들.length && !쓸시트.has(s.이름));
+  $('#uploadStatus').textContent = `${rows.length}명 인식 완료`
+    + (여럿 ? ` — ${고른것.map(s => `${s.이름} ${s.행들.length}줄`).join(' · ')}` : '')
+    // 안 쓰기로 한 시트도 반드시 알려준다 — 빠진 걸 모르는 게 제일 위험하다
+    + (안쓴것.length ? ` (안 쓰는 시트: ${안쓴것.map(s => `${s.이름} ${s.행들.length}줄`).join(' · ')})` : '');
+  populateColumnSelectors(allColumns, rows);
+  renderTable('#previewWrap', rows.slice(0, 5), getMeaningfulColumns(rows, allColumns), { onDeleteColumn: removeParticipantColumn });
+  resetDownstream();
+  pushSlot(snapshotState());
+}
+
 /* ── 1단계: 파일 업로드 ── */
 $('#inFile').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -723,29 +829,19 @@ $('#inFile').addEventListener('change', async (e) => {
        예전엔 맨 앞 시트 하나만 읽어서, 나머지 시트가 통째로 사라지는데도 아무 말이
        없었다. 시트마다 컬럼 이름이 달라도(작성자/아이디, 본문/내용 …) 각 행에 어느
        시트에서 왔는지를 붙여두면 그대로 합쳐서 쓸 수 있다. */
-    const 시트별 = [];
-    let rows = [];
+    읽은시트들 = [];
     for (const 이름 of wb.SheetNames) {
       const 읽은것 = toDisplayDates(시트를행으로(wb.Sheets[이름]));
-      시트별.push({ 이름, 수: 읽은것.length });
-      if (!읽은것.length) continue;
-      // 시트가 둘 이상일 때만 출처 칸을 붙인다 (한 장짜리 파일의 표를 괜히 바꾸지 않으려고)
-      rows = rows.concat(wb.SheetNames.length > 1
-        ? 읽은것.map(r => ({ 시트: 이름, ...r }))
-        : 읽은것);
+      읽은시트들.push({ 이름, 행들: 읽은것, 칸들: [...new Set(읽은것.flatMap(r => Object.keys(r)))] });
     }
-    if (!rows.length) { $('#uploadStatus').textContent = '파일에서 데이터를 찾지 못했어요. 첫 줄이 헤더인지 확인해주세요.'; return; }
-    participants = rows;
+    if (!읽은시트들.some(s => s.행들.length)) {
+      $('#uploadStatus').textContent = '파일에서 데이터를 찾지 못했어요. 첫 줄이 헤더인지 확인해주세요.';
+      return;
+    }
     lastFileName = file.name;
-    // 시트마다 컬럼이 다를 수 있으니 전체 행에서 컬럼을 모은다 (첫 행만 보면 뒤 시트 컬럼이 빠짐)
-    const allColumns = [...new Set(rows.flatMap(r => Object.keys(r)))];
-    // 어느 시트에서 몇 줄이 왔는지 꼭 보여준다 — 한 시트가 통째로 빠져도 모르면 안 되니까
-    $('#uploadStatus').textContent = `${rows.length}명 인식 완료`
-      + (시트별.length > 1 ? ` — ${시트별.map(s => `${s.이름} ${s.수}줄`).join(' · ')}` : '');
-    populateColumnSelectors(allColumns, rows);
-    renderTable('#previewWrap', rows.slice(0, 5), getMeaningfulColumns(rows, allColumns), { onDeleteColumn: removeParticipantColumn });
-    resetDownstream();
-    pushSlot(snapshotState());
+    쓸시트 = new Set(기본으로쓸시트(읽은시트들));
+    시트고르개그리기();
+    시트적용();
   } catch (err) {
     $('#uploadStatus').textContent = `파일을 읽지 못했어요: ${err.message}`;
   }
@@ -781,6 +877,32 @@ const 우리가붙인칸 = (col) => col === '시트';
 
 // 날짜·시각만 들어있는 칸인지 — "2026-10-01"(10글자)은 짧은 댓글보다 길어서,
 // 걸러내지 않으면 본문 칸 자동 추정이 날짜 칸을 골라버린다.
+/* 행들에 붙어 있는 "시트" 출처를 세서 " — X 7줄 · 인스타 8줄" 꼴로 만든다.
+   업로드할 때든 캐시에서 되살릴 때든 똑같이 보여주려고 따로 뺐다. */
+function 시트별요약(rows) {
+  const 셈 = new Map();
+  for (const r of rows) {
+    const s = r && r.시트;
+    if (!s) continue;
+    셈.set(s, (셈.get(s) || 0) + 1);
+  }
+  if (셈.size < 2) return '';
+  return ' — ' + [...셈.entries()].map(([이름, 수]) => `${이름} ${수}줄`).join(' · ');
+}
+
+// 숫자만 들어있는 칸인지 — "0.1859756097560976"처럼 긴 숫자는 글자 수가 길어서,
+// 걸러내지 않으면 본문 칸 자동 추정이 비율·금액 같은 숫자 칸을 골라버린다.
+function isNumericColumn(col, rows) {
+  let count = 0, numeric = 0;
+  for (const r of rows.slice(0, 50)) {
+    const v = String(r[col] ?? '').trim();
+    if (!v) continue;
+    count++;
+    if (/^-?[\d,]+(\.\d+)?%?$/.test(v)) numeric++;
+  }
+  return count > 0 && numeric / count > 0.9;
+}
+
 function isDateLikeColumn(col, rows) {
   let count = 0, dateish = 0;
   for (const r of rows.slice(0, 50)) {
@@ -797,6 +919,7 @@ function guessContentColumn(columns, rows) {
   for (const col of columns) {
     if (우리가붙인칸(col)) continue;              // 시트 출처 표시는 본문이 아님
     if (isDateLikeColumn(col, rows)) continue;    // 날짜/시각 칸 제외
+    if (isNumericColumn(col, rows)) continue;     // 비율·건수 같은 숫자 칸 제외
     let total = 0, count = 0, urlCount = 0;
     for (const r of rows.slice(0, 20)) {
       const v = String(r[col] ?? '').trim();
@@ -814,8 +937,10 @@ function guessContentColumn(columns, rows) {
   return best;
 }
 function guessNicknameColumn(columns, rows, excludeCol) {
+  // 날짜 칸("2026-10-01")은 숫자가 아니라서 예전엔 이게 닉네임으로 잡혔다 — 같이 거른다
   for (const col of columns) {
     if (col === excludeCol || 우리가붙인칸(col)) continue;
+    if (isDateLikeColumn(col, rows) || isNumericColumn(col, rows)) continue;
     const sample = rows.find(r => String(r[col] ?? '').trim());
     if (sample && Number.isNaN(Number(sample[col]))) return col;
   }
@@ -1596,7 +1721,8 @@ let lastTallyText = '';
 function 집계칸갱신(columns, rows, 기본칸) {
   // 글자가 어느 정도 들어있는 칸만 후보로 (날짜·번호 칸까지 늘어놓으면 고르기 어려움)
   const 후보 = columns.filter(c =>
-    !우리가붙인칸(c) && !isDateLikeColumn(c, rows) && 평균길이(c, rows) >= 4);
+    !우리가붙인칸(c) && !isDateLikeColumn(c, rows) && !isNumericColumn(c, rows)
+    && 평균길이(c, rows) >= 2);
 
   /* 시트마다 따로 "그 시트에서 글이 제일 긴 칸"을 골라 켜둔다.
      X 시트는 "본문", 인스타 시트는 "내용"처럼 같은 댓글인데 칸 이름이 다른 경우가
@@ -1618,6 +1744,20 @@ function 집계칸갱신(columns, rows, 기본칸) {
     `<label class="pick-label"><input type="checkbox" class="tally-col" value="${escapeHtml(c)}"${
       켤것.has(c) ? ' checked' : ''}/>${escapeHtml(c)}</label>`).join('');
   $('#tallyColsWrap').style.display = 후보.length > 1 ? '' : 'none';
+
+  /* 이미 집계된 표를 올리는 경우가 있다 — 한 줄이 한 명이 아니라 "건수 61"처럼
+     숫자가 이미 들어있는 통계 파일. 그걸 줄 수로 세면 61건이 1건이 돼버린다.
+     숫자만 든 칸이 있으면 "그 숫자를 더하기"를 고를 수 있게 한다. */
+  const 숫자칸 = columns.filter(c => !우리가붙인칸(c) && isNumericColumn(c, rows)
+    && rows.some(r => Number(String(r[c] ?? '').replace(/,/g, '')) > 0));
+  // 0~1 사이 소수만 있는 칸은 비율이지 건수가 아니다
+  const 건수후보 = 숫자칸.filter(c =>
+    rows.some(r => Number(String(r[c] ?? '').replace(/,/g, '')) >= 2));
+  $('#tallyCountCol').innerHTML = '<option value="">줄 수를 셈 (댓글 한 줄 = 1표)</option>'
+    + 건수후보.map(c => `<option value="${escapeHtml(c)}">"${escapeHtml(c)}" 칸의 숫자를 더함</option>`).join('');
+  // 건수로 보이는 칸이 있으면 그걸 기본으로 — 통계표를 줄 수로 세는 건 거의 항상 틀린 결과다
+  if (건수후보.length) $('#tallyCountCol').value = 건수후보[0];
+  $('#tallyCountWrap').style.display = 건수후보.length ? '' : 'none';
 }
 
 // 그 칸에 들어있는 글의 평균 길이 (빈 칸은 빼고 셈)
@@ -1678,38 +1818,53 @@ function runTally() {
   if (bad.length) return show(`"=" 가 없는 줄이 있어요: ${bad.slice(0, 3).join(' / ')}`);
   if (!groups.length) return show('세고 싶은 항목을 한 줄 이상 적어주세요. 예)  카카시 = 카카시, 하타케');
 
+  /* 세는 방법 두 가지 —
+     ① 줄 수: 댓글 원본. 한 줄이 한 명이고, 같은 사람이 여러 번 써도 1표
+     ② 숫자 더하기: 이미 집계된 통계표. "건수 61"을 1건으로 세면 안 되므로 그 값을 더한다
+        (이 경우 한 줄이 한 명이 아니라서 사람 단위 중복 제거를 하면 안 된다) */
+  const 셀숫자칸 = $('#tallyCountCol').value || '';
+  const 숫자읽기 = (v) => {
+    const n = Number(String(v ?? '').replace(/,/g, '').replace(/%$/, ''));
+    return Number.isFinite(n) ? n : 0;
+  };
+
   const counts = new Map(groups.map(g => [g.name, 0]));
   const bySheet = new Map();
   const multi = [], none = [], seen = new Set();
   const hasSheet = participants.some(r => r.시트);
+  let 읽은줄 = 0, 빠진숫자 = 0;
 
   for (const row of participants) {
     // 켜둔 칸들의 글을 이어붙여서 본다 (시트마다 칸 이름이 달라도 한 번에 세기 위해)
     const body = 볼칸들.map(c => String(row[c] ?? '').trim()).filter(Boolean).join(' ');
     if (!body) continue;
+    읽은줄++;
     const flat = flattenForMatch(body);
     const hit = groups.filter(g => g.flat.some(w => flat.includes(w))).map(g => g.name);
     const who = nicknameColumn ? String(row[nicknameColumn] ?? '').trim() : '';
     const sheet = hasSheet ? String(row.시트 || '') : '';
+    const 더할값 = 셀숫자칸 ? 숫자읽기(row[셀숫자칸]) : 1;
 
-    if (!hit.length) { none.push({ who, sheet, body }); continue; }
-    if (hit.length > 1) { multi.push({ who, sheet, body, hit }); continue; }
-    // 같은 아이디라도 X와 인스타는 다른 계정이므로 시트까지 묶어서 중복을 본다
-    const key = `${sheet}|${who}`;
-    if (who && seen.has(key)) continue;
-    if (who) seen.add(key);
-    counts.set(hit[0], counts.get(hit[0]) + 1);
+    if (!hit.length) { none.push({ who, sheet, body, 값: 더할값 }); 빠진숫자 += 더할값; continue; }
+    if (hit.length > 1) { multi.push({ who, sheet, body, hit, 값: 더할값 }); 빠진숫자 += 더할값; continue; }
+    if (!셀숫자칸) {
+      // 같은 아이디라도 X와 인스타는 다른 계정이므로 시트까지 묶어서 중복을 본다
+      const key = `${sheet}|${who}`;
+      if (who && seen.has(key)) continue;
+      if (who) seen.add(key);
+    }
+    counts.set(hit[0], counts.get(hit[0]) + 더할값);
     if (sheet) {
       if (!bySheet.has(sheet)) bySheet.set(sheet, new Map());
       const m = bySheet.get(sheet);
-      m.set(hit[0], (m.get(hit[0]) || 0) + 1);
+      m.set(hit[0], (m.get(hit[0]) || 0) + 더할값);
     }
   }
 
-  renderTally({ counts, bySheet, multi, none, total: participants.length });
+  renderTally({ counts, bySheet, multi, none, total: 읽은줄, 셀숫자칸, 빠진숫자 });
 }
 
-function renderTally({ counts, bySheet, multi, none, total }) {
+function renderTally({ counts, bySheet, multi, none, total, 셀숫자칸, 빠진숫자 }) {
   const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
   const tallied = ranked.reduce((s, [, n]) => s + n, 0);
   const max = ranked.length ? ranked[0][1] : 0;
@@ -1719,7 +1874,7 @@ function renderTally({ counts, bySheet, multi, none, total }) {
     return `<div class="tally-row">
       <div class="tally-name">${escapeHtml(name)}</div>
       <div class="tally-bar"><div class="tally-fill" style="width:${max ? (n / max * 100) : 0}%"></div></div>
-      <div class="tally-num">${n}표 <span>(${pct.toFixed(1)}%)</span></div>
+      <div class="tally-num">${n}${셀숫자칸 ? '' : '표'} <span>(${pct.toFixed(1)}%)</span></div>
     </div>`;
   }).join('');
 
@@ -1741,13 +1896,16 @@ function renderTally({ counts, bySheet, multi, none, total }) {
 
   const skipped = multi.length + none.length;
   $('#tallyResult').innerHTML = `
-    <div class="count-badge" style="margin-bottom:10px;">댓글 ${total}개 중 ${tallied}개 집계</div>
+    <div class="count-badge" style="margin-bottom:10px;">${셀숫자칸
+      ? `${total}줄에서 "${escapeHtml(셀숫자칸)}" 합계 ${tallied}`
+      : `댓글 ${total}개 중 ${tallied}개 집계`}</div>
     <div class="tally-box">${bars}${sheetPart}</div>
     ${listBlock(multi, '한 댓글에 항목이 둘 이상 — 직접 보고 정해주세요',
       r => `<div><b>${escapeHtml(r.hit.join(' / '))}</b> ${escapeHtml(r.sheet ? `[${r.sheet}] ` : '')}${escapeHtml(r.who)} — ${escapeHtml(String(r.body).slice(0, 60))}</div>`)}
     ${listBlock(none, '아무 항목도 안 걸린 댓글 — 빠진 별칭이 있는지 보세요',
       r => `<div>${escapeHtml(r.sheet ? `[${r.sheet}] ` : '')}${escapeHtml(r.who)} — ${escapeHtml(String(r.body).slice(0, 70))}</div>`)}
-    ${skipped ? `<div class="tbl-hint" style="margin-top:8px;">→ ${total}개 중 ${skipped}개가 집계에서 빠져 있어요. 위 목록을 확인하세요.</div>` : ''}`;
+    ${skipped ? `<div class="tbl-hint" style="margin-top:8px;">→ ${total}줄 중 ${skipped}줄이 집계에서 빠져 있어요${
+      셀숫자칸 && 빠진숫자 ? ` (합계로 치면 ${빠진숫자})` : ''}. 위 목록을 확인하세요.</div>` : ''}`;
 
   lastTallyText = ranked.map(([n, c]) => `${n}\t${c}`).join('\n');
   $('#btnCopyTally').style.display = ranked.length ? '' : 'none';
