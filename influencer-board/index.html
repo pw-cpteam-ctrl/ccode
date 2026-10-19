@@ -416,6 +416,21 @@
     /* 폰에서는 제목 뒤쪽(서로 구분되는 부분)이 잘리지 않게 두 줄까지 보여준다 */
     .ml-sub { max-width: 100%; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   }
+
+  .ml-sub-btn { width: 100%; text-align: left; background: none; border: 0; padding: 1px 0; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--ink-500); }
+  .ml-sub-btn:hover { color: var(--ink); }
+  .ml-sub-btn.is-open { color: var(--ink); font-weight: 700; }
+  .ml-guess { margin-left: 6px; font-size: 10.5px; font-weight: 700; color: var(--ink-400); background: #f1f5f9; border-radius: 999px; padding: 1px 6px; vertical-align: middle; }
+  .ml-body { margin: 4px 0 8px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: #fafaf9; font-size: 12.5px; max-width: 560px; white-space: normal; }
+  .ml-body pre { margin: 6px 0; white-space: pre-wrap; word-break: break-word; font: inherit; line-height: 1.6; color: var(--ink); max-height: 340px; overflow: auto; }
+  .ml-body.is-wait { color: var(--ink-500); }
+  .ml-body.is-err { color: #9a3412; background: #fffbeb; border-color: #fde68a; }
+  .ml-body-h { font-size: 11.5px; color: var(--ink-500); word-break: break-all; }
+  .ml-att { font-size: 11.5px; color: var(--ink-500); margin-top: 4px; }
+  .ml-body-f { font-size: 11px; color: var(--ink-400); margin-top: 6px; }
+
+  .ml-help { margin: 10px 0 0; padding-left: 18px; font-size: 12px; color: var(--ink-500); line-height: 1.6; }
+  .ml-help b { color: var(--ink); }
 </style>
 </head>
 <body>
@@ -450,6 +465,8 @@
   var candMsg = '';   // 가져온 직후 한 번 보여줄 안내 (화면에서만 쓰는 값)
   var mailInfo = null;// 올린 메일 파일을 읽은 결과 (화면에서만 쓰는 값 — 서버로 보내지도 저장하지도 않는다)
   var mailMsg = '';   // 읽은 직후 한 번 보여줄 안내
+  var mailOpen = {};    // 눌러서 펼친 메일 (화면에서만 쓰는 값)
+  var mailBody = {};    // 펼친 메일의 본문 (저장하지 않는다 — 새로고침하면 사라진다)
   var mailEvents = [];  // 메일함에서 가져와 비공개 저장소에 쌓인 연락 이력 (본문 없음)
   var mailFileMsgs = [];// 올린 파일에서 읽은 메시지 (화면에서만 씀)
   var mailFileMeta = { mails: 0, fw: 0 };
@@ -1537,11 +1554,16 @@
   function mailFirstLines(t, n) {
     return String(t || '').split('\n').map(function (x) { return x.trim(); }).filter(Boolean).slice(0, n).join('\n');
   }
-  function mailGreetName(t) { var m = GREET_RE.exec(mailFirstLines(t, 4)); return m ? m[1].trim() : null; }
+  // 이름 끝의 호칭("모잉 담당자님" → "모잉")과 따옴표를 뗀다. lib/mail.js의 cleanName과 같아야 한다.
+  function cleanMailName(n) {
+    var t = String(n || '').replace(/^["'“‘\s]+|["'”’\s]+$/g, '').replace(/\s*(담당자|담당)$/, '').trim();
+    return t && t.length <= 20 ? t : null;
+  }
+  function mailGreetName(t) { var m = GREET_RE.exec(mailFirstLines(t, 4)); return m ? cleanMailName(m[1]) : null; }
   function mailIntroName(t) {
     var h = mailFirstLines(t, 6);
     var m = /안녕하세요[,.!]?\s*([^\s,!.]{1,12}(?: [^\s,!.]{1,12})?)입니다/.exec(h) || /([^\s,!.<>]{1,12})입니다/.exec(h);
-    var n = m && m[1].trim();
+    var n = m && cleanMailName(m[1]);
     return n && !INTRO_STOP[n] ? n : null;
   }
   // 날짜 표기가 둘이다: "2026. 5. 8. (금) 03:11" / "2026-07-01 (수) 20:30:33". 맨 위 날짜는 RFC 형식.
@@ -1623,6 +1645,18 @@
     msgs.forEach(function (x) {
       if (x.addr && x.name) { var v = votes[x.addr] = votes[x.addr] || {}; v[x.name] = (v[x.name] || 0) + 1; }
     });
+    // 이름은 두 단계로 정한다: ① 보낸 메일의 인사말·받은 메일의 자기소개(활동명) 우선
+    // ② 그게 없는 주소만 메일에 딸린 표시 이름. 표시 이름은 활동명과 다를 수 있어 마지막 대안으로만 쓴다.
+    var dvotes = {};
+    msgs.forEach(function (x) {
+      if (x.addr && x.dname) { var v = dvotes[x.addr] = dvotes[x.addr] || {}; v[x.dname] = (v[x.dname] || 0) + 1; }
+    });
+    var dnameOf = {};
+    Object.keys(dvotes).forEach(function (a) {
+      var best = null;
+      Object.keys(dvotes[a]).forEach(function (n) { if (best === null || dvotes[a][n] > dvotes[a][best]) best = n; });
+      dnameOf[a] = best;
+    });
     var nameOf = {}, addrOf = {};
     Object.keys(votes).forEach(function (a) {
       var best = null;
@@ -1639,21 +1673,42 @@
       g.msgs.push(x);
     });
 
-    var today = dayStart(new Date());
-    var list = Object.keys(groups).map(function (k) {
+    // 같은 활동명인데 주소만 다르게 나뉘어 있으면 한 사람으로 합친다(내가 보낸 주소와 답장이 온 주소가 다른 경우).
+    var compact = function (n) { return String(n || '').replace(/\s+/g, '').toLowerCase(); };
+    var merged = {};
+    Object.keys(groups).forEach(function (k) {
       var g = groups[k];
+      var cue = nameOf[g.addr] || (k.indexOf('name:') === 0 ? k.slice(5) : null);
+      var mk = cue ? 'n:' + compact(cue) : 'k:' + k;
+      var m = merged[mk] = merged[mk] || { cue: cue, addrs: [], msgs: [] };
+      if (g.addr && m.addrs.indexOf(g.addr) < 0) m.addrs.push(g.addr);
+      m.msgs = m.msgs.concat(g.msgs);
+    });
+
+    var today = dayStart(new Date());
+    var list = Object.keys(merged).map(function (mk) {
+      var g = merged[mk];
       g.msgs.sort(function (a, b) { return a.date - b.date; });
       var last = g.msgs[g.msgs.length - 1];
       var subs = [];
       for (var i = g.msgs.length - 1; i >= 0 && subs.length < 3; i--) {
         var t = mailCleanSubject(g.msgs[i].subject);
-        if (t && subs.every(function (u) { return u.title !== t; })) subs.push({ title: t, date: g.msgs[i].date, dir: g.msgs[i].dir });
+        if (t && subs.every(function (u) { return u.title !== t; })) {
+          var gm = g.msgs[i];
+          subs.push({ title: t, date: gm.date, dir: gm.dir, ref: gm.uid != null && gm.folder ? { folder: gm.folder, uidv: gm.uidv || '', uid: gm.uid } : null });
+        }
       }
+      // 대표 주소: 가장 최근에 상대가 보낸 메일의 주소(없으면 처음 주소)
+      var addr = '';
+      for (var j = g.msgs.length - 1; j >= 0 && !addr; j--) if (g.msgs[j].dir === '받음' && g.msgs[j].addr) addr = g.msgs[j].addr;
+      if (!addr) addr = g.addrs[0] || '';
+      var dn = dnameOf[addr] || g.addrs.map(function (a) { return dnameOf[a]; }).filter(Boolean)[0] || null;
       return {
-        name: nameOf[g.addr] || (k.indexOf('name:') === 0 ? k.slice(5) : g.addr),
-        addr: g.addr, last: last, subs: subs,
+        name: g.cue || dn || addr,
+        nameFromDisplay: !g.cue && !!dn,
+        addr: addr, moreAddrs: Math.max(0, g.addrs.length - 1), last: last, subs: subs,
         days: Math.max(0, Math.round((today - dayStart(last.date)) / 864e5)),
-        turn: last.dir === '받음' ? 'me' : 'them'   // me: 내가 답할 차례 / them: 상대 답을 기다리는 중
+        turn: last.dir === '받음' ? 'me' : 'them'   // me: 내가 답할 차례(마지막 메일을 상대가 보냄) / them: 상대 답을 기다리는 중(마지막 메일을 내가 보냄)
       };
     });
     // 내가 답할 차례를 먼저(오래된 순), 그다음 기다리는 중(오래된 순)
@@ -1666,7 +1721,7 @@
   // 메일함에서 가져온 이력 + 올린 파일을 합쳐 화면용 결과를 다시 만든다.
   function rebuildMailInfo() {
     var fromEvents = mailEvents.map(function (e) {
-      return { date: new Date(e.at), dir: e.dir, addr: e.addr || null, name: e.name || null, subject: e.subject || '' };
+      return { date: new Date(e.at), dir: e.dir, addr: e.addr || null, name: cleanMailName(e.name), dname: e.dname || null, subject: e.subject || '', fa: e.fa || null, folder: e.folder || null, uid: e.uid != null ? e.uid : null, uidv: e.uidv || '' };
     });
     var msgs = mailDedupe(fromEvents.concat(mailFileMsgs));
     mailInfo = msgs.length ? buildMailInfo(msgs, mailFileMeta.mails + mailEvents.length, mailFileMeta.fw) : null;
@@ -1695,39 +1750,79 @@
   };
 
   // action: 'mail-sync'(가져오기) / 'mail-folders'(폴더 확인). days를 주면 그만큼 거슬러 올라간다.
+  // 메일이 많으면 서버가 한 번에 150통까지만 처리하므로, 남았으면 사람이 다시 누르지 않아도 알아서 이어서 가져온다.
   function mailSyncRun(action, days) {
     if (mailSync.busy) return;
     mailSync.busy = true;
-    mailSync.note = action === 'mail-folders' ? '폴더를 확인하는 중…' : '메일함에서 가져오는 중… (잠시 걸릴 수 있습니다)';
-    renderList();
-    var body = { code: code, action: action };
-    if (days) body.days = days;
-    api(body).then(function (r) {
-      mailSync.busy = false;
-      var d = r.data || {};
-      if (r.status === 200 && d.ok) {
+    var sum = { rounds: 0, processed: 0, kept: 0, skipped: 0, ms: 0, found: null, fresh: null, since: null, folders: [] };
+    function fail(msg) { mailSync.busy = false; mailSync.note = (sum.processed ? sum.processed + '통까지 처리하고 멈췄습니다. ' : '') + msg; loadMailEvents(true); renderList(); }
+    function step() {
+      mailSync.note = action === 'mail-folders' ? '폴더를 확인하는 중…' : '메일함에서 가져오는 중… ' + (sum.rounds ? sum.processed + '통 처리함' : '(처음에는 몇 초 걸립니다)');
+      renderList();
+      var body = { code: code, action: action };
+      if (days) body.days = days;
+      api(body).then(function (r) {
+        var d = r.data || {};
+        if (!(r.status === 200 && d.ok)) { fail(MAIL_ERR[d.reason] || '가져오지 못했습니다. 잠시 후 다시 시도해 주세요.'); return; }
         var missing = (d.missing || []).length ? ' 설정한 폴더 중 못 찾은 것: ' + d.missing.join(', ') + ' → 실제 폴더: ' + (d.available || []).join(', ') + '.' : '';
         if (action === 'mail-folders') {
+          mailSync.busy = false;
           mailSync.note = ((d.found || []).length ? '읽을 폴더: ' + d.found.map(function (f) { return f.path; }).join(', ') + '.' : '읽을 폴더를 찾지 못했습니다.') + missing;
-        } else {
-          // 몇 통을 보고, 그중 새 메일이 몇 통이고, 이번에 몇 통을 처리했는지를 알려줘야 '0통'과 '남음'을 믿을 수 있다.
-          var st = d.stats || {};
-          var sinceTxt = d.since ? (function (x) { return x.getFullYear() + '.' + (x.getMonth() + 1) + '.' + x.getDate(); })(new Date(d.since)) + ' 이후 ' : '';
-          var fl = (d.folders || []).length ? ' (읽은 폴더: ' + d.folders.join(', ') + ')' : '';
-          var left = (st.fresh || 0) - (st.processed || 0);
-          mailSync.note = sinceTxt + '메일 ' + (st.found || 0) + '통 중 새 메일 ' + (st.fresh || 0) + '통을 찾아 이번에 ' + (st.processed || 0) + '통을 처리했습니다' + fl + '. ' +
-            '이력에 ' + (st.kept || 0) + '통 추가' + ((st.skipped || 0) + (st.failed || 0) ? ', ' + ((st.skipped || 0) + (st.failed || 0)) + '통은 전달 메일이거나 읽지 못해 제외' : '') + '. ' +
-            (d.ms ? '(' + (d.ms / 1000).toFixed(1) + '초) ' : '') +
-            ((st.found || 0) === 0 && !(d.missing || []).length ? '이 기간에는 폴더에 메일이 없습니다 — [더 오래된 메일]을 눌러 보세요.' : '') +
-            ((st.found || 0) > 0 && (st.fresh || 0) === 0 ? '이 기간의 메일은 이미 모두 가져왔습니다.' : '') +
-            (d.more ? ' 남은 메일이 ' + left + '통 있습니다 — 한 번 더 눌러 주세요.' : '') + missing;
-          loadMailEvents(true);
+          renderList();
+          return;
         }
-      } else {
-        mailSync.note = MAIL_ERR[d.reason] || '가져오지 못했습니다. 잠시 후 다시 시도해 주세요.';
-      }
-      renderList();
-    }).catch(function () { mailSync.busy = false; mailSync.note = '가져오지 못했습니다. 잠시 후 다시 시도해 주세요.'; renderList(); });
+        var st = d.stats || {};
+        sum.rounds++; sum.processed += st.processed || 0; sum.kept += st.kept || 0; sum.skipped += (st.skipped || 0) + (st.failed || 0); sum.ms += d.ms || 0;
+        if (sum.found === null) { sum.found = st.found || 0; sum.fresh = st.fresh || 0; sum.since = d.since; }
+        sum.folders = d.folders || [];
+        if (d.more && (st.processed || 0) > 0 && sum.rounds < 20) { step(); return; }   // 남았으면 이어서
+        mailSync.busy = false;
+        var sinceTxt = sum.since ? (function (x) { return x.getFullYear() + '.' + (x.getMonth() + 1) + '.' + x.getDate(); })(new Date(sum.since)) + ' 이후 ' : '';
+        var fl = sum.folders.length ? ' (폴더: ' + sum.folders.join(', ') + ')' : '';
+        if (!sum.found && !(d.missing || []).length) mailSync.note = sinceTxt + '이 폴더에는 메일이 없습니다' + fl + '. [빠진 예전 메일 채우기]를 눌러 더 오래된 메일도 확인해 보세요.';
+        else if (!sum.fresh) mailSync.note = '새로 온 메일이 없습니다. ' + sinceTxt + '메일 ' + sum.found + '통은 이미 모두 가져왔습니다' + fl + '.';
+        else mailSync.note = sinceTxt + '메일 ' + sum.found + '통 중 새 메일 ' + sum.fresh + '통을 가져왔습니다' + fl + '. 이력에 ' + sum.kept + '통 추가' + (sum.skipped ? ', ' + sum.skipped + '통은 전달 메일이거나 읽지 못해 뺐습니다' : '') + '. (' + (sum.ms / 1000).toFixed(1) + '초)' +
+          (d.more ? ' 아직 ' + Math.max(0, sum.fresh - sum.processed) + '통이 남았으니 한 번 더 눌러 주세요.' : '') + missing;
+        loadMailEvents(true);
+        renderList();
+      }).catch(function () { fail('가져오지 못했습니다. 잠시 후 다시 시도해 주세요.'); });
+    }
+    step();
+  }
+
+  var MAIL_BODY_ERR = {
+    'mail-stale': '메일함이 다시 만들어져 이 메일을 찾을 수 없습니다. [더 오래된 메일]로 다시 가져와 주세요.',
+    'mail-gone': '메일함에서 이 메일을 찾지 못했습니다. 이동하거나 삭제했을 수 있습니다.',
+    'mail-folder': '설정된 폴더가 아니라서 열 수 없습니다.'
+  };
+  function mailRefKey(r) { return r.folder + '\u0001' + r.uidv + '\u0001' + r.uid; }
+
+  // 제목을 누르면 그 자리에서 메일함에서 본문을 읽어 보여준다. 어디에도 저장하지 않는다.
+  function mailToggleBody(ref) {
+    var k = mailRefKey(ref);
+    if (mailOpen[k]) { delete mailOpen[k]; renderList(); return; }
+    mailOpen[k] = true;
+    if (!mailBody[k] || mailBody[k].state === 'err') {
+      mailBody[k] = { state: 'loading' };
+      api({ code: code, action: 'mail-body', folder: ref.folder, uidv: ref.uidv, uid: ref.uid }).then(function (r) {
+        var d = r.data || {};
+        mailBody[k] = (r.status === 200 && d.ok) ? { state: 'ok', d: d } : { state: 'err', msg: MAIL_BODY_ERR[d.reason] || MAIL_ERR[d.reason] || '본문을 불러오지 못했습니다. 잠시 후 다시 눌러 주세요.' };
+        renderList();
+      }).catch(function () { mailBody[k] = { state: 'err', msg: '본문을 불러오지 못했습니다. 잠시 후 다시 눌러 주세요.' }; renderList(); });
+    }
+    renderList();
+  }
+  function mailBodyHtml(ref) {
+    var b = mailBody[mailRefKey(ref)];
+    if (!b || b.state === 'loading') return '<div class="ml-body is-wait">메일함에서 읽어오는 중…</div>';
+    if (b.state === 'err') return '<div class="ml-body is-err">' + esc(b.msg) + '</div>';
+    var d = b.d;
+    var att = (d.attachments || []).length ? '<div class="ml-att">첨부 ' + d.attachments.length + '개: ' + d.attachments.map(function (a) {
+      return esc(a.name) + (a.size ? ' (' + (a.size >= 1048576 ? (a.size / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(a.size / 1024)) + 'KB') + ')' : '');
+    }).join(', ') + '</div>' : '';
+    return '<div class="ml-body"><div class="ml-body-h">' + esc(d.from || '') + ' → ' + esc((d.to || []).join(', ')) + '</div>' +
+      '<pre>' + esc(d.text || '(본문이 비어 있습니다)') + '</pre>' + att +
+      '<div class="ml-body-f">' + (d.hadQuote ? '지난 대화 인용은 생략했습니다. ' : '') + (d.truncated ? '긴 메일이라 앞부분만 보여줍니다. ' : '') + '이 화면의 내용은 저장되지 않습니다.</div></div>';
   }
 
   function mailSyncPanel() {
@@ -1736,19 +1831,25 @@
     })(new Date(mailSync.syncedAt)) : null;
     var dis = (mailSync.busy || !mailSync.configured) ? ' disabled' : '';
     return '<section class="rbox"><h2 class="rbox-h">메일함에서 가져오기</h2>' +
-      '<p class="rbox-desc">웍스 메일에서 정해 둔 폴더만 읽기 전용으로 읽습니다(읽음 표시·이동·삭제 없음). 본문은 저장하지 않고 날짜·보낸이·활동명·제목만 비공개 저장소에 남깁니다.</p>' +
+      '<p class="rbox-desc">웍스 메일에서 정해 둔 폴더만 읽습니다. 읽음 표시·이동·삭제는 하지 않고, 본문은 저장하지 않습니다(날짜·보낸이·활동명·제목만 비공개 저장소에 남깁니다).</p>' +
       '<p class="ml-fresh">' + (mailSync.configured
-        ? (when ? '마지막으로 끝까지 가져온 시각: ' + esc(when) : '아직 가져온 적이 없습니다. 처음에는 최근 30일을 가져옵니다.')
+        ? (when ? '마지막으로 가져온 시각: ' + esc(when) : '아직 가져온 적이 없습니다. 아래 [메일 가져오기]를 누르면 지난 1년치를 가져옵니다.')
         : '메일 접속 설정이 아직 없어 가져올 수 없습니다. 아래 ‘파일로 올리기’는 그대로 쓸 수 있습니다.') + '</p>' +
       '<div class="cd-act">' +
-      '<button class="mini is-main" id="ms-sync"' + dis + '>지금 가져오기</button>' +
-      '<button class="mini" id="ms-old"' + dis + '>더 오래된 메일(400일)</button>' +
+      '<button class="mini is-main" id="ms-sync"' + dis + '>메일 가져오기</button>' +
+      '<button class="mini" id="ms-old"' + dis + '>빠진 예전 메일 채우기</button>' +
       '<button class="mini" id="ms-folders"' + dis + '>폴더 확인</button>' +
       '</div>' +
       (mailSync.note ? '<p class="ml-fresh" id="ms-note" style="margin-top:8px">' + esc(mailSync.note) + '</p>' : '') +
+      '<ul class="ml-help">' +
+      '<li><b>메일 가져오기</b> — 지난번 이후 새로 온 메일만 가져옵니다. 처음 누르면 지난 1년치를 가져오고, 많으면 알아서 이어서 가져옵니다.</li>' +
+      '<li><b>빠진 예전 메일 채우기</b> — 평소에는 누를 필요 없습니다. 위 버튼으로 가져오지 못한 오래된 메일이 있을 때만 누르세요(지난 400일을 다시 확인).</li>' +
+      '<li><b>폴더 확인</b> — 설정한 폴더를 찾을 수 있는지만 봅니다. 메일은 읽지 않습니다.</li>' +
+      '</ul>' +
       '</section>';
   }
 
+  function mailDirText(d) { return d === '보냄' ? '내가 보냄' : '상대가 보냄'; }
   function mailTurnText(it) {
     if (it.turn === 'me') return '내가 답할 차례 ' + (it.days ? it.days + '일째' : '오늘');
     return it.days ? it.days + '일째 기다리는 중' : '오늘 보냄';
@@ -1792,14 +1893,18 @@
     var rowsHtml = mailInfo.list.map(function (it) {
       var link = known[candKey(it.name)];
       var subs = it.subs.map(function (s) {
-        return '<span class="ml-sub" title="' + esc(s.title) + '">' + esc(s.title) + ' <i>' + md(s.date) + ' ' + s.dir + '</i></span>';
+        var label = esc(s.title) + ' <i>' + md(s.date) + ' ' + mailDirText(s.dir) + '</i>';
+        if (!s.ref) return '<span class="ml-sub" title="' + esc(s.title) + '">' + label + '</span>';
+        var open = !!mailOpen[mailRefKey(s.ref)];
+        return '<button class="ml-sub ml-sub-btn' + (open ? ' is-open' : '') + '" data-ml="' + esc(JSON.stringify(s.ref)) + '" title="눌러서 본문 보기">' + (open ? '▾ ' : '▸ ') + label + '</button>' +
+          (open ? mailBodyHtml(s.ref) : '');
       }).join('');
       return '<tr>' +
-        '<td class="cd-name"><b>' + esc(it.name) + '</b>' + (it.addr && it.addr !== it.name ? '<span class="ml-addr">' + esc(it.addr) + '</span>' : '') + '</td>' +
+        '<td class="cd-name"><b' + (it.nameFromDisplay ? ' title="인사말이 없어 메일의 보낸이 표시 이름을 썼습니다"' : '') + '>' + esc(it.name) + '</b>' + (it.nameFromDisplay ? '<span class="ml-guess">표시 이름</span>' : '') + (it.addr && it.addr !== it.name ? '<span class="ml-addr">' + esc(it.addr) + (it.moreAddrs ? ' 외 ' + it.moreAddrs + '개' : '') + '</span>' : '') + '</td>' +
         '<td><span class="ml-turn ' + it.turn + '">' + esc(mailTurnText(it)) + '</span></td>' +
-        '<td class="ml-last">' + md(it.last.date) + ' ' + it.last.dir + '</td>' +
+        '<td class="ml-last">' + md(it.last.date) + ' ' + mailDirText(it.last.dir) + (it.last.fa ? '<span class="ml-addr">보낸이 ' + esc(it.last.fa) + '</span>' : '') + '</td>' +
         '<td>' + subs + '</td>' +
-        '<td>' + (link ? '<span class="cd-st is-done">' + esc(link) + '</span>' : '<span class="cd-none">연결 안 됨</span>') + '</td>' +
+        '<td>' + (link ? '<span class="cd-st is-done">' + esc(link === '접수됨' ? '접수함' : link) + '</span>' : '<span class="cd-none">접수 안 함</span>') + '</td>' +
         '</tr>';
     }).join('');
     var notes = [];
@@ -1809,12 +1914,13 @@
       '<div class="cp-bar"><b>연락 이력</b><span class="cp-n">메일 ' + mailInfo.mails + '통 → 메시지 ' + mailInfo.msgs + '개 → ' + mailInfo.list.length + '명</span></div>' +
       mailFreshHtml() +
       (mailInfo.list.length
-        ? '<div class="scroll"><table class="mltable"><thead><tr><th>활동명</th><th>답 대기</th><th>마지막 연락</th><th>최근 메일 제목</th><th>연결</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>'
+        ? '<div class="scroll"><table class="mltable"><thead><tr><th>활동명</th><th>지금 할 일</th><th>마지막 메일</th><th>주고받은 메일 (제목을 누르면 본문)</th><th>접수 여부</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>'
         : '<div class="empty">읽을 수 있는 메일을 찾지 못했습니다. 추출 파일 형식이 맞는지 확인해 주세요.</div>') +
       '</section>' +
       '<p class="foot">' + notes.join('<br />') + (notes.length ? '<br />' : '') +
-      '활동명은 보낸 메일의 “안녕하세요, ○○님”과 받은 메일의 “○○입니다”에서 읽습니다. 발신자 표시 이름은 활동명과 다를 수 있어 쓰지 않습니다.<br />' +
-      '‘연결’은 확정 후보·접수 목록의 활동명과 같으면 표시됩니다.</p>';
+      '<b>지금 할 일</b> — “내가 답할 차례”는 마지막 메일을 <b>상대가 보냈다</b>는 뜻입니다(“감사합니다” 같은 인사 답장도 포함). “기다리는 중”은 마지막 메일을 <b>내가 보냈다</b>는 뜻입니다.<br />' +
+      '<b>접수 여부</b> — 크리에이터가 접수 폼을 냈으면 “접수함”, 확정 후보에 넣어 두었으면 “확정 후보”, 둘 다 아니면 “접수 안 함”입니다. 활동명이 다르게 적혀 있으면 이어지지 않을 수 있습니다.<br />' +
+      '활동명은 보낸 메일의 “안녕하세요, ○○님”, 받은 메일의 “○○입니다”에서 읽고, 둘 다 없으면 메일의 보낸이 표시 이름을 씁니다(“표시 이름” 표시). 같은 활동명이 주소만 달라도 한 사람으로 묶습니다.</p>';
   }
 
   function viewTabs() {
@@ -1978,6 +2084,13 @@
     if (cpCsv) cpCsv.addEventListener('click', couponCsv);
     var tabsEl = root.querySelector('.tabs'), tabOn = root.querySelector('.tab.is-on');
     if (tabsEl && tabOn) tabsEl.scrollLeft = tabOn.offsetLeft - (tabsEl.clientWidth - tabOn.offsetWidth) / 2;
+    Array.prototype.forEach.call(root.querySelectorAll('.ml-sub-btn'), function (b) {
+      b.addEventListener('click', function () {
+        var ref = null;
+        try { ref = JSON.parse(b.getAttribute('data-ml')); } catch (e) { /* 무시 */ }
+        if (ref) mailToggleBody(ref);
+      });
+    });
     var msSync = document.getElementById('ms-sync'), msOld = document.getElementById('ms-old'), msFolders = document.getElementById('ms-folders');
     if (msSync) msSync.addEventListener('click', function () { mailSyncRun('mail-sync'); });
     if (msOld) msOld.addEventListener('click', function () { mailSyncRun('mail-sync', 400); });
@@ -2129,6 +2242,7 @@
     });
     document.getElementById('lock').addEventListener('click', function () {
       forgetCode(); code = ''; rows = []; confirmed = {}; blocked = {}; keyword = '';
+      mailOpen = {}; mailBody = {};
       mailEvents = []; mailFileMsgs = []; mailInfo = null; mailSync = { loaded: false, syncedAt: null, configured: false, busy: false, note: '' };
       renderGate('');
     });

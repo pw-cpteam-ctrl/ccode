@@ -25,6 +25,15 @@ const INTRO_STOP = { '것': 1, '저': 1, '제': 1, '점': 1, '때': 1, '이': 1 
 const SOURCE_BYTES = 12000;     // 메일마다 앞쪽 이만큼만 가져온다 (첨부가 큰 메일을 통째로 받지 않으려고). 인사말은 맨 위에 있다
 const SUBJECT_MAX = 200;
 
+// 이력 기록 형식의 버전. 2부터는 표시 이름(dname)을 남긴다. 버전이 낮은 기록은 '아직 안 본 것'으로 쳐서 한 번 다시 읽고 바꿔 쓴다.
+export const MAIL_SCHEMA = 2;
+
+// 이름 끝에 붙은 호칭("모잉 담당자님" → "모잉")과 따옴표를 떼어 낸다. index.html의 cleanMailName과 같아야 한다.
+export function cleanName(n) {
+  const t = String(n || '').replace(/^["'“‘\s]+|["'”’\s]+$/g, '').replace(/\s*(담당자|담당)$/, '').trim();
+  return t && t.length <= 20 ? t : null;
+}
+
 export class MailError extends Error {
   constructor(reason, detail) { super(detail || reason); this.reason = reason; }
 }
@@ -42,15 +51,25 @@ export function configFromEnv(env = process.env) {
   };
 }
 
+// 답장에 딸려 오는 지난 대화는 잘라 낸다. 본문 보기에서는 같은 내용이 목록에 이미 있어서, 이름 읽기에서는
+// 그 안의 '내가 쓴 인사말·자기소개'를 상대의 것으로 착각하지 않으려고 쓴다(짧은 답장은 맨 위 몇 줄 안에 인용이 들어온다).
+const QUOTE_CUT = [/\n\s*-----\s*(?:Original Message|원본 메시지)\s*-----/i, /\n\s*\d{4}년\s*\d{1,2}월\s*\d{1,2}일[^\n]*님이 작성:/, /\n\s*On .{5,80} wrote:/, /\n\s*From:\s.+\n\s*(?:To|Sent):/, /\n\s*>/];
+export function stripQuoted(text) {
+  const t = '\n' + String(text || '').replace(/\r\n?/g, '\n');
+  let cut = t.length;
+  QUOTE_CUT.forEach((re) => { const i = t.search(re); if (i >= 0 && i < cut) cut = i; });
+  return t.slice(1, cut);
+}
+
 // ─── 규칙 (index.html과 같은 규칙) ─────────────────────────────
 function firstLines(t, n) {
   return String(t || '').split('\n').map((x) => x.trim()).filter(Boolean).slice(0, n).join('\n');
 }
-export function greetName(text) { const m = GREET_RE.exec(firstLines(text, 4)); return m ? m[1].trim() : null; }
+export function greetName(text) { const m = GREET_RE.exec(firstLines(text, 4)); return m ? cleanName(m[1]) : null; }
 export function introName(text) {
   const h = firstLines(text, 6);
   const m = /안녕하세요[,.!]?\s*([^\s,!.]{1,12}(?: [^\s,!.]{1,12})?)입니다/.exec(h) || /([^\s,!.<>]{1,12})입니다/.exec(h);
-  const n = m && m[1].trim();
+  const n = m && cleanName(m[1]);
   return n && !INTRO_STOP[n] ? n : null;
 }
 
@@ -71,6 +90,12 @@ export function matchFolders(list, wanted) {
 }
 
 // ─── 메일 한 통 → 이벤트 ──────────────────────────────────────
+// 주소에 딸린 표시 이름(메일 프로그램이 보여주는 이름). 인사말이 없을 때의 마지막 대안이다.
+const nameOfAddr = (x, addr) => {
+  const arr = Array.isArray(x) ? x : (x ? [x] : []);
+  const v = arr.flatMap((o) => (o.value || [])).find((e) => String(e.address || '').toLowerCase() === addr);
+  return cleanName(v && v.name);
+};
 const addrList = (x) => {
   const arr = Array.isArray(x) ? x : (x ? [x] : []);
   return arr.flatMap((o) => (o.value || [])).map((v) => String(v.address || '').toLowerCase()).filter(Boolean);
@@ -96,15 +121,18 @@ export function eventFromParsed(parsed, { folder, uid, messageId, date }) {
   if (mine && /^\s*(fw|fwd)\s*:/i.test(subject)) return null;
   const tos = [...addrList(parsed.to), ...addrList(parsed.cc)];
   const addr = mine ? (tos.find((a) => !MY_MAIL_RE.test(a)) || null) : sender;
-  const text = textOf(parsed);
+  const text = stripQuoted(textOf(parsed));
   return {
     id: eventId(messageId || parsed.messageId, folder, uid),
     at: new Date(at).toISOString(),
     dir: mine ? '보냄' : '받음',
     addr,
+    fa: sender,    // 보낸이 주소 — 화면에서 '누가 보낸 메일인지' 확인할 수 있게
     name: mine ? greetName(text) : introName(text),
+    dname: addr ? (mine ? (nameOfAddr(parsed.to, addr) || nameOfAddr(parsed.cc, addr)) : nameOfAddr(parsed.from, addr)) : null,
     subject: subject.slice(0, SUBJECT_MAX),
     folder,
+    v: MAIL_SCHEMA,
   };
 }
 
@@ -186,7 +214,7 @@ export async function syncMail(cfg, { since, knownKeys, maxNew = 150, deadlineMs
             } catch { stats.failed++; }
             if (!rec) {
               // 이력으로 안 쓰는 메일(전달 메일 등)·읽지 못한 메일: '봤음'만 남긴다
-              rec = { id: eventId(messageId, f.path, m.uid), at: new Date(m.internalDate || Date.now()).toISOString(), skip: 1 };
+              rec = { id: eventId(messageId, f.path, m.uid), at: new Date(m.internalDate || Date.now()).toISOString(), skip: 1, v: MAIL_SCHEMA };
             }
             // ia: 메일함에 도착한 시각. 어느 달 파일에 기록할지·이미 봤는지 찾을 달을 정하는 기준이다 —
             // 메일 머리글의 날짜(at)와 도착 날짜가 다를 수 있어, 둘을 섞으면 같은 메일을 계속 새 메일로 착각한다.
@@ -198,6 +226,39 @@ export async function syncMail(cfg, { since, knownKeys, maxNew = 150, deadlineMs
       if (more) break;
     }
     return { records, stats, more, folders: found.map((x) => x.path), missing, available, ms: Date.now() - started };
+  } catch (err) { throw toMailError(err); }
+  finally { try { await client.logout(); } catch { /* 이미 끊김 */ } }
+}
+
+
+// ─── 눌러서 보기: 메일 한 통의 본문을 그 자리에서 읽어 돌려준다. 저장하지 않는다. ───────────
+const BODY_BYTES = 300000;     // 이만큼까지만 받는다(첨부가 큰 메일을 통째로 받지 않으려고)
+const BODY_CHARS = 6000;       // 화면에 보여줄 글자 수
+export async function readMailBody(cfg, { folder, uidv, uid }) {
+  const { simpleParser } = await import('mailparser');
+  const client = await connect(cfg);
+  try {
+    const list = await client.list();
+    // 설정한 폴더만 열 수 있다(관리자 코드로도 다른 폴더를 읽지 않는다)
+    const ok = matchFolders(list, cfg.folders).found.find((f) => normName(f.path) === normName(folder));
+    if (!ok) throw new MailError('mail-folder');
+    const lock = await client.getMailboxLock(ok.path, { readOnly: true });
+    try {
+      if (uidv && String(client.mailbox && client.mailbox.uidValidity || '') !== String(uidv)) throw new MailError('mail-stale');
+      let msg = null;
+      for await (const m of client.fetch(String(Number(uid)), { uid: true, source: { start: 0, maxLength: BODY_BYTES } }, { uid: true })) msg = m;
+      if (!msg || !msg.source) throw new MailError('mail-gone');
+      const parsed = await simpleParser(msg.source);
+      const text = textOf(parsed).replace(/\r\n?/g, '\n');
+      const cutText = stripQuoted(text);
+      const main = cutText.replace(/\n{3,}/g, '\n\n').trim();
+      return {
+        subject: String(parsed.subject || ''), date: parsed.date ? new Date(parsed.date).toISOString() : null,
+        from: addrList(parsed.from)[0] || null, to: addrList(parsed.to),
+        text: main.slice(0, BODY_CHARS), truncated: main.length > BODY_CHARS, hadQuote: cutText.length < text.length,
+        attachments: (parsed.attachments || []).map((a) => ({ name: a.filename || '(이름 없음)', size: a.size || 0 })).slice(0, 10),
+      };
+    } finally { lock.release(); }
   } catch (err) { throw toMailError(err); }
   finally { try { await client.logout(); } catch { /* 이미 끊김 */ } }
 }

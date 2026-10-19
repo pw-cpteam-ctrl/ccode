@@ -141,7 +141,8 @@ async function readMailEvents(gh, months) {
   return out;
 }
 
-// 달 파일에 새 이벤트만 덧붙인다. 같은 id가 이미 있으면 건너뛰고, 동시에 써서 충돌하면 다시 읽어 재시도한다.
+// 달 파일에 이벤트를 기록한다. 같은 id가 이미 있으면 새 기록으로 바꿔 쓴다(기록 형식이 올라갈 때 옛 기록을 갈아끼우려고).
+// 동시에 써서 충돌하면 다시 읽어 재시도한다.
 async function appendMailEvents(gh, events) {
   const byMonth = {};
   // 달 파일은 '도착 시각(ia)' 기준이다. 이미 봤는지 찾을 때도 같은 기준(since)으로 달을 고르므로, 기록과 찾기가 어긋나지 않는다.
@@ -152,14 +153,19 @@ async function appendMailEvents(gh, events) {
     let done = false;
     for (let i = 0; i < 3 && !done; i++) {
       const f = await readGithubFile({ ...gh, path });
-      const have = new Set();
-      if (f) f.content.split('\n').forEach((l) => { try { have.add(JSON.parse(l).id); } catch { /* 건너뜀 */ } });
-      const fresh = byMonth[month].filter((ev) => !have.has(ev.id));
-      if (!fresh.length) { done = true; break; }
-      const body = (f ? f.content.replace(/\n*$/, '\n') : '') + fresh.map((ev) => JSON.stringify(ev)).join('\n') + '\n';
+      const lines = f ? f.content.split('\n').filter((l) => l.trim()) : [];
+      const index = {};   // id → 줄 번호
+      lines.forEach((l, n) => { try { index[JSON.parse(l).id] = n; } catch { /* 건너뜀 */ } });
+      let changed = 0;
+      byMonth[month].forEach((ev) => {
+        const line = JSON.stringify(ev);
+        if (index[ev.id] === undefined) { index[ev.id] = lines.length; lines.push(line); changed++; }
+        else if (lines[index[ev.id]] !== line) { lines[index[ev.id]] = line; changed++; }
+      });
+      if (!changed) { done = true; break; }
       try {
-        await writeGithubFile({ ...gh, path, content: body, message: `creator-guide 메일 연락 이력 ${fresh.length}건 (${month})`, sha: f ? f.sha : undefined });
-        added += fresh.length; done = true;
+        await writeGithubFile({ ...gh, path, content: lines.join('\n') + '\n', message: `creator-guide 메일 연락 이력 ${changed}건 (${month})`, sha: f ? f.sha : undefined });
+        added += changed; done = true;
       } catch (err) {
         if (!/\((409|422)\)/.test(String(err && err.message))) throw err;   // 충돌이 아니면 그대로 실패
       }
@@ -400,6 +406,22 @@ export default async function handler(req, res) {
       return;
     }
 
+    // 눌러서 보기: 메일 한 통의 본문을 그 자리에서 메일함에서 읽어 보여준다. 어디에도 저장하지 않는다.
+    if (action === 'mail-body') {
+      const mail = await import('../lib/mail.js');
+      const cfg = mail.configFromEnv();
+      if (!cfg) { res.status(503).json({ ok: false, reason: 'mail-unconfigured' }); return; }
+      const b = req.body || {};
+      if (!b.folder || !Number.isInteger(Number(b.uid))) { res.status(400).json({ ok: false, reason: 'mail-ref' }); return; }
+      try {
+        res.status(200).json({ ok: true, ...(await mail.readMailBody(cfg, { folder: String(b.folder), uidv: String(b.uidv || ''), uid: Number(b.uid) })) });
+        return;
+      } catch (err) {
+        if (err && typeof err.reason === 'string' && err.reason.indexOf('mail-') === 0) { res.status(502).json({ ok: false, reason: err.reason }); return; }
+        throw err;
+      }
+    }
+
     // 폴더 확인 / 지금 가져오기. IMAP 라이브러리는 이 두 동작에서만 불러온다(다른 동작이 느려지지 않게).
     if (action === 'mail-folders' || action === 'mail-sync') {
       const mail = await import('../lib/mail.js');
@@ -410,18 +432,29 @@ export default async function handler(req, res) {
           res.status(200).json({ ok: true, ...(await mail.listFolders(cfg)) });
           return;
         }
-        // 기본은 지난번에 끝까지 가져온 시각 하루 전부터(없으면 30일 전). days를 주면 그만큼 거슬러 올라간다.
+        // 기본은 지난번에 끝까지 가져온 시각 하루 전부터. 처음이면 지난 400일(약 1년)을 가져온다.
+        // days를 주면 그만큼 거슬러 올라간다.
         const daysIn = Number(req.body && req.body.days);
         const backfill = Number.isFinite(daysIn) && daysIn >= 1;
         const sf = await readGithubFile({ ...gh, path: MAIL_SYNC_PATH });
         let last = null;
         if (sf) { try { last = JSON.parse(sf.content).at || null; } catch { /* 없는 것으로 */ } }
         const now = new Date();
-        const since = backfill ? new Date(now - Math.min(daysIn, 400) * 864e5)
-          : (last ? new Date(new Date(last) - 864e5) : new Date(now - 30 * 864e5));
+        let since = backfill ? new Date(now - Math.min(daysIn, 400) * 864e5)
+          : (last ? new Date(new Date(last) - 864e5) : new Date(now - 400 * 864e5));
+        // 기록 형식이 올라가기 전에 쌓은 이력(버전이 낮은 것)은 새 형식으로 한 번 다시 읽어 바꿔 쓴다.
+        // 사람이 따로 누르지 않아도 되게, 그 기록들이 있는 날짜까지 자동으로 거슬러 올라간다.
+        const recent = await readMailEvents(gh, recentMonths(MAIL_MONTHS));
+        const legacy = recent.filter((e) => (e.v || 1) < mail.MAIL_SCHEMA);
+        if (!backfill && legacy.length) {
+          const oldest = Math.min(...legacy.map((e) => new Date(e.ia || e.at).getTime()));
+          if (Number.isFinite(oldest)) since = new Date(Math.min(since.getTime(), oldest - 864e5));
+        }
         // 이미 본 메일(이력으로 쓴 것과 건너뛴 것 모두)의 열쇠 — 같은 메일을 다시 읽지 않으려고
-        const known = new Set((await readMailEvents(gh, monthsSince(since, now)))
-          .filter((e) => e.uid != null && e.folder).map((e) => mail.mailKey(e.folder, e.uidv || '', e.uid)));
+        const haveMonths = recentMonths(MAIL_MONTHS);
+        const extra = monthsSince(since, now).filter((m) => !haveMonths.includes(m));
+        const all = recent.concat(await readMailEvents(gh, extra));
+        const known = new Set(all.filter((e) => e.uid != null && e.folder && (e.v || 1) >= mail.MAIL_SCHEMA).map((e) => mail.mailKey(e.folder, e.uidv || '', e.uid)));
         const r = await mail.syncMail(cfg, { since, knownKeys: known, maxNew: MAIL_MAX_NEW });
         await appendMailEvents(gh, r.records);
         // 끝까지 가져왔을 때만 '지난번 시각'을 옮긴다. 거슬러 올라가는 실행은 옮기지 않는다(사이 구간을 건너뛰지 않으려고).
