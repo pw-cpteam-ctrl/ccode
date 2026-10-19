@@ -425,7 +425,7 @@ export default async function handler(req, res) {
         if (!r.more && !backfill) {
           await writeGithubFile({ ...gh, path: MAIL_SYNC_PATH, content: JSON.stringify({ at: now.toISOString() }) + '\n', message: 'creator-guide 메일 가져오기 시각', sha: sf ? sf.sha : undefined });
         }
-        res.status(200).json({ ok: true, added, scanned: r.scanned, more: r.more, folders: r.folders, missing: r.missing, available: r.available });
+        res.status(200).json({ ok: true, added, scanned: r.scanned, more: r.more, since: since.toISOString(), folders: r.folders, missing: r.missing, available: r.available });
         return;
       } catch (err) {
         if (err && typeof err.reason === 'string' && err.reason.indexOf('mail-') === 0) {

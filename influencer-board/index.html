@@ -1710,7 +1710,13 @@
         if (action === 'mail-folders') {
           mailSync.note = ((d.found || []).length ? '읽을 폴더: ' + d.found.map(function (f) { return f.path; }).join(', ') + '.' : '읽을 폴더를 찾지 못했습니다.') + missing;
         } else {
-          mailSync.note = d.added + '통을 새로 가져왔습니다.' + (d.more ? ' 아직 가져올 메일이 더 있습니다 — 한 번 더 눌러 주세요.' : '') + missing;
+          // 몇 통을 확인했는지와 어느 날짜부터 봤는지를 알려줘야 '0통'이 기간 때문인지 알 수 있다.
+          // 거슬러 올라가면 작년 날짜가 되므로 연도까지 적는다('9/14'만 적으면 지난달로 읽힌다).
+          var sinceTxt = d.since ? (function (x) { return x.getFullYear() + '.' + (x.getMonth() + 1) + '.' + x.getDate(); })(new Date(d.since)) + ' 이후 ' : '';
+          var fl = (d.folders || []).length ? ' (읽은 폴더: ' + d.folders.join(', ') + ')' : '';
+          mailSync.note = sinceTxt + '메일 ' + d.scanned + '통을 확인해 ' + d.added + '통을 새로 가져왔습니다' + fl + '.' +
+            (d.scanned === 0 && !(d.missing || []).length ? ' 이 기간에는 폴더에 메일이 없습니다 — [더 오래된 메일]을 눌러 보세요.' : '') +
+            (d.more ? ' 아직 가져올 메일이 더 있습니다 — 한 번 더 눌러 주세요.' : '') + missing;
           loadMailEvents(true);
         }
       } else {
@@ -1732,7 +1738,7 @@
         : '메일 접속 설정이 아직 없어 가져올 수 없습니다. 아래 ‘파일로 올리기’는 그대로 쓸 수 있습니다.') + '</p>' +
       '<div class="cd-act">' +
       '<button class="mini is-main" id="ms-sync"' + dis + '>지금 가져오기</button>' +
-      '<button class="mini" id="ms-old"' + dis + '>더 오래된 메일(180일)</button>' +
+      '<button class="mini" id="ms-old"' + dis + '>더 오래된 메일(400일)</button>' +
       '<button class="mini" id="ms-folders"' + dis + '>폴더 확인</button>' +
       '</div>' +
       (mailSync.note ? '<p class="ml-fresh" id="ms-note" style="margin-top:8px">' + esc(mailSync.note) + '</p>' : '') +
@@ -1970,7 +1976,7 @@
     if (tabsEl && tabOn) tabsEl.scrollLeft = tabOn.offsetLeft - (tabsEl.clientWidth - tabOn.offsetWidth) / 2;
     var msSync = document.getElementById('ms-sync'), msOld = document.getElementById('ms-old'), msFolders = document.getElementById('ms-folders');
     if (msSync) msSync.addEventListener('click', function () { mailSyncRun('mail-sync'); });
-    if (msOld) msOld.addEventListener('click', function () { mailSyncRun('mail-sync', 180); });
+    if (msOld) msOld.addEventListener('click', function () { mailSyncRun('mail-sync', 400); });
     if (msFolders) msFolders.addEventListener('click', function () { mailSyncRun('mail-folders'); });
     var mlFile = document.getElementById('ml-file');
     if (mlFile) mlFile.addEventListener('change', function () {
