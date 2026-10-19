@@ -1,8 +1,9 @@
 {
   "ignoreCommand": "[ -z \"$VERCEL_GIT_PREVIOUS_SHA\" ] && exit 1; git cat-file -e \"$VERCEL_GIT_PREVIOUS_SHA\" 2>/dev/null || exit 1; git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD ./",
+  "_comment_deploy": "자동 배포를 꺼둠 (2026-10-19). 자주 고치지 않는 프로젝트라 배포 한도를 아끼려고 끈 것이다. 이미 올라가 있는 사이트와 API는 그대로 돌아간다 — 멈추는 건 '새 코드가 사이트에 반영되는 것'뿐이다. 반영이 필요하면 아래 main을 true로 바꿔 코드 수정과 같은 push에 함께 올릴 것(따로 올리면 배포가 2번 돈다).",
   "git": {
     "deploymentEnabled": {
-      "main": true,
+      "main": false,
       "**": false
     }
   }
