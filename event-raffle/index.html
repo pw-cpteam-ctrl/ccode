@@ -224,6 +224,8 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 /* 집계에서 "어느 칸을 볼지" 고르는 체크박스 — 제외(빨강)가 아니라 선택이라 단계 색을 쓴다 */
 .pick-label{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;cursor:pointer;user-select:none;}
 .pick-label input{margin:0;accent-color:var(--step,var(--brand));cursor:pointer;}
+/* 집계 안내는 "무엇이 잘못됐는지 + 올바른 예시" 두 줄로 나가서, 줄바꿈이 보여야 한다 */
+#tallyError{white-space:pre-line;line-height:1.7;}
 .pick-label .muted-s{color:var(--muted);font-size:12.5px;}
 .pick-label.is-empty{opacity:.45;cursor:default;}
 
@@ -1788,19 +1790,35 @@ function flattenForMatch(s) {
 function parseAliasGroups(text) {
   const groups = [];
   const bad = [];
-  for (const rawLine of String(text || '').split('\n')) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    const at = line.indexOf('=');
-    if (at < 0) { bad.push(line); continue; }
+  const lines = String(text || '').split('\n').map(l => l.trim()).filter(Boolean);
+
+  /* 이 칸에 "후보 명단 표"를 통째로 붙여넣는 실수가 잦다 — 바로 위에 복사 버튼이 있어서
+     그럴 만하다. 그때 "'=' 가 없는 줄이 있어요"라고만 하고 그 긴 표 한 줄을 그대로 뱉으면
+     뭘 잘못했는지 알 수가 없다. 표를 붙여넣은 것 같으면 그렇다고 말해준다. */
+  const 표같은줄 = lines.filter(l => l.startsWith('|') || l.includes('\t')).length;
+  if (표같은줄 >= Math.max(2, lines.length * 0.5)) {
+    return { groups: [], bad: [], 표붙여넣음: true };
+  }
+
+  for (const line of lines) {
+    // = 말고 : 로 적는 사람도 많아서 둘 다 받는다
+    const at = [line.indexOf('='), line.indexOf(':'), line.indexOf('：')]
+      .filter(i => i >= 0).sort((a, b) => a - b)[0];
+    if (at === undefined) { bad.push(line); continue; }
     const name = line.slice(0, at).trim();
-    const words = line.slice(at + 1).split(',').map(w => w.trim()).filter(Boolean);
+    const words = line.slice(at + 1).split(/[,、·]/).map(w => w.trim()).filter(Boolean);
     // 별칭을 안 적었으면 항목 이름 자체를 찾는 말로 쓴다
     const list = words.length ? words : [name];
     if (!name) { bad.push(line); continue; }
     groups.push({ name, flat: [...new Set(list.map(flattenForMatch))].filter(Boolean) });
   }
   return { groups, bad };
+}
+
+// 안내에 끼워 넣을 때 줄이 길면 잘라준다 (표 한 줄이 수백 글자인 경우가 있다)
+function 짧게(글, 길이 = 40) {
+  const s = String(글 || '').replace(/\s+/g, ' ').trim();
+  return s.length > 길이 ? s.slice(0, 길이) + '…' : s;
 }
 
 function runTally() {
@@ -1814,8 +1832,17 @@ function runTally() {
   const 볼칸들 = 집계대상칸들();
   if (!볼칸들.length) return show('먼저 1단계에서 "댓글 본문 컬럼"을 지정해주세요.');
 
-  const { groups, bad } = parseAliasGroups($('#tallyAliases').value);
-  if (bad.length) return show(`"=" 가 없는 줄이 있어요: ${bad.slice(0, 3).join(' / ')}`);
+  const { groups, bad, 표붙여넣음 } = parseAliasGroups($('#tallyAliases').value);
+  if (표붙여넣음) {
+    return show('표를 그대로 붙여넣으신 것 같아요. 이 칸에는 참가자 명단이 아니라 '
+      + '"무엇을 셀지"를 적어주세요 — 명단은 이미 1단계에 들어와 있어요.\n'
+      + '예)  카카시 = 카카시, 하타케, kakashi');
+  }
+  if (bad.length) {
+    return show(`"=" 로 좌우를 나눠 적어주세요. 이 줄이 그렇지 않아요 → ${
+      bad.slice(0, 2).map(l => `"${짧게(l)}"`).join(' / ')}\n`
+      + '예)  카카시 = 카카시, 하타케, kakashi   (왼쪽은 묶어서 부를 이름, 오른쪽은 그렇게 불리는 말들)');
+  }
   if (!groups.length) return show('세고 싶은 항목을 한 줄 이상 적어주세요. 예)  카카시 = 카카시, 하타케');
 
   /* 세는 방법 두 가지 —
