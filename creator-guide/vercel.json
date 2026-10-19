@@ -2,8 +2,9 @@
   "buildCommand": "node build-lock.js",
   "outputDirectory": "dist",
   "ignoreCommand": "[ -z \"$VERCEL_GIT_PREVIOUS_SHA\" ] && exit 1; git cat-file -e \"$VERCEL_GIT_PREVIOUS_SHA\" 2>/dev/null || exit 1; git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD ./",
-  "rewrites": [
-    { "source": "/reward-view-admin", "destination": "/reward-view-admin.html" }
+  "_comment_redirects": "관리자 화면이 influencer-board로 떠났다. 즐겨찾기를 해둔 사람이 깨지지 않도록 옛 주소를 새 주소로 넘긴다. permanent를 false로 둔 건, true(308)면 브라우저가 이 연결을 오래 캐시해서 주소가 또 바뀔 때 되돌리기 어렵기 때문이다.",
+  "redirects": [
+    { "source": "/reward-view-admin", "destination": "https://influencer-board-bice.vercel.app/", "permanent": false }
   ],
   "git": {
     "deploymentEnabled": {

@@ -53,7 +53,6 @@ const PUBLIC = [
   'styles.css', 'styles-brand2.css', 'chat.css',
   'gate.js',
   'robots.txt',
-  'reward-view-admin.html',
   'assets',
 ];
 

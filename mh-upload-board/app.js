@@ -16,7 +16,7 @@ const WEEK = ['일','월','화','수','목','금','토'];
 const TOOL_URL = {
   '마토메 메이커': '../megahouse-matome/index.html',
   '크리에이터 가이드': 'https://pw-creator-guide.vercel.app/',
-  '인플루언서 관리': 'https://pw-creator-guide.vercel.app/reward-view-admin',
+  '인플루언서 관리': 'https://influencer-board-bice.vercel.app/',
 };
 
 // 둘러보기용 예시 데이터 (실제 회차에는 들어가지 않음)
