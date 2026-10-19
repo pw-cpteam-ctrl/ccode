@@ -42,6 +42,14 @@
   `ADMIN_PASSWORD`, `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`, `GITHUB_LOG_BRANCH`
 - 페이지 문구는 존댓말.
 
+### ⚠️ 환경변수를 바꾼 뒤 반영하는 방법
+- **Vercel 대시보드의 Redeploy 버튼은 먹히지 않는다.** `vercel.json`의 `ignoreCommand`가 "이 폴더가
+  안 바뀌었으면 배포 취소"라서, 같은 커밋을 다시 배포하면 `Ignored Build Step … exit code 0`으로 취소된다.
+  환경변수는 배포를 만들 때 담기므로, 취소되면 값을 바꿔도 옛 값 그대로다.
+- 반영하려면 **이 폴더의 파일을 실제로 바꿔서 푸시**한다(문서 한 줄도 괜찮다). 가이드 프로젝트도 같다.
+- 확인은 화면보다 API 응답으로: 설정이 안 된 배포는 틀린 코드에 `503 unconfigured`, 값이 들어간
+  배포는 `401 code`로 답한다(GitHub 토큰이 틀린 건 로그인 후 `불러오지 못했습니다` + 로그의 `파일 조회 실패 (401)`).
+
 ### 사용자가 준비할 것 (내가 대신 못 하는 부분)
 1. Vercel에서 새 프로젝트 만들기(저장소 `ccode`, Root Directory `influencer-board`)
 2. 위 환경변수 5개를 Vercel 대시보드 → Settings → Environment Variables에 입력
