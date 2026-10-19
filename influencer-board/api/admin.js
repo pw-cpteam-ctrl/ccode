@@ -432,7 +432,7 @@ export default async function handler(req, res) {
           res.status(200).json({ ok: true, ...(await mail.listFolders(cfg)) });
           return;
         }
-        // 기본은 지난번에 끝까지 가져온 시각 하루 전부터. 처음이면 지난 400일(약 1년)을 가져온다.
+        // 기본은 지난번에 끝까지 가져온 시각 하루 전부터. 처음이면 지난 50일을 가져온다(끝난 협업까지 한꺼번에 끌어오지 않으려고).
         // days를 주면 그만큼 거슬러 올라간다.
         const daysIn = Number(req.body && req.body.days);
         const backfill = Number.isFinite(daysIn) && daysIn >= 1;
@@ -441,7 +441,7 @@ export default async function handler(req, res) {
         if (sf) { try { last = JSON.parse(sf.content).at || null; } catch { /* 없는 것으로 */ } }
         const now = new Date();
         let since = backfill ? new Date(now - Math.min(daysIn, 400) * 864e5)
-          : (last ? new Date(new Date(last) - 864e5) : new Date(now - 400 * 864e5));
+          : (last ? new Date(new Date(last) - 864e5) : new Date(now - 50 * 864e5));
         // 기록 형식이 올라가기 전에 쌓은 이력(버전이 낮은 것)은 새 형식으로 한 번 다시 읽어 바꿔 쓴다.
         // 사람이 따로 누르지 않아도 되게, 그 기록들이 있는 날짜까지 자동으로 거슬러 올라간다.
         const recent = await readMailEvents(gh, recentMonths(MAIL_MONTHS));

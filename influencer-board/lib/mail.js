@@ -26,7 +26,7 @@ const SOURCE_BYTES = 12000;     // 메일마다 앞쪽 이만큼만 가져온다
 const SUBJECT_MAX = 200;
 
 // 이력 기록 형식의 버전. 2부터는 표시 이름(dname)을 남긴다. 버전이 낮은 기록은 '아직 안 본 것'으로 쳐서 한 번 다시 읽고 바꿔 쓴다.
-export const MAIL_SCHEMA = 2;
+export const MAIL_SCHEMA = 3;   // 3: 받은 메일에 '답장 불필요로 보임(ack)' 표시 추가
 
 // 이름 끝에 붙은 호칭("모잉 담당자님" → "모잉")과 따옴표를 떼어 낸다. index.html의 cleanMailName과 같아야 한다.
 export function cleanName(n) {
@@ -110,6 +110,20 @@ export function eventId(messageId, folder, uid) {
   return crypto.createHash('sha1').update(String(messageId || folder + ':' + uid)).digest('hex').slice(0, 16);
 }
 
+// 받은 메일이 '확인·감사 인사뿐'이라 답장이 필요 없어 보이는지 규칙으로 판단한다(본문은 저장하지 않고 결과만 남긴다).
+// 짧고, 물음표·부탁·문의 표현이 없고, 첨부가 없고, 확인/감사/진행 의사 표현이 있을 때만 true.
+// 틀리면 '답장 불필요'로 잘못 분류돼 답장을 놓칠 수 있어, 조금이라도 애매하면 false(=답장 필요)로 둔다.
+const ACK_WORD = /감사|고맙|알겠|알겟|확인했|확인하였|확인 했|넵|넹|네[,.!~ ]|수락|동의|진행하겠|올리겠|업로드하겠|드리겠습니다|하겠습니다|예정입니다|좋습니다/;
+const ASK_WORD = /[?？]|부탁|문의|질문|여쭤|궁금|가능(할|한지|여부|하실)|알려|어떻게|어떨까|어떠|문제|오류|안\s?(되|돼)|언제|요청|변경|수정|취소|다시|도와|첨부|확인\s*(해|부탁|바)|검토|의견|조율|협의|논의/;
+export function ackOnly(text, attachCount = 0) {
+  if (attachCount > 0) return false;
+  const body = String(text || '').split('\n').map((l) => l.trim()).filter(Boolean)
+    .filter((l) => !/^안녕하세요[^\n]{0,40}$/.test(l)).join(' ');
+  const compact = body.replace(/\s+/g, '');
+  if (!compact || compact.length > 140) return false;
+  return ACK_WORD.test(body) && !ASK_WORD.test(body);
+}
+
 // parsed: mailparser의 결과. 우리가 보낸 'FW:' 메일은 전달한 것이라 이력에서 뺀다(null).
 export function eventFromParsed(parsed, { folder, uid, messageId, date }) {
   const at = parsed.date || date;
@@ -132,6 +146,7 @@ export function eventFromParsed(parsed, { folder, uid, messageId, date }) {
     dname: addr ? (mine ? (nameOfAddr(parsed.to, addr) || nameOfAddr(parsed.cc, addr)) : nameOfAddr(parsed.from, addr)) : null,
     subject: subject.slice(0, SUBJECT_MAX),
     folder,
+    ...(!mine && ackOnly(text, (parsed.attachments || []).length) ? { ack: 1 } : {}),
     v: MAIL_SCHEMA,
   };
 }
@@ -238,11 +253,16 @@ export async function readMailBody(cfg, { folder, uidv, uid }) {
   const { simpleParser } = await import('mailparser');
   const client = await connect(cfg);
   try {
-    const list = await client.list();
-    // 설정한 폴더만 열 수 있다(관리자 코드로도 다른 폴더를 읽지 않는다)
-    const ok = matchFolders(list, cfg.folders).found.find((f) => normName(f.path) === normName(folder));
-    if (!ok) throw new MailError('mail-folder');
-    const lock = await client.getMailboxLock(ok.path, { readOnly: true });
+    // 설정한 폴더만 열 수 있다(관리자 코드로도 다른 폴더를 읽지 않는다).
+    // 설정한 이름과 같은 폴더면 목록을 받아 오는 왕복을 건너뛰고 바로 연다(본문 보기가 느려서).
+    let path = cfg.folders.some((f) => normName(f) === normName(folder)) ? folder : null;
+    if (!path) {
+      const list = await client.list();
+      const ok = matchFolders(list, cfg.folders).found.find((f) => normName(f.path) === normName(folder));
+      if (!ok) throw new MailError('mail-folder');
+      path = ok.path;
+    }
+    const lock = await client.getMailboxLock(path, { readOnly: true });
     try {
       if (uidv && String(client.mailbox && client.mailbox.uidValidity || '') !== String(uidv)) throw new MailError('mail-stale');
       let msg = null;
