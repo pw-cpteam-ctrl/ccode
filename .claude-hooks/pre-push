@@ -13,6 +13,45 @@ while read -r local_ref local_sha remote_ref remote_sha; do
       echo "  git fetch origin main && git rebase origin/main 후 다시 시도하세요." >&2
       exit 1
     fi
+
+    # ── 자동 배포를 꺼둔 폴더를 건드렸을 때 알려주기 (막지 않음) ───────────
+    # 배포 한도를 아끼려고 일부 프로젝트는 vercel.json에서 자동 배포를 꺼둔다
+    # (git.deploymentEnabled.main = false). 꺼둔 사실을 잊고 그 폴더를 고쳐
+    # 올리면 "분명 올렸는데 사이트에 반영이 안 된다"가 되어, 멀쩡한 코드를
+    # 버그로 의심하며 시간을 버리게 된다. 그래서 올리는 변경에 그런 폴더가
+    # 섞여 있으면 여기서 짚어준다.
+    #
+    # 일부러 차단하지 않는다 — 꺼진 상태로 올리는 것 자체가 정상 동작이고,
+    # 막으면 오히려 방해가 된다. 또 막는 훅은 오탐이 났을 때 사람이 우회할
+    # 구실을 만들어, 위의 진짜 차단(강제 push 금지)까지 같이 무력해진다.
+    #
+    # 설정값은 작업 폴더가 아니라 **지금 올리는 커밋($local_sha)**에서 읽는다.
+    # 그래야 "꺼진 걸 켜면서 수정을 함께 올리는" 정상 상황에서 헛경고가 안 뜬다.
+    if command -v jq >/dev/null 2>&1; then
+      changed=$(git diff --name-only "$remote_sha" "$local_sha" 2>/dev/null)
+      off=""
+      for cfg in $(git ls-tree -r --name-only "$local_sha" 2>/dev/null \
+                   | grep -E '^[^/]+/vercel\.json$'); do
+        # jq의 `//`(기본값) 연산자는 쓰지 말 것 — false를 "값 없음"으로 보고 기본값으로
+        # 바꿔버려서, 정작 찾으려는 false가 전부 걸러진다(실제로 한 번 당했다).
+        state=$(git show "$local_sha:$cfg" 2>/dev/null \
+                | jq -r '.git.deploymentEnabled.main' 2>/dev/null)
+        [ "$state" = "false" ] || continue
+        dir=${cfg%/vercel.json}
+        printf '%s\n' "$changed" | grep -q "^${dir}/" && off="$off $dir"
+      done
+
+      if [ -n "$off" ]; then
+        echo "" >&2
+        echo "[pre-push] 알림: 자동 배포가 꺼진 프로젝트를 올리고 있습니다 —$off" >&2
+        echo "  이 폴더는 push해도 사이트에 반영되지 않습니다(배포 한도 절약으로 꺼둠)." >&2
+        echo "  이미 떠 있는 사이트와 API는 그대로 돌아갑니다. 멈추는 건 반영뿐입니다." >&2
+        echo "  반영이 필요하면 해당 폴더 vercel.json의 git.deploymentEnabled.main 을" >&2
+        echo "  true로 바꿔 이 수정과 같은 push에 함께 올리세요(따로 올리면 배포가 2번 돕니다)." >&2
+        echo "  push는 그대로 진행합니다." >&2
+        echo "" >&2
+      fi
+    fi
   fi
 done
 
