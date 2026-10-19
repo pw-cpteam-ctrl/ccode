@@ -1397,18 +1397,39 @@
   // 단계인지'가 보인다. 연락 이력(메일 추출 파일 반영)은 자리만 잡아 두었다.
   function candKey(name) { return String(name || '').toLowerCase().replace(/\s+/g, ''); }
 
-  // 노션 표를 복사해 붙여넣으면 한 줄이 한 사람이다. 칸은 탭으로 나뉘어 오고,
-  // 주소(http…)로 시작하는 칸은 링크로, 나머지 첫 칸은 활동명으로 읽는다.
+  // 노션 표를 복사해 붙여넣으면 한 줄이 한 사람이다. 탭으로 나뉘어 오거나(노션 복사),
+  // | 로 나뉘어 온다(마크다운 표). 칸 위치는 이렇게 찾는다.
+  //   · 머리글 줄에 '이름' 칸이 있으면 그 칸을 활동명으로 쓴다.
+  //   · 머리글이 없으면 :ins: 같은 아이콘 글자·주소·빈 칸을 건너뛴 첫 칸을 쓴다.
+  // 활동명은 "바보개구리 (kekero_kr)" 꼴이므로 괄호 앞까지만 취한다(괄호 안은 계정 아이디).
+  function cleanCandName(raw) {
+    return String(raw || '').replace(/\*\*|__/g, '').replace(/\s*[(（].*$/, '').replace(/^@/, '').trim();
+  }
   function parseCandidates(text) {
-    return String(text || '').split(/\r?\n/).map(function (line) {
-      var cells = line.split('\t').map(function (c) { return c.trim(); }).filter(Boolean);
-      var link = '', name = '';
-      cells.forEach(function (c) {
-        if (/^https?:\/\//i.test(c)) { if (!link) link = c; }
-        else if (!name) name = c;
-      });
-      return name ? { name: name, link: link } : null;
-    }).filter(Boolean);
+    var nameIdx = -1, out = [];
+    String(text || '').split(/\r?\n/).forEach(function (line) {
+      if (!line.trim()) return;
+      var cells;
+      if (line.indexOf('\t') >= 0) cells = line.split('\t');
+      else if (line.indexOf('|') >= 0) {
+        cells = line.split('|');
+        if (!cells[0].trim()) cells.shift();
+        if (cells.length && !cells[cells.length - 1].trim()) cells.pop();
+      } else cells = [line];
+      cells = cells.map(function (c) { return c.trim(); });
+      // 구분선(| --- | --- |)은 건너뛴다
+      if (cells.every(function (c) { return !c || /^:?-{2,}:?$/.test(c); })) return;
+      var h = cells.indexOf('이름');
+      if (h >= 0) { nameIdx = h; return; }   // 머리글 줄
+      var link = '';
+      cells.forEach(function (c) { if (!link && /^https?:\/\//i.test(c)) link = c; });
+      var raw = nameIdx >= 0 ? cells[nameIdx] : cells.filter(function (c) {
+        return c && !/^https?:\/\//i.test(c) && !/^:[^:\s]+:$/.test(c);
+      })[0];
+      var name = cleanCandName(raw);
+      if (name) out.push({ name: name, link: link });
+    });
+    return out;
   }
 
   function candStatus(name) {
