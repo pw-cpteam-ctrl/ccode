@@ -401,6 +401,8 @@
   .ml-turn.me { color: var(--red); font-weight: 800; }
   .ml-turn.them { color: #9a3412; }
   .ml-last { white-space: nowrap; color: var(--ink-500); }
+  .ml-fresh { margin: 0 0 10px; font-size: 12.5px; color: var(--ink-500); }
+  .ml-fresh.is-stale { color: #9a3412; font-weight: 700; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 7px 10px; }
   @media (min-width: 641px) {
     .mltable th:not(:nth-child(4)), .mltable td:not(:nth-child(4)) { width: 1px; white-space: nowrap; }
   }
@@ -1643,7 +1645,9 @@
     });
     // 내가 답할 차례를 먼저(오래된 순), 그다음 기다리는 중(오래된 순)
     list.sort(function (a, b) { return a.turn !== b.turn ? (a.turn === 'me' ? -1 : 1) : b.days - a.days; });
-    return { mails: chunks.length, fw: fw, msgs: msgs.length, unclassified: unclassified, list: list };
+    var latest = null;
+    msgs.forEach(function (x) { if (!latest || x.date > latest) latest = x.date; });
+    return { mails: chunks.length, fw: fw, msgs: msgs.length, unclassified: unclassified, list: list, latest: latest };
   }
 
   function mailTurnText(it) {
@@ -1656,6 +1660,18 @@
     var k = candKey(name), hit = null;
     mailInfo.list.forEach(function (it) { if (!hit && candKey(it.name) === k) hit = it; });
     return hit ? '<span class="ml-turn ' + hit.turn + '">' + esc(mailTurnText(hit)) + '</span>' : '메일에서 못 찾음';
+  }
+
+  // 오래된 파일을 올리면 '내가 답할 차례'가 이미 답한 건까지 포함해 틀린 정보가 된다.
+  // 파일 안의 가장 최근 메일 시각을 보여주고, 하루 넘게 지났으면 눈에 띄게 알린다.
+  function mailFreshHtml() {
+    var d = mailInfo && mailInfo.latest;
+    if (!d) return '';
+    var hh = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    var hours = Math.floor((Date.now() - d.getTime()) / 36e5);
+    var stale = hours >= 24;
+    return '<p class="ml-fresh' + (stale ? ' is-stale' : '') + '">이 파일에서 가장 최근 메일: ' + md(d) + ' ' + hh +
+      (stale ? ' — ' + Math.floor(hours / 24) + '일 전 파일입니다. 그 뒤에 답장한 건은 반영되지 않아, ‘답 대기’ 일수가 실제와 다를 수 있습니다.' : ' (' + (hours < 1 ? '방금' : hours + '시간 전') + ')') + '</p>';
   }
 
   function mailBox() {
@@ -1689,6 +1705,7 @@
     if (mailInfo.unclassified) notes.push('누구의 메일인지 정하지 못한 메시지가 ' + mailInfo.unclassified + '개 있습니다.');
     return up + '<section class="rbox">' +
       '<div class="cp-bar"><b>연락 이력</b><span class="cp-n">메일 ' + mailInfo.mails + '통 → 메시지 ' + mailInfo.msgs + '개 → ' + mailInfo.list.length + '명</span></div>' +
+      mailFreshHtml() +
       (mailInfo.list.length
         ? '<div class="scroll"><table class="mltable"><thead><tr><th>활동명</th><th>답 대기</th><th>마지막 연락</th><th>최근 메일 제목</th><th>연결</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>'
         : '<div class="empty">읽을 수 있는 메일을 찾지 못했습니다. 추출 파일 형식이 맞는지 확인해 주세요.</div>') +
