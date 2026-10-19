@@ -377,7 +377,7 @@
   /* ─── 확정 후보 ─── */
   .cd-paste { width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 13px; font-family: inherit; border: 1px solid var(--line); border-radius: 9px; background: #fafaf9; resize: vertical; outline: none; }
   .cd-paste:focus { border-color: var(--ink); background: #fff; }
-  .cd-act { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .cd-act { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-top: 8px; }
   .cd-msg { font-size: 12.5px; color: var(--ink-500); }
   .mini.is-main { background: var(--ink); color: #fff; border-color: var(--ink); }
   .mini.is-main:hover { background: #292524; }
@@ -450,6 +450,10 @@
   var candMsg = '';   // 가져온 직후 한 번 보여줄 안내 (화면에서만 쓰는 값)
   var mailInfo = null;// 올린 메일 파일을 읽은 결과 (화면에서만 쓰는 값 — 서버로 보내지도 저장하지도 않는다)
   var mailMsg = '';   // 읽은 직후 한 번 보여줄 안내
+  var mailEvents = [];  // 메일함에서 가져와 비공개 저장소에 쌓인 연락 이력 (본문 없음)
+  var mailFileMsgs = [];// 올린 파일에서 읽은 메시지 (화면에서만 씀)
+  var mailFileMeta = { mails: 0, fw: 0 };
+  var mailSync = { loaded: false, syncedAt: null, configured: false, busy: false, note: '' };
   // 정렬 기준. 'pay'는 다음 지급일 순(기본), 'draft'는 초안 공유 예정일 순.
   // 열 제목을 눌러 바꾸고, 고른 기준은 이 기기에 남는다.
   var SORT_KEY = 'cg-admin-sort';
@@ -1512,7 +1516,7 @@
       '</section>' +
       '<p class="foot">후보 탐색과 팀 의견, 탈락 기록은 노션에서 합니다. 이 화면에는 최종 확정된 분만 가져옵니다.<br />' +
       '‘접수 현황’은 크리에이터가 접수 폼을 제출하면 활동명이 같은 건과 자동으로 이어집니다.<br />' +
-      '‘연락 이력’ 탭에서 메일 파일을 올리면 이 칸이 채워집니다.</p>';
+      '‘연락 이력’ 탭에서 메일을 가져오면 이 칸이 채워집니다.</p>';
   }
 
   // ─── 연락 이력 (메일 추출 파일 읽기) ───────────────────────────
@@ -1596,15 +1600,24 @@
       all = all.concat(local);
     });
 
-    // 같은 메시지가 여러 메일에 인용돼 반복되므로 (분 단위 시각 + 방향 + 상대)로 하나만 남긴다.
+    return { mails: chunks.length, fw: fw, msgs: mailDedupe(all) };
+  }
+
+  // 같은 메시지가 여러 메일에 인용돼 반복되고, 파일과 메일함에서 가져온 것이 겹치기도 하므로
+  // (분 단위 시각 + 방향 + 상대)로 하나만 남긴다.
+  function mailDedupe(all) {
     var seen = {}, msgs = [];
     all.forEach(function (x) {
-      if (!x.date) return;
+      if (!x.date || isNaN(x.date)) return;
       var k = Math.floor(x.date.getTime() / 60000) + '|' + x.dir + '|' + (x.addr || x.name || '');
       if (seen[k]) return;
       seen[k] = 1; msgs.push(x);
     });
+    return msgs;
+  }
 
+  // 메시지들을 크리에이터별로 묶어 '답 대기' 상태와 최근 제목을 만든다.
+  function buildMailInfo(msgs, mails, fw) {
     // 주소 ↔ 활동명 짝짓기: 주소와 활동명을 둘 다 가진 메시지에 표를 던져 가장 많은 것을 고른다.
     var votes = {};
     msgs.forEach(function (x) {
@@ -1647,7 +1660,83 @@
     list.sort(function (a, b) { return a.turn !== b.turn ? (a.turn === 'me' ? -1 : 1) : b.days - a.days; });
     var latest = null;
     msgs.forEach(function (x) { if (!latest || x.date > latest) latest = x.date; });
-    return { mails: chunks.length, fw: fw, msgs: msgs.length, unclassified: unclassified, list: list, latest: latest };
+    return { mails: mails, fw: fw, msgs: msgs.length, unclassified: unclassified, list: list, latest: latest };
+  }
+
+  // 메일함에서 가져온 이력 + 올린 파일을 합쳐 화면용 결과를 다시 만든다.
+  function rebuildMailInfo() {
+    var fromEvents = mailEvents.map(function (e) {
+      return { date: new Date(e.at), dir: e.dir, addr: e.addr || null, name: e.name || null, subject: e.subject || '' };
+    });
+    var msgs = mailDedupe(fromEvents.concat(mailFileMsgs));
+    mailInfo = msgs.length ? buildMailInfo(msgs, mailFileMeta.mails + mailEvents.length, mailFileMeta.fw) : null;
+  }
+
+  // 저장된 이력을 서버에서 한 번 불러온다(연락 이력·확정 후보 탭을 열 때).
+  function loadMailEvents(force) {
+    if (!code || (mailSync.loaded && !force)) return;
+    mailSync.loaded = true;
+    api({ code: code, action: 'mail-events' }).then(function (r) {
+      if (r.status === 200 && r.data.ok) {
+        mailEvents = r.data.events || [];
+        mailSync.syncedAt = r.data.syncedAt || null;
+        mailSync.configured = !!r.data.configured;
+        rebuildMailInfo();
+        renderList();
+      }
+    }).catch(function () { /* 못 불러와도 파일 올리기는 쓸 수 있다 */ });
+  }
+
+  var MAIL_ERR = {
+    'mail-unconfigured': '메일 접속 설정이 아직 없습니다. 개발 담당자에게 MAIL_USER·MAIL_APP_PASSWORD·MAIL_FOLDERS 설정을 요청해 주세요.',
+    'mail-auth': '메일함에 로그인하지 못했습니다. 웍스 ‘외부 앱 비밀번호’가 맞는지, 만료·삭제되지 않았는지 확인해 주세요.',
+    'mail-connect': '메일 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요. 계속되면 관리자가 외부 메일 연결(IMAP)을 막았는지 확인해야 합니다.',
+    'mail-imap': '메일함을 읽는 중 오류가 났습니다. 잠시 후 다시 시도해 주세요.'
+  };
+
+  // action: 'mail-sync'(가져오기) / 'mail-folders'(폴더 확인). days를 주면 그만큼 거슬러 올라간다.
+  function mailSyncRun(action, days) {
+    if (mailSync.busy) return;
+    mailSync.busy = true;
+    mailSync.note = action === 'mail-folders' ? '폴더를 확인하는 중…' : '메일함에서 가져오는 중… (잠시 걸릴 수 있습니다)';
+    renderList();
+    var body = { code: code, action: action };
+    if (days) body.days = days;
+    api(body).then(function (r) {
+      mailSync.busy = false;
+      var d = r.data || {};
+      if (r.status === 200 && d.ok) {
+        var missing = (d.missing || []).length ? ' 설정한 폴더 중 못 찾은 것: ' + d.missing.join(', ') + ' → 실제 폴더: ' + (d.available || []).join(', ') + '.' : '';
+        if (action === 'mail-folders') {
+          mailSync.note = ((d.found || []).length ? '읽을 폴더: ' + d.found.map(function (f) { return f.path; }).join(', ') + '.' : '읽을 폴더를 찾지 못했습니다.') + missing;
+        } else {
+          mailSync.note = d.added + '통을 새로 가져왔습니다.' + (d.more ? ' 아직 가져올 메일이 더 있습니다 — 한 번 더 눌러 주세요.' : '') + missing;
+          loadMailEvents(true);
+        }
+      } else {
+        mailSync.note = MAIL_ERR[d.reason] || '가져오지 못했습니다. 잠시 후 다시 시도해 주세요.';
+      }
+      renderList();
+    }).catch(function () { mailSync.busy = false; mailSync.note = '가져오지 못했습니다. 잠시 후 다시 시도해 주세요.'; renderList(); });
+  }
+
+  function mailSyncPanel() {
+    var when = mailSync.syncedAt ? (function (d) {
+      return md(d) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    })(new Date(mailSync.syncedAt)) : null;
+    var dis = (mailSync.busy || !mailSync.configured) ? ' disabled' : '';
+    return '<section class="rbox"><h2 class="rbox-h">메일함에서 가져오기</h2>' +
+      '<p class="rbox-desc">웍스 메일에서 정해 둔 폴더만 읽기 전용으로 읽습니다(읽음 표시·이동·삭제 없음). 본문은 저장하지 않고 날짜·보낸이·활동명·제목만 비공개 저장소에 남깁니다.</p>' +
+      '<p class="ml-fresh">' + (mailSync.configured
+        ? (when ? '마지막으로 끝까지 가져온 시각: ' + esc(when) : '아직 가져온 적이 없습니다. 처음에는 최근 30일을 가져옵니다.')
+        : '메일 접속 설정이 아직 없어 가져올 수 없습니다. 아래 ‘파일로 올리기’는 그대로 쓸 수 있습니다.') + '</p>' +
+      '<div class="cd-act">' +
+      '<button class="mini is-main" id="ms-sync"' + dis + '>지금 가져오기</button>' +
+      '<button class="mini" id="ms-old"' + dis + '>더 오래된 메일(180일)</button>' +
+      '<button class="mini" id="ms-folders"' + dis + '>폴더 확인</button>' +
+      '</div>' +
+      (mailSync.note ? '<p class="ml-fresh" id="ms-note" style="margin-top:8px">' + esc(mailSync.note) + '</p>' : '') +
+      '</section>';
   }
 
   function mailTurnText(it) {
@@ -1656,18 +1745,21 @@
   }
   // 확정 후보 표의 '연락 이력' 칸
   function mailStatusFor(name) {
-    if (!mailInfo) return '‘연락 이력’ 탭에서 파일을 올리면 표시';
+    if (!mailInfo) return '‘연락 이력’ 탭에서 메일을 가져오면 표시';
     var k = candKey(name), hit = null;
     mailInfo.list.forEach(function (it) { if (!hit && candKey(it.name) === k) hit = it; });
     return hit ? '<span class="ml-turn ' + hit.turn + '">' + esc(mailTurnText(hit)) + '</span>' : '메일에서 못 찾음';
   }
 
   // 오래된 파일을 올리면 '내가 답할 차례'가 이미 답한 건까지 포함해 틀린 정보가 된다.
-  // 파일 안의 가장 최근 메일 시각을 보여주고, 하루 넘게 지났으면 눈에 띄게 알린다.
+  // 파일만 올렸을 때는 그 안의 가장 최근 메일 시각을 보여주고, 하루 넘게 지났으면 눈에 띄게 알린다.
+  // 메일함에서 가져온 경우에는 경고하지 않는다 — 새 메일이 없어서 오래돼 보일 수 있고, 얼마나 최신인지는
+  // 위쪽의 '마지막으로 끝까지 가져온 시각'이 알려준다.
   function mailFreshHtml() {
     var d = mailInfo && mailInfo.latest;
     if (!d) return '';
     var hh = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    if (mailEvents.length) return '<p class="ml-fresh">가져온 메일 중 가장 최근: ' + md(d) + ' ' + hh + '</p>';
     var hours = Math.floor((Date.now() - d.getTime()) / 36e5);
     var stale = hours >= 24;
     return '<p class="ml-fresh' + (stale ? ' is-stale' : '') + '">이 파일에서 가장 최근 메일: ' + md(d) + ' ' + hh +
@@ -1678,8 +1770,8 @@
     var known = {};
     Object.keys(candidates).forEach(function (n) { known[candKey(n)] = '확정 후보'; });
     withLatestFlag(rows).forEach(function (r) { if (r.latest && !known[candKey(r.nick)]) known[candKey(r.nick)] = '접수됨'; });
-    var up = '<section class="rbox"><h2 class="rbox-h">메일 파일 읽기</h2>' +
-      '<p class="rbox-desc">일간 메일 추출 파일(.md)을 올리거나 붙여넣어 주세요. 이 브라우저에서만 읽고, 서버로 보내거나 저장하지 않습니다. 새로고침하면 사라집니다.</p>' +
+    var up = mailSyncPanel() + '<section class="rbox"><h2 class="rbox-h">파일로 올리기 (예비)</h2>' +
+      '<p class="rbox-desc">메일함 가져오기가 어렵거나 더 오래된 메일이 필요할 때, 메일 추출 파일(.md)을 올리거나 붙여넣어 주세요. 이 브라우저에서만 읽고, 서버로 보내거나 저장하지 않습니다. 새로고침하면 사라집니다.</p>' +
       '<div class="cd-act"><label class="mini is-main" for="ml-file">파일 고르기</label>' +
       '<input type="file" id="ml-file" accept=".md,.txt,text/markdown,text/plain" multiple hidden />' +
       '<span class="cd-msg" id="ml-msg"></span></div>' +
@@ -1693,7 +1785,7 @@
         return '<span class="ml-sub" title="' + esc(s.title) + '">' + esc(s.title) + ' <i>' + md(s.date) + ' ' + s.dir + '</i></span>';
       }).join('');
       return '<tr>' +
-        '<td class="cd-name"><b>' + esc(it.name) + '</b>' + (it.addr ? '<span class="ml-addr">' + esc(it.addr) + '</span>' : '') + '</td>' +
+        '<td class="cd-name"><b>' + esc(it.name) + '</b>' + (it.addr && it.addr !== it.name ? '<span class="ml-addr">' + esc(it.addr) + '</span>' : '') + '</td>' +
         '<td><span class="ml-turn ' + it.turn + '">' + esc(mailTurnText(it)) + '</span></td>' +
         '<td class="ml-last">' + md(it.last.date) + ' ' + it.last.dir + '</td>' +
         '<td>' + subs + '</td>' +
@@ -1722,6 +1814,7 @@
   }
 
   function renderList() {
+    if ((view === 'mail' || view === 'cand') && !mailSync.loaded) loadMailEvents();
     var list = visibleRows();
     var liveRows = list.filter(function (r) { return r.latest && !isSettled(r); });
     var partCount = list.filter(function (r) { return r.latest && isPartPaid(r); }).length;
@@ -1875,6 +1968,10 @@
     if (cpCsv) cpCsv.addEventListener('click', couponCsv);
     var tabsEl = root.querySelector('.tabs'), tabOn = root.querySelector('.tab.is-on');
     if (tabsEl && tabOn) tabsEl.scrollLeft = tabOn.offsetLeft - (tabsEl.clientWidth - tabOn.offsetWidth) / 2;
+    var msSync = document.getElementById('ms-sync'), msOld = document.getElementById('ms-old'), msFolders = document.getElementById('ms-folders');
+    if (msSync) msSync.addEventListener('click', function () { mailSyncRun('mail-sync'); });
+    if (msOld) msOld.addEventListener('click', function () { mailSyncRun('mail-sync', 180); });
+    if (msFolders) msFolders.addEventListener('click', function () { mailSyncRun('mail-folders'); });
     var mlFile = document.getElementById('ml-file');
     if (mlFile) mlFile.addEventListener('change', function () {
       var files = Array.prototype.slice.call(mlFile.files || []);
@@ -1882,8 +1979,10 @@
       Promise.all(files.map(function (f) {
         return f.text ? f.text() : new Promise(function (ok, no) { var r = new FileReader(); r.onload = function () { ok(String(r.result)); }; r.onerror = no; r.readAsText(f); });
       })).then(function (texts) {
-        mailInfo = parseMailExport(texts.join('\n'));
-        mailMsg = files.length + '개 파일을 읽었습니다.';
+        var pr = parseMailExport(texts.join('\n'));
+        mailFileMsgs = pr.msgs; mailFileMeta = { mails: pr.mails, fw: pr.fw };
+        rebuildMailInfo();
+        mailMsg = pr.mails ? files.length + '개 파일을 읽었습니다.' : '읽을 수 있는 메일을 찾지 못했습니다. 추출 파일 형식이 맞는지 확인해 주세요.';
         renderList();
       }).catch(function () { document.getElementById('ml-msg').textContent = '파일을 읽지 못했습니다.'; });
     });
@@ -1891,8 +1990,10 @@
     if (mlRead) mlRead.addEventListener('click', function () {
       var t = document.getElementById('ml-paste').value;
       if (!t.trim()) { document.getElementById('ml-msg').textContent = '붙여넣은 내용이 없습니다.'; return; }
-      mailInfo = parseMailExport(t);
-      mailMsg = '붙여넣은 내용을 읽었습니다.';
+      var pr = parseMailExport(t);
+      mailFileMsgs = pr.msgs; mailFileMeta = { mails: pr.mails, fw: pr.fw };
+      rebuildMailInfo();
+      mailMsg = pr.mails ? '붙여넣은 내용을 읽었습니다.' : '읽을 수 있는 메일을 찾지 못했습니다. 추출 파일 형식이 맞는지 확인해 주세요.';
       renderList();
     });
     if (mailMsg) { var mm = document.getElementById('ml-msg'); if (mm) mm.textContent = mailMsg; mailMsg = ''; }
@@ -2018,6 +2119,7 @@
     });
     document.getElementById('lock').addEventListener('click', function () {
       forgetCode(); code = ''; rows = []; confirmed = {}; blocked = {}; keyword = '';
+      mailEvents = []; mailFileMsgs = []; mailInfo = null; mailSync = { loaded: false, syncedAt: null, configured: false, busy: false, note: '' };
       renderGate('');
     });
     document.getElementById('reload').addEventListener('click', function () {
