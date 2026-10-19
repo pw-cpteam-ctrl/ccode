@@ -1710,13 +1710,17 @@
         if (action === 'mail-folders') {
           mailSync.note = ((d.found || []).length ? '읽을 폴더: ' + d.found.map(function (f) { return f.path; }).join(', ') + '.' : '읽을 폴더를 찾지 못했습니다.') + missing;
         } else {
-          // 몇 통을 확인했는지와 어느 날짜부터 봤는지를 알려줘야 '0통'이 기간 때문인지 알 수 있다.
-          // 거슬러 올라가면 작년 날짜가 되므로 연도까지 적는다('9/14'만 적으면 지난달로 읽힌다).
+          // 몇 통을 보고, 그중 새 메일이 몇 통이고, 이번에 몇 통을 처리했는지를 알려줘야 '0통'과 '남음'을 믿을 수 있다.
+          var st = d.stats || {};
           var sinceTxt = d.since ? (function (x) { return x.getFullYear() + '.' + (x.getMonth() + 1) + '.' + x.getDate(); })(new Date(d.since)) + ' 이후 ' : '';
           var fl = (d.folders || []).length ? ' (읽은 폴더: ' + d.folders.join(', ') + ')' : '';
-          mailSync.note = sinceTxt + '메일 ' + d.scanned + '통을 확인해 ' + d.added + '통을 새로 가져왔습니다' + fl + '.' +
-            (d.scanned === 0 && !(d.missing || []).length ? ' 이 기간에는 폴더에 메일이 없습니다 — [더 오래된 메일]을 눌러 보세요.' : '') +
-            (d.more ? ' 아직 가져올 메일이 더 있습니다 — 한 번 더 눌러 주세요.' : '') + missing;
+          var left = (st.fresh || 0) - (st.processed || 0);
+          mailSync.note = sinceTxt + '메일 ' + (st.found || 0) + '통 중 새 메일 ' + (st.fresh || 0) + '통을 찾아 이번에 ' + (st.processed || 0) + '통을 처리했습니다' + fl + '. ' +
+            '이력에 ' + (st.kept || 0) + '통 추가' + ((st.skipped || 0) + (st.failed || 0) ? ', ' + ((st.skipped || 0) + (st.failed || 0)) + '통은 전달 메일이거나 읽지 못해 제외' : '') + '. ' +
+            (d.ms ? '(' + (d.ms / 1000).toFixed(1) + '초) ' : '') +
+            ((st.found || 0) === 0 && !(d.missing || []).length ? '이 기간에는 폴더에 메일이 없습니다 — [더 오래된 메일]을 눌러 보세요.' : '') +
+            ((st.found || 0) > 0 && (st.fresh || 0) === 0 ? '이 기간의 메일은 이미 모두 가져왔습니다.' : '') +
+            (d.more ? ' 남은 메일이 ' + left + '통 있습니다 — 한 번 더 눌러 주세요.' : '') + missing;
           loadMailEvents(true);
         }
       } else {

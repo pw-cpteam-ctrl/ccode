@@ -47,7 +47,7 @@ const CAND_BATCH_MAX = 200;
 const MAIL_EVENTS_PREFIX = 'creator-logs/mail-events-';
 const MAIL_SYNC_PATH = 'creator-logs/mail-sync.json';   // 마지막으로 끝까지 가져온 시각
 const MAIL_MONTHS = 7;       // 화면에 보여줄 최근 몇 달치
-const MAIL_MAX_NEW = 120;    // 한 번에 새로 읽을 최대 메일 수 (서버 함수 시간 제한 때문)
+const MAIL_MAX_NEW = 150;    // 한 번에 새로 읽을 최대 메일 수 (서버 함수 시간 제한 때문)
 const MAX_MONTHS = 6;   // 최근 몇 달치까지 훑을지
 // 확정 표시의 열쇠 길이 상한. 활동명(최대 20자)만 담던 자리였는데, 같은 분이
 // 달마다 다시 협업하는 경우가 있어 "활동명 | 차수 시작일" 형태로 바뀌었다.
@@ -144,7 +144,8 @@ async function readMailEvents(gh, months) {
 // 달 파일에 새 이벤트만 덧붙인다. 같은 id가 이미 있으면 건너뛰고, 동시에 써서 충돌하면 다시 읽어 재시도한다.
 async function appendMailEvents(gh, events) {
   const byMonth = {};
-  events.forEach((ev) => { (byMonth[ev.at.slice(0, 7)] = byMonth[ev.at.slice(0, 7)] || []).push(ev); });
+  // 달 파일은 '도착 시각(ia)' 기준이다. 이미 봤는지 찾을 때도 같은 기준(since)으로 달을 고르므로, 기록과 찾기가 어긋나지 않는다.
+  events.forEach((ev) => { const m = (ev.ia || ev.at).slice(0, 7); (byMonth[m] = byMonth[m] || []).push(ev); });
   let added = 0;
   for (const month of Object.keys(byMonth)) {
     const path = `${MAIL_EVENTS_PREFIX}${month}.jsonl`;
@@ -395,7 +396,7 @@ export default async function handler(req, res) {
       const sf = await readGithubFile({ ...gh, path: MAIL_SYNC_PATH });
       let syncedAt = null;
       if (sf) { try { syncedAt = JSON.parse(sf.content).at || null; } catch { /* 없는 것으로 */ } }
-      res.status(200).json({ ok: true, events, syncedAt, configured: !!process.env.MAIL_USER && !!process.env.MAIL_APP_PASSWORD && !!process.env.MAIL_FOLDERS });
+      res.status(200).json({ ok: true, events: events.filter((e) => !e.skip), syncedAt, configured: !!process.env.MAIL_USER && !!process.env.MAIL_APP_PASSWORD && !!process.env.MAIL_FOLDERS });
       return;
     }
 
@@ -418,14 +419,16 @@ export default async function handler(req, res) {
         const now = new Date();
         const since = backfill ? new Date(now - Math.min(daysIn, 400) * 864e5)
           : (last ? new Date(new Date(last) - 864e5) : new Date(now - 30 * 864e5));
-        const known = new Set((await readMailEvents(gh, monthsSince(since, now))).map((e) => e.id));
-        const r = await mail.syncMail(cfg, { since, knownIds: known, maxNew: MAIL_MAX_NEW });
-        const added = await appendMailEvents(gh, r.events);
+        // 이미 본 메일(이력으로 쓴 것과 건너뛴 것 모두)의 열쇠 — 같은 메일을 다시 읽지 않으려고
+        const known = new Set((await readMailEvents(gh, monthsSince(since, now)))
+          .filter((e) => e.uid != null && e.folder).map((e) => mail.mailKey(e.folder, e.uidv || '', e.uid)));
+        const r = await mail.syncMail(cfg, { since, knownKeys: known, maxNew: MAIL_MAX_NEW });
+        await appendMailEvents(gh, r.records);
         // 끝까지 가져왔을 때만 '지난번 시각'을 옮긴다. 거슬러 올라가는 실행은 옮기지 않는다(사이 구간을 건너뛰지 않으려고).
         if (!r.more && !backfill) {
           await writeGithubFile({ ...gh, path: MAIL_SYNC_PATH, content: JSON.stringify({ at: now.toISOString() }) + '\n', message: 'creator-guide 메일 가져오기 시각', sha: sf ? sf.sha : undefined });
         }
-        res.status(200).json({ ok: true, added, scanned: r.scanned, more: r.more, since: since.toISOString(), folders: r.folders, missing: r.missing, available: r.available });
+        res.status(200).json({ ok: true, added: r.stats.kept, stats: r.stats, ms: r.ms, more: r.more, since: since.toISOString(), folders: r.folders, missing: r.missing, available: r.available });
         return;
       } catch (err) {
         if (err && typeof err.reason === 'string' && err.reason.indexOf('mail-') === 0) {

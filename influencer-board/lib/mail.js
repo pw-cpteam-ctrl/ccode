@@ -22,7 +22,7 @@ import crypto from 'node:crypto';
 export const MY_MAIL_RE = /@presenceworld\.co\.kr$/i;
 const GREET_RE = /안녕하세요[,.!]?\s*([^\s,!.]{1,12}(?: [^\s,!.]{1,12})?)\s*님/;
 const INTRO_STOP = { '것': 1, '저': 1, '제': 1, '점': 1, '때': 1, '이': 1 };
-const SOURCE_BYTES = 24000;     // 메일마다 앞쪽 이만큼만 가져온다 (첨부가 큰 메일을 통째로 받지 않으려고)
+const SOURCE_BYTES = 12000;     // 메일마다 앞쪽 이만큼만 가져온다 (첨부가 큰 메일을 통째로 받지 않으려고). 인사말은 맨 위에 있다
 const SUBJECT_MAX = 200;
 
 export class MailError extends Error {
@@ -90,7 +90,8 @@ export function eventFromParsed(parsed, { folder, uid, messageId, date }) {
   const at = parsed.date || date;
   if (!at || isNaN(at)) return null;
   const sender = addrList(parsed.from)[0] || null;
-  const mine = !!sender && MY_MAIL_RE.test(sender);
+  if (!sender) return null;   // 보낸 사람이 없으면 누구와의 연락인지 알 수 없다 — 빈 이력을 만들지 않는다
+  const mine = MY_MAIL_RE.test(sender);
   const subject = String(parsed.subject || '').trim();
   if (mine && /^\s*(fw|fwd)\s*:/i.test(subject)) return null;
   const tos = [...addrList(parsed.to), ...addrList(parsed.cc)];
@@ -135,14 +136,26 @@ export async function listFolders(cfg) {
   finally { try { await client.logout(); } catch { /* 이미 끊김 */ } }
 }
 
-// since 이후 메일 중 knownIds에 없는 것만 최신순으로 maxNew통까지 읽는다.
-// 시간 제한이 있는 서버 함수라 deadlineMs를 넘기면 멈추고 more=true로 알린다(한 번 더 누르면 이어서).
-export async function syncMail(cfg, { since, knownIds, maxNew = 120, deadlineMs = 7500 }) {
+// 메일 한 통을 '봤다'는 표시의 열쇠. 폴더 + UIDVALIDITY(폴더가 다시 만들어지면 바뀜) + UID.
+export const mailKey = (folder, uidv, uid) => `${folder}\u0000${uidv}\u0000${uid}`;
+
+const CHUNK = 15;   // 한 번에 가져오는 묶음. 시간 확인은 묶음 사이에서만 한다 — 첫 묶음은 항상 끝낸다.
+
+// since 이후 메일 중 knownKeys에 없는 것만 최신순으로 읽는다.
+//
+// 진전이 없을 수 없게 만든 구조다(예전에는 247통을 한꺼번에 받다가 시간이 다 돼 한 통도 못 쓰고 끝나,
+// 누를 때마다 같은 자리에서 다시 시작했다):
+//   · 1단계는 UID 목록만 받는다(검색 한 번). 헤더를 전부 받지 않는다.
+//   · 새 메일을 CHUNK통씩 끊어 처리하고, 한 묶음이 끝날 때마다 시간을 본다. 첫 묶음은 시간과 상관없이 끝낸다.
+//   · 전달(FW) 메일·읽지 못한 메일도 '봤음' 기록(skip)으로 남겨 다음에 또 읽지 않게 한다.
+// 시간이 모자라면 more=true — 한 번 더 누르면 이어서 한다.
+export async function syncMail(cfg, { since, knownKeys, maxNew = 150, deadlineMs = 6000 }) {
   const { simpleParser } = await import('mailparser');
   const started = Date.now();
   const client = await connect(cfg);
-  const events = [];
-  let more = false, scanned = 0;
+  const records = [];            // 이력(또는 skip 기록)
+  const stats = { found: 0, fresh: 0, processed: 0, kept: 0, skipped: 0, failed: 0 };
+  let more = false;
   try {
     const list = await client.list();
     const { found, missing } = matchFolders(list, cfg.folders);
@@ -151,32 +164,40 @@ export async function syncMail(cfg, { since, knownIds, maxNew = 120, deadlineMs 
     for (const f of found) {
       const lock = await client.getMailboxLock(f.path, { readOnly: true });   // EXAMINE: 아무것도 바꾸지 않는다
       try {
+        const uidv = String(client.mailbox && client.mailbox.uidValidity || '');
         const uids = (await client.search({ since }, { uid: true })) || [];
-        if (!uids.length) continue;
-        scanned += uids.length;
-        // 1단계: 헤더만 가볍게 — 이미 저장한 메일은 건너뛰기 위해
-        const fresh = [];
-        for await (const m of client.fetch(uids.join(','), { uid: true, envelope: true, internalDate: true }, { uid: true })) {
-          const id = eventId(m.envelope && m.envelope.messageId, f.path, m.uid);
-          if (!knownIds.has(id)) fresh.push({ uid: m.uid, date: m.internalDate });
-        }
-        fresh.sort((a, b) => b.date - a.date);
-        // 2단계: 새 메일만 앞부분을 받아 읽는다 (최신순)
-        const todo = fresh.slice(0, Math.max(0, maxNew - events.length));
+        stats.found += uids.length;
+        const fresh = uids.filter((u) => !knownKeys.has(mailKey(f.path, uidv, u))).sort((a, b) => b - a);   // 최신(큰 UID)부터
+        stats.fresh += fresh.length;
+        const todo = fresh.slice(0, Math.max(0, maxNew - stats.processed));
         if (fresh.length > todo.length) more = true;
-        if (!todo.length) continue;
-        for await (const m of client.fetch(todo.map((x) => x.uid).join(','), { uid: true, envelope: true, internalDate: true, source: { start: 0, maxLength: SOURCE_BYTES } }, { uid: true })) {
-          if (Date.now() - started > deadlineMs) { more = true; break; }
-          try {
-            const parsed = await simpleParser(m.source);
-            const ev = eventFromParsed(parsed, { folder: f.path, uid: m.uid, messageId: m.envelope && m.envelope.messageId, date: m.internalDate });
-            if (ev) events.push(ev);
-          } catch { /* 읽을 수 없는 한 통은 건너뛴다 */ }
+
+        for (let i = 0; i < todo.length; i += CHUNK) {
+          if (stats.processed > 0 && Date.now() - started > deadlineMs) { more = true; break; }
+          const chunk = todo.slice(i, i + CHUNK);
+          for await (const m of client.fetch(chunk.join(','), { uid: true, envelope: true, internalDate: true, source: { start: 0, maxLength: SOURCE_BYTES } }, { uid: true })) {
+            const messageId = m.envelope && m.envelope.messageId;
+            const base = { folder: f.path, uid: m.uid, uidv };
+            let rec = null;
+            try {
+              const parsed = await simpleParser(m.source);
+              rec = eventFromParsed(parsed, { ...base, messageId, date: m.internalDate });
+              if (rec) stats.kept++; else { stats.skipped++; }
+            } catch { stats.failed++; }
+            if (!rec) {
+              // 이력으로 안 쓰는 메일(전달 메일 등)·읽지 못한 메일: '봤음'만 남긴다
+              rec = { id: eventId(messageId, f.path, m.uid), at: new Date(m.internalDate || Date.now()).toISOString(), skip: 1 };
+            }
+            // ia: 메일함에 도착한 시각. 어느 달 파일에 기록할지·이미 봤는지 찾을 달을 정하는 기준이다 —
+            // 메일 머리글의 날짜(at)와 도착 날짜가 다를 수 있어, 둘을 섞으면 같은 메일을 계속 새 메일로 착각한다.
+            records.push({ ...rec, ...base, ia: new Date(m.internalDate || Date.now()).toISOString() });
+            stats.processed++;
+          }
         }
       } finally { lock.release(); }
-      if (Date.now() - started > deadlineMs) { more = true; break; }
+      if (more) break;
     }
-    return { events, scanned, more, folders: found.map((x) => x.path), missing, available };
+    return { records, stats, more, folders: found.map((x) => x.path), missing, available, ms: Date.now() - started };
   } catch (err) { throw toMailError(err); }
   finally { try { await client.logout(); } catch { /* 이미 끊김 */ } }
 }
