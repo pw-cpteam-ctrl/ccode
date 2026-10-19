@@ -132,6 +132,24 @@ button:disabled{opacity:.45;cursor:not-allowed;transform:none;filter:none;}
 /* ── 상태 표시 ── */
 .status{font-size:12.5px;color:var(--muted);margin-top:10px;}
 .status:empty{margin-top:0;}
+/* 댓글 집계 결과 — 항목별 막대 */
+.tally-box{border:1px solid var(--border);border-radius:var(--r-md);padding:14px 16px;background:var(--surface-2);}
+.tally-row{display:flex;align-items:center;gap:10px;margin-bottom:7px;}
+.tally-row:last-child{margin-bottom:0;}
+.tally-name{flex:0 0 120px;font-weight:600;font-size:14px;word-break:break-all;}
+.tally-bar{flex:1 1 auto;height:14px;background:var(--border);border-radius:99px;overflow:hidden;}
+.tally-fill{height:100%;background:var(--step,var(--brand));border-radius:99px;}
+.tally-num{flex:0 0 108px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;}
+.tally-num span{color:var(--muted);}
+.tally-sheet{font-size:13px;padding:3px 0;}
+.tally-sheet span{color:var(--muted);}
+.tally-warn{margin-top:10px;border:1px solid var(--border);border-radius:var(--r-md);padding:8px 12px;background:var(--surface);}
+.tally-warn summary{cursor:pointer;font-size:13px;font-weight:600;}
+.tally-warn .kv{margin-top:8px;font-size:12.5px;line-height:1.7;max-height:260px;overflow:auto;}
+@media (max-width:640px){
+  .tally-name{flex-basis:80px;font-size:13px;}
+  .tally-num{flex-basis:88px;font-size:12px;}
+}
 .warn-box,.stale-note{
   background:var(--warn-soft);border:1px solid var(--warn-border);
   border-radius:var(--r-md);padding:11px 14px;margin-top:12px;
@@ -203,6 +221,9 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 }
 .cond-negate-label:hover{background:var(--danger-soft);color:var(--danger);}
 .cond-negate-label input{margin:0;accent-color:var(--danger);cursor:pointer;}
+/* 집계에서 "어느 칸을 볼지" 고르는 체크박스 — 제외(빨강)가 아니라 선택이라 단계 색을 쓴다 */
+.pick-label{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;cursor:pointer;user-select:none;}
+.pick-label input{margin:0;accent-color:var(--step,var(--brand));cursor:pointer;}
 
 /* ── 표 ──
    후보 표는 화면 높이(70vh) 안에서만 스크롤된다. 이 높이 제한이 있어야 th의 sticky도
@@ -397,6 +418,41 @@ tbody tr:hover .row-delete,tbody tr:focus-within .row-delete{visibility:visible;
         <button onclick="saveResultToRepo()" id="btnSaveResult" style="display:none;">레포에 저장</button>
       </div>
       <div class="status" id="saveStatus"></div>
+    </div>
+  </div>
+
+  <div class="step" data-accent="filter">
+    <div class="step-head">
+      <span class="num">＋</span>
+      <div>
+        <h2>댓글 집계 (몇 명이 뭘 골랐나)</h2>
+        <p class="desc">"카카시"라고 쓰든 "하타케"라고 쓰든 같은 걸로 세요 — 추첨과 별개로 쓰는 기능이에요</p>
+      </div>
+    </div>
+    <div class="step-body">
+      <div class="field readable" id="tallyColsWrap" style="display:none;">
+        <label>어느 칸의 글을 볼까요</label>
+        <p class="tbl-hint" style="margin:0 0 8px;">
+          시트마다 칸 이름이 달라요(예: X는 "본문", 인스타는 "내용"). 셀 글이 든 칸을 모두 켜주세요.
+        </p>
+        <div class="btn-row" id="tallyCols" style="gap:10px 14px;flex-wrap:wrap;"></div>
+      </div>
+      <div class="field readable">
+        <label>세고 싶은 항목과, 그걸 부르는 말들</label>
+        <p class="tbl-hint" style="margin:0 0 8px;">
+          한 줄에 하나씩. <b>항목 이름 = 그렇게 불릴 수 있는 모든 말(쉼표로 구분)</b> 형식이에요.
+          띄어쓰기·대소문자는 알아서 무시합니다.
+        </p>
+        <textarea id="tallyAliases" rows="5" placeholder="카카시 = 카카시, 하타케, kakashi, カカシ
+나루토 = 나루토, 우즈마키, naruto
+사스케 = 사스케, 우치하, sasuke"></textarea>
+      </div>
+      <div class="btn-row">
+        <button type="button" onclick="runTally()">집계하기</button>
+        <button type="button" class="secondary" onclick="copyTally()" id="btnCopyTally" style="display:none;">결과 복사</button>
+      </div>
+      <div class="warn-box" id="tallyError"></div>
+      <div id="tallyResult"></div>
     </div>
   </div>
 </div>
@@ -622,6 +678,37 @@ function toDisplayDates(rows) {
   });
 }
 
+/* 시트 하나를 행 목록으로 바꾼다.
+   머리글이 꼭 첫 줄에 있으란 법이 없다 — 엑셀로 내보낸 파일은 위에 제목 줄이나 빈 줄이
+   한두 개 붙어 있는 경우가 흔하다. 그대로 읽으면 제목 글자가 컬럼 이름이 되고, 나머지
+   칸은 __EMPTY 같은 이름이 붙어 어느 칸이 본문인지 알아볼 수 없게 된다.
+   그래서 "값이 둘 이상 들어있고, 바로 아랫줄에도 값이 둘 이상 있는" 첫 줄을 머리글로 본다. */
+function 시트를행으로(sheet) {
+  const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  const 찬칸수 = (줄) => (줄 || []).filter(v => String(v ?? '').trim() !== '').length;
+  let 머리 = -1;
+  for (let i = 0; i < Math.min(10, raw.length); i++) {
+    if (찬칸수(raw[i]) >= 2 && 찬칸수(raw[i + 1]) >= 2) { 머리 = i; break; }
+  }
+  if (머리 < 0) {
+    // 위 조건에 맞는 줄이 없으면(예: 한 칸짜리 표) 값이 있는 첫 줄을 머리글로 쓴다
+    머리 = raw.findIndex(줄 => 찬칸수(줄) >= 1);
+    if (머리 < 0) return [];
+  }
+  const 이름들 = (raw[머리] || []).map((v, i) => {
+    const n = String(v ?? '').trim();
+    return n || `칸${i + 1}`;        // 빈 머리글은 __EMPTY 대신 알아볼 수 있는 이름으로
+  });
+  const 행들 = [];
+  for (const 줄 of raw.slice(머리 + 1)) {
+    if (찬칸수(줄) === 0) continue;
+    const o = {};
+    이름들.forEach((n, i) => { o[n] = 줄[i] ?? ''; });
+    행들.push(o);
+  }
+  return 행들;
+}
+
 /* ── 1단계: 파일 업로드 ── */
 $('#inFile').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -632,13 +719,29 @@ $('#inFile').addEventListener('change', async (e) => {
     const wb = isCsv
       ? XLSX.read(await file.text(), { type: 'string', cellDates: true })
       : XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    const rows = toDisplayDates(XLSX.utils.sheet_to_json(sheet, { defval: '' }));
+    /* 시트가 여러 개면 전부 읽는다 (예: "X" 시트 + "인스타" 시트).
+       예전엔 맨 앞 시트 하나만 읽어서, 나머지 시트가 통째로 사라지는데도 아무 말이
+       없었다. 시트마다 컬럼 이름이 달라도(작성자/아이디, 본문/내용 …) 각 행에 어느
+       시트에서 왔는지를 붙여두면 그대로 합쳐서 쓸 수 있다. */
+    const 시트별 = [];
+    let rows = [];
+    for (const 이름 of wb.SheetNames) {
+      const 읽은것 = toDisplayDates(시트를행으로(wb.Sheets[이름]));
+      시트별.push({ 이름, 수: 읽은것.length });
+      if (!읽은것.length) continue;
+      // 시트가 둘 이상일 때만 출처 칸을 붙인다 (한 장짜리 파일의 표를 괜히 바꾸지 않으려고)
+      rows = rows.concat(wb.SheetNames.length > 1
+        ? 읽은것.map(r => ({ 시트: 이름, ...r }))
+        : 읽은것);
+    }
     if (!rows.length) { $('#uploadStatus').textContent = '파일에서 데이터를 찾지 못했어요. 첫 줄이 헤더인지 확인해주세요.'; return; }
     participants = rows;
     lastFileName = file.name;
-    const allColumns = Object.keys(rows[0]);
-    $('#uploadStatus').textContent = `${rows.length}명 인식 완료`;
+    // 시트마다 컬럼이 다를 수 있으니 전체 행에서 컬럼을 모은다 (첫 행만 보면 뒤 시트 컬럼이 빠짐)
+    const allColumns = [...new Set(rows.flatMap(r => Object.keys(r)))];
+    // 어느 시트에서 몇 줄이 왔는지 꼭 보여준다 — 한 시트가 통째로 빠져도 모르면 안 되니까
+    $('#uploadStatus').textContent = `${rows.length}명 인식 완료`
+      + (시트별.length > 1 ? ` — ${시트별.map(s => `${s.이름} ${s.수}줄`).join(' · ')}` : '');
     populateColumnSelectors(allColumns, rows);
     renderTable('#previewWrap', rows.slice(0, 5), getMeaningfulColumns(rows, allColumns), { onDeleteColumn: removeParticipantColumn });
     resetDownstream();
@@ -671,9 +774,29 @@ function getMeaningfulColumns(rows, columns, threshold = 0.1) {
 // 문자열이거나, 한 시트 안에 참가자 댓글과 무관한 집계표가 같이 섞여 있을 수 있다.
 // 컬럼명만으로는 어떤 컬럼이 진짜 "댓글 본문"인지 코드도 AI도 확신할 수 없으므로,
 // 사용자가 직접 지정하게 하고 필터링은 그 컬럼 내용만 기준으로 판단한다.
+/* "시트"는 파일에 원래 있던 칸이 아니라, 여러 시트를 합치면서 우리가 붙인 출처 표시다.
+   이걸 닉네임·본문·링크로 자동 선택해버리면 엉뚱하게 동작한다 — 실제로 닉네임 칸으로
+   잡히는 바람에 같은 시트 사람들이 전부 동일인으로 묶여 7명이 1명으로 세어진 적이 있다. */
+const 우리가붙인칸 = (col) => col === '시트';
+
+// 날짜·시각만 들어있는 칸인지 — "2026-10-01"(10글자)은 짧은 댓글보다 길어서,
+// 걸러내지 않으면 본문 칸 자동 추정이 날짜 칸을 골라버린다.
+function isDateLikeColumn(col, rows) {
+  let count = 0, dateish = 0;
+  for (const r of rows.slice(0, 50)) {
+    const v = String(r[col] ?? '').trim();
+    if (!v) continue;
+    count++;
+    if (/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/.test(v) || /^\d{1,2}:\d{2}(:\d{2})?$/.test(v)) dateish++;
+  }
+  return count > 0 && dateish / count > 0.7;
+}
+
 function guessContentColumn(columns, rows) {
   let best = columns[0], bestLen = -1;
   for (const col of columns) {
+    if (우리가붙인칸(col)) continue;              // 시트 출처 표시는 본문이 아님
+    if (isDateLikeColumn(col, rows)) continue;    // 날짜/시각 칸 제외
     let total = 0, count = 0, urlCount = 0;
     for (const r of rows.slice(0, 20)) {
       const v = String(r[col] ?? '').trim();
@@ -692,7 +815,7 @@ function guessContentColumn(columns, rows) {
 }
 function guessNicknameColumn(columns, rows, excludeCol) {
   for (const col of columns) {
-    if (col === excludeCol) continue;
+    if (col === excludeCol || 우리가붙인칸(col)) continue;
     const sample = rows.find(r => String(r[col] ?? '').trim());
     if (sample && Number.isNaN(Number(sample[col]))) return col;
   }
@@ -703,6 +826,7 @@ function guessNicknameColumn(columns, rows, excludeCol) {
 // 필터링된 후보의 실제 게시물을 바로 볼 수 있다(선택 사항, 없으면 그냥 비워둠).
 function guessPostLinkColumn(columns, rows) {
   for (const col of columns) {
+    if (우리가붙인칸(col)) continue;
     const sample = rows.find(r => String(r[col] ?? '').trim());
     if (sample && /^https?:\/\/(www\.)?(twitter\.com|x\.com|instagram\.com)\//i.test(String(sample[col]).trim())) return col;
   }
@@ -713,7 +837,7 @@ function guessPostLinkColumn(columns, rows) {
 // 오추정 방지).
 function guessViewCountColumn(columns, rows, excludeCols) {
   for (const col of columns) {
-    if (excludeCols.includes(col)) continue;
+    if (excludeCols.includes(col) || 우리가붙인칸(col)) continue;
     const values = rows.slice(0, 20).map(r => String(r[col] ?? '').trim()).filter(Boolean);
     if (!values.length || !values.every(v => /^[\d,]+(\.\d+)?\s*(만|천)?$/.test(v))) continue;
     // "번호"처럼 1,2,3,4...로 한 칸씩 올라가는 순번 컬럼은 조회수가 아니므로 제외한다.
@@ -762,6 +886,7 @@ function populateColumnSelectors(columns, rows) {
   postLinkColumn = guessedPostLink;
   viewCountColumn = guessedViewCount;
   $('#colMapWrap').style.display = 'flex';
+  집계칸갱신(columns, rows, guessedContent);
   updateLengthStats(rows);
 }
 $('#selContentCol').addEventListener('change', (e) => { contentColumn = e.target.value; updateLengthStats(participants); pushSlot(snapshotState(), true); });
@@ -1450,6 +1575,191 @@ function drawWinners() {
   $('#btnDownloadResult').style.display = '';
   $('#btnSaveResult').style.display = '';
   $('#saveStatus').textContent = '';
+}
+
+/* ── 댓글 집계 ──
+   "카카시"라고 쓰든 "하타케"라고 쓰든 같은 한 표로 센다.
+   추첨과는 완전히 별개 기능이라 후보 명단·당첨자에 아무 영향을 주지 않는다.
+
+   일부러 안 하는 것 두 가지 —
+   ① 한 댓글에 서로 다른 항목이 둘 이상 나오면 몰래 하나를 고르지 않고 따로 빼서 보여준다.
+      찍어버리면 집계가 틀려도 틀린 걸 알 수가 없다.
+   ② 아무것도 안 걸린 댓글도 숨기지 않고 보여준다. 조용히 사라지면 일부만 세어놓고
+      전부 센 줄 알게 된다. */
+let lastTallyText = '';
+
+/* 집계할 때 어느 칸의 글을 볼지 고르는 칸 목록을 만든다.
+   한 파일 안에 시트가 여럿이면 같은 "댓글 본문"인데도 칸 이름이 시트마다 다르다
+   (X는 "본문", 인스타는 "내용"). 1단계의 본문 칸 하나만 보면 다른 시트 글은 통째로
+   안 세지는데, 화면엔 "아무것도 안 걸림"으로만 보여서 원인을 알기 어렵다.
+   그래서 글이 든 칸을 전부 보여주고 사용자가 켜고 끄게 한다. */
+function 집계칸갱신(columns, rows, 기본칸) {
+  // 글자가 어느 정도 들어있는 칸만 후보로 (날짜·번호 칸까지 늘어놓으면 고르기 어려움)
+  const 후보 = columns.filter(c =>
+    !우리가붙인칸(c) && !isDateLikeColumn(c, rows) && 평균길이(c, rows) >= 4);
+
+  /* 시트마다 따로 "그 시트에서 글이 제일 긴 칸"을 골라 켜둔다.
+     X 시트는 "본문", 인스타 시트는 "내용"처럼 같은 댓글인데 칸 이름이 다른 경우가
+     많아서, 한 칸만 켜두면 다른 시트 글이 통째로 안 세진다. */
+  const 시트들 = [...new Set(rows.map(r => r.시트 || ''))];
+  const 켤것 = new Set();
+  for (const 시트 of 시트들) {
+    const 그시트행 = rows.filter(r => (r.시트 || '') === 시트);
+    let 최장 = '', 최장평균 = 3;
+    for (const c of 후보) {
+      const avg = 평균길이(c, 그시트행);
+      if (avg > 최장평균) { 최장평균 = avg; 최장 = c; }
+    }
+    if (최장) 켤것.add(최장);
+  }
+  if (!켤것.size && 기본칸) 켤것.add(기본칸);
+
+  $('#tallyCols').innerHTML = 후보.map(c =>
+    `<label class="pick-label"><input type="checkbox" class="tally-col" value="${escapeHtml(c)}"${
+      켤것.has(c) ? ' checked' : ''}/>${escapeHtml(c)}</label>`).join('');
+  $('#tallyColsWrap').style.display = 후보.length > 1 ? '' : 'none';
+}
+
+// 그 칸에 들어있는 글의 평균 길이 (빈 칸은 빼고 셈)
+function 평균길이(col, rows) {
+  let 글있음 = 0, 총길이 = 0;
+  for (const r of rows.slice(0, 200)) {
+    const v = String(r[col] ?? '').trim();
+    if (v) { 글있음++; 총길이 += v.length; }
+  }
+  return 글있음 ? 총길이 / 글있음 : 0;
+}
+
+function 집계대상칸들() {
+  const 켜진것 = [...document.querySelectorAll('.tally-col:checked')].map(el => el.value);
+  return 켜진것.length ? 켜진것 : (contentColumn ? [contentColumn] : []);
+}
+
+/* 띄어쓰기·대소문자·문장부호를 없애 '하타케 카카시'와 '하타케카카시'를 같게 본다.
+   ⚠️ 여기서 \W(한 글자 분류)를 쓰면 안 된다 — 자바스크립트의 \W는 영문·숫자만 "글자"로
+   보기 때문에 한글·일본어가 통째로 지워진다. 실제로 그렇게 짰다가 한국어 댓글이 전부
+   빈 문자열이 돼서 영어로 쓴 댓글 하나만 세어진 적이 있다.
+   그래서 "지울 것"(공백·문장부호·기호)을 직접 지정하고 나머지 글자는 전부 남긴다. */
+function flattenForMatch(s) {
+  return String(s ?? '').replace(/[\s\p{P}\p{S}]+/gu, '').toLowerCase();
+}
+
+// "카카시 = 카카시, 하타케, kakashi" 형식을 읽어들인다
+function parseAliasGroups(text) {
+  const groups = [];
+  const bad = [];
+  for (const rawLine of String(text || '').split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const at = line.indexOf('=');
+    if (at < 0) { bad.push(line); continue; }
+    const name = line.slice(0, at).trim();
+    const words = line.slice(at + 1).split(',').map(w => w.trim()).filter(Boolean);
+    // 별칭을 안 적었으면 항목 이름 자체를 찾는 말로 쓴다
+    const list = words.length ? words : [name];
+    if (!name) { bad.push(line); continue; }
+    groups.push({ name, flat: [...new Set(list.map(flattenForMatch))].filter(Boolean) });
+  }
+  return { groups, bad };
+}
+
+function runTally() {
+  const err = $('#tallyError');
+  const show = (m) => { err.textContent = m; err.style.display = m ? 'block' : 'none'; };
+  show('');
+  $('#tallyResult').innerHTML = '';
+  $('#btnCopyTally').style.display = 'none';
+
+  if (!participants.length) return show('먼저 1단계에서 참가자 파일을 올려주세요.');
+  const 볼칸들 = 집계대상칸들();
+  if (!볼칸들.length) return show('먼저 1단계에서 "댓글 본문 컬럼"을 지정해주세요.');
+
+  const { groups, bad } = parseAliasGroups($('#tallyAliases').value);
+  if (bad.length) return show(`"=" 가 없는 줄이 있어요: ${bad.slice(0, 3).join(' / ')}`);
+  if (!groups.length) return show('세고 싶은 항목을 한 줄 이상 적어주세요. 예)  카카시 = 카카시, 하타케');
+
+  const counts = new Map(groups.map(g => [g.name, 0]));
+  const bySheet = new Map();
+  const multi = [], none = [], seen = new Set();
+  const hasSheet = participants.some(r => r.시트);
+
+  for (const row of participants) {
+    // 켜둔 칸들의 글을 이어붙여서 본다 (시트마다 칸 이름이 달라도 한 번에 세기 위해)
+    const body = 볼칸들.map(c => String(row[c] ?? '').trim()).filter(Boolean).join(' ');
+    if (!body) continue;
+    const flat = flattenForMatch(body);
+    const hit = groups.filter(g => g.flat.some(w => flat.includes(w))).map(g => g.name);
+    const who = nicknameColumn ? String(row[nicknameColumn] ?? '').trim() : '';
+    const sheet = hasSheet ? String(row.시트 || '') : '';
+
+    if (!hit.length) { none.push({ who, sheet, body }); continue; }
+    if (hit.length > 1) { multi.push({ who, sheet, body, hit }); continue; }
+    // 같은 아이디라도 X와 인스타는 다른 계정이므로 시트까지 묶어서 중복을 본다
+    const key = `${sheet}|${who}`;
+    if (who && seen.has(key)) continue;
+    if (who) seen.add(key);
+    counts.set(hit[0], counts.get(hit[0]) + 1);
+    if (sheet) {
+      if (!bySheet.has(sheet)) bySheet.set(sheet, new Map());
+      const m = bySheet.get(sheet);
+      m.set(hit[0], (m.get(hit[0]) || 0) + 1);
+    }
+  }
+
+  renderTally({ counts, bySheet, multi, none, total: participants.length });
+}
+
+function renderTally({ counts, bySheet, multi, none, total }) {
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const tallied = ranked.reduce((s, [, n]) => s + n, 0);
+  const max = ranked.length ? ranked[0][1] : 0;
+
+  const bars = ranked.map(([name, n]) => {
+    const pct = tallied ? (n / tallied * 100) : 0;
+    return `<div class="tally-row">
+      <div class="tally-name">${escapeHtml(name)}</div>
+      <div class="tally-bar"><div class="tally-fill" style="width:${max ? (n / max * 100) : 0}%"></div></div>
+      <div class="tally-num">${n}표 <span>(${pct.toFixed(1)}%)</span></div>
+    </div>`;
+  }).join('');
+
+  const sheetPart = bySheet.size > 1 ? `
+    <div class="tbl-hint" style="margin:14px 0 6px;">시트별</div>
+    ${[...bySheet.entries()].map(([sheet, m]) => {
+      const inner = [...m.entries()].sort((a, b) => b[1] - a[1])
+        .map(([n, c]) => `${escapeHtml(n)} ${c}`).join(' · ');
+      const sum = [...m.values()].reduce((a, b) => a + b, 0);
+      return `<div class="tally-sheet"><b>${escapeHtml(sheet)}</b> ${inner} <span>(합 ${sum}표)</span></div>`;
+    }).join('')}` : '';
+
+  const listBlock = (rows, title, mapper) => rows.length ? `
+    <details class="tally-warn" ${rows.length ? '' : ''}>
+      <summary>⚠️ ${title} (${rows.length}개) — 눌러서 보기</summary>
+      <div class="kv">${rows.slice(0, 50).map(mapper).join('')}
+      ${rows.length > 50 ? `<div>… 외 ${rows.length - 50}개</div>` : ''}</div>
+    </details>` : '';
+
+  const skipped = multi.length + none.length;
+  $('#tallyResult').innerHTML = `
+    <div class="count-badge" style="margin-bottom:10px;">댓글 ${total}개 중 ${tallied}개 집계</div>
+    <div class="tally-box">${bars}${sheetPart}</div>
+    ${listBlock(multi, '한 댓글에 항목이 둘 이상 — 직접 보고 정해주세요',
+      r => `<div><b>${escapeHtml(r.hit.join(' / '))}</b> ${escapeHtml(r.sheet ? `[${r.sheet}] ` : '')}${escapeHtml(r.who)} — ${escapeHtml(String(r.body).slice(0, 60))}</div>`)}
+    ${listBlock(none, '아무 항목도 안 걸린 댓글 — 빠진 별칭이 있는지 보세요',
+      r => `<div>${escapeHtml(r.sheet ? `[${r.sheet}] ` : '')}${escapeHtml(r.who)} — ${escapeHtml(String(r.body).slice(0, 70))}</div>`)}
+    ${skipped ? `<div class="tbl-hint" style="margin-top:8px;">→ ${total}개 중 ${skipped}개가 집계에서 빠져 있어요. 위 목록을 확인하세요.</div>` : ''}`;
+
+  lastTallyText = ranked.map(([n, c]) => `${n}\t${c}`).join('\n');
+  $('#btnCopyTally').style.display = ranked.length ? '' : 'none';
+}
+
+function copyTally() {
+  navigator.clipboard.writeText(lastTallyText).then(() => {
+    const b = $('#btnCopyTally');
+    const old = b.textContent;
+    b.textContent = '복사했어요!';
+    setTimeout(() => { b.textContent = old; }, 1500);
+  });
 }
 
 function winnerLabel(row) {
