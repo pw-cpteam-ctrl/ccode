@@ -65,8 +65,19 @@ curl -sS "https://pw-creator-guide.vercel.app/?cb=$RANDOM" | grep -o 'styles.css
 **원인 구조** (이걸 모르면 엉뚱한 데를 고치게 된다)
 
 - 이 저장소(모노레포)에 **Vercel 프로젝트가 7개** 붙어 있다 — `creator-guide`,
-  `insta-gen`, `b2b-scraper`, `sns-report-scraper`, `product-sns-formatter`,
-  `inbound-image-composer`, `code-handoff-package`
+  `insta-gen`, `b2b-scraper`, `product-sns-formatter`, `inbound-image-composer`,
+  `event-raffle`, `influencer-board`
+  (2026-10-19 Vercel 대시보드에서 하나씩 Root Directory를 확인한 목록이다)
+
+  > ⚠️ **폴더에 `vercel.json`이 있다고 해서 Vercel 프로젝트가 있는 것은 아니다.**
+  > `sns-report-scraper`가 그런 경우다 — `vercel.json`은 있는데 그 폴더를 바라보는
+  > 프로젝트가 없어서 그 파일은 아무도 읽지 않는다. 폴더 목록으로 프로젝트를 세면 틀린다.
+  > 실제로 2026-10-19에 이 낡은 목록만 보고 "`code-handoff-package` 연결을 끊자"는
+  > 결론이 나왔는데, 끊을 프로젝트 자체가 없었다. 그 폴더는 `vercel.json` 하나만 든
+  > 빈 폴더였고 같은 날 삭제했다.
+  > **Vercel 프로젝트 이름은 폴더명과 다를 수 있다** — 지금도 `ccode`라는 이름의
+  > 프로젝트가 `event-raffle` 폴더를 보고 있다. 이름이 아니라
+  > Settings → General → Root Directory로 확인할 것.
 - **커밋 1개를 올리면 배포가 7개 만들어진다.** 6개는 "내 폴더는 안 바뀌었다"며 1초 만에
   취소되지만(`vercel.json`의 `ignoreCommand`), **취소된 것도 하루 100회에 포함된다.**
 - 챗봇 문의가 들어올 때마다 로그 커밋이 올라간다(`creator-logs/questions-YYYY-MM.jsonl`).
@@ -84,8 +95,10 @@ curl -sS "https://pw-creator-guide.vercel.app/?cb=$RANDOM" | grep -o 'styles.css
 **근본 대책 (미적용)** — 요즘 손대지 않는 프로젝트 5개의 저장소 연결을 끊으면 커밋당
 배포가 7개에서 2개로 줄어든다. Vercel → 해당 프로젝트 → Settings → Git → Disconnect.
 연결을 끊어도 이미 배포된 사이트는 살아 있고, 나중에 다시 연결하면 된다.
-대상: `b2b-scraper`, `sns-report-scraper`, `product-sns-formatter`,
-`inbound-image-composer`, `code-handoff-package`
+대상: `b2b-scraper`, `product-sns-formatter`, `inbound-image-composer`
+(2026-10-19 기준. 예전엔 `sns-report-scraper`와 `code-handoff-package`도 적혀 있었으나
+그 둘은 Vercel 프로젝트가 없어 끊을 것이 없다. 남은 셋도 실제로 쓰이는 도구라
+끊으면 배포가 멈추므로, 쓰지 않게 된 뒤에 판단할 것)
 
 ### A-3. 폴더에 변경이 없어 배포가 건너뛰어짐 (2026-08-31)
 
@@ -220,8 +233,8 @@ Usage 페이지는 전송량·함수 실행시간 같은 과금 항목을 보는
 
 **미확인으로 남은 것**
 
-- 다른 프로젝트(`b2b-scraper`, `sns-report-scraper`, `product-sns-formatter`,
-  `inbound-image-composer`, `code-handoff-package`)가 폴더 밖을 참조하는지는 확인하지 않았다
+- 다른 프로젝트(`b2b-scraper`, `product-sns-formatter`, `inbound-image-composer`,
+  `event-raffle`, `influencer-board`)가 폴더 밖을 참조하는지는 확인하지 않았다
 - `event-raffle`에는 `vercel.json` 자체가 없어, 다른 폴더를 고쳐도 **실제로 빌드가 돌고**
   작업용 브랜치를 push할 때도 배포가 돈다. 다른 프로젝트와 같은 형태로 만들어두면 빌드
   시간이 절약되지만, **배포 횟수는 줄지 않는다**(위 표 참조). 아직 만들지 않았다
