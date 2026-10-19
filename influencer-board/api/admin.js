@@ -18,7 +18,7 @@
 //   ADMIN_PASSWORD  — 담당자용 접속 코드 (가이드 접속 코드와 다른 값이어야 한다)
 //   GITHUB_TOKEN / GITHUB_OWNER / GITHUB_REPO / GITHUB_LOG_BRANCH(비공개 저장소의 main)
 
-import { readGithubFile, writeGithubFile } from '../lib/github.js';
+import { readGithubFile, writeGithubFile, repoStatus } from '../lib/github.js';
 
 // 가이드(creator-guide/api/open-days.js)가 크리에이터 화면에 날짜를 보여주려고
 // 같은 파일을 읽는다. 경로를 바꾸면 두 곳을 같이 바꿔야 한다.
@@ -349,6 +349,13 @@ export default async function handler(req, res) {
     }
 
     // 기본 동작: 목록 조회
+    // 저장소를 못 보는 키로 목록을 읽으면 '기록 없음'과 구분이 안 돼 빈 화면이 나온다.
+    // 먼저 확인해서, 안 되면 빈 목록 대신 이유를 알려준다(코드는 이미 통과한 사용자에게만 보인다).
+    const rs = await repoStatus(gh);
+    if (rs !== 200) {
+      res.status(502).json({ ok: false, reason: rs === 401 ? 'token' : rs === 403 ? 'perm' : 'repo', status: rs });
+      return;
+    }
     const rows = [];
     for (const m of recentMonths(MAX_MONTHS)) {
       const f = await readGithubFile({ ...gh, path: `creator-logs/rewards-${m}.jsonl` });

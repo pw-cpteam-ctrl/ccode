@@ -22,6 +22,17 @@ function contentsUrl(owner, repo, path) {
   return `${API_BASE}/repos/${owner}/${repo}/contents/${encodeURIComponent(path).replace(/%2F/g, '/')}`;
 }
 
+// 저장소 자체에 접근할 수 있는지 상태 번호로 돌려준다(200이면 정상).
+// 왜 필요한가: GitHub은 '파일이 없을 때'와 '키가 저장소를 못 볼 때' 모두 404를 준다.
+// readGithubFile은 404를 '아직 기록이 없음'으로 보므로, 키 권한이 모자라면 오류 없이
+// 빈 목록이 나와 데이터가 사라진 것처럼 보인다. 목록을 읽기 전에 이걸로 먼저 구분한다.
+export async function repoStatus({ token, owner, repo }) {
+  try {
+    const res = await fetch(`${API_BASE}/repos/${owner}/${repo}`, { headers: ghHeaders(token) });
+    return res.status;
+  } catch { return 0; }
+}
+
 // 파일을 읽는다. 없으면(404) null, 있으면 { sha, content }를 돌려준다.
 export async function readGithubFile({ token, owner, repo, branch, path }) {
   const res = await fetch(`${contentsUrl(owner, repo, path)}?ref=${branch}`, { headers: ghHeaders(token) });
