@@ -1,0 +1,10 @@
+{
+  "_comment": "이 폴더가 안 바뀐 푸시에서는 배포를 건너뛴다. 이 레포는 한 저장소에 여러 프로젝트가 들어있어서, 이 설정이 없으면 다른 프로젝트만 고쳐도 추첨기가 매번 새로 배포되고 하루 배포 한도를 그만큼 헛되이 쓴다. (이 파일이 없어서 실제로 한도를 다 쓴 적이 있다)",
+  "ignoreCommand": "[ -z \"$VERCEL_GIT_PREVIOUS_SHA\" ] && exit 1; git cat-file -e \"$VERCEL_GIT_PREVIOUS_SHA\" 2>/dev/null || exit 1; git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- ./ ':(exclude)./WORKLOG-event-raffle.md' ':(exclude)./CHANGELOG-event-raffle.md' ':(exclude)./local/'",
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "**": false
+    }
+  }
+}
