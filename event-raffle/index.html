@@ -221,6 +221,17 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 }
 .cond-negate-label:hover{background:var(--danger-soft);color:var(--danger);}
 .cond-negate-label input{margin:0;accent-color:var(--danger);cursor:pointer;}
+/* 흔한 응모 패턴으로 표시된 줄 — 지우지 않고 흐리게만 깐다 */
+tbody tr.flagged > td{background:var(--surface-2);color:var(--muted);}
+tbody tr.flagged:hover > td{background:var(--border);}
+.flag-tags{display:inline-flex;gap:4px;flex-wrap:wrap;margin-left:6px;vertical-align:middle;}
+.flag-tag{font-size:11px;padding:1px 6px;border-radius:99px;background:var(--warn-soft);
+  color:var(--warn);border:1px solid var(--warn-border);white-space:nowrap;}
+.pattern-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 4px;}
+#patSettingWrap{border:1px solid var(--border);border-radius:var(--r-md);
+  padding:12px 14px;margin:8px 0 4px;background:var(--surface-2);}
+#patSettingWrap code{background:var(--surface);padding:1px 5px;border-radius:4px;font-size:12px;}
+
 /* 집계에서 "어느 칸을 볼지" 고르는 체크박스 — 제외(빨강)가 아니라 선택이라 단계 색을 쓴다 */
 .pick-label{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;cursor:pointer;user-select:none;}
 .pick-label input{margin:0;accent-color:var(--step,var(--brand));cursor:pointer;}
@@ -398,6 +409,36 @@ tbody tr:hover .row-delete,tbody tr:focus-within .row-delete{visibility:visible;
     <div class="status" id="filterStatus"></div>
     <div class="warn-box" id="filterFallback"></div>
     <div class="stale-note" id="staleNote">조건을 고쳤는데 아직 다시 필터링하지 않았어요 — 아래 후보 명단은 이전 조건의 결과예요.</div>
+    <div id="patternBox" style="display:none;">
+      <div class="pattern-head">
+        <label class="pick-label"><input type="checkbox" id="patOn" checked/><b>흔한 응모 패턴 표시</b></label>
+        <span class="status" id="patSummary" style="margin-top:0;"></span>
+        <button type="button" class="secondary" id="btnPatSetting">기준 고치기</button>
+        <button type="button" class="secondary" id="btnPatRemove" style="display:none;">표시된 사람 후보에서 빼기</button>
+      </div>
+      <div id="patSettingWrap" style="display:none;">
+        <div class="field" style="margin-bottom:10px;">
+          <label>상투어구 (한 줄에 하나)</label>
+          <p class="tbl-hint" style="margin:0 0 6px;">이 말이 들어간 댓글을 표시해요. 띄어쓰기·대소문자는 무시합니다.</p>
+          <textarea id="patPhrases" rows="5"></textarea>
+        </div>
+        <div class="btn-row" style="align-items:flex-end;flex-wrap:wrap;">
+          <div class="field" style="max-width:170px;margin-bottom:0;">
+            <label>띄어쓰기 없는 글 길이</label>
+            <input type="number" id="patLen" min="10" step="5"/>
+          </div>
+          <div class="field" style="max-width:170px;margin-bottom:0;">
+            <label>실질 글자 수 이하</label>
+            <input type="number" id="patReal" min="1" step="1"/>
+          </div>
+          <button type="button" class="secondary" id="btnPatReset">기본값으로</button>
+        </div>
+        <p class="tbl-hint" style="margin:8px 0 0;">
+          "실질 글자 수"는 <b>같은 글자가 3번 넘게 이어지면 한 글자로 줄여서 센 값</b>이에요.
+          <code>정성껏ㅠㅠㅠㅠㅠㅠㅠㅠ</code>는 11자지만 실질은 4자예요 — ㅠ로 길이를 채운 걸 잡습니다.
+        </p>
+      </div>
+    </div>
     <div class="tbl-wrap" id="candidateWrap" style="display:none;"></div>
     <div><span class="count-badge" id="candidateCount"></span></div>
     <div class="btn-row" style="margin-top:10px;">
@@ -1175,9 +1216,19 @@ function renderTable(wrapSel, rows, columns, opts = {}) {
       opts.onDeleteColumn ? ` <button type="button" class="secondary col-delete" data-col="${escapeHtml(c)}" title="이 컬럼 삭제">✕</button>` : ''
     }</th>`
   ).join('') + (opts.onDelete ? '<th></th>' : '') + '</tr>';
-  const body = rows.map((r, i) => `<tr${st.collapsed.has(i) ? ' class="collapsed"' : ''}>` + cols.map(c => `<td>${renderCellValue(r[c])}</td>`).join('')
-    + (opts.onDelete ? `<td><button type="button" class="secondary row-delete" data-i="${i}">삭제</button></td>` : '')
-    + '</tr>').join('');
+  // opts.줄표시(i) 가 이유 목록을 주면 그 줄을 흐리게 깔고 왜 걸렸는지 꼬리표를 붙인다
+  const body = rows.map((r, i) => {
+    const 이유 = opts.줄표시 ? opts.줄표시(i) : null;
+    const cls = [st.collapsed.has(i) ? 'collapsed' : '', 이유 && 이유.length ? 'flagged' : '']
+      .filter(Boolean).join(' ');
+    const 꼬리표 = 이유 && 이유.length
+      ? `<span class="flag-tags">${이유.map(t => `<span class="flag-tag">${escapeHtml(t)}</span>`).join('')}</span>`
+      : '';
+    return `<tr${cls ? ` class="${cls}"` : ''}>` + cols.map((c, ci) =>
+        `<td>${renderCellValue(r[c])}${ci === 0 ? 꼬리표 : ''}</td>`).join('')
+      + (opts.onDelete ? `<td><button type="button" class="secondary row-delete" data-i="${i}">삭제</button></td>` : '')
+      + '</tr>';
+  }).join('');
   const sortToggles = opts.sortToggles || [];
   wrap.innerHTML = `
     <div class="tbl-toolbar">
@@ -1545,11 +1596,23 @@ function applyCandidates(withReason) {
   if (viewCountColumn) {
     sortToggles.push({ label: sortToggleLabel('viewCount', '조회수'), onClick: () => toggleCandidateSort('viewCount', c => parseViewCount(c.row[viewCountColumn])) });
   }
-  renderTable('#candidateWrap', rowsForTable, cols, { onDelete: removeCandidate, sortToggles });
+  /* 흔한 응모 패턴을 줄마다 표시한다 (표시만 — 빼는 건 사람이 정함) */
+  const 설정 = 패턴설정읽기();
+  const 본문들 = candidates.map(c => String(c.row[contentColumn] ?? ''));
+  const 복붙 = 복붙찾기(본문들);
+  패턴결과 = 설정.켬 && contentColumn
+    ? 본문들.map(g => 흔한패턴들(g, 설정, 복붙))
+    : 본문들.map(() => []);
+  renderTable('#candidateWrap', rowsForTable, cols, {
+    onDelete: removeCandidate, sortToggles,
+    줄표시: (i) => 패턴결과[i],
+  });
+  패턴요약그리기();
   $('#candidateCount').textContent = `후보 ${candidates.length}명`;
   $('#btnUndoDelete').style.display = deletedCandidates.length ? '' : 'none';
-  $('#btnUndoDelete').textContent = deletedCandidates.length > 1
-    ? `방금 삭제 취소 (${deletedCandidates.length}건 되돌릴 수 있음)` : '방금 삭제 취소';
+  const 돌아올수 = 되돌릴인원();
+  $('#btnUndoDelete').textContent = 돌아올수 > 1
+    ? `방금 삭제 취소 (${돌아올수}명 돌아옴)` : '방금 삭제 취소';
   updateStaleNote();
   scheduleSlotSave();
   $('#btnDownloadCandidates').style.display = candidates.length ? '' : 'none';
@@ -1572,19 +1635,54 @@ function applyCandidates(withReason) {
 // 지울 때마다 확인창을 띄우면 여러 명 지울 때 너무 번거로우므로, 대신 되돌릴 수 있게
 // 지운 사람을 순서대로 쌓아둔다 (잘못 눌러도 원래 자리로 되살아남).
 let deletedCandidates = [];
+/* 되돌리기는 "한 번의 삭제"를 통째로 되살린다. 한 명씩 지우면 한 명씩 돌아오고,
+   여러 명을 한 번에 빼면 그 여러 명이 한 번에 돌아온다 — 30명을 뺐는데 되돌리기를
+   30번 눌러야 하면 그건 되돌릴 수 있는 게 아니다. */
+let 삭제묶음번호 = 0;
+
 function removeCandidate(i) {
   const removed = candidates.splice(i, 1)[0];
-  if (removed) deletedCandidates.push({ index: i, item: removed });
+  if (removed) deletedCandidates.push({ index: i, item: removed, 묶음: ++삭제묶음번호 });
   shiftCollapsedAfterRemove('#candidateWrap', i);
   applyCandidates(lastWithReason);
 }
-function undoCandidateDelete() {
-  const last = deletedCandidates.pop();
-  if (!last) return;
-  const at = Math.min(last.index, candidates.length);
-  candidates.splice(at, 0, last.item);
-  shiftCollapsedAfterInsert('#candidateWrap', at);
+
+// 흔한 패턴으로 표시된 사람들을 한 번에 뺀다 (뒤에서부터 빼야 번호가 안 밀린다)
+function 표시된사람빼기() {
+  const 뺄것 = 패턴결과.map((r, i) => (r.length ? i : -1)).filter(i => i >= 0);
+  if (!뺄것.length) return;
+  const 묶음 = ++삭제묶음번호;
+  for (const i of 뺄것.slice().reverse()) {
+    const removed = candidates.splice(i, 1)[0];
+    if (removed) deletedCandidates.push({ index: i, item: removed, 묶음 });
+    shiftCollapsedAfterRemove('#candidateWrap', i);
+  }
   applyCandidates(lastWithReason);
+}
+
+function undoCandidateDelete() {
+  const last = deletedCandidates[deletedCandidates.length - 1];
+  if (!last) return;
+  // 같은 묶음(= 한 번의 삭제)에 속한 것들을 전부 되살린다
+  const 되살릴것 = [];
+  while (deletedCandidates.length
+      && deletedCandidates[deletedCandidates.length - 1].묶음 === last.묶음) {
+    되살릴것.push(deletedCandidates.pop());
+  }
+  // 뺄 때 뒤에서부터 뺐으므로, 되살릴 때는 앞에서부터 넣어야 원래 자리로 돌아간다
+  for (const d of 되살릴것.reverse()) {
+    const at = Math.min(d.index, candidates.length);
+    candidates.splice(at, 0, d.item);
+    shiftCollapsedAfterInsert('#candidateWrap', at);
+  }
+  applyCandidates(lastWithReason);
+}
+
+// 되돌리기 버튼에 "몇 명이 돌아오는지" 적어준다
+function 되돌릴인원() {
+  if (!deletedCandidates.length) return 0;
+  const 묶음 = deletedCandidates[deletedCandidates.length - 1].묶음;
+  return deletedCandidates.filter(d => d.묶음 === 묶음).length;
 }
 
 // 게시물 링크(URL)를 보고 트위터/인스타그램 중 어떤 서비스인지 판별해서 각 서비스
@@ -1702,6 +1800,123 @@ function drawWinners() {
   $('#btnDownloadResult').style.display = '';
   $('#btnSaveResult').style.display = '';
   $('#saveStatus').textContent = '';
+}
+
+/* ── 흔한 응모 패턴 표시 ──
+   이벤트마다 똑같이 반복되는 글이 있다 ("제발 저요", 띄어쓰기 없는 고백체 복붙,
+   ㅠㅠㅠㅠ로 글자 수 채우기 등). 이런 걸 눈으로 하나씩 거르기 힘들어서 표시해준다.
+
+   ⚠️ 표시만 하고 자동으로 빼지는 않는다. 진심으로 ㅠㅠ 쓰는 사람도 있어서 오탐이 나는데,
+   조용히 탈락시키면 그 자체가 추첨 공정성 문제가 된다. 뺄지 말지는 사람이 정한다.
+   왜 걸렸는지도 줄마다 적어줘서, 오탐이면 바로 알아볼 수 있게 한다. */
+const 패턴설정키 = 'event-raffle-patterns-v1';
+const 기본상투어구 = [
+  '제발 저요', '제가 아니면 안', '저 아니면 안', '이날을 위해', '이날만을 기다',
+  '저요밖에', '저밖에 없어', '꼭 뽑아주세요', '당첨되면 평생',
+];
+// 숫자로 재는 기준 — 몇 글자부터 "길다"고 볼지 등. 화면에서 바꿀 수 있다.
+const 기본기준 = { 붙여쓴길이: 40, 공백비율: 0.03, 실질글자: 6, 반복비율: 0.4 };
+
+function 패턴설정읽기() {
+  try {
+    const v = JSON.parse(localStorage.getItem(패턴설정키) || 'null');
+    if (v && typeof v === 'object') {
+      return {
+        어구: Array.isArray(v.어구) ? v.어구 : 기본상투어구,
+        기준: { ...기본기준, ...(v.기준 && typeof v.기준 === 'object' ? v.기준 : {}) },
+        켬: v.켬 !== false,
+      };
+    }
+  } catch (e) { /* 저장값이 깨졌으면 기본값으로 */ }
+  return { 어구: 기본상투어구.slice(), 기준: { ...기본기준 }, 켬: true };
+}
+function 패턴설정쓰기(설정) {
+  try { localStorage.setItem(패턴설정키, JSON.stringify(설정)); } catch (e) { /* 저장 실패해도 동작엔 지장 없음 */ }
+}
+
+/* 같은 글자가 3번 이상 이어지면 한 글자로 줄인 길이 = "실질 글자 수".
+   "정성껏 썼어요ㅠㅠㅠㅠㅠㅠㅠㅠㅠㅠ"(18자)를 글자 수로만 보면 길어 보이지만
+   실질은 8자다. 길이 조건을 ㅠ로 채워 넘기는 걸 잡으려면 이 값으로 봐야 한다. */
+function 실질글자수(글) {
+  const s = String(글 ?? '').replace(/\s+/g, '');
+  return s.replace(/(.)\1{2,}/gu, '$1').length;
+}
+
+// 한 댓글이 어떤 흔한 패턴에 걸리는지 — 걸린 이유를 전부 돌려준다(하나만 고르지 않는다)
+function 흔한패턴들(글, 설정, 복붙집합) {
+  const 원본 = String(글 ?? '');
+  const 공백뺀것 = 원본.replace(/\s+/g, '');
+  const 이유 = [];
+  if (!공백뺀것) return 이유;
+
+  const 납작 = flattenForMatch(원본);
+  if (설정.어구.some(w => w.trim() && 납작.includes(flattenForMatch(w)))) 이유.push('상투어구');
+
+  // 띄어쓰기 없이 길게 쓴 복붙 고백체
+  const 공백수 = (원본.match(/\s/g) || []).length;
+  if (공백뺀것.length >= 설정.기준.붙여쓴길이 && 공백수 / 원본.length < 설정.기준.공백비율) {
+    이유.push('띄어쓰기 없음');
+  }
+
+  // ㅠㅠㅠ / ㅋㅋㅋ 로 채운 글 — 실질 글자가 거의 없는 경우
+  const 실질 = 실질글자수(원본);
+  if (공백뺀것.length >= 8 && (실질 <= 설정.기준.실질글자
+      || 1 - 실질 / 공백뺀것.length >= 1 - 설정.기준.반복비율)) {
+    이유.push('같은 글자 반복');
+  }
+
+  // 여러 사람이 똑같은 글을 올린 경우 (복붙 돌려쓰기)
+  if (복붙집합 && 복붙집합.has(납작)) 이유.push('여러 명이 같은 글');
+
+  return 이유;
+}
+
+// 후보 전체를 훑어 "두 명 이상이 똑같이 쓴 글"을 모은다
+function 복붙찾기(글들) {
+  const 셈 = new Map();
+  for (const g of 글들) {
+    const k = flattenForMatch(g);
+    if (k.length < 8) continue;        // 너무 짧은 글은 우연히 같을 수 있어 제외
+    셈.set(k, (셈.get(k) || 0) + 1);
+  }
+  return new Set([...셈.entries()].filter(([, n]) => n >= 2).map(([k]) => k));
+}
+
+let 패턴결과 = [];     // 후보 순서대로 [걸린 이유들]
+
+function 패턴요약그리기() {
+  const box = $('#patternBox');
+  if (!candidates.length || !contentColumn) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  const 설정 = 패턴설정읽기();
+  $('#patOn').checked = 설정.켬;
+  const 걸린수 = 패턴결과.filter(r => r.length).length;
+  const 이유별 = new Map();
+  for (const r of 패턴결과) for (const t of r) 이유별.set(t, (이유별.get(t) || 0) + 1);
+  $('#patSummary').textContent = !설정.켬 ? '꺼져 있어요'
+    : 걸린수 ? `후보 ${candidates.length}명 중 ${걸린수}명 표시됨 — `
+        + [...이유별.entries()].map(([t, n]) => `${t} ${n}`).join(' · ')
+      + ' (표시만 한 거예요. 뺄지는 직접 정하세요)'
+    : '걸리는 글이 없어요';
+  $('#btnPatRemove').style.display = (설정.켬 && 걸린수) ? '' : 'none';
+  $('#btnPatRemove').textContent = `표시된 ${걸린수}명 후보에서 빼기`;
+}
+
+function 패턴설정화면채우기() {
+  const 설정 = 패턴설정읽기();
+  $('#patPhrases').value = 설정.어구.join('\n');
+  $('#patLen').value = 설정.기준.붙여쓴길이;
+  $('#patReal').value = 설정.기준.실질글자;
+}
+
+function 패턴설정저장하고다시() {
+  const 설정 = 패턴설정읽기();
+  설정.어구 = $('#patPhrases').value.split('\n').map(l => l.trim()).filter(Boolean);
+  설정.기준.붙여쓴길이 = Math.max(10, Number($('#patLen').value) || 기본기준.붙여쓴길이);
+  설정.기준.실질글자 = Math.max(1, Number($('#patReal').value) || 기본기준.실질글자);
+  설정.켬 = $('#patOn').checked;
+  패턴설정쓰기(설정);
+  applyCandidates(lastWithReason);   // 표를 다시 그려 표시 갱신
 }
 
 /* ── 댓글 집계 ──
@@ -2015,6 +2230,30 @@ async function saveResultToRepo() {
     $('#saveStatus').textContent = `저장 실패: ${err.message}`;
   }
 }
+
+/* 흔한 패턴 표시 — 버튼 연결 */
+$('#patOn').addEventListener('change', () => {
+  const 설정 = 패턴설정읽기();
+  설정.켬 = $('#patOn').checked;
+  패턴설정쓰기(설정);
+  applyCandidates(lastWithReason);
+});
+$('#btnPatSetting').addEventListener('click', () => {
+  const w = $('#patSettingWrap');
+  const 열림 = w.style.display !== 'none';
+  if (!열림) 패턴설정화면채우기();
+  w.style.display = 열림 ? 'none' : '';
+  $('#btnPatSetting').textContent = 열림 ? '기준 고치기' : '기준 접기';
+});
+for (const sel of ['#patPhrases', '#patLen', '#patReal']) {
+  $(sel).addEventListener('change', 패턴설정저장하고다시);
+}
+$('#btnPatReset').addEventListener('click', () => {
+  패턴설정쓰기({ 어구: 기본상투어구.slice(), 기준: { ...기본기준 }, 켬: $('#patOn').checked });
+  패턴설정화면채우기();
+  applyCandidates(lastWithReason);
+});
+$('#btnPatRemove').addEventListener('click', 표시된사람빼기);
 
 /* ── 페이지를 다시 열었을 때 이 PC에 캐시된 가장 최근 파일을 자동으로 불러온다 ──
    이 두 줄은 반드시 스크립트 맨 끝에 있어야 한다. 예전에는 파일 위쪽(선언들 사이)에서
