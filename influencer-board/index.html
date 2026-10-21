@@ -491,6 +491,7 @@
   // 보는 화면. 'list' 접수 목록 / 'round' 회차 현황 / 'coupon' 쿠폰 발급. 고른 화면은 이 기기에 남는다.
   var VIEW_KEY = 'ib-view';
   // 연락 이력에서 화면에 보여줄 기간(마지막 메일이 며칠 안인 사람만). 가져온 데이터는 그대로 두고 보기만 줄인다. 0 = 전체
+  var MAIL_AUTO_HOURS = 5;   // 연락 이력을 열었을 때 이 시간이 넘었으면 자동으로 가져온다(서버는 매일 밤 23시 무렵에도 따로 가져온다)
   var MAIL_RANGE_KEY = 'ib-mail-range', MAIL_RANGES = [30, 50, 100, 200, 400, 0];
   function mailRange() {
     try { var v = localStorage.getItem(MAIL_RANGE_KEY); if (v !== null && MAIL_RANGES.indexOf(Number(v)) >= 0) return Number(v); } catch (e) { /* 기본값 */ }
@@ -1757,6 +1758,13 @@
         mailSync.configured = !!r.data.configured;
         rebuildMailInfo();
         renderList();
+        // 마지막으로 가져온 지 5시간이 넘었으면 보드를 연 김에 알아서 한 번 가져온다(화면을 연 뒤 한 번만).
+        // 한 번도 가져온 적이 없으면 어디까지 가져올지 담당자가 정하게 두려고 자동으로 하지 않는다.
+        if (!force && mailSync.configured && mailSync.syncedAt && !mailSync.autoTried && !mailSync.busy &&
+            Date.now() - new Date(mailSync.syncedAt).getTime() > MAIL_AUTO_HOURS * 36e5) {
+          mailSync.autoTried = true;
+          mailSyncRun('mail-sync', 0, true);
+        }
       }
     }).catch(function () { /* 못 불러와도 파일 올리기는 쓸 수 있다 */ });
   }
@@ -1770,13 +1778,14 @@
 
   // action: 'mail-sync'(가져오기) / 'mail-folders'(폴더 확인). days를 주면 그만큼 거슬러 올라간다.
   // 메일이 많으면 서버가 한 번에 150통까지만 처리하므로, 남았으면 사람이 다시 누르지 않아도 알아서 이어서 가져온다.
-  function mailSyncRun(action, days) {
+  function mailSyncRun(action, days, auto) {
     if (mailSync.busy) return;
     mailSync.busy = true;
+    var autoTxt = auto ? '마지막으로 가져온 지 ' + MAIL_AUTO_HOURS + '시간이 넘어 자동으로 가져옵니다. ' : '';
     var sum = { rounds: 0, processed: 0, kept: 0, skipped: 0, ms: 0, found: null, fresh: null, since: null, folders: [] };
     function fail(msg) { mailSync.busy = false; mailSync.note = (sum.processed ? sum.processed + '통까지 처리하고 멈췄습니다. ' : '') + msg; loadMailEvents(true); renderList(); }
     function step() {
-      mailSync.note = action === 'mail-folders' ? '폴더를 확인하는 중…' : '메일함에서 가져오는 중… ' + (sum.rounds ? sum.processed + '통 처리함' : '(처음에는 몇 초 걸립니다)');
+      mailSync.note = action === 'mail-folders' ? '폴더를 확인하는 중…' : autoTxt + '메일함에서 가져오는 중… ' + (sum.rounds ? sum.processed + '통 처리함' : '(처음에는 몇 초 걸립니다)');
       renderList();
       var body = { code: code, action: action };
       if (days) body.days = days;
@@ -1883,6 +1892,7 @@
       '<ul class="ml-help">' +
       '<li><b>메일 가져오기</b> — 지난번 이후 새로 온 메일만 가져옵니다. 처음 누르면 지난 50일치를 가져오고, 많으면 알아서 이어서 가져옵니다.</li>' +
       '<li><b>빠진 예전 메일 채우기</b> — 평소에는 누를 필요 없습니다. 더 오래된 협업 메일이 필요할 때만, 오늘부터 몇 일 전까지 거슬러 올라갈지 골라 누르세요(기간이 길수록 오래 걸립니다).</li>' +
+      '<li><b>자동 가져오기</b> — 버튼을 안 눌러도 됩니다. 매일 밤 23시 무렵 서버가 알아서 가져오고, 이 화면을 열었을 때 마지막으로 가져온 지 5시간이 넘었으면 한 번 더 가져옵니다.</li>' +
       '<li><b>폴더 확인</b> — 설정한 폴더를 찾을 수 있는지만 봅니다. 메일은 읽지 않습니다.</li>' +
       '</ul>' +
       '</section>';

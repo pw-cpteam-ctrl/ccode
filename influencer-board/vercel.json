@@ -7,5 +7,16 @@
       "main": true,
       "**": false
     }
-  }
+  },
+  "functions": {
+    "api/cron-sync.js": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron-sync",
+      "schedule": "0 14 * * *"
+    }
+  ]
 }
