@@ -437,8 +437,11 @@
   .ml-att { font-size: 11.5px; color: var(--ink-500); margin-top: 4px; }
   .ml-body-f { font-size: 11px; color: var(--ink-400); margin-top: 6px; }
 
-  .ml-help { margin: 10px 0 0; padding-left: 18px; font-size: 12px; color: var(--ink-500); line-height: 1.6; }
-  .ml-help b { color: var(--ink); }
+  .ml-help-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+  .ml-help-card { border: 1px solid #e7e5e4; border-radius: 10px; padding: 9px 11px; font-size: 12px; color: var(--ink-500); line-height: 1.55; background: #fafaf9; }
+  .ml-help-card b { display: block; color: var(--ink); font-size: 12.5px; margin-bottom: 3px; }
+  @media (max-width: 1000px) { .ml-help-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 600px) { .ml-help-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -1945,20 +1948,20 @@
         '<button class="mini mp-btn" data-mp="all"' + dis + '>' + (purgeArmed === 'all' ? '한 번 더 누르면 전부 지웁니다' : '전체 초기화') + '</button></div>' +
       '<div class="ml-old"><span>빠진 예전 메일 채우기:</span>' + [14, 50, 100, 200, 400].map(function (n) { return '<button class="mini ms-old" data-days="' + n + '"' + dis + '>' + n + '일 전까지</button>'; }).join('') + '</div>' +
       (mailSync.note ? '<p class="ml-fresh" id="ms-note" style="margin-top:8px">' + esc(mailSync.note) + '</p>' : '') +
-      '<ul class="ml-help">' +
-      '<li><b>메일 가져오기</b> — 지난번 이후 새로 온 메일만 가져옵니다. 처음 누르면 지난 50일치를 가져오고, 많으면 알아서 이어서 가져옵니다.</li>' +
-      '<li><b>빠진 예전 메일 채우기</b> — 평소에는 누를 필요 없습니다. 더 오래된 협업 메일이 필요할 때만, 오늘부터 몇 일 전까지 거슬러 올라갈지 골라 누르세요(기간이 길수록 오래 걸립니다).</li>' +
-      '<li><b>자동 가져오기</b> — 스토어 오픈일 7일 전부터 5일 뒤까지(인플 응대 기간)만 켜져 있습니다. 그 기간에는 매일 밤 23시 무렵 서버가 알아서 가져오고, 이 화면을 열었을 때 마지막으로 가져온 지 5시간이 넘었으면 한 번 더 가져옵니다. 쉬는 기간에는 위 [메일 가져오기]를 눌러야만 가져옵니다.</li>' +
-      '<li><b>저장된 이력 지우기</b> — 이 보드에 쌓아 둔 연락 이력(날짜·주소·이름·제목)만 지웁니다. 메일함의 메일은 그대로이고, 지운 이력은 다시 가져오면 돌아옵니다. 깃허브의 과거 기록에는 지우기 전 내용이 남을 수 있습니다. 내가 써 둔 답장 초안은 이 브라우저에 따로 있어 지워지지 않습니다.</li>' +
-      '<li><b>폴더 확인</b> — 설정한 폴더를 찾을 수 있는지만 봅니다. 메일은 읽지 않습니다.</li>' +
-      '</ul>' +
+      '<div class="ml-help-grid">' +
+      '<div class="ml-help-card"><b>메일 가져오기</b>새로 온 메일만 가져옵니다. 처음엔 최근 50일치이고, 많으면 알아서 이어서 가져옵니다.</div>' +
+      '<div class="ml-help-card"><b>빠진 예전 메일 채우기</b>더 오래된 협업 메일이 필요할 때만 누르세요. 14~400일 전까지 고르며, 길수록 오래 걸립니다.</div>' +
+      '<div class="ml-help-card"><b>자동 가져오기</b>오픈 7일 전~5일 뒤(응대 기간)에만 켜집니다. 매일 밤 23시 무렵 서버가 가져오고, 화면을 열 때 5시간이 넘었으면 한 번 더 가져옵니다. 쉬는 기간엔 [메일 가져오기]로만 가져옵니다.</div>' +
+      '<div class="ml-help-card"><b>저장된 이력 지우기</b>보드에 쌓아 둔 이력(날짜·주소·이름·제목)만 지웁니다. 메일함은 그대로이고 다시 가져오면 돌아옵니다. 깃허브 과거 기록에는 남을 수 있습니다.</div>' +
+      '<div class="ml-help-card"><b>폴더 확인</b>설정한 폴더를 찾을 수 있는지만 봅니다. 메일은 읽지 않습니다.</div>' +
+      '</div>' +
       '</section>';
   }
 
   function mailDirText(d) { return d === '보냄' ? '내가 보냄' : '상대가 보냄'; }
   function mailTurnText(it) {
     if (it.turn === 'me') return '내가 답할 차례 ' + (it.days ? it.days + '일째' : '오늘');
-    if (it.turn === 'ok') return '답장 안 해도 될 듯 ' + (it.days ? it.days + '일째' : '오늘');
+    if (it.turn === 'ok') return '답장 유보 ' + (it.days ? it.days + '일째' : '오늘');
     return it.days ? it.days + '일째 기다리는 중' : '오늘 보냄';
   }
   // 확정 후보 표의 '연락 이력' 칸
@@ -2014,7 +2017,7 @@
       }).join('');
       return '<tr>' +
         '<td class="cd-name"><b' + (it.nameFromDisplay ? ' title="인사말이 없어 메일의 보낸이 표시 이름을 썼습니다"' : '') + '>' + esc(it.name) + '</b>' + (it.nameFromDisplay ? '<span class="ml-guess">표시 이름</span>' : '') + (it.addr && it.addr !== it.name ? '<span class="ml-addr">' + esc(it.addr) + (it.moreAddrs ? ' 외 ' + it.moreAddrs + '개' : '') + '</span>' : '') + '</td>' +
-        '<td><span class="ml-turn ' + it.turn + '">' + esc(mailTurnText(it)) + '</span>' + (it.turn === 'ok' ? '<span class="ml-hint">마지막 메일이 확인·감사 인사뿐으로 보여요. 내용을 눌러 확인해 보세요.</span>' : '') + (draftGet(draftKey(it)) ? '<span class="ml-hint">✎ 쓰던 답장 있음</span>' : '') + '</td>' +
+        '<td><span class="ml-turn ' + it.turn + '">' + esc(mailTurnText(it)) + '</span>' + (it.turn === 'ok' ? '<span class="ml-hint">확인·감사 인사뿐이라 답장을 미뤄도 될 수 있어요. 내용을 눌러 확인해 보세요.</span>' : '') + (draftGet(draftKey(it)) ? '<span class="ml-hint">✎ 쓰던 답장 있음</span>' : '') + '</td>' +
         '<td class="ml-last">' + md(it.last.date) + ' ' + mailDirText(it.last.dir) + (it.last.fa ? '<span class="ml-addr">보낸이 ' + esc(it.last.fa) + '</span>' : '') + '</td>' +
         '<td>' + subs + draftHtml(it) + '</td>' +
         '<td>' + (link ? '<span class="cd-st is-done">' + esc(link === '접수됨' ? '접수함' : link) + '</span>' : '<span class="cd-none">접수 안 함</span>') + '</td>' +
@@ -2031,7 +2034,7 @@
         : '<div class="empty">' + (hidden ? '이 기간에는 연락한 사람이 없습니다. 위에서 보기 기간을 늘려 보세요.' : '읽을 수 있는 메일을 찾지 못했습니다. 추출 파일 형식이 맞는지 확인해 주세요.') + '</div>') +
       '</section>' +
       '<p class="foot">' + notes.join('<br />') + (notes.length ? '<br />' : '') +
-      '<b>지금 할 일</b> — “내가 답할 차례”는 마지막 메일을 <b>상대가 보냈다</b>는 뜻입니다. 짧은 확인·감사 인사(질문·부탁이 없는 것)는 “답장 안 해도 될 듯”으로 따로 나뉘어 맨 아래로 갑니다 — 글자만 보고 판단하므로 틀릴 수 있어 내용을 눌러 확인하세요. “기다리는 중”은 마지막 메일을 <b>내가 보냈다</b>는 뜻입니다.<br />' +
+      '<b>지금 할 일</b> — “내가 답할 차례”는 마지막 메일을 <b>상대가 보냈다</b>는 뜻입니다. 짧은 확인·감사 인사(질문·부탁이 없는 것)는 “답장 유보”로 따로 나뉘어 맨 아래로 갑니다 — 글자만 보고 판단하므로 틀릴 수 있어 내용을 눌러 확인하세요. “기다리는 중”은 마지막 메일을 <b>내가 보냈다</b>는 뜻입니다.<br />' +
       '<b>접수 여부</b> — 크리에이터가 접수 폼을 냈으면 “접수함”, 확정 후보에 넣어 두었으면 “확정 후보”, 둘 다 아니면 “접수 안 함”입니다. 활동명이 다르게 적혀 있으면 이어지지 않을 수 있습니다.<br />' +
       '활동명은 보낸 메일의 “안녕하세요, ○○님”, 받은 메일의 “○○입니다”에서 읽고, 둘 다 없으면 메일의 보낸이 표시 이름을 씁니다(“표시 이름” 표시). 같은 활동명이 주소만 달라도 한 사람으로 묶습니다.</p>';
   }
