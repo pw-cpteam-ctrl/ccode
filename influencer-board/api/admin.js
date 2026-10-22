@@ -19,7 +19,7 @@
 //   GITHUB_TOKEN / GITHUB_OWNER / GITHUB_REPO / GITHUB_LOG_BRANCH(비공개 저장소의 main)
 
 import { readGithubFile, writeGithubFile, repoStatus } from '../lib/github.js';
-import { recentMonths, readMailEvents, runMailSync, MAIL_MONTHS, MAIL_SYNC_PATH } from '../lib/mail-run.js';
+import { recentMonths, readMailEvents, runMailSync, purgeMailEvents, MAIL_MONTHS, MAIL_SYNC_PATH } from '../lib/mail-run.js';
 
 // 가이드(creator-guide/api/open-days.js)가 크리에이터 화면에 날짜를 보여주려고
 // 같은 파일을 읽는다. 경로를 바꾸면 두 곳을 같이 바꿔야 한다.
@@ -331,6 +331,16 @@ export default async function handler(req, res) {
       let syncedAt = null;
       if (sf) { try { syncedAt = JSON.parse(sf.content).at || null; } catch { /* 없는 것으로 */ } }
       res.status(200).json({ ok: true, events: events.filter((e) => !e.skip), syncedAt, configured: !!process.env.MAIL_USER && !!process.env.MAIL_APP_PASSWORD && !!process.env.MAIL_FOLDERS });
+      return;
+    }
+
+    // 이력 지우기: 'older'(days일보다 오래된 것만) / 'all'(전체 초기화). 메일함의 메일은 건드리지 않는다.
+    if (action === 'mail-purge') {
+      const b = req.body || {};
+      const all = b.mode === 'all';
+      const days = Number(b.days);
+      if (!all && !(b.mode === 'older' && Number.isInteger(days) && days >= 1 && days <= 400)) { res.status(400).json({ ok: false, reason: 'purge-args' }); return; }
+      res.status(200).json({ ok: true, ...(await purgeMailEvents(gh, { days, all })) });
       return;
     }
 

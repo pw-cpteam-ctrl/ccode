@@ -109,3 +109,39 @@ export async function runMailSync({ gh, cfg, mail, days }) {
   }
   return { added: r.stats.kept, stats: r.stats, ms: r.ms, more: r.more, since: since.toISOString(), folders: r.folders, missing: r.missing, available: r.available };
 }
+
+// 저장된 연락 이력 지우기 — 비공개 저장소의 '현재 파일'에서 지운다. 깃허브의 과거 커밋 기록에는 지우기 전 내용이 남는다.
+// all=true면 전부, 아니면 메일 날짜(at)가 days일보다 오래된 이력(건너뜀 표시 포함)만 지운다.
+// 전부 지울 때는 '마지막으로 가져온 시각'도 지워, 다음 가져오기가 처음부터(최근 50일) 시작되게 한다.
+// 이력 파일은 400일 거슬러 가져온 경우까지 닿도록 18개월치 달 파일을 본다. 충돌하면 다시 읽어 재시도한다.
+export async function purgeMailEvents(gh, { days, all }) {
+  const cutoff = all ? null : new Date(Date.now() - Number(days) * 864e5);
+  let removed = 0, kept = 0;
+  for (const month of recentMonths(18)) {
+    const path = `${MAIL_EVENTS_PREFIX}${month}.jsonl`;
+    let done = false;
+    for (let i = 0; i < 3 && !done; i++) {
+      const f = await readGithubFile({ ...gh, path });
+      if (!f) { done = true; break; }
+      const lines = f.content.split('\n').filter((l) => l.trim());
+      const keep = lines.filter((l) => {
+        if (all) return false;
+        try { return new Date(JSON.parse(l).at) >= cutoff; } catch { return true; }   // 읽을 수 없는 줄은 건드리지 않는다
+      });
+      const gone = lines.length - keep.length;
+      if (!gone) { kept += keep.length; done = true; break; }
+      try {
+        await writeGithubFile({ ...gh, path, content: keep.length ? keep.join('\n') + '\n' : '', message: `creator-guide 메일 연락 이력 ${gone}건 지움 (${month})`, sha: f.sha });
+        removed += gone; kept += keep.length; done = true;
+      } catch (err) {
+        if (!/\((409|422)\)/.test(String(err && err.message))) throw err;
+      }
+    }
+    if (!done) throw new Error('이력 지우기 충돌 (재시도 초과)');
+  }
+  if (all) {
+    const sf = await readGithubFile({ ...gh, path: MAIL_SYNC_PATH });
+    if (sf && sf.content.trim() !== '{}') await writeGithubFile({ ...gh, path: MAIL_SYNC_PATH, content: '{}\n', message: 'creator-guide 메일 가져오기 시각 초기화', sha: sf.sha });
+  }
+  return { removed, kept };
+}

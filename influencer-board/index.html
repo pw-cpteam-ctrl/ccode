@@ -1896,6 +1896,30 @@
       '<div class="ml-body-f">' + (d.hadQuote ? '지난 대화 인용은 생략했습니다. ' : '') + (d.truncated ? '긴 메일이라 앞부분만 보여줍니다. ' : '') + '이 화면의 내용은 저장되지 않습니다.</div></div>';
   }
 
+  // 저장된 이력 지우기(메일함의 메일은 그대로). 두 번 눌러야 실행된다.
+  var purgeArmed = '';
+  function mailPurge(mode) {
+    if (mailSync.busy) return;
+    mailSync.busy = true;
+    mailSync.note = '저장된 이력을 지우는 중…';
+    renderList();
+    var body = { code: code, action: 'mail-purge', mode: mode };
+    if (mode === 'older') body.days = 14;
+    api(body).then(function (r) {
+      var d = r.data || {};
+      mailSync.busy = false;
+      if (r.status === 200 && d.ok) {
+        mailSync.note = (mode === 'all' ? '저장된 이력을 전부 지웠습니다(' + d.removed + '건). 다음 [메일 가져오기]는 처음처럼 최근 50일부터 가져옵니다.'
+          : '14일보다 오래된 이력 ' + d.removed + '건을 지웠습니다(남은 이력 ' + d.kept + '건).') + ' 저장소의 현재 파일에서 지운 것이고, 깃허브의 과거 기록에는 남아 있을 수 있습니다.';
+        mailSync.autoTried = true;   // 지운 직후에 자동으로 다시 가져오지 않는다
+        loadMailEvents(true);
+      } else {
+        mailSync.note = '지우지 못했습니다. 잠시 후 다시 시도해 주세요.';
+      }
+      renderList();
+    }).catch(function () { mailSync.busy = false; mailSync.note = '지우지 못했습니다. 잠시 후 다시 시도해 주세요.'; renderList(); });
+  }
+
   function mailWindowText() {
     var w = mailWindowInfo();
     if (w.on) return '자동 가져오기: <b>켜짐</b> — 운영 기간 ' + md(w.start) + ' ~ ' + md(w.end) + ' (스토어 오픈일 기준 D-7 ~ D+5)';
@@ -1916,12 +1940,16 @@
       '<button class="mini is-main" id="ms-sync"' + dis + '>메일 가져오기</button>' +
       '<button class="mini" id="ms-folders"' + dis + '>폴더 확인</button>' +
       '</div>' +
+      '<div class="ml-old"><span>저장된 이력 지우기:</span>' +
+        '<button class="mini mp-btn" data-mp="older"' + dis + '>' + (purgeArmed === 'older' ? '한 번 더 누르면 지웁니다' : '14일보다 오래된 이력 지우기') + '</button>' +
+        '<button class="mini mp-btn" data-mp="all"' + dis + '>' + (purgeArmed === 'all' ? '한 번 더 누르면 전부 지웁니다' : '전체 초기화') + '</button></div>' +
       '<div class="ml-old"><span>빠진 예전 메일 채우기:</span>' + [14, 50, 100, 200, 400].map(function (n) { return '<button class="mini ms-old" data-days="' + n + '"' + dis + '>' + n + '일 전까지</button>'; }).join('') + '</div>' +
       (mailSync.note ? '<p class="ml-fresh" id="ms-note" style="margin-top:8px">' + esc(mailSync.note) + '</p>' : '') +
       '<ul class="ml-help">' +
       '<li><b>메일 가져오기</b> — 지난번 이후 새로 온 메일만 가져옵니다. 처음 누르면 지난 50일치를 가져오고, 많으면 알아서 이어서 가져옵니다.</li>' +
       '<li><b>빠진 예전 메일 채우기</b> — 평소에는 누를 필요 없습니다. 더 오래된 협업 메일이 필요할 때만, 오늘부터 몇 일 전까지 거슬러 올라갈지 골라 누르세요(기간이 길수록 오래 걸립니다).</li>' +
       '<li><b>자동 가져오기</b> — 스토어 오픈일 7일 전부터 5일 뒤까지(인플 응대 기간)만 켜져 있습니다. 그 기간에는 매일 밤 23시 무렵 서버가 알아서 가져오고, 이 화면을 열었을 때 마지막으로 가져온 지 5시간이 넘었으면 한 번 더 가져옵니다. 쉬는 기간에는 위 [메일 가져오기]를 눌러야만 가져옵니다.</li>' +
+      '<li><b>저장된 이력 지우기</b> — 이 보드에 쌓아 둔 연락 이력(날짜·주소·이름·제목)만 지웁니다. 메일함의 메일은 그대로이고, 지운 이력은 다시 가져오면 돌아옵니다. 깃허브의 과거 기록에는 지우기 전 내용이 남을 수 있습니다. 내가 써 둔 답장 초안은 이 브라우저에 따로 있어 지워지지 않습니다.</li>' +
       '<li><b>폴더 확인</b> — 설정한 폴더를 찾을 수 있는지만 봅니다. 메일은 읽지 않습니다.</li>' +
       '</ul>' +
       '</section>';
@@ -2209,6 +2237,14 @@
       });
     });
     if (msFolders) msFolders.addEventListener('click', function () { mailSyncRun('mail-folders'); });
+    Array.prototype.forEach.call(document.querySelectorAll('.mp-btn'), function (b) {
+      b.addEventListener('click', function () {
+        var m = b.getAttribute('data-mp');
+        if (purgeArmed !== m) { purgeArmed = m; renderList(); setTimeout(function () { if (purgeArmed === m) { purgeArmed = ''; renderList(); } }, 5000); return; }
+        purgeArmed = '';
+        mailPurge(m);
+      });
+    });
     var mlRange = document.getElementById('ml-range');
     if (mlRange) mlRange.addEventListener('change', function () { mailRangeSet(Number(mlRange.value)); renderList(); });
     var mlFile = document.getElementById('ml-file');
