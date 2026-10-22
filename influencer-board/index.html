@@ -492,7 +492,7 @@
   var VIEW_KEY = 'ib-view';
   // 연락 이력에서 화면에 보여줄 기간(마지막 메일이 며칠 안인 사람만). 가져온 데이터는 그대로 두고 보기만 줄인다. 0 = 전체
   var MAIL_AUTO_HOURS = 5;   // 연락 이력을 열었을 때 이 시간이 넘었으면 자동으로 가져온다(서버는 매일 밤 23시 무렵에도 따로 가져온다)
-  var MAIL_RANGE_KEY = 'ib-mail-range', MAIL_RANGES = [30, 50, 100, 200, 400, 0];
+  var MAIL_RANGE_KEY = 'ib-mail-range', MAIL_RANGES = [14, 30, 50, 100, 200, 400, 0];
   function mailRange() {
     try { var v = localStorage.getItem(MAIL_RANGE_KEY); if (v !== null && MAIL_RANGES.indexOf(Number(v)) >= 0) return Number(v); } catch (e) { /* 기본값 */ }
     return 50;
@@ -1916,7 +1916,7 @@
       '<button class="mini is-main" id="ms-sync"' + dis + '>메일 가져오기</button>' +
       '<button class="mini" id="ms-folders"' + dis + '>폴더 확인</button>' +
       '</div>' +
-      '<div class="ml-old"><span>빠진 예전 메일 채우기:</span>' + [50, 100, 200, 400].map(function (n) { return '<button class="mini ms-old" data-days="' + n + '"' + dis + '>' + n + '일 전까지</button>'; }).join('') + '</div>' +
+      '<div class="ml-old"><span>빠진 예전 메일 채우기:</span>' + [14, 50, 100, 200, 400].map(function (n) { return '<button class="mini ms-old" data-days="' + n + '"' + dis + '>' + n + '일 전까지</button>'; }).join('') + '</div>' +
       (mailSync.note ? '<p class="ml-fresh" id="ms-note" style="margin-top:8px">' + esc(mailSync.note) + '</p>' : '') +
       '<ul class="ml-help">' +
       '<li><b>메일 가져오기</b> — 지난번 이후 새로 온 메일만 가져옵니다. 처음 누르면 지난 50일치를 가져오고, 많으면 알아서 이어서 가져옵니다.</li>' +
