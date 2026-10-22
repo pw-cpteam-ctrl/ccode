@@ -849,6 +849,29 @@
     return 1 + ((4 - first.getDay() + 7) % 7);
   }
 
+  // 인플 응대를 하는 기간 = 스토어 오픈일 D-7 ~ D+5. 그 밖은 쉬는 기간이라 열 때 자동 가져오기를 하지 않는다(버튼은 언제든 됨).
+  // 서버 자동 가져오기도 같은 규칙이다 — 같은 값을 쓰는 곳: lib/open-window.js (기간 7일 전/5일 후, 오픈일 규칙은 위의 openDateFor와 같음)
+  // 반환: { on: 지금 운영 기간인가, start/end: 해당 운영 기간(on일 때), next: 다음 운영 시작일(쉬는 중일 때) }
+  function mailWindowInfo() {
+    var t = new Date(); t = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+    var opens = [];
+    for (var i = -1; i <= 2; i++) {
+      var yy = t.getFullYear(), mm = t.getMonth() + 1 + i;
+      var y2 = yy + Math.floor((mm - 1) / 12), m2 = ((mm - 1) % 12 + 12) % 12 + 1;
+      var key = y2 + '-' + String(m2).padStart(2, '0');
+      var day = openDays[key]; if (day == null) day = OPEN_DAY_FALLBACK[key]; if (day == null) day = firstThursday(y2, m2);
+      opens.push(new Date(y2, m2 - 1, +day));
+    }
+    var next = null;
+    for (var j = 0; j < opens.length; j++) {
+      var st = new Date(opens[j]); st.setDate(st.getDate() - 7);
+      var en = new Date(opens[j]); en.setDate(en.getDate() + 5);
+      if (t >= st && t <= en) return { on: true, start: st, end: en };
+      if (st > t && (!next || st < next)) next = st;
+    }
+    return { on: false, next: next };
+  }
+
   function monthKey(d) {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
   }
@@ -1760,7 +1783,7 @@
         renderList();
         // 마지막으로 가져온 지 5시간이 넘었으면 보드를 연 김에 알아서 한 번 가져온다(화면을 연 뒤 한 번만).
         // 한 번도 가져온 적이 없으면 어디까지 가져올지 담당자가 정하게 두려고 자동으로 하지 않는다.
-        if (!force && mailSync.configured && mailSync.syncedAt && !mailSync.autoTried && !mailSync.busy &&
+        if (!force && mailSync.configured && mailSync.syncedAt && !mailSync.autoTried && !mailSync.busy && mailWindowInfo().on &&
             Date.now() - new Date(mailSync.syncedAt).getTime() > MAIL_AUTO_HOURS * 36e5) {
           mailSync.autoTried = true;
           mailSyncRun('mail-sync', 0, true);
@@ -1873,6 +1896,11 @@
       '<div class="ml-body-f">' + (d.hadQuote ? '지난 대화 인용은 생략했습니다. ' : '') + (d.truncated ? '긴 메일이라 앞부분만 보여줍니다. ' : '') + '이 화면의 내용은 저장되지 않습니다.</div></div>';
   }
 
+  function mailWindowText() {
+    var w = mailWindowInfo();
+    if (w.on) return '자동 가져오기: <b>켜짐</b> — 운영 기간 ' + md(w.start) + ' ~ ' + md(w.end) + ' (스토어 오픈일 기준 D-7 ~ D+5)';
+    return '자동 가져오기: <b>쉬는 중</b>' + (w.next ? ' — 다음 운영 기간은 ' + md(w.next) + '부터' : '') + '. 지금 새 메일이 필요하면 [메일 가져오기]를 눌러 주세요.';
+  }
   function mailSyncPanel() {
     var when = mailSync.syncedAt ? (function (d) {
       return md(d) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
@@ -1883,6 +1911,7 @@
       '<p class="ml-fresh">' + (mailSync.configured
         ? (when ? '마지막으로 가져온 시각: ' + esc(when) : '아직 가져온 적이 없습니다. 아래 [메일 가져오기]를 누르면 지난 50일치를 가져옵니다.')
         : '메일 접속 설정이 아직 없어 가져올 수 없습니다. 아래 ‘파일로 올리기’는 그대로 쓸 수 있습니다.') + '</p>' +
+      '<p class="ml-fresh">' + mailWindowText() + '</p>' +
       '<div class="cd-act">' +
       '<button class="mini is-main" id="ms-sync"' + dis + '>메일 가져오기</button>' +
       '<button class="mini" id="ms-folders"' + dis + '>폴더 확인</button>' +
@@ -1892,7 +1921,7 @@
       '<ul class="ml-help">' +
       '<li><b>메일 가져오기</b> — 지난번 이후 새로 온 메일만 가져옵니다. 처음 누르면 지난 50일치를 가져오고, 많으면 알아서 이어서 가져옵니다.</li>' +
       '<li><b>빠진 예전 메일 채우기</b> — 평소에는 누를 필요 없습니다. 더 오래된 협업 메일이 필요할 때만, 오늘부터 몇 일 전까지 거슬러 올라갈지 골라 누르세요(기간이 길수록 오래 걸립니다).</li>' +
-      '<li><b>자동 가져오기</b> — 버튼을 안 눌러도 됩니다. 매일 밤 23시 무렵 서버가 알아서 가져오고, 이 화면을 열었을 때 마지막으로 가져온 지 5시간이 넘었으면 한 번 더 가져옵니다.</li>' +
+      '<li><b>자동 가져오기</b> — 스토어 오픈일 7일 전부터 5일 뒤까지(인플 응대 기간)만 켜져 있습니다. 그 기간에는 매일 밤 23시 무렵 서버가 알아서 가져오고, 이 화면을 열었을 때 마지막으로 가져온 지 5시간이 넘었으면 한 번 더 가져옵니다. 쉬는 기간에는 위 [메일 가져오기]를 눌러야만 가져옵니다.</li>' +
       '<li><b>폴더 확인</b> — 설정한 폴더를 찾을 수 있는지만 봅니다. 메일은 읽지 않습니다.</li>' +
       '</ul>' +
       '</section>';
