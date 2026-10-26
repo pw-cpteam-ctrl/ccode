@@ -461,15 +461,15 @@
   .st-c { text-align: center; }
   .st-in, .st-sel { font: inherit; font-size: 13px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink); box-sizing: border-box; }
   .st-in.st-nm { width: 10.5em; font-weight: 700; }
-  .st-w4 { width: 4.5em; } .st-w5 { width: 5.5em; } .st-w6 { width: 6.5em; } .st-w7 { width: 8em; } .st-w8 { width: 9em; } .st-w12 { width: 13em; }
+  .st-w4 { width: 4.5em; } .st-w5 { width: 5.5em; } .st-w6 { width: 6.5em; } .st-w7 { width: 8em; } .st-w8 { width: 9em; } .st-w11 { width: 12.5em; } .st-w12 { width: 13em; }
   .st-code { display: block; font-size: 10.5px; color: var(--ink-400); margin-top: 2px; white-space: normal; max-width: 13em; line-height: 1.35; }
   .st-how { font-style: normal; margin-left: 5px; color: #166534; }
-  .st-media { display: block; font-size: 10.5px; color: var(--ink-400); margin-top: 2px; white-space: normal; max-width: 16em; line-height: 1.35; }
   .st-table tr.st-grp td { background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700; padding: 6px 10px; position: sticky; left: 0; }
+  .st-in, .st-sel { background: #eff6ff; border-color: #93c5fd; }
   .st-in:placeholder-shown, .st-sel.is-empty { background: #e7e5e4; border-color: #d6d3d1; color: var(--ink-500); }
   .st-in:placeholder-shown::placeholder { color: #78716c; }
-  .st-in:focus { background: #fff; }
-  .st-in.is-auto { color: #1d4ed8; background: #eff6ff; border-color: #bfdbfe; }
+  .st-in:focus, .st-sel:focus { outline: 2px solid #60a5fa; outline-offset: 0; }
+  .st-in.is-auto { color: #1d4ed8; border-style: dashed; }
   .st-how.is-fuzzy { color: #b45309; font-weight: 700; }
   .st-fold { display: block; width: 100%; text-align: left; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink-500); background: #fafaf9; border: 1px dashed var(--line); border-radius: 9px; padding: 9px 12px; margin-top: 12px; cursor: pointer; }
   .st-hide { font: inherit; font-size: 11.5px; color: var(--ink-400); background: none; border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; cursor: pointer; }
@@ -2245,20 +2245,58 @@
     return out;
   }
 
-  // 판촉대상 추정 — 협업 메일 제목 틀 "[메가하우스 7월 협업] 은혼 룩업 - 협업 프로세스 안내"에서
-  // ']' 뒤부터 ' - ' 앞까지를 뽑는다. 여러 제목에서 가장 많이 나온 것(같으면 최근 것). 틀이 아니면 비워 둔다.
+  // 판촉대상 추정 — 협업 메일 제목에서 상품 이름만 남긴다. 실제 제목들:
+  //   [협업 안내] 메가하우스 10월 신규 상품 블리치 룩업 - 1차 리워드 발급 안내 (프레젠스월드) → 블리치 룩업
+  //   [협업 안내] 메가하우스 10월 신규 상품: 히로아카 룩업 미니어처 - 링크 전달 (프레젠스월드) → 히로아카 룩업 미니어처
+  //   [협업 제안] 메가하우스 10월 신규 상품 - 블리치 룩업 (프레젠스월드)                         → 블리치 룩업
+  //   [협업 안내] 메가하우스 26년 10월 신제품 G.E.M 테노히라 한별 & 기로로 - 피드백 전달          → G.E.M 테노히라 한별 & 기로로
+  //   [메가하우스 7월 협업] 헌터헌터 룩업 - 협업 프로세스 안내 (프레젠스월드)                      → 헌터헌터 룩업
+  // 앞의 [말머리], 뒤의 (프레젠스월드), '메가하우스 ○월 신규 상품/신제품'을 떼고, ' - ' 앞(앞이 비면 뒤)을 쓴다.
+  // 메가하우스가 없는 제목(팝업스토어 등 다른 건)은 쓰지 않는다. 여러 제목에서 많이 나온 것, 같으면 더 자세한(긴) 것.
+  function promoFromTitle(t) {
+    var x = String(t || '');
+    if (x.indexOf('메가하우스') < 0) return '';
+    x = x.replace(/^\s*\[[^\]]*\]\s*/, '').replace(/\s*\([^)]*\)\s*$/, '');
+    for (var i = 0; i < 4; i++) {
+      x = x.replace(/^메가하우스\s*/, '').replace(/^(\d{2}년\s*)?\d{1,2}월\s*/, '').replace(/^(신규\s*상품|신제품|신상품|협업)\s*[:：]?\s*/, '').replace(/^[-–—ㅡ:]\s*/, '');
+    }
+    var parts = x.split(/\s+[-–—ㅡ]\s*|\s*[-–—ㅡ]\s+/);
+    var v = (parts[0] || '').trim() || (parts[1] || '').trim();
+    v = v.replace(/\s*\([^)]*\)\s*$/, '').replace(/\s*(상품\s*)?관련.*$/, '').replace(/\s+(확인|안내|전달|문의)\S*$/, '').replace(/\s+/g, ' ').trim();
+    return v.length >= 2 && v.length <= 40 ? v : '';
+  }
   function settlePromoGuess(titles) {
-    var count = {}, order = [];
-    titles.forEach(function (t) {
-      var m = String(t || '').match(/^\s*\[[^\]]*\]\s*(.+?)\s+[-–—]\s+/);
-      if (!m) return;
-      var v = m[1].trim();
-      if (!count[v]) { count[v] = 0; order.push(v); }
-      count[v]++;
-    });
+    var count = {};
+    titles.forEach(function (t) { var v = promoFromTitle(t); if (v) count[v] = (count[v] || 0) + 1; });
     var best = '';
-    order.forEach(function (v) { if (!best || count[v] > count[best]) best = v; });
+    Object.keys(count).forEach(function (v) {
+      if (!best || count[v] > count[best] || (count[v] === count[best] && v.length > best.length)) best = v;
+    });
     return best;
+  }
+
+  // 업로드 시각 — 링크 안의 번호에 올린 시각이 들어 있다.
+  // X: 게시물 번호(스노플레이크)의 앞부분 = 2010-11-04부터 지난 밀리초 → 정확한 게시 시각.
+  // 인스타: 게시물 코드(shortcode)를 숫자로 바꾼 값의 앞부분 = 2011-08-24부터 지난 밀리초 → 미디어를 만든 시각이라
+  //         예약 게시 등에서는 실제 공개 시각과 조금 다를 수 있어 '(추정)'을 붙인다. 유튜브 영상 번호에는 시각이 없다.
+  function settleTimeText(d) {   // 보는 컴퓨터의 시간대와 상관없이 한국 시각으로 적는다
+    var k = new Date(d.getTime() + 9 * 36e5), h = k.getUTCHours(), mi = String(k.getUTCMinutes()).padStart(2, '0');
+    return k.getUTCFullYear() + '-' + String(k.getUTCMonth() + 1).padStart(2, '0') + '-' + String(k.getUTCDate()).padStart(2, '0') + ' ' + (h < 12 ? '오전 ' : '오후 ') + ((h % 12) || 12) + ':' + mi;
+  }
+  function linkTime(url) {
+    var u = String(url || '');
+    try {
+      var x = u.match(/(?:x|twitter)\.com\/[^/]+\/status(?:es)?\/(\d{15,20})/i);
+      if (x) return settleTimeText(new Date(Number((BigInt(x[1]) >> BigInt(22)) + BigInt(1288834974657))));
+      var ig = u.match(/instagram\.com\/(?:[^/]+\/)?(?:p|reel|reels|tv)\/([A-Za-z0-9_-]{8,14})/i);
+      if (ig) {
+        var A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_', id = BigInt(0);
+        for (var i = 0; i < ig[1].length; i++) id = id * BigInt(64) + BigInt(A.indexOf(ig[1][i]));
+        var ms = Number((id >> BigInt(23)) + BigInt(1314220021721));
+        if (ms > Date.UTC(2015, 0, 1) && ms < Date.now() + 864e5) return settleTimeText(new Date(ms)) + ' (추정)';
+      }
+    } catch (e) { /* 아주 오래된 브라우저 — 직접 입력 */ }
+    return '';
   }
 
   function linkInfo(url) {
@@ -2300,6 +2338,7 @@
       name: g.name, nameHow: g.how, nameKey: g.key || '', yt: /^youtube./.test(src),
       ipAuto: p.ip ? '' : settleIpGuess((s ? s.media : []).concat(settleMailSubjects(g.name))),
       promoAuto: p.promo ? '' : settlePromoGuess(settleMailSubjects(g.name)),
+      timeAuto: p.uploadAt ? '' : linkTime(p.link),
       platform: p.platform || li.platform || srcPlatform(src),
       id: p.id || li.id || (src.indexOf('manual:') === 0 ? '' : srcBase(src)),
       reward: p.reward != null && p.reward !== '' ? p.reward : autoReward,
@@ -2443,11 +2482,10 @@
         '<td class="st-n">' + (x.rate || '—') + '</td>' +
         '<td>' + inp(x.src, 'reward', x.reward, '보상', 'st-w4') + '</td>' +
         '<td class="st-c"><input type="checkbox" class="st-trb" data-src="' + src + '"' + (p.transfer ? ' checked' : '') + ' title="양도(이벤트 진행)" /></td>' +
-        '<td>' + inp(x.src, 'promo', p.promo || x.promoAuto, '판촉대상', 'st-w12' + (x.promoAuto ? ' is-auto' : ''), 'st-promo-list') +
-          (s && s.media.length ? '<span class="st-media" title="엑셀의 상품 링크 이름 — 캐릭터 이름을 붙일 때 참고">엑셀: ' + esc(s.media.slice(0, 3).join(', ')) + (s.media.length > 3 ? ' …' : '') + '</span>' : '') + '</td>' +
+        '<td>' + inp(x.src, 'promo', p.promo || x.promoAuto, '판촉대상', 'st-w12' + (x.promoAuto ? ' is-auto' : ''), 'st-promo-list') + '</td>' +
         '<td>' + inp(x.src, 'link', p.link, 'https://…', 'st-w12') + '</td>' +
         '<td>' + inp(x.src, 'id', x.id, '아이디', 'st-w7') + '</td>' +
-        '<td>' + inp(x.src, 'uploadAt', p.uploadAt, '예: 10/8 오후 5:12', 'st-w8') + '</td>' +
+        '<td>' + inp(x.src, 'uploadAt', p.uploadAt || x.timeAuto, '링크를 넣으면 자동', 'st-w11' + (x.timeAuto ? ' is-auto' : '')) + '</td>' +
         '<td>' + inp(x.src, 'followers', p.followers, '팔로워', 'st-w5') + '</td>' +
         '<td class="st-c"><button class="st-hide" data-src="' + src + '" data-hide="' + (x.hidden ? '0' : '1') + '" title="' + (x.hidden ? '다시 보이기' : '인플이 아닌 코드 — 숨기고 기억') + '">' + (x.hidden ? '되돌리기' : '숨기기') + '</button></td>' +
         '</tr>';
@@ -2489,7 +2527,7 @@
       (ytRows.length ? '<button class="st-fold" id="st-yt">' + (settleShowYt ? '▾' : '▸') + ' 유튜브 채널 코드 ' + ytRows.length + '개' + (ytNeed ? ' (이름 필요 ' + ytNeed + ')' : '') + ' — ' + (settleShowYt ? '접기' : '눌러서 펼치기') + '</button>' +
         (settleShowYt ? '<div class="scroll st-scroll"><table class="st-table"><thead><tr>' + headRow + '</tr></thead><tbody>' + grouped(ytRows) + '</tbody></table></div>' : '') : '') +
       missingBox +
-      '<p class="foot">유입수 파란 글씨 = ' + SETTLE_THRESHOLD + ' 이상(보상 10만 자동). 회색 칸 = 아직 비어 있음, 파란 칸 = 엑셀 상품 이름·메일 제목으로 추정한 값(IP·판촉대상)입니다. 보상·플랫폼·아이디는 자동값이 들어가 있고 고칠 수 있습니다. 양도 칸 체크 = 이벤트 진행. 표는 옆으로 밀어서 볼 수 있습니다.</p>' +
+      '<p class="foot">유입수 파란 글씨 = ' + SETTLE_THRESHOLD + ' 이상(보상 10만 자동). 회색 칸 = 아직 비어 있음, 파란 칸 = 채움, 점선 파란 칸 = 자동으로 추정한 값(IP·판촉대상은 메일 제목·엑셀, 업로드 시각은 글 링크에서)입니다. 보상·플랫폼·아이디는 자동값이 들어가 있고 고칠 수 있습니다. 양도 칸 체크 = 이벤트 진행. 표는 옆으로 밀어서 볼 수 있습니다.</p>' +
       '</section>' +
       '<section class="rbox"><div class="cd-act"><button class="mini is-main" id="st-csv"' + (ready ? '' : ' disabled') + '>노션용 파일 받기 (' + ready + '명)</button>' +
       (needName ? '<span class="cd-msg">이름이 빈 ' + needName + '줄은 파일에 들어가지 않습니다</span>' : '') + '</div>' +
@@ -2505,7 +2543,7 @@
       var v = {
         '제': settleTitle(m, x.name), '월': m, '이름': x.name, '플랫폼': x.platform, '선택': p.kind || '', 'IP': p.ip || x.ipAuto || '',
         '유입수': s ? comma(s['in']) : '', '결제수': s ? comma(s.pay) : '', '판매금액': s ? comma(s.amt) : '', '전환율': x.rate,
-        '보상': x.reward, '양도': p.transfer ? '이벤트 진행' : '—', '판촉대상': p.promo || x.promoAuto || '', '업로드 시각': p.uploadAt || '',
+        '보상': x.reward, '양도': p.transfer ? '이벤트 진행' : '—', '판촉대상': p.promo || x.promoAuto || '', '업로드 시각': p.uploadAt || x.timeAuto || '',
         '스토어오픈 시각': st.openTime || '', '아이디': x.id || '', '글 링크': p.link || '', '팔로워': p.followers || ''
       };
       return SETTLE_COLS.map(function (c) { return cell(v[c]); }).join(',');
