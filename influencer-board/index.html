@@ -464,7 +464,11 @@
   .st-w4 { width: 4.5em; } .st-w5 { width: 5.5em; } .st-w6 { width: 6.5em; } .st-w7 { width: 8em; } .st-w8 { width: 9em; } .st-w12 { width: 13em; }
   .st-code { display: block; font-size: 10.5px; color: var(--ink-400); margin-top: 2px; white-space: normal; max-width: 13em; line-height: 1.35; }
   .st-how { font-style: normal; margin-left: 5px; color: #166534; }
+  .st-media { display: block; font-size: 10.5px; color: var(--ink-400); margin-top: 2px; white-space: normal; max-width: 16em; line-height: 1.35; }
   .st-table tr.st-grp td { background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700; padding: 6px 10px; position: sticky; left: 0; }
+  .st-in:placeholder-shown, .st-sel.is-empty { background: #e7e5e4; border-color: #d6d3d1; color: var(--ink-500); }
+  .st-in:placeholder-shown::placeholder { color: #78716c; }
+  .st-in:focus { background: #fff; }
   .st-in.is-auto { color: #1d4ed8; background: #eff6ff; border-color: #bfdbfe; }
   .st-how.is-fuzzy { color: #b45309; font-weight: 700; }
   .st-fold { display: block; width: 100%; text-align: left; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink-500); background: #fafaf9; border: 1px dashed var(--line); border-radius: 9px; padding: 9px 12px; margin-top: 12px; cursor: pointer; }
@@ -2241,6 +2245,22 @@
     return out;
   }
 
+  // 판촉대상 추정 — 협업 메일 제목 틀 "[메가하우스 7월 협업] 은혼 룩업 - 협업 프로세스 안내"에서
+  // ']' 뒤부터 ' - ' 앞까지를 뽑는다. 여러 제목에서 가장 많이 나온 것(같으면 최근 것). 틀이 아니면 비워 둔다.
+  function settlePromoGuess(titles) {
+    var count = {}, order = [];
+    titles.forEach(function (t) {
+      var m = String(t || '').match(/^\s*\[[^\]]*\]\s*(.+?)\s+[-–—]\s+/);
+      if (!m) return;
+      var v = m[1].trim();
+      if (!count[v]) { count[v] = 0; order.push(v); }
+      count[v]++;
+    });
+    var best = '';
+    order.forEach(function (v) { if (!best || count[v] > count[best]) best = v; });
+    return best;
+  }
+
   function linkInfo(url) {
     var u = String(url || '').trim();
     var x = u.match(/^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/([A-Za-z0-9_]+)/i);
@@ -2279,6 +2299,7 @@
       src: src, p: p, s: s, manual: src.indexOf('manual:') === 0,
       name: g.name, nameHow: g.how, nameKey: g.key || '', yt: /^youtube./.test(src),
       ipAuto: p.ip ? '' : settleIpGuess((s ? s.media : []).concat(settleMailSubjects(g.name))),
+      promoAuto: p.promo ? '' : settlePromoGuess(settleMailSubjects(g.name)),
       platform: p.platform || li.platform || srcPlatform(src),
       id: p.id || li.id || (src.indexOf('manual:') === 0 ? '' : srcBase(src)),
       reward: p.reward != null && p.reward !== '' ? p.reward : autoReward,
@@ -2413,8 +2434,8 @@
       return '<tr class="' + (x.hidden ? 'is-hid' : !x.name ? 'is-need' : '') + '">' +
         '<td class="st-c-name">' + inp(x.src, 'name', x.name, '누구인지 입력', 'st-nm', 'st-name-list') +
           '<span class="st-code">' + esc(x.manual ? '엑셀 없음' : x.src) + how + '</span></td>' +
-        '<td><select class="st-sel" data-src="' + src + '" data-f="platform">' + opt(SETTLE_PLATFORMS, x.platform, '—') + '</select></td>' +
-        '<td><select class="st-sel" data-src="' + src + '" data-f="kind">' + opt(SETTLE_KINDS, p.kind || '', '고르기') + '</select></td>' +
+        '<td><select class="st-sel' + (x.platform ? '' : ' is-empty') + '" data-src="' + src + '" data-f="platform">' + opt(SETTLE_PLATFORMS, x.platform, '—') + '</select></td>' +
+        '<td><select class="st-sel' + (p.kind ? '' : ' is-empty') + '" data-src="' + src + '" data-f="kind">' + opt(SETTLE_KINDS, p.kind || '', '고르기') + '</select></td>' +
         '<td>' + inp(x.src, 'ip', p.ip || x.ipAuto, 'IP', 'st-w6' + (x.ipAuto ? ' is-auto' : ''), 'st-ip-list') + '</td>' +
         '<td class="st-n' + (s && s['in'] >= SETTLE_THRESHOLD ? ' is-hit' : '') + '">' + (s ? comma(s['in']) : '—') + '</td>' +
         '<td class="st-n">' + (s ? comma(s.pay) : '—') + '</td>' +
@@ -2422,7 +2443,8 @@
         '<td class="st-n">' + (x.rate || '—') + '</td>' +
         '<td>' + inp(x.src, 'reward', x.reward, '보상', 'st-w4') + '</td>' +
         '<td class="st-c"><input type="checkbox" class="st-trb" data-src="' + src + '"' + (p.transfer ? ' checked' : '') + ' title="양도(이벤트 진행)" /></td>' +
-        '<td>' + inp(x.src, 'promo', p.promo, '판촉대상', 'st-w12', 'st-promo-list') + '</td>' +
+        '<td>' + inp(x.src, 'promo', p.promo || x.promoAuto, '판촉대상', 'st-w12' + (x.promoAuto ? ' is-auto' : ''), 'st-promo-list') +
+          (s && s.media.length ? '<span class="st-media" title="엑셀의 상품 링크 이름 — 캐릭터 이름을 붙일 때 참고">엑셀: ' + esc(s.media.slice(0, 3).join(', ')) + (s.media.length > 3 ? ' …' : '') + '</span>' : '') + '</td>' +
         '<td>' + inp(x.src, 'link', p.link, 'https://…', 'st-w12') + '</td>' +
         '<td>' + inp(x.src, 'id', x.id, '아이디', 'st-w7') + '</td>' +
         '<td>' + inp(x.src, 'uploadAt', p.uploadAt, '예: 10/8 오후 5:12', 'st-w8') + '</td>' +
@@ -2467,7 +2489,7 @@
       (ytRows.length ? '<button class="st-fold" id="st-yt">' + (settleShowYt ? '▾' : '▸') + ' 유튜브 채널 코드 ' + ytRows.length + '개' + (ytNeed ? ' (이름 필요 ' + ytNeed + ')' : '') + ' — ' + (settleShowYt ? '접기' : '눌러서 펼치기') + '</button>' +
         (settleShowYt ? '<div class="scroll st-scroll"><table class="st-table"><thead><tr>' + headRow + '</tr></thead><tbody>' + grouped(ytRows) + '</tbody></table></div>' : '') : '') +
       missingBox +
-      '<p class="foot">유입수 파란 글씨 = ' + SETTLE_THRESHOLD + ' 이상(보상 10만 자동). 파란 칸의 IP는 엑셀 상품 이름·메일 제목으로 추정한 값입니다. 보상·플랫폼·아이디는 자동값이 들어가 있고 고칠 수 있습니다. 양도 칸 체크 = 이벤트 진행. 표는 옆으로 밀어서 볼 수 있습니다.</p>' +
+      '<p class="foot">유입수 파란 글씨 = ' + SETTLE_THRESHOLD + ' 이상(보상 10만 자동). 회색 칸 = 아직 비어 있음, 파란 칸 = 엑셀 상품 이름·메일 제목으로 추정한 값(IP·판촉대상)입니다. 보상·플랫폼·아이디는 자동값이 들어가 있고 고칠 수 있습니다. 양도 칸 체크 = 이벤트 진행. 표는 옆으로 밀어서 볼 수 있습니다.</p>' +
       '</section>' +
       '<section class="rbox"><div class="cd-act"><button class="mini is-main" id="st-csv"' + (ready ? '' : ' disabled') + '>노션용 파일 받기 (' + ready + '명)</button>' +
       (needName ? '<span class="cd-msg">이름이 빈 ' + needName + '줄은 파일에 들어가지 않습니다</span>' : '') + '</div>' +
@@ -2483,7 +2505,7 @@
       var v = {
         '제': settleTitle(m, x.name), '월': m, '이름': x.name, '플랫폼': x.platform, '선택': p.kind || '', 'IP': p.ip || x.ipAuto || '',
         '유입수': s ? comma(s['in']) : '', '결제수': s ? comma(s.pay) : '', '판매금액': s ? comma(s.amt) : '', '전환율': x.rate,
-        '보상': x.reward, '양도': p.transfer ? '이벤트 진행' : '—', '판촉대상': p.promo || '', '업로드 시각': p.uploadAt || '',
+        '보상': x.reward, '양도': p.transfer ? '이벤트 진행' : '—', '판촉대상': p.promo || x.promoAuto || '', '업로드 시각': p.uploadAt || '',
         '스토어오픈 시각': st.openTime || '', '아이디': x.id || '', '글 링크': p.link || '', '팔로워': p.followers || ''
       };
       return SETTLE_COLS.map(function (c) { return cell(v[c]); }).join(',');
@@ -2517,7 +2539,7 @@
     // 글자 입력은 칠 때마다 저장만 하고(커서가 튀지 않게), 이름·링크는 칸을 벗어날 때 다시 그린다(자동값·요약 갱신)
     each('.st-in', function (el) {
       var src = el.getAttribute('data-src'), f = el.getAttribute('data-f');
-      el.addEventListener('input', function () { save(function (st) { row(st, src)[f] = el.value; }); });
+      el.addEventListener('input', function () { el.classList.remove('is-auto'); save(function (st) { row(st, src)[f] = el.value; }); });
       if (f === 'name') el.addEventListener('change', function () {
         var names = lsGet(SETTLE_NAME_KEY, {});
         if (src.indexOf('manual:') !== 0) { if (el.value.trim()) names[src] = el.value.trim(); else delete names[src]; lsSet(SETTLE_NAME_KEY, names); }
@@ -2526,7 +2548,7 @@
       if (f === 'link') el.addEventListener('change', renderList);
     });
     each('.st-sel', function (el) {
-      el.addEventListener('change', function () { var src = el.getAttribute('data-src'), f = el.getAttribute('data-f'); save(function (st) { row(st, src)[f] = el.value; }); });
+      el.addEventListener('change', function () { var src = el.getAttribute('data-src'), f = el.getAttribute('data-f'); el.classList.toggle('is-empty', !el.value); save(function (st) { row(st, src)[f] = el.value; }); });
     });
     each('.st-trb', function (c) {
       c.addEventListener('change', function () { var src = c.getAttribute('data-src'); save(function (st) { row(st, src).transfer = c.checked; }); });
