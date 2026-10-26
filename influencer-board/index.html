@@ -471,6 +471,13 @@
   .st-in:placeholder-shown, .st-sel.is-empty { background: #e7e5e4; border-color: #d6d3d1; color: var(--ink-500); }
   .st-in:placeholder-shown::placeholder { color: #78716c; }
   .st-in:focus, .st-sel:focus { outline: 2px solid #60a5fa; outline-offset: 0; }
+  .st-legend { margin-left: auto; font-size: 11.5px; color: var(--ink-500); display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .st-legend i { display: inline-block; width: 14px; height: 10px; border-radius: 3px; margin-left: 6px; vertical-align: -1px; }
+  .st-legend .lg-empty { background: #e7e5e4; border: 1px solid #d6d3d1; }
+  .st-legend .lg-full { background: #fff; border: 1px solid #d6d3d1; }
+  .st-legend .lg-auto { background: #fefce8; border: 1.5px dashed #eab308; }
+  .st-trw { display: inline-flex; padding: 3px; border-radius: 6px; border: 1.5px solid transparent; }
+  .st-trw.is-auto { background: #fefce8; border: 1.5px dashed #eab308; }
   .st-sel.is-auto { background: #fefce8; border: 1.5px dashed #eab308; color: var(--ink); }
   .st-in.is-auto { background: #fefce8; border: 1.5px dashed #eab308; color: var(--ink); }
   .st-how.is-fuzzy { color: #b45309; font-weight: 700; }
@@ -1789,6 +1796,7 @@
       return {
         name: g.cue || dn || addr,
         nameFromDisplay: !g.cue && !!dn,
+        msgs: g.msgs,   // 정산 탭이 그 달 메일 제목을 고를 때 쓴다
         addr: addr, moreAddrs: Math.max(0, g.addrs.length - 1), last: last, subs: subs,
         days: Math.max(0, Math.round((today - dayStart(last.date)) / 864e5)),
         // me: 내가 답할 차례(마지막 메일을 상대가 보냄) / them: 상대 답을 기다리는 중(마지막 메일을 내가 보냄)
@@ -2241,13 +2249,37 @@
     });
     return hits.length === 1 ? hits[0] : '';
   }
-  // 그 이름으로 묶인 연락 이력의 최근 메일 제목들
-  function settleMailSubjects(name) {
+  // 그 이름으로 묶인 연락 이력의 메일 전부 { date, subject }
+  function settleMailMsgs(name) {
     if (!name || !mailInfo || !mailInfo.list) return [];
     var k = settleKey(name), out = [];
-    mailInfo.list.forEach(function (it) { if (settleKey(it.name) === k) it.subs.forEach(function (sb) { out.push(sb.title); }); });
+    mailInfo.list.forEach(function (it) { if (settleKey(it.name) === k) (it.msgs || []).forEach(function (x) { out.push(x); }); });
     return out;
   }
+  function settleMailSubjects(name) {   // 제목 전체(최근 것부터)
+    return settleMailMsgs(name).slice().sort(function (a, b) { return b.date - a.date; }).map(function (x) { return mailCleanSubject(x.subject); });
+  }
+  // 그 달(오픈 달) 오픈일 — 보드의 오픈일 규칙과 같음(저장값 → 예외 → 첫 목요일)
+  function openOfMonth(mk) {
+    var y = +mk.slice(0, 4), m2 = +mk.slice(5, 7);
+    var day = openDays[mk]; if (day == null) day = OPEN_DAY_FALLBACK[mk]; if (day == null) day = firstThursday(y, m2);
+    return new Date(y, m2 - 1, +day);
+  }
+  function shiftMonth(mk, n) { var d = new Date(+mk.slice(0, 4), +mk.slice(5, 7) - 1 + n, 1); return monthKey(d); }
+  // 그 협업 달의 메일 제목만 — 제목에 '○월'이 있으면 그 달인 것만, 없으면 받은 날짜가 그 달 오픈일 앞뒤
+  // (앞 달 오픈일과의 중간 ~ 다음 달 오픈일과의 중간)인 것만. 지난 협업 때 메일이 이번 달 추정에 섞이지 않게.
+  function settleMonthTitles(name, mk) {
+    var open = openOfMonth(mk), prev = openOfMonth(shiftMonth(mk, -1)), next = openOfMonth(shiftMonth(mk, 1));
+    var from = new Date((prev.getTime() + open.getTime()) / 2), to = new Date((open.getTime() + next.getTime()) / 2);
+    var mo = +mk.slice(5, 7);
+    return settleMailMsgs(name).filter(function (x) {
+      var t = String(x.subject || ''), mm = t.match(/메가하우스\s*(?:\d{2}년\s*)?(\d{1,2})월|\[[^\]]*?(\d{1,2})월[^\]]*\]/);
+      if (mm) return +(mm[1] || mm[2]) === mo;
+      return x.date >= from && x.date < to;
+    }).sort(function (a, b) { return b.date - a.date; }).map(function (x) { return mailCleanSubject(x.subject); });
+  }
+
+
 
   // 판촉대상 추정 — 협업 메일 제목에서 상품 이름만 남긴다. 실제 제목들:
   //   [협업 안내] 메가하우스 10월 신규 상품 블리치 룩업 - 1차 리워드 발급 안내 (프레젠스월드) → 블리치 룩업
@@ -2362,14 +2394,18 @@
     var g = p.name ? { name: p.name, how: '' } : settleGuessName(src, names, pool);
     var li = linkInfo(p.link);
     var mo = p.month ? { month: p.month, how: '직접' } : settleLineMonth(g.name, m);
+    var titles = settleMonthTitles(g.name, mo.month);
     var autoReward = s ? (s['in'] >= SETTLE_THRESHOLD ? '10만' : '5만') : '';
     var hidden = hide[src] != null ? !!hide[src] : SETTLE_GENERIC.indexOf(src) >= 0;
     return {
       src: src, p: p, s: s, manual: src.indexOf('manual:') === 0,
       name: g.name, nameHow: g.how, nameKey: g.key || '', yt: /^youtube./.test(src),
       month: mo.month, monthHow: mo.how,
-      ipAuto: p.ip ? '' : settleIpGuess((s ? s.media : []).concat(settleMailSubjects(g.name))),
-      promoAuto: p.promo ? '' : settlePromoGuess(settleMailSubjects(g.name)),
+      ipAuto: p.ip ? '' : settleIpGuess((s ? s.media : []).concat(titles)),
+      promoAuto: p.promo ? '' : settlePromoGuess(titles),
+      // 양도 추정 — 그 달 메일 제목에 '이벤트'가 있으면 체크해 둔다(직접 체크하거나 끄면 그 값이 우선)
+      transfer: p.transfer != null ? !!p.transfer : titles.some(function (t) { return /이벤트/.test(t); }),
+      transferAuto: p.transfer == null && titles.some(function (t) { return /이벤트/.test(t); }),
       timeAuto: p.uploadAt ? '' : linkTime(p.link),
       // 성격(선택) 추정 — 인스타 릴스 링크면 정보성(영상), 릴스가 아닌 인스타 게시물이면 정보성(사진).
       // X는 그림·정보성이 섞여 있어 고르지 않는다(플랫폼만). 추정값이라 노랑으로 보이고, 고르면 그 값이 우선.
@@ -2524,7 +2560,7 @@
         '<td class="st-n">' + (s ? comma(s.amt) : '—') + '</td>' +
         '<td class="st-n">' + (x.rate || '—') + '</td>' +
         '<td>' + inp(x.src, 'reward', x.reward, '보상', 'st-w4') + '</td>' +
-        '<td class="st-c"><input type="checkbox" class="st-trb" data-src="' + src + '"' + (p.transfer ? ' checked' : '') + ' title="양도(이벤트 진행)" /></td>' +
+        '<td class="st-c"><span class="st-trw' + (x.transferAuto ? ' is-auto' : '') + '"><input type="checkbox" class="st-trb" data-src="' + src + '"' + (x.transfer ? ' checked' : '') + ' title="양도(이벤트 진행)' + (x.transferAuto ? ' — 메일 제목에 이벤트가 있어 미리 체크함' : '') + '" /></span></td>' +
         '<td>' + inp(x.src, 'promo', p.promo || x.promoAuto, '판촉대상', 'st-w12' + (x.promoAuto ? ' is-auto' : ''), 'st-promo-list') + '</td>' +
         '<td>' + inp(x.src, 'link', p.link, 'https://…', 'st-w12') + '</td>' +
         '<td>' + inp(x.src, 'id', x.id, '아이디', 'st-w7') + '</td>' +
@@ -2559,6 +2595,7 @@
       '<span><b>' + shown.length + '</b>줄</span>' +
       (needName ? '<span class="is-warn">이름 필요 <b>' + needName + '</b></span>' : '<span class="is-ok">이름 모두 채움</span>') +
       (hiddenN ? '<button class="st-link" id="st-showhid">' + (settleShowHidden ? '숨긴 코드 감추기' : '숨긴 코드 ' + hiddenN + '개 보기') + '</button>' : '') +
+      '<span class="st-legend"><i class="lg-empty"></i>비어 있음(채우기) <i class="lg-full"></i>채워짐 <i class="lg-auto"></i>자동 추정(맞는지 확인 — 고치면 흰색)</span>' +
       '</div>';
 
     var missingBox = missing.length ? '<div class="st-miss"><span>엑셀에 코드가 없는 이 회차 접수자 — 눌러서 줄 추가:</span>' +
@@ -2591,7 +2628,7 @@
       var v = {
         '제': settleTitle(x.month, x.name), '월': x.month, '이름': x.name, '플랫폼': x.platform, '선택': p.kind || x.kindAuto || '', 'IP': p.ip || x.ipAuto || '',
         '유입수': s ? comma(s['in']) : '', '결제수': s ? comma(s.pay) : '', '판매금액': s ? comma(s.amt) : '', '전환율': x.rate,
-        '보상': x.reward, '양도': p.transfer ? '이벤트 진행' : '—', '판촉대상': p.promo || x.promoAuto || '', '업로드 시각': p.uploadAt || x.timeAuto || '',
+        '보상': x.reward, '양도': x.transfer ? '이벤트 진행' : '—', '판촉대상': p.promo || x.promoAuto || '', '업로드 시각': p.uploadAt || x.timeAuto || '',
         '스토어오픈 시각': x.month === m ? (st.openTime || '') : '', '아이디': x.id || '', '글 링크': p.link || '', '팔로워': p.followers || ''
       };
       return SETTLE_COLS.map(function (c) { return cell(v[c]); }).join(',');
@@ -2637,7 +2674,7 @@
       el.addEventListener('change', function () { var src = el.getAttribute('data-src'), f = el.getAttribute('data-f'); el.classList.toggle('is-empty', !el.value); el.classList.remove('is-auto'); save(function (st) { row(st, src)[f] = el.value; }); if (f === 'month') renderList(); });
     });
     each('.st-trb', function (c) {
-      c.addEventListener('change', function () { var src = c.getAttribute('data-src'); save(function (st) { row(st, src).transfer = c.checked; }); });
+      c.addEventListener('change', function () { var src = c.getAttribute('data-src'); c.parentNode.classList.remove('is-auto'); save(function (st) { row(st, src).transfer = c.checked; }); });
     });
     each('.st-hide', function (b) {
       b.addEventListener('click', function () {
