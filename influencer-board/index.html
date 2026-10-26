@@ -2107,7 +2107,8 @@
   var settleMonth = null;
   var settleMsg = '';
   var settleShowHidden = false;
-  var settleShowYt = false;   // 유튜브 채널 코드(youtube로 시작)는 아래에 접어 둔다
+  var settleShowYt = false;
+  var settleShowPast = true;  // 지난 달 협업 줄 — 실적을 같이 보도록 기본은 펼쳐 둔다   // 유튜브 채널 코드(youtube로 시작)는 아래에 접어 둔다
 
   function lsGet(k, d) { try { var v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? d : v; } catch (e) { return d; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { settleMsg = '이 브라우저에 저장하지 못했습니다(저장 공간 부족·사생활 보호 모드). 새로고침하면 입력이 사라질 수 있습니다.'; } }
@@ -2329,16 +2330,44 @@
   function comma(n) { return Math.round(n).toLocaleString('ko-KR'); }
 
   // 한 줄(코드 하나)의 정산 값 — 화면과 파일이 같이 쓴다
-  function settleLine(st, src, names, pool, hide) {
+  // 그 줄의 협업 달 — 엑셀 기간에는 지난달·지지난달 협업 글로 들어온 유입도 섞여 있어서, 줄마다 따로 정한다.
+  // ① 직접 고른 달 ② 그 이름의 접수 기록(지금 회차 달 이하 중 가장 최근 오픈 달) ③ 메일 제목의 "메가하우스 ○월" ④ 지금 회차 달
+  function settleLineMonth(name, m) {
+    if (!name) return { month: m, how: '' };
+    var k = settleKey(name), best = '';
+    withLatestFlag(rows).forEach(function (r) {
+      if (!r.latest || settleKey(r.nick) !== k) return;
+      var o = openDateFor(r.draftDate);
+      if (!o) return;
+      var mk = monthKey(o);
+      if (mk <= m && mk > best) best = mk;
+    });
+    if (best) return { month: best, how: '접수' };
+    var y = +m.slice(0, 4), mm = +m.slice(5, 7);
+    settleMailSubjects(name).forEach(function (t) {
+      var x = String(t).match(/메가하우스\s*(?:(\d{2})년\s*)?(\d{1,2})월/);
+      if (!x) return;
+      var mo = +x[2], yy = x[1] ? 2000 + +x[1] : (mo > mm ? y - 1 : y);
+      var key = yy + '-' + String(mo).padStart(2, '0');
+      if (key <= m && key > best) best = key;
+    });
+    if (best) return { month: best, how: '메일' };
+    return { month: m, how: '' };
+  }
+  function monthLabel(mk) { return mk.slice(0, 4) + '년 ' + (+mk.slice(5, 7)) + '월'; }
+
+  function settleLine(st, src, names, pool, hide, m) {
     var p = st.rows[src] || {};
     var s = st.stats && st.stats.by[src] ? st.stats.by[src] : null;
     var g = p.name ? { name: p.name, how: '' } : settleGuessName(src, names, pool);
     var li = linkInfo(p.link);
+    var mo = p.month ? { month: p.month, how: '직접' } : settleLineMonth(g.name, m);
     var autoReward = s ? (s['in'] >= SETTLE_THRESHOLD ? '10만' : '5만') : '';
     var hidden = hide[src] != null ? !!hide[src] : SETTLE_GENERIC.indexOf(src) >= 0;
     return {
       src: src, p: p, s: s, manual: src.indexOf('manual:') === 0,
       name: g.name, nameHow: g.how, nameKey: g.key || '', yt: /^youtube./.test(src),
+      month: mo.month, monthHow: mo.how,
       ipAuto: p.ip ? '' : settleIpGuess((s ? s.media : []).concat(settleMailSubjects(g.name))),
       promoAuto: p.promo ? '' : settlePromoGuess(settleMailSubjects(g.name)),
       timeAuto: p.uploadAt ? '' : linkTime(p.link),
@@ -2356,7 +2385,7 @@
     var names = lsGet(SETTLE_NAME_KEY, {}), hide = lsGet(SETTLE_HIDE_KEY, {}), members = settleMembers(m), pool = settlePool(names);
     var srcs = Object.keys(st.stats ? st.stats.by : {});
     Object.keys(st.rows).forEach(function (k) { if (k.indexOf('manual:') === 0 && srcs.indexOf(k) < 0) srcs.push(k); });
-    var lines = srcs.map(function (s) { return settleLine(st, s, names, pool, hide); });
+    var lines = srcs.map(function (s) { return settleLine(st, s, names, pool, hide, m); });
     // 이름을 붙인 줄이 위, 아직 이름이 없는 줄은 그 아래에 모은다. 각 묶음 안에서는 유입이 많은 순.
     lines.sort(function (a, b) { return (a.name ? 0 : 1) - (b.name ? 0 : 1) || (b.s ? b.s['in'] : -1) - (a.s ? a.s['in'] : -1) || a.src.localeCompare(b.src); });
     return { lines: lines, members: members, names: names };
@@ -2449,7 +2478,8 @@
     var shown = all.lines.filter(function (x) { return !x.hidden; });
     var hiddenN = all.lines.length - shown.length;
     var needName = shown.filter(function (x) { return !x.name; }).length;
-    var ready = shown.length - needName;
+    var ready = shown.filter(function (x) { return x.name && x.month === m; }).length;
+    var readyAll = shown.length - needName;
     var usedNames = {};
     shown.forEach(function (x) { if (x.name) usedNames[settleKey(x.name)] = true; });
     var missing = all.members.filter(function (r) { return !usedNames[settleKey(r.nick)]; });
@@ -2473,12 +2503,19 @@
     var inp = function (src, f, val, ph, cls, list) {
       return '<input class="st-in ' + (cls || '') + '" data-src="' + esc(src) + '" data-f="' + f + '" value="' + esc(val || '') + '" placeholder="' + ph + '"' + (list ? ' list="' + list + '"' : '') + ' />';
     };
+    var monthOpts = function (cur) {
+      var list = [], d = new Date(+m.slice(0, 4), +m.slice(5, 7) - 1, 1);
+      for (var i = 0; i < 12; i++) { list.push(monthKey(d)); d.setMonth(d.getMonth() - 1); }
+      if (list.indexOf(cur) < 0) list.push(cur);
+      return list.map(function (v) { return '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + (+v.slice(5, 7)) + '월' + (v.slice(0, 4) !== m.slice(0, 4) ? ' (' + v.slice(2, 4) + '년)' : '') + '</option>'; }).join('');
+    };
     var rowHtml = function (x) {
       var p = x.p, src = esc(x.src), s = x.s;
       var how = x.nameHow ? '<i class="st-how' + (x.nameHow === '비슷' ? ' is-fuzzy' : '') + '">' + (x.nameHow === '기억' ? '지난번 이름' : x.nameHow === '메일' ? '메일에서 찾음' : x.nameHow === '접수' ? '접수에서 찾음' : '비슷한 아이디 ' + esc(x.nameKey) + ' — 맞는지 확인') + '</i>' : '';
       return '<tr class="' + (x.hidden ? 'is-hid' : !x.name ? 'is-need' : '') + '">' +
         '<td class="st-c-name">' + inp(x.src, 'name', x.name, '누구인지 입력', 'st-nm' + (x.nameHow === '비슷' ? ' is-auto' : ''), 'st-name-list') +
           '<span class="st-code">' + esc(x.manual ? '엑셀 없음' : x.src) + how + '</span></td>' +
+        '<td><select class="st-sel' + (x.monthHow === '메일' ? ' is-auto' : '') + '" data-src="' + src + '" data-f="month" title="협업한 달 — 노션의 월·제목에 들어감">' + monthOpts(x.month) + '</select></td>' +
         '<td><select class="st-sel' + (x.platform ? '' : ' is-empty') + '" data-src="' + src + '" data-f="platform">' + opt(SETTLE_PLATFORMS, x.platform, '—') + '</select></td>' +
         '<td><select class="st-sel' + (p.kind ? '' : x.kindAuto ? ' is-auto' : ' is-empty') + '" data-src="' + src + '" data-f="kind">' + opt(SETTLE_KINDS, p.kind || x.kindAuto, '고르기') + '</select></td>' +
         '<td>' + inp(x.src, 'ip', p.ip || x.ipAuto, 'IP', 'st-w6' + (x.ipAuto ? ' is-auto' : ''), 'st-ip-list') + '</td>' +
@@ -2496,13 +2533,15 @@
         '<td class="st-c"><button class="st-hide" data-src="' + src + '" data-hide="' + (x.hidden ? '0' : '1') + '" title="' + (x.hidden ? '다시 보이기' : '인플이 아닌 코드 — 숨기고 기억') + '">' + (x.hidden ? '되돌리기' : '숨기기') + '</button></td>' +
         '</tr>';
     };
-    var headRow = '<th class="st-c-name">이름</th><th>플랫폼</th><th>선택</th><th>IP</th><th class="st-n">유입수</th><th class="st-n">결제수</th><th class="st-n">판매금액</th><th class="st-n">전환율</th><th>보상</th><th class="st-c">양도</th><th>판촉대상</th><th>글 링크</th><th>아이디</th><th>업로드 시각</th><th>팔로워</th><th></th>';
-    var mainRows = shown.filter(function (x) { return !x.yt; }), ytRows = shown.filter(function (x) { return x.yt; });
+    var headRow = '<th class="st-c-name">이름</th><th>월</th><th>플랫폼</th><th>선택</th><th>IP</th><th class="st-n">유입수</th><th class="st-n">결제수</th><th class="st-n">판매금액</th><th class="st-n">전환율</th><th>보상</th><th class="st-c">양도</th><th>판촉대상</th><th>글 링크</th><th>아이디</th><th>업로드 시각</th><th>팔로워</th><th></th>';
+    var mainRows = shown.filter(function (x) { return !x.yt && x.month === m; }), ytRows = shown.filter(function (x) { return x.yt; });
+    var pastRows = shown.filter(function (x) { return !x.yt && x.month !== m; });
+    pastRows.sort(function (a, b) { return (a.name ? 0 : 1) - (b.name ? 0 : 1) || b.month.localeCompare(a.month) || (b.s ? b.s['in'] : -1) - (a.s ? a.s['in'] : -1); });
     var grouped = function (list) {
       var firstNeed = -1;
       list.forEach(function (x, i) { if (firstNeed < 0 && !x.name) firstNeed = i; });
       return list.map(function (x, i) {
-        return (i === firstNeed ? '<tr class="st-grp"><td colspan="16">이름이 필요한 코드 ' + (list.length - firstNeed) + '개 — 이름을 넣으면 위로 올라갑니다</td></tr>' : '') + rowHtml(x);
+        return (i === firstNeed ? '<tr class="st-grp"><td colspan="17">이름이 필요한 코드 ' + (list.length - firstNeed) + '개 — 이름을 넣으면 위로 올라갑니다</td></tr>' : '') + rowHtml(x);
       }).join('');
     };
     var body = grouped(mainRows) + (settleShowHidden ? all.lines.filter(function (x) { return x.hidden; }).map(rowHtml).join('') : '');
@@ -2530,27 +2569,30 @@
       '<div class="scroll st-scroll"><table class="st-table"><thead><tr>' +
       headRow +
       '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+      (pastRows.length ? '<button class="st-fold" id="st-past">' + (settleShowPast ? '▾' : '▸') + ' 지난 달 협업 ' + pastRows.length + '줄 — 이번 엑셀 기간에 들어온 실적(월 칸 = 협업한 달) · ' + (settleShowPast ? '접기' : '펼치기') + '</button>' +
+        (settleShowPast ? '<div class="scroll st-scroll"><table class="st-table"><thead><tr>' + headRow + '</tr></thead><tbody>' + grouped(pastRows) + '</tbody></table></div>' : '') : '') +
       (ytRows.length ? '<button class="st-fold" id="st-yt">' + (settleShowYt ? '▾' : '▸') + ' 유튜브 채널 코드 ' + ytRows.length + '개' + (ytNeed ? ' (이름 필요 ' + ytNeed + ')' : '') + ' — ' + (settleShowYt ? '접기' : '눌러서 펼치기') + '</button>' +
         (settleShowYt ? '<div class="scroll st-scroll"><table class="st-table"><thead><tr>' + headRow + '</tr></thead><tbody>' + grouped(ytRows) + '</tbody></table></div>' : '') : '') +
       missingBox +
       '<p class="foot">유입수 파란 글씨 = ' + SETTLE_THRESHOLD + ' 이상(보상 10만 자동). 회색 칸 = 비어 있어 채워야 함, 흰 칸 = 채워짐, 노랑 점선 칸 = 자동으로 추정한 값이라 맞는지 확인(IP·판촉대상은 메일 제목·엑셀에서, 선택은 인스타 링크로 릴스=정보성(영상)·게시물=정보성(사진), 인스타 업로드 시각, 비슷한 아이디로 찾은 이름). 고치면 흰색이 됩니다. 보상·플랫폼·아이디는 자동값이 들어가 있고 고칠 수 있습니다. 양도 칸 체크 = 이벤트 진행. 표는 옆으로 밀어서 볼 수 있습니다.</p>' +
       '</section>' +
-      '<section class="rbox"><div class="cd-act"><button class="mini is-main" id="st-csv"' + (ready ? '' : ' disabled') + '>노션용 파일 받기 (' + ready + '명)</button>' +
+      '<section class="rbox"><div class="cd-act"><button class="mini is-main" id="st-csv"' + (ready ? '' : ' disabled') + '>노션용 파일 받기 — ' + monthLabel(m) + '만 (' + ready + '명)</button>' +
+      '<button class="mini" id="st-csv-all"' + (readyAll ? '' : ' disabled') + '>화면 전체 받기 — 지난 달 포함 (' + readyAll + '명)</button>' +
       (needName ? '<span class="cd-msg">이름이 빈 ' + needName + '줄은 파일에 들어가지 않습니다</span>' : '') + '</div>' +
       '<p class="rbox-desc" style="margin-top:8px">받은 파일을 노션 ‘2026 인플루언서 성과 실적 누적’ 표 오른쪽 위 <b>··· → CSV로 병합</b>(Merge with CSV)에서 고르면 표 맨 아래에 줄이 추가됩니다. 플랫폼은 “X/인스타” 글자로 들어가니 노션에서 아이콘으로 바꿔 주세요.</p></section>';
   }
 
-  function settleCsv() {
+  function settleCsv(all) {
     var m = settleMonth, st = settleState(m);
-    var lines = settleLines(st, m).lines.filter(function (x) { return !x.hidden && x.name; });
+    var lines = settleLines(st, m).lines.filter(function (x) { return !x.hidden && x.name && (all || x.month === m); });
     var cell = function (v) { var t = String(v == null ? '' : v); return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
     var out = [SETTLE_COLS.map(cell).join(',')].concat(lines.map(function (x) {
       var p = x.p, s = x.s;
       var v = {
-        '제': settleTitle(m, x.name), '월': m, '이름': x.name, '플랫폼': x.platform, '선택': p.kind || x.kindAuto || '', 'IP': p.ip || x.ipAuto || '',
+        '제': settleTitle(x.month, x.name), '월': x.month, '이름': x.name, '플랫폼': x.platform, '선택': p.kind || x.kindAuto || '', 'IP': p.ip || x.ipAuto || '',
         '유입수': s ? comma(s['in']) : '', '결제수': s ? comma(s.pay) : '', '판매금액': s ? comma(s.amt) : '', '전환율': x.rate,
         '보상': x.reward, '양도': p.transfer ? '이벤트 진행' : '—', '판촉대상': p.promo || x.promoAuto || '', '업로드 시각': p.uploadAt || x.timeAuto || '',
-        '스토어오픈 시각': st.openTime || '', '아이디': x.id || '', '글 링크': p.link || '', '팔로워': p.followers || ''
+        '스토어오픈 시각': x.month === m ? (st.openTime || '') : '', '아이디': x.id || '', '글 링크': p.link || '', '팔로워': p.followers || ''
       };
       return SETTLE_COLS.map(function (c) { return cell(v[c]); }).join(',');
     }));
@@ -2566,7 +2608,7 @@
     var blob = new Blob([out.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'notion-settle-' + m + '.csv';
+    a.download = 'notion-settle-' + m + (all ? '-all' : '') + '.csv';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
   }
@@ -2592,7 +2634,7 @@
       if (f === 'link') el.addEventListener('change', renderList);
     });
     each('.st-sel', function (el) {
-      el.addEventListener('change', function () { var src = el.getAttribute('data-src'), f = el.getAttribute('data-f'); el.classList.toggle('is-empty', !el.value); el.classList.remove('is-auto'); save(function (st) { row(st, src)[f] = el.value; }); });
+      el.addEventListener('change', function () { var src = el.getAttribute('data-src'), f = el.getAttribute('data-f'); el.classList.toggle('is-empty', !el.value); el.classList.remove('is-auto'); save(function (st) { row(st, src)[f] = el.value; }); if (f === 'month') renderList(); });
     });
     each('.st-trb', function (c) {
       c.addEventListener('change', function () { var src = c.getAttribute('data-src'); save(function (st) { row(st, src).transfer = c.checked; }); });
@@ -2612,6 +2654,8 @@
         renderList();
       });
     });
+    var past = document.getElementById('st-past');
+    if (past) past.addEventListener('click', function () { settleShowPast = !settleShowPast; renderList(); });
     var yt = document.getElementById('st-yt');
     if (yt) yt.addEventListener('click', function () { settleShowYt = !settleShowYt; renderList(); });
     var sh = document.getElementById('st-showhid');
@@ -2619,7 +2663,9 @@
     var clr = document.getElementById('st-clear');
     if (clr) clr.addEventListener('click', function () { save(function (st) { st.stats = null; }); settleMsg = '올린 엑셀 숫자를 지웠습니다. 입력한 이름·링크 등은 남아 있습니다.'; renderList(); });
     var csv = document.getElementById('st-csv');
-    if (csv) csv.addEventListener('click', settleCsv);
+    if (csv) csv.addEventListener('click', function () { settleCsv(false); });
+    var csvAll = document.getElementById('st-csv-all');
+    if (csvAll) csvAll.addEventListener('click', function () { settleCsv(true); });
     var file = document.getElementById('st-file');
     if (file) file.addEventListener('change', function () {
       var f = file.files && file.files[0];
