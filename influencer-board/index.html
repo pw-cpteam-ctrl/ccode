@@ -437,6 +437,34 @@
   .ml-att { font-size: 11.5px; color: var(--ink-500); margin-top: 4px; }
   .ml-body-f { font-size: 11px; color: var(--ink-400); margin-top: 6px; }
 
+  .st-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 8px; font-size: 13px; color: var(--ink-500); }
+  .st-top label { display: inline-flex; align-items: center; gap: 6px; }
+  .st-top select, .st-top input[type=text] { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
+  .st-top input[type=text] { width: 9em; }
+  .st-file { font-size: 12.5px; color: var(--ink); display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .st-file.is-none { color: var(--ink-400); }
+  .st-card { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-top: 10px; background: #fff; }
+  .st-card.is-off { opacity: .45; }
+  .st-row1 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  .st-name { font-size: 14.5px; }
+  .st-naver { font-size: 12px; color: var(--ink-400); }
+  .st-src { font: inherit; font-size: 12px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 7px; max-width: 16em; }
+  .st-src.is-ok { border-color: #86efac; background: #f0fdf4; }
+  .st-num { font-size: 12.5px; color: var(--ink-500); white-space: nowrap; }
+  .st-num b { color: var(--ink); }
+  .st-num.is-hit { color: #1d4ed8; font-weight: 700; }
+  .st-inc { font-size: 12px; color: var(--ink-500); display: inline-flex; gap: 4px; align-items: center; }
+  .st-row2 { display: grid; grid-template-columns: 2fr repeat(4, minmax(0, 1fr)); gap: 8px 10px; margin-top: 8px; }
+  .st-row2 + .st-row2 { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, .8fr) minmax(0, .9fr); }
+  .st-f { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .st-f > span { font-size: 11px; color: var(--ink-400); font-weight: 600; }
+  .st-in { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; min-width: 0; width: 100%; box-sizing: border-box; }
+  .st-plat { font-size: 13px; padding: 6px 0; }
+  .st-kinds { display: flex; flex-wrap: wrap; gap: 4px; }
+  .st-kind { font: inherit; font-size: 12px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink-500); cursor: pointer; }
+  .st-kind.is-on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .st-tr { font-size: 12.5px; display: inline-flex; align-items: center; gap: 5px; padding: 6px 0; white-space: nowrap; }
+  @media (max-width: 900px) { .st-row2, .st-row2 + .st-row2 { grid-template-columns: 1fr 1fr; } .st-wide { grid-column: 1 / -1; } }
   .ml-help-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
   .ml-help-card { border: 1px solid #e7e5e4; border-radius: 10px; padding: 9px 11px; font-size: 12px; color: var(--ink-500); line-height: 1.55; background: #fafaf9; }
   .ml-help-card b { display: block; color: var(--ink); font-size: 12.5px; margin-bottom: 3px; }
@@ -501,7 +529,7 @@
     return 50;
   }
   function mailRangeSet(n) { try { localStorage.setItem(MAIL_RANGE_KEY, String(n)); } catch (e) { /* 저장 못 해도 이번 화면에는 적용 */ } }
-  var VIEWS = { list: '접수 목록', round: '회차 현황', coupon: '쿠폰 발급', cand: '확정 후보', mail: '연락 이력' };
+  var VIEWS = { list: '접수 목록', round: '회차 현황', coupon: '쿠폰 발급', cand: '확정 후보', mail: '연락 이력', settle: '정산 기록' };
   var view = (function () {
     try { var v = localStorage.getItem(VIEW_KEY); return VIEWS[v] ? v : 'list'; }
     catch (e) { return 'list'; }
@@ -2039,6 +2067,351 @@
       '활동명은 보낸 메일의 “안녕하세요, ○○님”, 받은 메일의 “○○입니다”에서 읽고, 둘 다 없으면 메일의 보낸이 표시 이름을 씁니다(“표시 이름” 표시). 같은 활동명이 주소만 달라도 한 사람으로 묶습니다.</p>';
   }
 
+  // ─── 정산 기록 ────────────────────────────────────────────────
+  // 한 회차(스토어 오픈 달)의 크리에이터별 성과를 모아, 노션 '2026 인플루언서 성과 실적 누적' DB에
+  // 그대로 넣을 수 있는 파일을 만든다. 노션 API 연결은 워크스페이스 권한 때문에 쓸 수 없어서,
+  // 노션 쪽은 '··· → CSV로 병합'으로 올린다(열 이름으로 맞춰 들어가므로 열 순서는 상관없다).
+  // 스마트스토어 통계 엑셀은 브라우저에서만 읽고 서버로 보내지 않는다.
+  // 입력한 값(링크·성격·IP 등)과 엑셀에서 뽑은 숫자는 이 브라우저에 회차별로 저장한다 — 새로고침해도 남는다.
+  var SETTLE_KEY = 'ib-settle-v1:';          // + 'YYYY-MM' → 그 회차의 입력값
+  var SETTLE_PAIR_KEY = 'ib-settle-pair';    // 활동명 → 엑셀 nt_source (한 번 짝지으면 다음 달에도 쓴다)
+  var SETTLE_HIST_KEY = 'ib-settle-hist';    // 예전에 쓴 IP·판촉대상(자동완성용)
+  var SETTLE_THRESHOLD = 750;                // 유입이 이 이상이면 보상 10만, 아니면 5만 (1·2월 노션 기록과 같은 기준)
+  // 노션 DB에 이미 있던 IP 이름(2026-10 정리 후). 새로 쓰는 이름은 파일을 받을 때 자동완성 목록에 더해진다.
+  var SETTLE_IP_BASE = ['귀칼', '나루토', '히로아카', '은혼', '주술회전', '진격거', '하이큐', '헌터×헌터', '케로로', '블리치', '프리렌', '디지몬',
+    '스파이패밀리', '약사의 혼잣말', '에이스테', '마마마', '캐캐체/마법소녀', '룩업 전체'];
+  var SETTLE_KINDS = ['정보성(사진)', '정보성(영상)', '그림'];
+  // 노션 DB 열 이름 — 바뀌면 병합할 때 그 열이 새로 생기거나 비므로 노션과 똑같이 둔다.
+  var SETTLE_COLS = ['제', '월', '이름', '플랫폼', '선택', 'IP', '유입수', '결제수', '판매금액', '전환율', '보상', '양도', '판촉대상', '업로드 시각', '스토어오픈 시각', '아이디', '글 링크', '팔로워'];
+  var settleMonth = null;
+  var settleMsg = '';
+
+  function lsGet(k, d) { try { var v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? d : v; } catch (e) { return d; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { settleMsg = '이 브라우저에 저장하지 못했습니다(저장 공간 부족·사생활 보호 모드). 새로고침하면 입력이 사라질 수 있습니다.'; } }
+  function settleState(m) {
+    var st = lsGet(SETTLE_KEY + m, {});
+    st.people = st.people || {};
+    st.stats = st.stats || null;
+    st.openTime = st.openTime || '';
+    return st;
+  }
+  function settleKey(n) { return String(n || '').replace(/\s+/g, '').toLowerCase(); }
+  // 네이버 아이디 → 엑셀 nt_source와 비교할 형태(소문자, 앞의 @와 뒤의 @도메인 제거)
+  function srcKey(v) { var t = String(v || '').trim().toLowerCase().replace(/^@+/, ''); var i = t.indexOf('@'); return i > 0 ? t.slice(0, i) : t; }
+
+  function settleMonths() {
+    var seen = {};
+    withLatestFlag(rows).forEach(function (r) {
+      if (!r.latest) return;
+      var o = openDateFor(r.draftDate);
+      if (o) seen[monthKey(o)] = true;
+    });
+    return Object.keys(seen).sort().reverse();
+  }
+  function settleDefaultMonth(list) {
+    var now = monthKey(new Date());
+    for (var i = 0; i < list.length; i++) if (list[i] <= now) return list[i];
+    return list[list.length - 1] || now;
+  }
+  // 그 회차(오픈 달)의 크리에이터 — 같은 활동명이 두 번이면 마지막 제출만
+  function settleMembers(m) {
+    var by = {};
+    withLatestFlag(rows).forEach(function (r) {
+      if (!r.latest) return;
+      var o = openDateFor(r.draftDate);
+      if (!o || monthKey(o) !== m) return;
+      var k = settleKey(r.nick);
+      if (!by[k] || String(r.at) > String(by[k].at)) by[k] = r;
+    });
+    return Object.keys(by).map(function (k) { return by[k]; });
+  }
+
+  function linkInfo(url) {
+    var u = String(url || '').trim();
+    var x = u.match(/^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/([A-Za-z0-9_]+)/i);
+    if (x) return { platform: 'X', id: '@' + x[1] };
+    if (/^https?:\/\/(?:www\.)?instagram\.com\//i.test(u)) {
+      var ig = u.match(/instagram\.com\/([A-Za-z0-9._]+)\/?(?:$|\?)/i);   // 프로필 주소일 때만 아이디가 있다(게시물 주소엔 없음)
+      return { platform: '인스타', id: ig && !/^(p|reel|reels|tv|stories)$/i.test(ig[1]) ? ig[1] : '' };
+    }
+    if (/^https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\//i.test(u)) {
+      var yt = u.match(/youtube\.com\/@([^/?#]+)/i);
+      return { platform: '유튜브', id: yt ? '@' + yt[1] : '' };
+    }
+    return { platform: '', id: '' };
+  }
+
+  function circled(n) {
+    var c = ['⓪', '①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩', '⑪', '⑫'];
+    return c[n] || String(n);
+  }
+  function settleTitle(m, name) {
+    var p = m.split('-');
+    var yy = p[0].slice(2).split('').map(function (d) { return circled(+d); }).join('');
+    return yy + '년 ' + circled(+p[1]) + '월 ' + name;
+  }
+  function comma(n) { return Math.round(n).toLocaleString('ko-KR'); }
+
+  // 한 사람의 정산 값(화면·파일 공용)
+  function settlePerson(st, r, pairs) {
+    var k = settleKey(r.nick);
+    var p = st.people[k] || {};
+    var src = p.src != null ? p.src : (pairs[k] || srcKey(r.naver));
+    var s = st.stats && src ? st.stats.by[src] : null;
+    var li = linkInfo(p.link);
+    var autoReward = s ? (s['in'] >= SETTLE_THRESHOLD ? '10만' : '5만') : '';
+    return {
+      k: k, r: r, p: p, src: src, s: s,
+      platform: li.platform,
+      id: p.id != null && p.id !== '' ? p.id : li.id,
+      reward: p.reward != null && p.reward !== '' ? p.reward : autoReward,
+      autoReward: autoReward,
+      include: p.include !== false,
+      rate: s && s['in'] ? (s.pay / s['in'] * 100).toFixed(2) + '%' : ''
+    };
+  }
+
+  // ─── .xlsx 읽기 (라이브러리 없이) ─────────────────────────────
+  // xlsx는 zip 안에 든 XML 묶음이다. zip 목차를 읽고, 압축은 브라우저 내장 기능(DecompressionStream)으로 푼다.
+  function xlsxRows(buf) {
+    var dv = new DataView(buf), u8 = new Uint8Array(buf);
+    var eocd = -1;
+    for (var i = u8.length - 22; i >= Math.max(0, u8.length - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    if (eocd < 0) return Promise.reject(new Error('zip'));
+    var n = dv.getUint16(eocd + 10, true), off = dv.getUint32(eocd + 16, true);
+    var files = {}, dec = new TextDecoder();
+    for (var e = 0; e < n; e++) {
+      if (dv.getUint32(off, true) !== 0x02014b50) break;
+      var method = dv.getUint16(off + 10, true), csize = dv.getUint32(off + 20, true);
+      var nl = dv.getUint16(off + 28, true), xl = dv.getUint16(off + 30, true), cl = dv.getUint16(off + 32, true);
+      var lho = dv.getUint32(off + 42, true);
+      var name = dec.decode(u8.subarray(off + 46, off + 46 + nl));
+      files[name] = { method: method, csize: csize, lho: lho };
+      off += 46 + nl + xl + cl;
+    }
+    function text(name) {
+      var f = files[name];
+      if (!f) return Promise.resolve(null);
+      var start = f.lho + 30 + dv.getUint16(f.lho + 26, true) + dv.getUint16(f.lho + 28, true);
+      var data = u8.slice(start, start + f.csize);
+      if (f.method === 0) return Promise.resolve(dec.decode(data));
+      if (typeof DecompressionStream === 'undefined') return Promise.reject(new Error('browser'));
+      return new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+    }
+    var sheet = Object.keys(files).filter(function (f) { return /^xl\/worksheets\/sheet\d+\.xml$/.test(f); })
+      .sort(function (a, b) { return parseInt(a.replace(/\D/g, ''), 10) - parseInt(b.replace(/\D/g, ''), 10); })[0];
+    if (!sheet) return Promise.reject(new Error('sheet'));
+    return Promise.all([text('xl/sharedStrings.xml'), text(sheet)]).then(function (res) {
+      var dp = new DOMParser();
+      var shared = [];
+      if (res[0]) {
+        var sd = dp.parseFromString(res[0], 'application/xml');
+        Array.prototype.forEach.call(sd.getElementsByTagName('si'), function (si) {
+          Array.prototype.slice.call(si.getElementsByTagName('rPh')).forEach(function (x) { x.parentNode.removeChild(x); });   // 일본어 읽기 표기는 뺀다
+          shared.push(si.textContent);
+        });
+      }
+      var doc = dp.parseFromString(res[1], 'application/xml');
+      var out = [];
+      Array.prototype.forEach.call(doc.getElementsByTagName('row'), function (row) {
+        var line = [];
+        Array.prototype.forEach.call(row.getElementsByTagName('c'), function (c) {
+          var ref = c.getAttribute('r') || '', letters = ref.replace(/\d+/g, ''), col = 0;
+          for (var j = 0; j < letters.length; j++) col = col * 26 + (letters.charCodeAt(j) - 64);
+          col = col ? col - 1 : line.length;
+          var t = c.getAttribute('t'), v = c.getElementsByTagName('v')[0], val;
+          if (t === 's') val = shared[+(v && v.textContent)] || '';
+          else if (t === 'inlineStr') val = (c.getElementsByTagName('is')[0] || c).textContent;
+          else if (t === 'str' || t === 'b' || t === 'e') val = v ? v.textContent : '';
+          else val = v ? Number(v.textContent) : '';
+          line[col] = val;
+        });
+        out.push(line);
+      });
+      return out;
+    });
+  }
+
+  // 스마트스토어 '사용자정의채널' 통계 → nt_source별 합계(모바일·PC, 상품 링크를 모두 더함)
+  function settleParse(table) {
+    var head = (table[0] || []).map(function (h) { return String(h || '').trim(); });
+    var ix = function (name) { return head.indexOf(name); };
+    var iS = ix('nt_source'), iM = ix('nt_medium'), iIn = ix('유입수'), iPay = ix('결제수'), iAmt = ix('결제금액');
+    if (iS < 0 || iIn < 0 || iPay < 0 || iAmt < 0) return null;
+    var by = {};
+    table.slice(1).forEach(function (row) {
+      var src = srcKey(row[iS]);
+      if (!src) return;
+      var b = by[src] = by[src] || { src: src, 'in': 0, pay: 0, amt: 0, media: [] };
+      b['in'] += Number(row[iIn]) || 0; b.pay += Number(row[iPay]) || 0; b.amt += Number(row[iAmt]) || 0;
+      var md2 = String(row[iM] == null ? '' : row[iM]);
+      if (md2 && md2 !== '-' && b.media.indexOf(md2) < 0) b.media.push(md2);
+    });
+    return by;
+  }
+
+  function settleBox() {
+    var months = settleMonths();
+    if (!settleMonth || months.indexOf(settleMonth) < 0) settleMonth = settleDefaultMonth(months);
+    var m = settleMonth, st = settleState(m), pairs = lsGet(SETTLE_PAIR_KEY, {});
+    var hist = lsGet(SETTLE_HIST_KEY, { ip: [], promo: [] });
+    var people = settleMembers(m).map(function (r) { return settlePerson(st, r, pairs); });
+    people.sort(function (a, b) { return (b.s ? b.s['in'] : -1) - (a.s ? a.s['in'] : -1) || String(a.r.nick).localeCompare(String(b.r.nick)); });
+    var used = {};
+    people.forEach(function (x) { if (x.s) used[x.src] = true; });
+    var spare = st.stats ? Object.keys(st.stats.by).filter(function (s) { return !used[s]; })
+      .sort(function (a, b) { return st.stats.by[b]['in'] - st.stats.by[a]['in']; }) : [];
+    var nIn = people.filter(function (x) { return x.include; }).length;
+
+    var head = '<section class="rbox"><h2 class="rbox-h">정산 기록 — 노션 성과 DB용</h2>' +
+      '<p class="rbox-desc">회차를 고르고 스마트스토어 통계 엑셀을 올리면 사람별 유입·결제·전환율·보상이 채워집니다. 링크·성격·IP만 넣고 맨 아래 [노션용 파일 받기]를 누르세요. 입력한 내용은 이 브라우저에 자동 저장됩니다.</p>' +
+      '<div class="st-top">' +
+      '<label>회차(오픈 달) <select id="st-month">' + months.map(function (x) { return '<option value="' + x + '"' + (x === m ? ' selected' : '') + '>' + x.replace('-', '년 ') + '월</option>'; }).join('') + '</select></label>' +
+      '<label>스토어 오픈 시각 <input id="st-open" type="text" placeholder="예: 오후 4:00" value="' + esc(st.openTime) + '" /></label>' +
+      '<label class="mini is-main" for="st-file">스스 통계 엑셀 올리기</label><input type="file" id="st-file" accept=".xlsx" hidden />' +
+      (st.stats ? '<span class="st-file">' + esc(st.stats.name || '엑셀') + (st.stats.period ? ' · ' + esc(st.stats.period) : '') + ' · 코드 ' + Object.keys(st.stats.by).length + '개 <button class="mini" id="st-clear">엑셀 지우기</button></span>' : '<span class="st-file is-none">아직 엑셀을 올리지 않았습니다</span>') +
+      '</div>' +
+      (settleMsg ? '<p class="ml-fresh" id="st-msg">' + esc(settleMsg) + '</p>' : '') +
+      '</section>';
+
+    var srcOptions = function (x) {
+      var opts = spare.slice();
+      if (x.s && opts.indexOf(x.src) < 0) opts.unshift(x.src);
+      return '<select class="st-src" data-k="' + esc(x.k) + '"><option value="">' + (st.stats ? (x.s ? '연결 끊기' : '엑셀에서 못 찾음 — 코드 고르기') : '엑셀을 올리면 연결됩니다') + '</option>' +
+        opts.map(function (s) { var b = st.stats.by[s]; return '<option value="' + esc(s) + '"' + (x.s && s === x.src ? ' selected' : '') + '>' + esc(s) + ' (유입 ' + comma(b['in']) + ')</option>'; }).join('') + '</select>';
+    };
+    var cards = people.map(function (x) {
+      var p = x.p, k = esc(x.k);
+      var nums = x.s
+        ? '<span class="st-num">유입 <b>' + comma(x.s['in']) + '</b></span><span class="st-num">결제 <b>' + comma(x.s.pay) + '</b></span><span class="st-num">판매금액 <b>' + comma(x.s.amt) + '</b>원</span><span class="st-num">전환율 <b>' + x.rate + '</b></span>' +
+          '<span class="st-num ' + (x.s['in'] >= SETTLE_THRESHOLD ? 'is-hit' : '') + '">' + (x.s['in'] >= SETTLE_THRESHOLD ? SETTLE_THRESHOLD + ' 넘음' : SETTLE_THRESHOLD + ' 안 됨') + '</span>'
+        : '';
+      var inp = function (f, ph, val, cls, list) { return '<input class="st-in ' + (cls || '') + '" data-k="' + k + '" data-f="' + f + '" placeholder="' + ph + '" value="' + esc(val || '') + '"' + (list ? ' list="' + list + '"' : '') + ' />'; };
+      return '<div class="st-card' + (x.include ? '' : ' is-off') + '">' +
+        '<div class="st-row1"><label class="st-inc"><input type="checkbox" class="st-incb" data-k="' + k + '"' + (x.include ? ' checked' : '') + ' /> 넣기</label>' +
+        '<b class="st-name">' + esc(x.r.nick) + '</b><span class="st-naver">' + esc(x.r.naver || '') + '</span>' +
+        srcOptions(x) + nums + '</div>' +
+        '<div class="st-row2">' +
+          '<div class="st-f st-wide"><span>글 링크</span>' + inp('link', 'https://x.com/… 또는 instagram.com/…', p.link) + '</div>' +
+          '<div class="st-f"><span>플랫폼</span><b class="st-plat">' + (x.platform || '—') + '</b></div>' +
+          '<div class="st-f"><span>아이디</span>' + inp('id', x.platform === '인스타' ? '인스타는 직접 입력' : '링크에서 자동', x.id) + '</div>' +
+          '<div class="st-f"><span>업로드 시각</span>' + inp('uploadAt', '예: 10/8 오후 5:12', p.uploadAt) + '</div>' +
+          '<div class="st-f"><span>팔로워</span>' + inp('followers', '예: 8,336', p.followers) + '</div>' +
+        '</div>' +
+        '<div class="st-row2">' +
+          '<div class="st-f"><span>선택(성격)</span><div class="st-kinds">' + SETTLE_KINDS.map(function (kd) { return '<button class="st-kind' + (p.kind === kd ? ' is-on' : '') + '" data-k="' + k + '" data-kind="' + kd + '">' + kd + '</button>'; }).join('') + '</div></div>' +
+          '<div class="st-f"><span>IP</span>' + inp('ip', '예: 귀칼', p.ip, '', 'st-ip-list') + '</div>' +
+          '<div class="st-f st-wide"><span>판촉대상</span>' + inp('promo', '예: 귀칼 룩업재판 (렌고쿠)', p.promo, '', 'st-promo-list') + '</div>' +
+          '<div class="st-f"><span>보상</span>' + inp('reward', x.autoReward ? '자동: ' + x.autoReward : '예: 10만', p.reward != null && p.reward !== '' ? p.reward : x.autoReward) + '</div>' +
+          '<div class="st-f"><span>양도</span><label class="st-tr"><input type="checkbox" class="st-trb" data-k="' + k + '"' + (p.transfer ? ' checked' : '') + ' /> 이벤트 진행</label></div>' +
+        '</div></div>';
+    }).join('');
+
+    var spareBox = spare.length ? '<p class="foot">엑셀에만 있고 이 회차 사람과 이어지지 않은 코드 ' + spare.length + '개: ' +
+      spare.slice(0, 12).map(function (s) { return esc(s) + '(' + comma(st.stats.by[s]['in']) + ')'; }).join(', ') + (spare.length > 12 ? ' …' : '') +
+      ' — 다른 회차·유튜브 채널일 수 있습니다. 이 회차 사람이면 그 사람 칸의 ‘코드 고르기’에서 이어 주세요(다음 달에도 기억합니다).</p>' : '';
+
+    var lists = '<datalist id="st-ip-list">' + SETTLE_IP_BASE.concat(hist.ip || []).filter(function (v, i, a) { return v && a.indexOf(v) === i; }).map(function (v) { return '<option value="' + esc(v) + '">'; }).join('') + '</datalist>' +
+      '<datalist id="st-promo-list">' + (hist.promo || []).map(function (v) { return '<option value="' + esc(v) + '">'; }).join('') + '</datalist>';
+
+    return head + lists +
+      (people.length ? '<section class="rbox"><div class="cp-bar"><b>' + m.replace('-', '년 ') + '월 회차</b><span class="cp-n">' + people.length + '명 · 노션에 넣을 사람 ' + nIn + '명</span></div>' + cards + '</section>'
+        : '<div class="empty">이 회차에 접수된 크리에이터가 없습니다.</div>') +
+      spareBox +
+      '<section class="rbox"><div class="cd-act"><button class="mini is-main" id="st-csv"' + (nIn ? '' : ' disabled') + '>노션용 파일 받기 (' + nIn + '명)</button></div>' +
+      '<p class="rbox-desc" style="margin-top:8px">받은 파일을 노션 ‘2026 인플루언서 성과 실적 누적’ 표 오른쪽 위 <b>··· → CSV로 병합</b>(Merge with CSV)에서 고르면 표 맨 아래에 줄이 추가됩니다. 플랫폼은 “X/인스타” 글자로 들어가니 노션에서 아이콘으로 바꿔 주세요.</p></section>';
+  }
+
+  function settleCsv() {
+    var m = settleMonth, st = settleState(m), pairs = lsGet(SETTLE_PAIR_KEY, {});
+    var people = settleMembers(m).map(function (r) { return settlePerson(st, r, pairs); }).filter(function (x) { return x.include; });
+    var cell = function (v) { var t = String(v == null ? '' : v); return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+    var lines = [SETTLE_COLS.map(cell).join(',')].concat(people.map(function (x) {
+      var p = x.p, s = x.s;
+      var v = {
+        '제': settleTitle(m, x.r.nick), '월': m, '이름': x.r.nick, '플랫폼': x.platform, '선택': p.kind || '', 'IP': p.ip || '',
+        '유입수': s ? comma(s['in']) : '', '결제수': s ? comma(s.pay) : '', '판매금액': s ? comma(s.amt) : '', '전환율': x.rate,
+        '보상': x.reward, '양도': p.transfer ? '이벤트 진행' : '—', '판촉대상': p.promo || '', '업로드 시각': p.uploadAt || '',
+        '스토어오픈 시각': st.openTime || '', '아이디': x.id || '', '글 링크': p.link || '', '팔로워': p.followers || ''
+      };
+      return SETTLE_COLS.map(function (c) { return cell(v[c]); }).join(',');
+    }));
+    // 자동완성 목록에 이번에 쓴 IP·판촉대상을 더해 둔다
+    var hist = lsGet(SETTLE_HIST_KEY, { ip: [], promo: [] });
+    people.forEach(function (x) {
+      if (x.p.ip && SETTLE_IP_BASE.indexOf(x.p.ip) < 0 && hist.ip.indexOf(x.p.ip) < 0) hist.ip.push(x.p.ip);
+      if (x.p.promo && hist.promo.indexOf(x.p.promo) < 0) hist.promo.push(x.p.promo);
+    });
+    hist.promo = hist.promo.slice(-80);
+    lsSet(SETTLE_HIST_KEY, hist);
+    // 노션 가져오기가 첫 열 이름을 정확히 읽도록 BOM 없이 UTF-8로 만든다(엑셀로 열면 한글이 깨질 수 있음 — 노션 전용 파일)
+    var blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'notion-settle-' + m + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+
+  function bindSettle() {
+    var m = settleMonth;
+    var save = function (fn) { var st = settleState(m); fn(st); lsSet(SETTLE_KEY + m, st); };
+    var person = function (st, k) { return (st.people[k] = st.people[k] || {}); };
+    var sel = document.getElementById('st-month');
+    if (sel) sel.addEventListener('change', function () { settleMonth = sel.value; settleMsg = ''; renderList(); });
+    var open = document.getElementById('st-open');
+    if (open) open.addEventListener('input', function () { save(function (st) { st.openTime = open.value; }); });
+    // 글자 입력은 칠 때마다 저장만 하고(커서가 튀지 않게) 화면은 칸을 벗어날 때 다시 그린다(플랫폼·아이디 자동 표시)
+    Array.prototype.forEach.call(document.querySelectorAll('.st-in'), function (el) {
+      el.addEventListener('input', function () { var k = el.getAttribute('data-k'), f = el.getAttribute('data-f'); save(function (st) { person(st, k)[f] = el.value; }); });
+      if (el.getAttribute('data-f') === 'link') el.addEventListener('change', renderList);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.st-kind'), function (b) {
+      b.addEventListener('click', function () {
+        var k = b.getAttribute('data-k'), kd = b.getAttribute('data-kind');
+        save(function (st) { var p = person(st, k); p.kind = p.kind === kd ? '' : kd; });
+        renderList();
+      });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.st-trb'), function (c) {
+      c.addEventListener('change', function () { var k = c.getAttribute('data-k'); save(function (st) { person(st, k).transfer = c.checked; }); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.st-incb'), function (c) {
+      c.addEventListener('change', function () { var k = c.getAttribute('data-k'); save(function (st) { person(st, k).include = c.checked; }); renderList(); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.st-src'), function (s) {
+      s.addEventListener('change', function () {
+        var k = s.getAttribute('data-k');
+        save(function (st) { person(st, k).src = s.value; });
+        var pairs = lsGet(SETTLE_PAIR_KEY, {});
+        if (s.value) pairs[k] = s.value; else delete pairs[k];
+        lsSet(SETTLE_PAIR_KEY, pairs);
+        renderList();
+      });
+    });
+    var clr = document.getElementById('st-clear');
+    if (clr) clr.addEventListener('click', function () { save(function (st) { st.stats = null; }); settleMsg = '올린 엑셀 숫자를 지웠습니다.'; renderList(); });
+    var csv = document.getElementById('st-csv');
+    if (csv) csv.addEventListener('click', settleCsv);
+    var file = document.getElementById('st-file');
+    if (file) file.addEventListener('change', function () {
+      var f = file.files && file.files[0];
+      if (!f) return;
+      settleMsg = '엑셀을 읽는 중…'; renderList();
+      f.arrayBuffer().then(xlsxRows).then(function (table) {
+        var by = settleParse(table);
+        if (!by) { settleMsg = '스마트스토어 ‘사용자정의채널’ 통계 엑셀이 아닌 것 같습니다(nt_source·유입수·결제수·결제금액 열을 찾지 못함).'; renderList(); return; }
+        var pm = f.name.match(/(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})/);
+        save(function (st) { st.stats = { name: f.name, period: pm ? pm[1] + ' ~ ' + pm[2] : '', by: by, at: new Date().toISOString() }; });
+        settleMsg = '엑셀을 읽었습니다 — 코드 ' + Object.keys(by).length + '개. 이 회차 사람과 자동으로 이었고, 못 이은 사람은 ‘코드 고르기’에서 골라 주세요.';
+        renderList();
+      }).catch(function (err) {
+        settleMsg = err && err.message === 'browser' ? '이 브라우저는 엑셀 압축을 풀지 못합니다. 크롬·엣지 최신 버전에서 열어 주세요.' : '엑셀을 읽지 못했습니다. 스마트스토어에서 받은 .xlsx 파일인지 확인해 주세요.';
+        renderList();
+      });
+    });
+  }
+
   function viewTabs() {
     return '<div class="tabs" role="tablist">' + Object.keys(VIEWS).map(function (k) {
       return '<button class="tab' + (view === k ? ' is-on' : '') + '" role="tab" aria-selected="' + (view === k) + '" data-view="' + k + '">' + VIEWS[k] + '</button>';
@@ -2157,7 +2530,7 @@
       '<button class="mini" id="reload">새로고침</button>' +
       '<button class="mini" id="lock">잠그기</button>' +
       '</div>' +
-      (view === 'round' ? roundBox() : view === 'coupon' ? couponBox() : view === 'cand' ? candBox() : view === 'mail' ? mailBox() : openBox() +
+      (view === 'round' ? roundBox() : view === 'coupon' ? couponBox() : view === 'cand' ? candBox() : view === 'mail' ? mailBox() : view === 'settle' ? settleBox() : openBox() +
       (list.length
         ? '<div class="scroll"><table class="listtable"><thead><tr>' +
           '<th class="pick"></th><th>활동명</th><th>네이버 ID</th><th class="sortable' + (sortBy === 'draft' ? ' is-on' : '') + '" data-sort="draft">초안 예정일' + (sortBy === 'draft' ? ' <span class="sort-ar">▾</span>' : '') + '</th>' +
@@ -2198,6 +2571,7 @@
     if (cpCopy) cpCopy.addEventListener('click', function () { couponCopy(cpCopy); });
     var cpCsv = document.getElementById('cp-csv');
     if (cpCsv) cpCsv.addEventListener('click', couponCsv);
+    if (view === 'settle') bindSettle();
     var tabsEl = root.querySelector('.tabs'), tabOn = root.querySelector('.tab.is-on');
     if (tabsEl && tabOn) tabsEl.scrollLeft = tabOn.offsetLeft - (tabsEl.clientWidth - tabOn.offsetWidth) / 2;
     Array.prototype.forEach.call(root.querySelectorAll('.ml-sub-btn'), function (b) {
