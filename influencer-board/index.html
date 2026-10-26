@@ -476,6 +476,7 @@
   .st-legend .lg-empty { background: #e7e5e4; border: 1px solid #d6d3d1; }
   .st-legend .lg-full { background: #fff; border: 1px solid #d6d3d1; }
   .st-legend .lg-auto { background: #fefce8; border: 1.5px dashed #eab308; }
+  .st-sugg { display: block; margin-top: 3px; font: inherit; font-size: 11px; color: #b45309; background: none; border: 1px dashed #eab308; border-radius: 6px; padding: 2px 6px; cursor: pointer; }
   .st-trw { display: inline-flex; padding: 3px; border-radius: 6px; border: 1.5px solid transparent; }
   .st-trw.is-auto { background: #fefce8; border: 1.5px dashed #eab308; }
   .st-sel.is-auto { background: #fefce8; border: 1.5px dashed #eab308; color: var(--ink); }
@@ -1815,7 +1816,7 @@
   // 메일함에서 가져온 이력 + 올린 파일을 합쳐 화면용 결과를 다시 만든다.
   function rebuildMailInfo() {
     var fromEvents = mailEvents.map(function (e) {
-      return { date: new Date(e.at), dir: e.dir, addr: e.addr || null, name: cleanMailName(e.name), dname: e.dname || null, subject: e.subject || '', fa: e.fa || null, folder: e.folder || null, uid: e.uid != null ? e.uid : null, uidv: e.uidv || '', ack: !!e.ack };
+      return { date: new Date(e.at), dir: e.dir, addr: e.addr || null, name: cleanMailName(e.name), dname: e.dname || null, subject: e.subject || '', fa: e.fa || null, folder: e.folder || null, uid: e.uid != null ? e.uid : null, uidv: e.uidv || '', ack: !!e.ack, links: e.links || [] };
     });
     var msgs = mailDedupe(fromEvents.concat(mailFileMsgs));
     mailInfo = msgs.length ? buildMailInfo(msgs, mailFileMeta.mails + mailEvents.length, mailFileMeta.fw) : null;
@@ -2269,6 +2270,9 @@
   // 그 협업 달의 메일 제목만 — 제목에 '○월'이 있으면 그 달인 것만, 없으면 받은 날짜가 그 달 오픈일 앞뒤
   // (앞 달 오픈일과의 중간 ~ 다음 달 오픈일과의 중간)인 것만. 지난 협업 때 메일이 이번 달 추정에 섞이지 않게.
   function settleMonthTitles(name, mk) {
+    return settleMonthMsgs(name, mk).map(function (x) { return mailCleanSubject(x.subject); });
+  }
+  function settleMonthMsgs(name, mk) {
     var open = openOfMonth(mk), prev = openOfMonth(shiftMonth(mk, -1)), next = openOfMonth(shiftMonth(mk, 1));
     var from = new Date((prev.getTime() + open.getTime()) / 2), to = new Date((open.getTime() + next.getTime()) / 2);
     var mo = +mk.slice(5, 7);
@@ -2276,7 +2280,21 @@
       var t = String(x.subject || ''), mm = t.match(/메가하우스\s*(?:\d{2}년\s*)?(\d{1,2})월|\[[^\]]*?(\d{1,2})월[^\]]*\]/);
       if (mm) return +(mm[1] || mm[2]) === mo;
       return x.date >= from && x.date < to;
-    }).sort(function (a, b) { return b.date - a.date; }).map(function (x) { return mailCleanSubject(x.subject); });
+    }).sort(function (a, b) { return b.date - a.date; });
+  }
+  // 글 링크 추정 — 그 사람의 그 달 메일 속 게시물 링크. X 링크는 링크 속 아이디가 그 줄 아이디(엑셀 코드)와 같을 때만
+  // 자동으로 채우고, 다르면 '메일 속 링크 넣기' 버튼으로만 보여 준다(남의 글·코드가 SNS 아이디가 아닌 경우 오매칭 방지).
+  // 인스타·유튜브 게시물 주소에는 아이디가 없어 그 사람 메일 속 링크면 쓴다. 상대가 보낸 메일 → 최근 것 우선.
+  function settleLinkGuess(msgs, baseId) {
+    var ok = [], other = [];
+    msgs.slice().sort(function (a, b) { return (a.dir === '받음' ? 0 : 1) - (b.dir === '받음' ? 0 : 1) || b.date - a.date; }).forEach(function (x) {
+      (x.links || []).forEach(function (u) {
+        var xm = u.match(/(?:x|twitter)\.com\/([A-Za-z0-9_]+)\/status/i);
+        if (xm) { if (baseId && xm[1].toLowerCase() === String(baseId).toLowerCase().replace(/^@/, '')) ok.push(u); else other.push(u); }
+        else ok.push(u);
+      });
+    });
+    return { auto: ok[0] || '', suggest: ok[0] ? '' : (other[0] || '') };
   }
 
 
@@ -2392,9 +2410,12 @@
     var p = st.rows[src] || {};
     var s = st.stats && st.stats.by[src] ? st.stats.by[src] : null;
     var g = p.name ? { name: p.name, how: '' } : settleGuessName(src, names, pool);
-    var li = linkInfo(p.link);
     var mo = p.month ? { month: p.month, how: '직접' } : settleLineMonth(g.name, m);
-    var titles = settleMonthTitles(g.name, mo.month);
+    var monthMsgs = settleMonthMsgs(g.name, mo.month);
+    var titles = monthMsgs.map(function (x) { return mailCleanSubject(x.subject); });
+    var lg = p.link ? { auto: '', suggest: '' } : settleLinkGuess(monthMsgs, src.indexOf('manual:') === 0 ? '' : srcBase(src));
+    var link = p.link || lg.auto;
+    var li = linkInfo(link);
     var autoReward = s ? (s['in'] >= SETTLE_THRESHOLD ? '10만' : '5만') : '';
     var hidden = hide[src] != null ? !!hide[src] : SETTLE_GENERIC.indexOf(src) >= 0;
     return {
@@ -2406,10 +2427,11 @@
       // 양도 추정 — 그 달 메일 제목에 '이벤트'가 있으면 체크해 둔다(직접 체크하거나 끄면 그 값이 우선)
       transfer: p.transfer != null ? !!p.transfer : titles.some(function (t) { return /이벤트/.test(t); }),
       transferAuto: p.transfer == null && titles.some(function (t) { return /이벤트/.test(t); }),
-      timeAuto: p.uploadAt ? '' : linkTime(p.link),
+      link: link, linkAuto: !p.link && !!lg.auto, linkSuggest: lg.suggest,
+      timeAuto: p.uploadAt ? '' : linkTime(link),
       // 성격(선택) 추정 — 인스타 릴스 링크면 정보성(영상), 릴스가 아닌 인스타 게시물이면 정보성(사진).
       // X는 그림·정보성이 섞여 있어 고르지 않는다(플랫폼만). 추정값이라 노랑으로 보이고, 고르면 그 값이 우선.
-      kindAuto: p.kind ? '' : (/instagram\.com\/(?:[^/]+\/)?(?:reel|reels)\//i.test(p.link || '') ? '정보성(영상)' : /instagram\.com\/(?:[^/]+\/)?(?:p|tv)\//i.test(p.link || '') ? '정보성(사진)' : ''),
+      kindAuto: p.kind ? '' : (/instagram\.com\/(?:[^/]+\/)?(?:reel|reels)\//i.test(link) ? '정보성(영상)' : /instagram\.com\/(?:[^/]+\/)?(?:p|tv)\//i.test(link) ? '정보성(사진)' : ''),
       platform: p.platform || li.platform || srcPlatform(src),
       id: p.id || li.id || (src.indexOf('manual:') === 0 ? '' : srcBase(src)),
       reward: p.reward != null && p.reward !== '' ? p.reward : autoReward,
@@ -2562,7 +2584,8 @@
         '<td>' + inp(x.src, 'reward', x.reward, '보상', 'st-w4') + '</td>' +
         '<td class="st-c"><span class="st-trw' + (x.transferAuto ? ' is-auto' : '') + '"><input type="checkbox" class="st-trb" data-src="' + src + '"' + (x.transfer ? ' checked' : '') + ' title="양도(이벤트 진행)' + (x.transferAuto ? ' — 메일 제목에 이벤트가 있어 미리 체크함' : '') + '" /></span></td>' +
         '<td>' + inp(x.src, 'promo', p.promo || x.promoAuto, '판촉대상', 'st-w12' + (x.promoAuto ? ' is-auto' : ''), 'st-promo-list') + '</td>' +
-        '<td>' + inp(x.src, 'link', p.link, 'https://…', 'st-w12') + '</td>' +
+        '<td>' + inp(x.src, 'link', x.link, 'https://…', 'st-w12' + (x.linkAuto ? ' is-auto' : '')) +
+          (x.linkSuggest ? '<button class="st-sugg" data-src="' + src + '" data-link="' + esc(x.linkSuggest) + '" title="' + esc(x.linkSuggest) + '">메일 속 링크 넣기 (아이디 다름)</button>' : '') + '</td>' +
         '<td>' + inp(x.src, 'id', x.id, '아이디', 'st-w7') + '</td>' +
         '<td>' + inp(x.src, 'uploadAt', p.uploadAt || x.timeAuto, '링크를 넣으면 자동', 'st-w11' + (/추정/.test(x.timeAuto) ? ' is-auto' : '')) + '</td>' +
         '<td>' + inp(x.src, 'followers', p.followers, '팔로워', 'st-w5') + '</td>' +
@@ -2629,7 +2652,7 @@
         '제': settleTitle(x.month, x.name), '월': x.month, '이름': x.name, '플랫폼': x.platform, '선택': p.kind || x.kindAuto || '', 'IP': p.ip || x.ipAuto || '',
         '유입수': s ? comma(s['in']) : '', '결제수': s ? comma(s.pay) : '', '판매금액': s ? comma(s.amt) : '', '전환율': x.rate,
         '보상': x.reward, '양도': x.transfer ? '이벤트 진행' : '—', '판촉대상': p.promo || x.promoAuto || '', '업로드 시각': p.uploadAt || x.timeAuto || '',
-        '스토어오픈 시각': x.month === m ? (st.openTime || '') : '', '아이디': x.id || '', '글 링크': p.link || '', '팔로워': p.followers || ''
+        '스토어오픈 시각': x.month === m ? (st.openTime || '') : '', '아이디': x.id || '', '글 링크': x.link || '', '팔로워': p.followers || ''
       };
       return SETTLE_COLS.map(function (c) { return cell(v[c]); }).join(',');
     }));
@@ -2675,6 +2698,9 @@
     });
     each('.st-trb', function (c) {
       c.addEventListener('change', function () { var src = c.getAttribute('data-src'); c.parentNode.classList.remove('is-auto'); save(function (st) { row(st, src).transfer = c.checked; }); });
+    });
+    each('.st-sugg', function (b) {
+      b.addEventListener('click', function () { var src = b.getAttribute('data-src'); save(function (st) { row(st, src).link = b.getAttribute('data-link'); }); renderList(); });
     });
     each('.st-hide', function (b) {
       b.addEventListener('click', function () {

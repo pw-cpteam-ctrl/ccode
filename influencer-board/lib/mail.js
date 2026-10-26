@@ -26,7 +26,7 @@ const SOURCE_BYTES = 12000;     // 메일마다 앞쪽 이만큼만 가져온다
 const SUBJECT_MAX = 200;
 
 // 이력 기록 형식의 버전. 2부터는 표시 이름(dname)을 남긴다. 버전이 낮은 기록은 '아직 안 본 것'으로 쳐서 한 번 다시 읽고 바꿔 쓴다.
-export const MAIL_SCHEMA = 3;   // 3: 받은 메일에 '답장 불필요로 보임(ack)' 표시 추가
+export const MAIL_SCHEMA = 4;   // 3: 받은 메일에 '답장 불필요로 보임(ack)' 표시 추가 / 4: 본문 속 SNS 게시물 링크(links)
 
 // 이름 끝에 붙은 호칭("모잉 담당자님" → "모잉")과 따옴표를 떼어 낸다. index.html의 cleanMailName과 같아야 한다.
 export function cleanName(n) {
@@ -106,6 +106,20 @@ const textOf = (parsed) => {
   return '';
 };
 
+// 본문(앞부분)에 든 SNS 게시물 링크만 뽑는다 — 정산 기록의 '글 링크' 자동 채우기용. 본문 자체는 저장하지 않는다.
+// HTML 메일은 글자에 안 보이는 href에도 링크가 있어 HTML 원문도 같이 훑는다. 최대 3개.
+const POST_LINK_RE = /https?:\/\/(?:www\.|mobile\.|m\.)?(?:x\.com|twitter\.com)\/[A-Za-z0-9_]{1,15}\/status(?:es)?\/\d{10,20}|https?:\/\/(?:www\.)?instagram\.com\/(?:[A-Za-z0-9._]{1,30}\/)?(?:p|reel|reels|tv)\/[A-Za-z0-9_-]{5,20}|https?:\/\/(?:www\.|m\.)?youtube\.com\/(?:watch\?v=[A-Za-z0-9_-]{6,20}|shorts\/[A-Za-z0-9_-]{6,20})|https?:\/\/youtu\.be\/[A-Za-z0-9_-]{6,20}/gi;
+export function postLinks(parsed) {
+  const blob = String(parsed.text || '') + ' ' + String(parsed.html || '');
+  const out = [];
+  for (const m of blob.matchAll(POST_LINK_RE)) {
+    const u = m[0].replace(/^http:/i, 'https:');
+    if (!out.some((x) => x.toLowerCase() === u.toLowerCase())) out.push(u);
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
 export function eventId(messageId, folder, uid) {
   return crypto.createHash('sha1').update(String(messageId || folder + ':' + uid)).digest('hex').slice(0, 16);
 }
@@ -147,6 +161,7 @@ export function eventFromParsed(parsed, { folder, uid, messageId, date }) {
     subject: subject.slice(0, SUBJECT_MAX),
     folder,
     ...(!mine && ackOnly(text, (parsed.attachments || []).length) ? { ack: 1 } : {}),
+    ...(() => { const l = postLinks(parsed); return l.length ? { links: l } : {}; })(),
     v: MAIL_SCHEMA,
   };
 }
