@@ -462,8 +462,12 @@
   .st-in, .st-sel { font: inherit; font-size: 13px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink); box-sizing: border-box; }
   .st-in.st-nm { width: 10.5em; font-weight: 700; }
   .st-w4 { width: 4.5em; } .st-w5 { width: 5.5em; } .st-w6 { width: 6.5em; } .st-w7 { width: 8em; } .st-w8 { width: 9em; } .st-w12 { width: 13em; }
-  .st-code { display: block; font-size: 10.5px; color: var(--ink-400); margin-top: 2px; }
+  .st-code { display: block; font-size: 10.5px; color: var(--ink-400); margin-top: 2px; white-space: normal; max-width: 13em; line-height: 1.35; }
   .st-how { font-style: normal; margin-left: 5px; color: #166534; }
+  .st-table tr.st-grp td { background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700; padding: 6px 10px; position: sticky; left: 0; }
+  .st-in.is-auto { color: #1d4ed8; background: #eff6ff; border-color: #bfdbfe; }
+  .st-how.is-fuzzy { color: #b45309; font-weight: 700; }
+  .st-fold { display: block; width: 100%; text-align: left; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink-500); background: #fafaf9; border: 1px dashed var(--line); border-radius: 9px; padding: 9px 12px; margin-top: 12px; cursor: pointer; }
   .st-hide { font: inherit; font-size: 11.5px; color: var(--ink-400); background: none; border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; cursor: pointer; }
   .st-miss { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; font-size: 12.5px; color: var(--ink-500); }
   .ml-help-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
@@ -2087,7 +2091,7 @@
   // 사람이 아니라 경로 이름인 코드 — 처음부터 숨겨 둔다(보기에서 되돌릴 수 있음)
   var SETTLE_GENERIC = ['youtube', 'tweet', 'twitter', '트위터', 'instagram', 'instargram', 'insta', 'naver.blog', 'blog', 'text', 'nshoplive', 'navercomads', 'daangn', 'kakao', 'facebook', 'band'];
   // 노션 DB에 이미 있던 IP 이름(2026-10 정리 후). 새로 쓰는 이름은 파일을 받을 때 자동완성 목록에 더해진다.
-  var SETTLE_IP_BASE = ['귀칼', '나루토', '히로아카', '은혼', '주술회전', '진격거', '하이큐', '헌터×헌터', '케로로', '블리치', '프리렌', '디지몬',
+  var SETTLE_IP_BASE = ['귀칼', '나루토', '히로아카', '은혼', '주술회전', '진격거', '하이큐', '헌터×헌터', '케로로', '블리치', '프리렌', '디지몬', '원피스',
     '스파이패밀리', '약사의 혼잣말', '에이스테', '마마마', '캐캐체/마법소녀', '룩업 전체'];
   var SETTLE_KINDS = ['정보성(사진)', '정보성(영상)', '그림'];
   var SETTLE_PLATFORMS = ['X', '인스타', '유튜브'];
@@ -2096,6 +2100,7 @@
   var settleMonth = null;
   var settleMsg = '';
   var settleShowHidden = false;
+  var settleShowYt = false;   // 유튜브 채널 코드(youtube로 시작)는 아래에 접어 둔다
 
   function lsGet(k, d) { try { var v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? d : v; } catch (e) { return d; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { settleMsg = '이 브라우저에 저장하지 못했습니다(저장 공간 부족·사생활 보호 모드). 새로고침하면 입력이 사라질 수 있습니다.'; } }
@@ -2162,18 +2167,78 @@
     return Object.keys(by).map(function (k) { return by[k]; });
   }
 
-  // 코드 → 이름 자동 찾기: ① 기억 ② 연락 이력 메일 주소 앞부분 ③ 접수 네이버 아이디
-  function settleGuessName(src, names, members) {
+  // 코드 → 이름 자동 찾기. 비교할 후보: 예전에 붙인 이름의 코드, 연락 이력 메일 주소 앞부분, 접수 네이버 아이디,
+  // 접수 활동명(영문 활동명 kekero_kr ↔ 코드 kekerokr 같은 경우). 영문·숫자만 남겨 비교한다.
+  // 맞추는 순서: ① 똑같음 ② 한쪽이 다른 쪽에 들어 있음(ddoyune ↔ ddoyune2325, 5자 이상)
+  // ③ 거의 같음(한 글자 차이 xumae12 ↔ umae12, 또는 90% 이상 같음). 같은 단계에서 다른 사람이 둘 이상 걸리면 고르지 않는다.
+  function idNorm(v) { return srcKey(v).replace(/[^a-z0-9]/g, ''); }
+  function editDist(a, b) {
+    var prev = [], cur, i, j;
+    for (j = 0; j <= b.length; j++) prev[j] = j;
+    for (i = 1; i <= a.length; i++) {
+      cur = [i];
+      for (j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+  function settlePool(names) {
+    var pool = [];
+    var add = function (key, name, how) { var k = idNorm(key); if (k.length >= 3 && name) pool.push({ key: k, name: name, how: how }); };
+    Object.keys(names).forEach(function (src) { add(srcBase(src), names[src], '기억'); });
+    if (mailInfo && mailInfo.list) mailInfo.list.forEach(function (it) { if (it.addr && it.name && it.name !== it.addr) add(it.addr, it.name, '메일'); });
+    withLatestFlag(rows).forEach(function (r) { if (r.latest) { add(r.naver, r.nick, '접수'); add(r.nick, r.nick, '접수'); } });
+    return pool;
+  }
+  function settleGuessName(src, names, pool) {
     if (names[src]) return { name: names[src], how: '기억' };
-    var base = srcBase(src);
-    var hit = null;
-    if (mailInfo && mailInfo.list) mailInfo.list.forEach(function (it) {
-      if (!hit && it.addr && [src, base].indexOf(srcKey(it.addr)) >= 0 && it.name && it.name !== it.addr) hit = it.name;
+    var keys = [idNorm(src), idNorm(srcBase(src))].filter(function (k, i, a) { return k.length >= 3 && a.indexOf(k) === i; });
+    var pick = function (test, how) {
+      var hits = pool.filter(function (c) { return keys.some(function (k) { return test(k, c.key); }); });
+      var who = hits.map(function (h) { return h.name; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+      if (who.length === 1) return { name: who[0], how: how || hits[0].how, key: hits[0].key };
+      return null;
+    };
+    return pick(function (k, c) { return k === c; }) ||
+      pick(function (k, c) { return Math.min(k.length, c.length) >= 5 && (k.indexOf(c) === 0 || c.indexOf(k) === 0); }, '비슷') ||
+      pick(function (k, c) { var d = editDist(k, c), L = Math.max(k.length, c.length); return (d <= 1 && Math.min(k.length, c.length) >= 5) || (L >= 10 && 1 - d / L >= 0.9); }, '비슷') ||
+      { name: '', how: '' };
+  }
+
+  // IP(작품) 추정 — 엑셀의 상품 링크 이름(nt_medium, 예: MyHeroAcademialookup·Gaara)과 그 사람과 주고받은 메일 제목
+  // (예: [메가하우스 7월 협업] 은혼 룩업 …)에서 작품 이름·캐릭터 이름을 찾는다. 한 작품만 걸릴 때만 고르고, 칸에서 고칠 수 있다.
+  // 다른 영어 단어 속에 잘 섞이는 짧은 이름(levi·eren·gon·anya 등)은 잘못 걸려서 넣지 않았다.
+  var SETTLE_IP_WORDS = {
+    '귀칼': ['귀칼', '귀멸', 'kimetsu', 'demonslayer', 'rengoku', '렌고쿠', 'giyu', '기유', 'muichiro', '무이치로', 'tanjiro', '탄지로'],
+    '나루토': ['나루토', 'naruto', 'gaara', '가아라', 'jiraiya', '지라이야', 'itachi', '이타치', 'sasuke', '사스케', 'kakashi', '카카시'],
+    '히로아카': ['히로아카', '나의히어로', '히어로아카데미아', 'myheroacademia', 'heroaca', 'bakugo', '바쿠고', 'deku', '데쿠', 'midoriya', '미도리야', 'todoroki', '토도로키'],
+    '은혼': ['은혼', 'gintama', 'gintoki', '긴토키', '긴파치'],
+    '주술회전': ['주술', 'jujutsu', 'gojo', '고죠', 'itadori', '이타도리'],
+    '진격거': ['진격', 'attackontitan', 'erwin', '엘빈', '리바이', '에렌'],
+    '하이큐': ['하이큐', 'haikyu', 'bokuto', '보쿠토', 'hinata', '히나타'],
+    '헌터×헌터': ['헌터헌터', '헌터x헌터', '헌터×헌터', 'hunterxhunter', 'killua', '키르아', 'gonkirua'],
+    '케로로': ['케로로', 'keroro', 'giroro', '기로로'],
+    '블리치': ['블리치', 'bleach', 'ulquiorra', '울키오라', 'grimmjow', '그림죠', 'ichigo', '이치고'],
+    '프리렌': ['프리렌', 'frieren'],
+    '디지몬': ['디지몬', 'digimon'],
+    '스파이패밀리': ['스파이패밀리', 'spyfamily'],
+    '약사의 혼잣말': ['약사의혼잣말', 'maomao', '마오마오'],
+    '원피스': ['원피스', 'onepiece', 'luffy', '루피', 'zoro', '조로']
+  };
+  function settleIpGuess(texts) {
+    var t = texts.join(' ').toLowerCase().replace(/[\s_\-·.]/g, '');
+    if (!t) return '';
+    var hits = Object.keys(SETTLE_IP_WORDS).filter(function (ip) {
+      return SETTLE_IP_WORDS[ip].some(function (w) { return w.length >= 3 || /[가-힣]/.test(w) ? t.indexOf(w.replace(/\s/g, '')) >= 0 : false; });
     });
-    if (hit) return { name: hit, how: '메일' };
-    members.forEach(function (r) { if (!hit && [src, base].indexOf(srcKey(r.naver)) >= 0) hit = r.nick; });
-    if (hit) return { name: hit, how: '접수' };
-    return { name: '', how: '' };
+    return hits.length === 1 ? hits[0] : '';
+  }
+  // 그 이름으로 묶인 연락 이력의 최근 메일 제목들
+  function settleMailSubjects(name) {
+    if (!name || !mailInfo || !mailInfo.list) return [];
+    var k = settleKey(name), out = [];
+    mailInfo.list.forEach(function (it) { if (settleKey(it.name) === k) it.subs.forEach(function (sb) { out.push(sb.title); }); });
+    return out;
   }
 
   function linkInfo(url) {
@@ -2203,16 +2268,17 @@
   function comma(n) { return Math.round(n).toLocaleString('ko-KR'); }
 
   // 한 줄(코드 하나)의 정산 값 — 화면과 파일이 같이 쓴다
-  function settleLine(st, src, names, members, hide) {
+  function settleLine(st, src, names, pool, hide) {
     var p = st.rows[src] || {};
     var s = st.stats && st.stats.by[src] ? st.stats.by[src] : null;
-    var g = p.name ? { name: p.name, how: '' } : settleGuessName(src, names, members);
+    var g = p.name ? { name: p.name, how: '' } : settleGuessName(src, names, pool);
     var li = linkInfo(p.link);
     var autoReward = s ? (s['in'] >= SETTLE_THRESHOLD ? '10만' : '5만') : '';
     var hidden = hide[src] != null ? !!hide[src] : SETTLE_GENERIC.indexOf(src) >= 0;
     return {
       src: src, p: p, s: s, manual: src.indexOf('manual:') === 0,
-      name: g.name, nameHow: g.how,
+      name: g.name, nameHow: g.how, nameKey: g.key || '', yt: /^youtube./.test(src),
+      ipAuto: p.ip ? '' : settleIpGuess((s ? s.media : []).concat(settleMailSubjects(g.name))),
       platform: p.platform || li.platform || srcPlatform(src),
       id: p.id || li.id || (src.indexOf('manual:') === 0 ? '' : srcBase(src)),
       reward: p.reward != null && p.reward !== '' ? p.reward : autoReward,
@@ -2221,11 +2287,12 @@
     };
   }
   function settleLines(st, m) {
-    var names = lsGet(SETTLE_NAME_KEY, {}), hide = lsGet(SETTLE_HIDE_KEY, {}), members = settleMembers(m);
+    var names = lsGet(SETTLE_NAME_KEY, {}), hide = lsGet(SETTLE_HIDE_KEY, {}), members = settleMembers(m), pool = settlePool(names);
     var srcs = Object.keys(st.stats ? st.stats.by : {});
     Object.keys(st.rows).forEach(function (k) { if (k.indexOf('manual:') === 0 && srcs.indexOf(k) < 0) srcs.push(k); });
-    var lines = srcs.map(function (s) { return settleLine(st, s, names, members, hide); });
-    lines.sort(function (a, b) { return (b.s ? b.s['in'] : -1) - (a.s ? a.s['in'] : -1) || a.src.localeCompare(b.src); });
+    var lines = srcs.map(function (s) { return settleLine(st, s, names, pool, hide); });
+    // 이름을 붙인 줄이 위, 아직 이름이 없는 줄은 그 아래에 모은다. 각 묶음 안에서는 유입이 많은 순.
+    lines.sort(function (a, b) { return (a.name ? 0 : 1) - (b.name ? 0 : 1) || (b.s ? b.s['in'] : -1) - (a.s ? a.s['in'] : -1) || a.src.localeCompare(b.src); });
     return { lines: lines, members: members, names: names };
   }
 
@@ -2342,13 +2409,13 @@
     };
     var rowHtml = function (x) {
       var p = x.p, src = esc(x.src), s = x.s;
-      var how = x.nameHow ? '<i class="st-how">' + (x.nameHow === '기억' ? '지난번 이름' : x.nameHow === '메일' ? '메일에서 찾음' : '접수에서 찾음') + '</i>' : '';
+      var how = x.nameHow ? '<i class="st-how' + (x.nameHow === '비슷' ? ' is-fuzzy' : '') + '">' + (x.nameHow === '기억' ? '지난번 이름' : x.nameHow === '메일' ? '메일에서 찾음' : x.nameHow === '접수' ? '접수에서 찾음' : '비슷한 아이디 ' + esc(x.nameKey) + ' — 맞는지 확인') + '</i>' : '';
       return '<tr class="' + (x.hidden ? 'is-hid' : !x.name ? 'is-need' : '') + '">' +
         '<td class="st-c-name">' + inp(x.src, 'name', x.name, '누구인지 입력', 'st-nm', 'st-name-list') +
           '<span class="st-code">' + esc(x.manual ? '엑셀 없음' : x.src) + how + '</span></td>' +
         '<td><select class="st-sel" data-src="' + src + '" data-f="platform">' + opt(SETTLE_PLATFORMS, x.platform, '—') + '</select></td>' +
         '<td><select class="st-sel" data-src="' + src + '" data-f="kind">' + opt(SETTLE_KINDS, p.kind || '', '고르기') + '</select></td>' +
-        '<td>' + inp(x.src, 'ip', p.ip, 'IP', 'st-w6', 'st-ip-list') + '</td>' +
+        '<td>' + inp(x.src, 'ip', p.ip || x.ipAuto, 'IP', 'st-w6' + (x.ipAuto ? ' is-auto' : ''), 'st-ip-list') + '</td>' +
         '<td class="st-n' + (s && s['in'] >= SETTLE_THRESHOLD ? ' is-hit' : '') + '">' + (s ? comma(s['in']) : '—') + '</td>' +
         '<td class="st-n">' + (s ? comma(s.pay) : '—') + '</td>' +
         '<td class="st-n">' + (s ? comma(s.amt) : '—') + '</td>' +
@@ -2363,7 +2430,17 @@
         '<td class="st-c"><button class="st-hide" data-src="' + src + '" data-hide="' + (x.hidden ? '0' : '1') + '" title="' + (x.hidden ? '다시 보이기' : '인플이 아닌 코드 — 숨기고 기억') + '">' + (x.hidden ? '되돌리기' : '숨기기') + '</button></td>' +
         '</tr>';
     };
-    var body = shown.map(rowHtml).join('') + (settleShowHidden ? all.lines.filter(function (x) { return x.hidden; }).map(rowHtml).join('') : '');
+    var headRow = '<th class="st-c-name">이름</th><th>플랫폼</th><th>선택</th><th>IP</th><th class="st-n">유입수</th><th class="st-n">결제수</th><th class="st-n">판매금액</th><th class="st-n">전환율</th><th>보상</th><th class="st-c">양도</th><th>판촉대상</th><th>글 링크</th><th>아이디</th><th>업로드 시각</th><th>팔로워</th><th></th>';
+    var mainRows = shown.filter(function (x) { return !x.yt; }), ytRows = shown.filter(function (x) { return x.yt; });
+    var grouped = function (list) {
+      var firstNeed = -1;
+      list.forEach(function (x, i) { if (firstNeed < 0 && !x.name) firstNeed = i; });
+      return list.map(function (x, i) {
+        return (i === firstNeed ? '<tr class="st-grp"><td colspan="16">이름이 필요한 코드 ' + (list.length - firstNeed) + '개 — 이름을 넣으면 위로 올라갑니다</td></tr>' : '') + rowHtml(x);
+      }).join('');
+    };
+    var body = grouped(mainRows) + (settleShowHidden ? all.lines.filter(function (x) { return x.hidden; }).map(rowHtml).join('') : '');
+    var ytNeed = ytRows.filter(function (x) { return !x.name; }).length;
 
     var nameList = {};
     all.members.forEach(function (r) { nameList[r.nick] = true; });
@@ -2385,10 +2462,12 @@
     return top + lists +
       '<section class="rbox">' + summary +
       '<div class="scroll st-scroll"><table class="st-table"><thead><tr>' +
-      '<th class="st-c-name">이름</th><th>플랫폼</th><th>선택</th><th>IP</th><th class="st-n">유입수</th><th class="st-n">결제수</th><th class="st-n">판매금액</th><th class="st-n">전환율</th><th>보상</th><th class="st-c">양도</th><th>판촉대상</th><th>글 링크</th><th>아이디</th><th>업로드 시각</th><th>팔로워</th><th></th>' +
+      headRow +
       '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+      (ytRows.length ? '<button class="st-fold" id="st-yt">' + (settleShowYt ? '▾' : '▸') + ' 유튜브 채널 코드 ' + ytRows.length + '개' + (ytNeed ? ' (이름 필요 ' + ytNeed + ')' : '') + ' — ' + (settleShowYt ? '접기' : '눌러서 펼치기') + '</button>' +
+        (settleShowYt ? '<div class="scroll st-scroll"><table class="st-table"><thead><tr>' + headRow + '</tr></thead><tbody>' + grouped(ytRows) + '</tbody></table></div>' : '') : '') +
       missingBox +
-      '<p class="foot">유입수 파란 글씨 = ' + SETTLE_THRESHOLD + ' 이상(보상 10만 자동). 보상·플랫폼·아이디는 자동값이 들어가 있고 고칠 수 있습니다. 양도 칸 체크 = 이벤트 진행. 표는 옆으로 밀어서 볼 수 있습니다.</p>' +
+      '<p class="foot">유입수 파란 글씨 = ' + SETTLE_THRESHOLD + ' 이상(보상 10만 자동). 파란 칸의 IP는 엑셀 상품 이름·메일 제목으로 추정한 값입니다. 보상·플랫폼·아이디는 자동값이 들어가 있고 고칠 수 있습니다. 양도 칸 체크 = 이벤트 진행. 표는 옆으로 밀어서 볼 수 있습니다.</p>' +
       '</section>' +
       '<section class="rbox"><div class="cd-act"><button class="mini is-main" id="st-csv"' + (ready ? '' : ' disabled') + '>노션용 파일 받기 (' + ready + '명)</button>' +
       (needName ? '<span class="cd-msg">이름이 빈 ' + needName + '줄은 파일에 들어가지 않습니다</span>' : '') + '</div>' +
@@ -2402,7 +2481,7 @@
     var out = [SETTLE_COLS.map(cell).join(',')].concat(lines.map(function (x) {
       var p = x.p, s = x.s;
       var v = {
-        '제': settleTitle(m, x.name), '월': m, '이름': x.name, '플랫폼': x.platform, '선택': p.kind || '', 'IP': p.ip || '',
+        '제': settleTitle(m, x.name), '월': m, '이름': x.name, '플랫폼': x.platform, '선택': p.kind || '', 'IP': p.ip || x.ipAuto || '',
         '유입수': s ? comma(s['in']) : '', '결제수': s ? comma(s.pay) : '', '판매금액': s ? comma(s.amt) : '', '전환율': x.rate,
         '보상': x.reward, '양도': p.transfer ? '이벤트 진행' : '—', '판촉대상': p.promo || '', '업로드 시각': p.uploadAt || '',
         '스토어오픈 시각': st.openTime || '', '아이디': x.id || '', '글 링크': p.link || '', '팔로워': p.followers || ''
@@ -2467,6 +2546,8 @@
         renderList();
       });
     });
+    var yt = document.getElementById('st-yt');
+    if (yt) yt.addEventListener('click', function () { settleShowYt = !settleShowYt; renderList(); });
     var sh = document.getElementById('st-showhid');
     if (sh) sh.addEventListener('click', function () { settleShowHidden = !settleShowHidden; renderList(); });
     var clr = document.getElementById('st-clear');
