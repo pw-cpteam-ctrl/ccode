@@ -201,6 +201,7 @@ function goToStep(n) {
   renderStepIndicator();
   if (n === 2) { renderDataTable(); updateTextLockBanner(); }
   if (n === 3) { renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true }); updateTextLockBanner(); renderExportBar(); }
+  if (n === 1) renderCurrentWorkBar(); // 2단계에서 상품을 지우고 돌아왔을 때도 개수가 맞아야 한다
 }
 
 // ============================================================
@@ -400,6 +401,43 @@ async function handleFilesSelected(fileList) {
   if (failCount) alert(`이미지 ${failCount}개는 처리하지 못해 제외했어요(손상됐거나 이미지 파일이 아닐 수 있어요).${imgs.length ? ` 나머지 ${imgs.length}개는 정상적으로 추가됐어요.` : ''}`);
 }
 
+// 지금 작업에 담겨 있는 상품 수를 1단계에 항상 보여준다. 이전 작업을 불러온 뒤
+// 사진을 다시 올려 크롭하면 그 위에 쌓여서 상품이 두 벌이 되는데(실사용 중 신고됨),
+// 화면에 개수가 안 보이면 쌓이는 중이라는 걸 알 방법이 없었다.
+function renderCurrentWorkBar() {
+  const bar = document.getElementById('currentWorkBar');
+  const text = document.getElementById('currentWorkText');
+  if (!bar || !text) return;
+  const n = state.items.length;
+  if (!n) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  const fromSources = new Set(state.sources.flatMap((s) => s.itemIds || []));
+  const carried = state.items.filter((it) => !fromSources.has(it.id)).length;
+  text.textContent = carried
+    ? `지금 상품 ${n}개가 담겨 있습니다 (그중 ${carried}개는 이전 작업에서 이어온 것). 사진을 새로 올려 크롭하면 여기에 더해집니다.`
+    : `지금 상품 ${n}개가 담겨 있습니다.`;
+}
+
+// 처음부터 다시 시작하는 확실한 수단. "이 사진 삭제"는 그 사진이 만든 항목만 지우기
+// 때문에, 이전 작업에서 이어온 항목은 아무리 지워도 남아 있었다("초기화해도 그대로"
+// 라는 신고의 원인). 여기서는 담긴 것을 전부 비운다.
+function resetAllWork() {
+  const n = state.items.length;
+  if (!window.confirm(`지금 담겨 있는 상품 ${n}개와 사진·헤더를 전부 비우고 처음부터 시작합니다.\n\n되돌릴 수 없습니다. 계속할까요?\n(비우기 직전 상태는 "이전 작업" 목록에 남습니다)`)) return;
+  pushSlot(snapshotState(), true); // 실수로 눌렀을 때를 대비해 비우기 직전 상태를 남겨둔다
+  state.sources = [];
+  state.items = [];
+  state.photos = {};
+  state.headers = [];
+  state.finalPages = null;
+  state.finalPagesSig = null;
+  step2SelectedIds = new Set();
+  document.getElementById('fileInput').value = ''; // 같은 파일을 다시 고를 수 있게 비운다
+  renderSourceList();
+  renderSlots();
+  goToStep(1);
+}
+
 function renderSourceList() {
   const container = document.getElementById('sourceList');
   container.innerHTML = '';
@@ -438,6 +476,7 @@ function renderSourceList() {
     });
   });
   document.getElementById('toStep2Btn').disabled = Object.keys(state.photos).length === 0;
+  renderCurrentWorkBar();
 }
 
 function drawDebugOverlay(src) {
@@ -491,6 +530,20 @@ function drawDebugOverlay(src) {
 function confirmSourceCrop(srcId) {
   const src = state.sources.find((s) => s.id === srcId);
   if (!src || src.confirmed) return;
+
+  // 이 사진이 아닌 다른 경로로 이미 들어와 있는 상품(이전 작업 불러오기 등)이 있으면,
+  // 크롭 결과가 그 위에 더해진다는 걸 먼저 알린다 — 모르고 진행하면 같은 상품이 두 벌이
+  // 되고, 이전 작업에서 온 항목은 "이 사진 삭제"로도 안 지워져서 원인을 찾기 어렵다.
+  const ownIds = new Set(state.sources.flatMap((s) => s.itemIds || []));
+  const carried = state.items.filter((it) => !ownIds.has(it.id)).length;
+  if (carried) {
+    const ok = window.confirm(
+      `이미 상품 ${carried}개가 담겨 있습니다 (이전 작업에서 이어온 것).\n\n` +
+      `[확인] 그 뒤에 이 사진의 상품을 이어서 추가합니다.\n` +
+      `[취소] 아무것도 하지 않습니다 — 처음부터 하려면 위의 "전부 비우고 처음부터"를 누르세요.`
+    );
+    if (!ok) return;
+  }
 
   // "다시 검출" 후 재확정(redo)하는 경우 — 이 소스가 예전에 만들어둔 항목/사진/헤더를
   // 먼저 지운다. id 기준으로 지워야 안전하다(itemStartIndex 같은 위치 기준으로 지우면,
@@ -2422,6 +2475,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderSlots();
 
   document.getElementById('fileInput').addEventListener('change', (e) => handleFilesSelected(e.target.files));
+  document.getElementById('resetAllBtn').addEventListener('click', resetAllWork);
   // 파일 선택창을 거치지 않고 클립보드에서 스크린샷을 바로 Ctrl+V로 붙여넣을 수 있게 지원 —
   // 캡처 도구로 찍은 이미지를 저장 없이 바로 붙여넣는 흐름이 훨씬 빠르다.
   document.addEventListener('paste', (e) => {

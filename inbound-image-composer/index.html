@@ -68,6 +68,12 @@
 
   .slotbox { background: #ececef; border: 1px solid var(--line2); border-radius: 10px; padding: 11px; margin-bottom: 16px; }
   .slotbox-h { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .3px; margin-bottom: 4px; }
+  .current-work-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    background: #fff7e6; border: 1px solid #f0c869; border-radius: 8px;
+    padding: 8px 12px; margin: 10px 0; font-size: 13px; color: #7a5200;
+  }
+  .current-work-bar .btn { min-height: 32px; padding: 4px 10px; font-size: 12px; }
   .slots { display: flex; flex-direction: column; gap: 6px; }
   .slot { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 8px 10px; cursor: pointer; }
   .slot:hover { border-color: var(--accent); background: #f5f9ff; }
@@ -316,6 +322,13 @@
       </div>
 
       <input type="file" id="fileInput" accept="image/*" multiple />
+      <!-- 지금 작업에 들어와 있는 상품 수를 항상 눈에 보이게 둔다. 이전 작업을 불러온 뒤
+           사진을 또 올려서 상품이 두 벌이 되는 사고가 있었는데, 화면에 개수가 안 보이면
+           그게 쌓이는 중인지 알 방법이 없었다. -->
+      <div id="currentWorkBar" class="current-work-bar" style="display:none;">
+        <span id="currentWorkText"></span>
+        <button class="btn danger" id="resetAllBtn" title="지금까지 담긴 상품·사진·헤더를 전부 비우고 처음부터 시작합니다">전부 비우고 처음부터</button>
+      </div>
       <div id="sourceList"></div>
     </div>
     <div class="footer-nav">
