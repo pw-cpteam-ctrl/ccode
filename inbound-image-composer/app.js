@@ -1121,7 +1121,7 @@ function renderDataTable() {
     const photoAdjusted = (item.photoZoom && item.photoZoom !== 1) || item.photoOffsetX || item.photoOffsetY;
     // 원본이 없어 조정이 안 되는 사진은 "잡을 수 있다"는 손 모양 커서를 주지 않는다 —
     // 커서만 보고 끌 수 있는 줄 알았다가 안 움직이면 고장으로 오해하기 때문.
-    const adjustable = !!item.cropSrcId;
+    const adjustable = canAdjustPhoto(item);
     card.innerHTML = `
       <div class="thumb${photoAdjusted ? ' photo-adjusted' : ''}${adjustable ? '' : ' no-adjust'}">
         <button type="button" class="photo-reset-btn" title="자동 인식했던 원래 크롭으로 되돌리기">↺</button>
@@ -1256,6 +1256,16 @@ function notePhotoAdjustUnavailable() {
   alert('이 사진은 원본이 이번 세션에 없어서(작업 슬롯을 불러온 경우 등) 확대/축소·위치 조정을 할 수 없어요.\n사진을 다시 올려서 크롭하면 조정할 수 있어요.');
 }
 
+// 이 사진을 지금 조정할 수 있는가.
+// 기준이 "cropSrcId 값이 있는가"가 아니라 "그 원본이 지금 메모리에 있는가"여야 한다 —
+// 이전 작업을 불러오면 cropSrcId 값까지 그대로 복원되지만 원본(state.sources)은
+// 복원되지 않기 때문이다. 값 유무로만 보면 "조정 가능"으로 잘못 판정해서, 커서는
+// 끌 수 있는 모양으로 뜨는데 실제로는 아무 반응이 없고 안내도 안 나왔다
+// (실사용에서 가장 흔한 경로인데 이 판정 때문에 계속 새고 있었음).
+function canAdjustPhoto(item) {
+  return !!(item && item.cropSrcId && state.sources.some((s) => s.id === item.cropSrcId));
+}
+
 function applyPhotoTransform(item) {
   const src = state.sources.find((s) => s.id === item.cropSrcId);
   if (!src) return false;
@@ -1315,7 +1325,7 @@ function resetPhotoTransform(item) {
 
 function bindPhotoAdjust(card, item) {
   card.querySelector('.photo-reset-btn').addEventListener('click', () => {
-    const targets = photoAdjustTargets(item).filter((t) => t.cropSrcId);
+    const targets = photoAdjustTargets(item).filter(canAdjustPhoto);
     targets.forEach(resetPhotoTransform);
     targets.forEach(refreshThumbUi);
   });
@@ -1331,14 +1341,14 @@ function bindPhotoDrag(imgEl, item) {
   let startX = 0, startY = 0;
   let startOffsets = null; // Map<itemId, {x, y}> — 선택된 항목마다 시작 시점 오프셋을 따로 기억
   imgEl.addEventListener('pointerdown', (e) => {
-    if (!item.cropSrcId) { notePhotoAdjustUnavailable(); return; } // 원본 없는 사진은 위치 조정 불가 — 조용히 무시하지 않고 알린다
+    if (!canAdjustPhoto(item)) { notePhotoAdjustUnavailable(); return; } // 원본이 지금 없으면 위치 조정 불가 — 조용히 무시하지 않고 알린다
     dragging = true;
     startX = e.clientX; startY = e.clientY;
     // 여러 장이 선택된 상태로 드래그하면, 전부 같은 절대 위치로 "스냅"시키는 게 아니라
     // 각자 원래 있던 위치에서 같은 만큼만 이동해야 한다 — 그래서 대상마다 시작 오프셋을
     // 따로 기록해둔다(모두 드래그 시작 항목의 오프셋으로 덮어쓰면, 이미 서로 다르게
     // 조정해둔 사진들이 드래그 한 번에 전부 같은 위치로 뭉개지는 버그가 된다).
-    const targets = photoAdjustTargets(item).filter((t) => t.cropSrcId);
+    const targets = photoAdjustTargets(item).filter(canAdjustPhoto);
     startOffsets = new Map(targets.map((t) => [t.id, { x: t.photoOffsetX || 0, y: t.photoOffsetY || 0 }]));
     imgEl.setPointerCapture(e.pointerId);
     imgEl.classList.add('dragging');
@@ -1394,12 +1404,12 @@ function bindPhotoWheelZoomOnce() {
     const itemId = cardEl.dataset.itemId;
     const item = state.items.find((it) => it.id === itemId);
     if (!item) return;
-    if (!item.cropSrcId) {
+    if (!canAdjustPhoto(item)) {
       notePhotoAdjustUnavailable();
       return;
     }
     const factor = e.deltaY < 0 ? PHOTO_ZOOM_STEP : 1 / PHOTO_ZOOM_STEP;
-    const targets = photoAdjustTargets(item).filter((t) => t.cropSrcId);
+    const targets = photoAdjustTargets(item).filter(canAdjustPhoto);
     targets.forEach((t) => {
       t.photoZoom = Math.max(PHOTO_ZOOM_MIN, Math.min(PHOTO_ZOOM_MAX, (t.photoZoom || 1) * factor));
       applyPhotoTransform(t);
