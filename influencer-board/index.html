@@ -500,6 +500,9 @@
   .seg-o + .seg-o { border-left: 1px solid var(--line); }
   .seg-o.is-on { background: var(--ink); color: #fff; }
   .ou-why, .ou-ip { font-size: 12px; color: var(--ink-500); }
+  .ou-acc { font-size: 12.5px; font-weight: 700; color: #1d4ed8; text-decoration: none; border: 1px solid #bfdbfe; background: #eff6ff; border-radius: 999px; padding: 2px 9px; }
+  .ou-acc:hover { text-decoration: underline; }
+  .ou-noacc { font-size: 11.5px; color: var(--ink-400); }
   .ou-warn { font-size: 12.5px; color: #92400e; background: #fffbeb; border-radius: 8px; padding: 6px 10px; margin: 0 0 8px; }
   .ou-row { display: flex; gap: 8px; margin-bottom: 8px; }
   .ou-row .ou-subj { flex: 1; font-weight: 700; }
@@ -2909,6 +2912,7 @@
     if (hi < 0) return [];
     var col = function (test) { for (var j = 0; j < head.length; j++) if (test(head[j])) return j; return -1; };
     var iName = col(function (c) { return c === '이름'; }), iIp = col(function (c) { return /IP/i.test(c); }), iDir = col(function (c) { return /방향|성격|선택/.test(c); });
+    var iAcc = col(function (c) { return /계정|플랫폼/.test(c); });
     var out = [];
     lines.slice(hi + 1).forEach(function (l) {
       if (/^\s*\|?\s*:?-{2,}/.test(l)) return;   // 마크다운 구분 줄
@@ -2916,7 +2920,12 @@
       var raw = String(c[iName] || '').replace(/\*\*|__/g, '').replace(/:[a-z0-9_\-]+:/gi, '').trim();
       if (!raw) return;
       var m = raw.match(/^@?([A-Za-z0-9._]+)\s*\(([^)]+)\)$/);
-      out.push({ name: m ? m[2].trim() : raw.replace(/^@/, ''), handle: m ? m[1].toLowerCase() : (/^@?[A-Za-z0-9._]+$/.test(raw) ? raw.replace(/^@/, '').toLowerCase() : ''), ip: iIp >= 0 ? (c[iIp] || '').trim() : '', dir: iDir >= 0 ? (c[iDir] || '').trim() : '' });
+      // 계정 칸: 노션 아이콘 이름(:ins:, :hd-twitter-x…:)이나 글자(인스타/X)로 플랫폼을 읽는다
+      var acc = iAcc >= 0 ? String(c[iAcc] || '') : '';
+      var plat = /ins|인스타|instagram/i.test(acc) ? '인스타' : /twitter|(^|[^a-z])x([^a-z]|$)|트위터|엑스/i.test(acc) ? 'X' : /youtube|유튜브/i.test(acc) ? '유튜브' : '';
+      // 아이디: '아이디 (이름)' 형식이거나 '@아이디'로 적힌 경우만(그냥 숫자·글자 이름은 아이디로 보지 않는다)
+      var handle = m ? m[1].toLowerCase() : (/^@[A-Za-z0-9._]+$/.test(raw) ? raw.slice(1).toLowerCase() : '');
+      out.push({ name: m ? m[2].trim() : raw.replace(/^@/, ''), handle: handle, platform: plat, ip: iIp >= 0 ? (c[iIp] || '').trim() : '', dir: iDir >= 0 ? (c[iDir] || '').trim() : '' });
     });
     return out;
   }
@@ -3001,8 +3010,11 @@
       var warn = [];
       if (!g) warn.push('상품 목록에서 “' + (c.ip || '?') + '” IP를 찾지 못함');
       if (!tpl.sender) warn.push('담당자 이름 없음');
+      var accUrl = c.handle ? (c.platform === 'X' ? 'https://x.com/' + c.handle : c.platform === '유튜브' ? 'https://www.youtube.com/@' + c.handle : c.platform === '인스타' ? 'https://www.instagram.com/' + c.handle + '/' : '') : '';
       return '<div class="ou-card">' +
-        '<div class="ou-head"><b>' + esc(c.name) + '</b>' + (c.handle && c.handle !== settleKey(c.name) ? '<span class="st-naver">' + esc(c.handle) + '</span>' : '') +
+        '<div class="ou-head"><b>' + esc(c.name) + '</b>' +
+          (accUrl ? '<a class="ou-acc" href="' + esc(accUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(c.platform) + ' @' + esc(c.handle) + ' ↗</a>'
+            : c.handle ? '<span class="st-naver">' + esc(c.handle) + '</span>' : '<span class="ou-noacc">계정 아이디 없음</span>') +
           '<div class="seg ou-kind"><button class="seg-o' + (!again ? ' is-on' : '') + '" data-k="' + esc(key) + '" data-kind="first">초기 연락</button><button class="seg-o' + (again ? ' is-on' : '') + '" data-k="' + esc(key) + '" data-kind="again">재연락</button></div>' +
           '<span class="ou-why">' + (autoAgain ? '연락 이력에 메일 있음' + (prev ? ' · 지난: ' + esc(prev) : '') : '연락 이력에 메일 없음') + '</span>' +
           '<span class="ou-ip">' + esc(ip) + (items.length ? ' · ' + items.length + '개 상품' : '') + '</span>' +
