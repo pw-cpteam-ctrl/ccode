@@ -508,6 +508,37 @@
   .ou-row .ou-subj { flex: 1; font-weight: 700; }
   .ou-body { min-height: 240px; resize: vertical; }
   @media (max-width: 760px) { .ou-paste, .ou-tpl-grid { grid-template-columns: 1fr; } }
+  .tab-desc { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 10px 0 12px; font-size: 13px; color: var(--ink-500); }
+  .bar-fill { flex: 1; }
+  .rc-setup-btn { margin-top: 0; font-weight: 500; }
+  .rc-setup-btn b { color: var(--ink); }
+  .rc-setup-btn u { color: #1d4ed8; }
+  .rc-setup { margin-top: 10px; }
+  .rc-sum { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 10px; }
+  .rc-sum-n { font-size: 12px; color: var(--ink-400); margin-left: 6px; }
+  .rc-table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+  .rc-table th { text-align: left; font-size: 11.5px; font-weight: 700; color: var(--ink-500); padding: 6px 8px; border-bottom: 1px solid var(--line); background: #fafaf9; white-space: nowrap; }
+  .rc-table td { padding: 8px; border-bottom: 1px solid #f0efed; vertical-align: middle; }
+  .rc-name b { font-size: 14px; margin-right: 6px; }
+  .rc-name { white-space: nowrap; }
+  .rc-ip span { display: block; font-size: 11.5px; color: var(--ink-500); max-width: 22em; }
+  .rc-ip span.rc-warn { color: #b45309; }
+  .rc-stage-b { display: inline-block; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+  .rc-stage-b b { margin-left: 3px; }
+  .rc-stage-b.s0 { background: #fee2e2; color: #b91c1c; }
+  .rc-stage-b.s1 { background: #fef3c7; color: #92400e; }
+  .rc-stage-b.s2 { background: #dbeafe; color: #1d4ed8; }
+  .rc-stage-b.s3 { background: #dcfce7; color: #166534; }
+  .rc-ok { display: block; font-size: 12.5px; color: #166534; white-space: nowrap; }
+  .rc-none { font-size: 12.5px; color: var(--ink-400); white-space: nowrap; }
+  .rc-turn { display: block; font-size: 12px; font-weight: 800; color: var(--red); white-space: nowrap; }
+  .rc-dm { white-space: nowrap; }
+  .rc-turn-i { color: var(--red); font-weight: 800; }
+  .rc-btn { font: inherit; font-size: 12px; font-weight: 700; padding: 4px 9px; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink-500); cursor: pointer; margin: 1px 4px 1px 0; }
+  .rc-btn.is-on { background: #dcfce7; border-color: #86efac; color: #166534; }
+  .rc-open.is-open { background: var(--ink); color: #fff; }
+  .rc-draft td { background: #fafaf9; padding: 0 8px 10px; }
+  .rc-draft .ou-card { margin-top: 8px; }
   .ml-help-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
   .ml-help-card { border: 1px solid #e7e5e4; border-radius: 10px; padding: 9px 11px; font-size: 12px; color: var(--ink-500); line-height: 1.55; background: #fafaf9; }
   .ml-help-card b { display: block; color: var(--ink); font-size: 12.5px; margin-bottom: 3px; }
@@ -572,9 +603,11 @@
     return 50;
   }
   function mailRangeSet(n) { try { localStorage.setItem(MAIL_RANGE_KEY, String(n)); } catch (e) { /* 저장 못 해도 이번 화면에는 적용 */ } }
-  var VIEWS = { list: '접수 목록', round: '회차 현황', coupon: '쿠폰 발급', cand: '확정 후보', mail: '연락 이력', outreach: '연락 원고', settle: '정산 기록' };
+  // 화면 이름(예전 탭 이름 포함 — 저장된 값이 예전 이름이어도 열리게). 예전 확정 후보·연락 이력·연락 원고는 '섭외' 한 화면으로 합쳤다.
+  var VIEWS = { list: '사람별', round: '회차별', coupon: '쿠폰 발급', settle: '노션 기록', recruit: '섭외' };
+  var OLD_VIEW = { cand: 'recruit', mail: 'recruit', outreach: 'recruit' };
   var view = (function () {
-    try { var v = localStorage.getItem(VIEW_KEY); return VIEWS[v] ? v : 'list'; }
+    try { var v = localStorage.getItem(VIEW_KEY); v = OLD_VIEW[v] || v; return VIEWS[v] ? v : 'list'; }
     catch (e) { return 'list'; }
   })();
 
@@ -2949,10 +2982,72 @@
   }
   function outFill(t, v) { return String(t || '').replace(/\{([^}]+)\}/g, function (all, key) { return v[key] != null ? v[key] : all; }); }
 
-  function outBox() {
-    outLoadTpl();
+  // ─── 섭외 탭: 후보 한 사람당 한 줄 — 연락 상태(메일·DM·답장·접수) + 원고 ───────────
+  // 메일 상태는 연락 이력에서 자동으로 읽고, DM은 보드가 알 수 없어 버튼으로 남긴다(비공개 저장소 contact-status.json —
+  // 다른 기기·담당자와 공유). 후보 표를 붙여넣으면 확정 후보 목록(candidates.json)에도 이름이 더해져 접수 연결에 쓰인다.
+  var contactMap = null, contactLoading = false, outSetupOpen = null, outOpenRows = {}, outMailOpen = false;
+  function loadContacts() {
+    if (contactMap || contactLoading) return;
+    contactLoading = true;
+    api({ code: code, action: 'contact-get' }).then(function (r) {
+      contactLoading = false;
+      contactMap = (r.status === 200 && r.data && r.data.contacts) || {};
+      if (view === 'recruit') renderList();
+    }).catch(function () { contactLoading = false; contactMap = {}; });
+  }
+  function contactSet(name, field, on) {
+    var today = new Date(), v = on ? today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0') : null;
+    contactMap = contactMap || {};
+    var c = contactMap[name] = Object.assign({}, contactMap[name]);
+    if (v) c[field] = v; else delete c[field];
+    renderList();
+    api({ code: code, action: 'contact-set', name: name, field: field, value: v }).then(function (r) {
+      if (r.status === 200 && r.data.ok) contactMap = r.data.contacts || contactMap;
+      else outMsg = '연락 상태를 저장하지 못했습니다. 잠시 후 다시 눌러 주세요.';
+      renderList();
+    }).catch(function () { outMsg = '연락 상태를 저장하지 못했습니다. 잠시 후 다시 눌러 주세요.'; renderList(); });
+  }
+  function ymdShort(s) { var p = String(s || '').split('-'); return p.length === 3 ? (+p[1]) + '/' + (+p[2]) : ''; }
+
+  // 한 사람의 원고(제목·본문) 만들기 — 원고 틀에 값을 채운다
+  function outDraft(c, st, m, groups, tpl, period, open) {
+    var key = settleKey(c.name), p = st.people[key] || {};
+    var g = null;
+    groups.forEach(function (x) { var a = ipNorm(x.ip), b = ipNorm(c.ip); if (!g && a && b && (a.indexOf(b) >= 0 || b.indexOf(a) >= 0)) g = x; });
+    var ip = g ? g.ip : (c.ip || 'IP');
+    var mail = outMailOf(c);
+    var autoAgain = !!(mail && mail.msgs && mail.msgs.some(function (x) { return x.date < new Date(open.getTime() - 40 * 864e5); }));
+    var again = p.kind ? p.kind === 'again' : autoAgain;
+    var prev = mail ? settlePromoGuess((mail.msgs || []).filter(function (x) { return x.date < new Date(open.getTime() - 40 * 864e5); }).map(function (x) { return mailCleanSubject(x.subject); })) : '';
+    var items = g ? g.items : [];
+    var first = items.map(function (t) { return t.split(/\s+/)[0]; });
+    var summary = items.length && first.every(function (w) { return w === first[0]; }) ? ip + ' ' + first[0] : ip;
+    var v = {
+      '이름': c.name, 'IP': ip, '상품': items.length ? items.map(function (t) { return '- [' + ip + '] ' + t; }).join('\n') : '- 【상품을 넣어 주세요】',
+      '상품요약': summary, '월': String(+m.slice(5, 7)), '기간': period, '오픈일': mdw(open), '소개': outIntro(c.dir, ip),
+      '지난협업': prev ? prev + ' ' : '', '담당자': tpl.sender || '【담당자】'
+    };
+    return {
+      key: key, p: p, g: g, ip: ip, items: items, mail: mail, again: again, autoAgain: autoAgain, prev: prev,
+      subject: p.subject != null ? p.subject : outFill(again ? tpl.againSubject : tpl.firstSubject, v),
+      body: p.body != null ? p.body : outFill(again ? tpl.againBody : tpl.firstBody, v)
+    };
+  }
+
+  // 메일 연락 상태 — 이번 달 섭외 기간(오픈 40일 전부터)의 메일만 본다(지난 협업 메일은 섞지 않음)
+  function outMailState(mail, open) {
+    if (!mail || !mail.msgs) return { sent: null, reply: null, myTurn: false };
+    var from = new Date(open.getTime() - 40 * 864e5);
+    var ms = mail.msgs.filter(function (x) { return x.date >= from; }).sort(function (a, b) { return a.date - b.date; });
+    var sent = null, reply = null;
+    ms.forEach(function (x) { if (x.dir === '보냄' && !sent) sent = x.date; if (x.dir === '받음' && sent && x.date > sent) reply = x.date; });
+    var last = ms[ms.length - 1];
+    return { sent: sent, reply: reply, myTurn: !!(last && last.dir === '받음') };
+  }
+
+  function recruitBox() {
+    outLoadTpl(); loadContacts();
     var tpl = outTpl || OUT_TPL_DEFAULT;
-    // 달: 오늘 이후 가장 가까운 오픈 달이 기본
     var now = dayStart(new Date()), months = [], d0 = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     for (var i = 0; i < 4; i++) { months.push(monthKey(d0)); d0.setMonth(d0.getMonth() + 1); }
     if (!outMonth) outMonth = months.filter(function (mk) { return openOfMonth(mk) >= now; })[0] || months[1];
@@ -2960,88 +3055,121 @@
     var end = new Date(open); end.setDate(end.getDate() + 5);
     var period = st.period != null && st.period !== '' ? st.period : mdw(open) + ' ~ ' + mdw(end);
     var groups = outParseProducts(st.products), cands = outParseCands(st.cands);
+    if (outSetupOpen === null) outSetupOpen = !cands.length;
+    var cmap = contactMap || {};
+    var joined = {};
+    withLatestFlag(rows).forEach(function (r) { if (r.latest) joined[candKey(r.nick)] = true; });
 
-    var head = '<section class="rbox"><h2 class="rbox-h">연락 원고 — 초기 연락 / 재연락 메일</h2>' +
-      '<p class="rbox-desc">① 달을 고르고 ② 이번 달 상품 목록과 ③ 노션 후보 표를 붙여넣으면, 사람마다 메일 제목·본문이 만들어집니다. 연락 이력에 메일이 있는 분은 재연락 원고로 나옵니다. 본문은 그 자리에서 고칠 수 있고, 이 브라우저에 저장됩니다.</p>' +
-      '<div class="st-top">' +
-      '<label>달 <select id="ou-month">' + months.map(function (x) { return '<option value="' + x + '"' + (x === m ? ' selected' : '') + '>' + monthLabel(x) + ' (오픈 ' + mdw(openOfMonth(x)) + ')</option>'; }).join('') + '</select></label>' +
-      '<label>업로드 기간 <input id="ou-period" type="text" style="width:13em" value="' + esc(period) + '" /></label>' +
-      '<span class="st-file">판매보다 먼저 올라오면 안 되므로 오픈일 당일부터로 잡았습니다</span>' +
-      '</div>' +
-      '<div class="ou-paste">' +
-        '<label><span>이번 달 상품 목록 <i>' + (groups.length ? 'IP ' + groups.length + '개 · 상품 ' + groups.reduce(function (n, g) { return n + g.items.length; }, 0) + '개 읽음' : '예: 🕷️【헌터×헌터】 다음 줄에 • 룩업 히소카') + '</i></span>' +
-        '<textarea id="ou-products" rows="6" placeholder="🕷️【헌터×헌터】&#10;• 룩업 히소카&#10;• 룩업 클로로">' + esc(st.products || '') + '</textarea></label>' +
-        '<label><span>노션 후보 표 <i>' + (cands.length ? cands.length + '명 읽음' : '표를 통째로 복사해 붙여넣기(이름·IP·콘텐츠 방향 열을 읽음)') + '</i></span>' +
-        '<textarea id="ou-cands" rows="6" placeholder="| 계정 | 이름 | 팔로워 | IP 상품 | 콘텐츠 방향 | …">' + esc(st.cands || '') + '</textarea></label>' +
-      '</div>' +
-      '<button class="st-fold" id="ou-tpl-open">' + (outTplOpen ? '▾' : '▸') + ' 원고 틀 고치기(초기 연락 / 재연락)' + (tpl.sender ? '' : ' — 담당자 이름을 먼저 넣어 주세요') + '</button>' +
-      (outTplOpen ? '<div class="ou-tpl">' +
-        '<p class="rbox-desc">{이름} {IP} {상품} {상품요약} {월} {기간} {오픈일} {소개} {지난협업} {담당자} 자리에 값이 들어갑니다. [틀 저장]을 누르면 다른 기기에서도 같은 틀을 씁니다.</p>' +
-        '<label>담당자 이름 <input id="ou-sender" type="text" value="' + esc(tpl.sender || '') + '" placeholder="예: 홍길동" /></label>' +
-        '<div class="ou-tpl-grid">' +
-          '<label><span>초기 연락 — 제목</span><input id="ou-t-fs" type="text" value="' + esc(tpl.firstSubject) + '" /><span>본문</span><textarea id="ou-t-fb" rows="14">' + esc(tpl.firstBody) + '</textarea></label>' +
-          '<label><span>재연락 — 제목</span><input id="ou-t-as" type="text" value="' + esc(tpl.againSubject) + '" /><span>본문</span><textarea id="ou-t-ab" rows="14">' + esc(tpl.againBody) + '</textarea></label>' +
+    // 사람마다 상태
+    var ppl = cands.map(function (c) {
+      var d = outDraft(c, st, m, groups, tpl, period, open);
+      var ms = outMailState(d.mail, open), ct = cmap[c.name] || {};
+      var contacted = !!(ms.sent || ct.dm), replied = !!(ms.reply || ct.dmReply), isJoined = !!joined[candKey(c.name)];
+      var stage = isJoined ? 3 : replied ? 2 : contacted ? 1 : 0;
+      return { c: c, d: d, ms: ms, ct: ct, stage: stage, joined: isJoined };
+    });
+    ppl.sort(function (a, b) { return a.stage - b.stage; });
+    var cnt = [0, 0, 0, 0]; ppl.forEach(function (x) { cnt[x.stage]++; });
+    var STAGE = ['연락 전', '답 기다리는 중', '답장 옴', '접수함'];
+
+    var setupSummary = monthLabel(m) + ' (오픈 ' + mdw(open) + ') · 업로드 ' + period + ' · 상품 ' + groups.reduce(function (n, g) { return n + g.items.length; }, 0) + '개 · 후보 ' + cands.length + '명' + (tpl.sender ? '' : ' · ⚠ 담당자 이름 없음');
+    var setup = '<section class="rbox">' +
+      '<button class="st-fold rc-setup-btn" id="ou-setup">' + (outSetupOpen ? '▾ ' : '▸ ') + '<b>이번 달 준비</b> — ' + esc(setupSummary) + (outSetupOpen ? '' : ' · <u>고치기</u>') + '</button>' +
+      (outSetupOpen ? '<div class="rc-setup">' +
+        '<div class="st-top">' +
+        '<label>달 <select id="ou-month">' + months.map(function (x) { return '<option value="' + x + '"' + (x === m ? ' selected' : '') + '>' + monthLabel(x) + ' (오픈 ' + mdw(openOfMonth(x)) + ')</option>'; }).join('') + '</select></label>' +
+        '<label>업로드 기간 <input id="ou-period" type="text" style="width:13em" value="' + esc(period) + '" /></label>' +
+        '<span class="st-file">판매보다 먼저 올라오면 안 되므로 오픈일 당일부터</span>' +
         '</div>' +
-        '<div class="cd-act"><button class="mini is-main" id="ou-tpl-save">틀 저장</button><button class="mini" id="ou-tpl-reset">처음 틀로</button></div></div>' : '') +
+        '<div class="ou-paste">' +
+          '<label><span>① 이번 달 상품 목록 <i>' + (groups.length ? 'IP ' + groups.length + '개 · 상품 ' + groups.reduce(function (n, g) { return n + g.items.length; }, 0) + '개 읽음' : '【IP】 다음 줄에 • 상품') + '</i></span>' +
+          '<textarea id="ou-products" rows="6" placeholder="🕷️【헌터×헌터】&#10;• 룩업 히소카&#10;• 룩업 클로로">' + esc(st.products || '') + '</textarea></label>' +
+          '<label><span>② 노션 후보 표 <i>' + (cands.length ? cands.length + '명 읽음' : '표를 통째로 복사해 붙여넣기(계정·이름·IP·콘텐츠 방향 열)') + '</i></span>' +
+          '<textarea id="ou-cands" rows="6" placeholder="| 계정 | 이름 | 팔로워 | IP 상품 | 콘텐츠 방향 | …">' + esc(st.cands || '') + '</textarea></label>' +
+        '</div>' +
+        '<button class="st-fold" id="ou-tpl-open">' + (outTplOpen ? '▾' : '▸') + ' 원고 틀 고치기(초기 연락 / 재연락)' + (tpl.sender ? '' : ' — 담당자 이름을 먼저 넣어 주세요') + '</button>' +
+        (outTplOpen ? '<div class="ou-tpl">' +
+          '<p class="rbox-desc">{이름} {IP} {상품} {상품요약} {월} {기간} {오픈일} {소개} {지난협업} {담당자} 자리에 값이 들어갑니다. [틀 저장]을 누르면 다른 기기에서도 같은 틀을 씁니다.</p>' +
+          '<label>담당자 이름 <input id="ou-sender" type="text" value="' + esc(tpl.sender || '') + '" placeholder="예: 홍길동" /></label>' +
+          '<div class="ou-tpl-grid">' +
+            '<label><span>초기 연락 — 제목</span><input id="ou-t-fs" type="text" value="' + esc(tpl.firstSubject) + '" /><span>본문</span><textarea id="ou-t-fb" rows="14">' + esc(tpl.firstBody) + '</textarea></label>' +
+            '<label><span>재연락 — 제목</span><input id="ou-t-as" type="text" value="' + esc(tpl.againSubject) + '" /><span>본문</span><textarea id="ou-t-ab" rows="14">' + esc(tpl.againBody) + '</textarea></label>' +
+          '</div>' +
+          '<div class="cd-act"><button class="mini is-main" id="ou-tpl-save">틀 저장</button><button class="mini" id="ou-tpl-reset">처음 틀로</button></div></div>' : '') +
+      '</div>' : '') +
       (outMsg ? '<p class="ml-fresh">' + esc(outMsg) + '</p>' : '') +
       '</section>';
 
-    if (!cands.length) return head + '<div class="empty">노션 후보 표를 붙여넣으면 사람마다 원고가 만들어집니다.</div>';
+    var people;
+    if (!cands.length) {
+      people = '<div class="empty">위 <b>이번 달 준비</b>에 노션 후보 표를 붙여넣으면, 한 사람당 한 줄로 연락 상태와 원고가 정리됩니다.</div>';
+    } else {
+      var rowsHtml = ppl.map(function (x) {
+        var c = x.c, d = x.d, ms = x.ms, ct = x.ct, k = esc(d.key), nm = esc(c.name);
+        var accUrl = c.handle ? (c.platform === 'X' ? 'https://x.com/' + c.handle : c.platform === '유튜브' ? 'https://www.youtube.com/@' + c.handle : c.platform === '인스타' ? 'https://www.instagram.com/' + c.handle + '/' : '') : '';
+        var openRow = !!outOpenRows[d.key];
+        var mailCell = ms.sent
+          ? '<span class="rc-ok">보냄 ' + md(ms.sent) + '</span>' + (ms.reply ? '<span class="rc-ok">답장 ' + md(ms.reply) + '</span>' : '') + (ms.myTurn ? '<span class="rc-turn">내가 답할 차례</span>' : '')
+          : '<span class="rc-none">아직 없음</span>';
+        var dmCell = ct.dm
+          ? '<button class="rc-btn is-on" data-n="' + nm + '" data-f="dm" title="다시 누르면 취소">보냄 ' + ymdShort(ct.dm) + '</button>' +
+            '<button class="rc-btn' + (ct.dmReply ? ' is-on' : '') + '" data-n="' + nm + '" data-f="dmReply" title="DM 답장이 왔으면 눌러 주세요">' + (ct.dmReply ? '답장 ' + ymdShort(ct.dmReply) : '답장 옴?') + '</button>'
+          : '<button class="rc-btn" data-n="' + nm + '" data-f="dm">DM 보냄</button>';
+        return '<tr class="rc-stage' + x.stage + '">' +
+          '<td class="rc-name"><b>' + nm + '</b>' + (accUrl ? '<a class="ou-acc" href="' + esc(accUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(c.platform) + ' @' + esc(c.handle) + ' ↗</a>' : '') + '</td>' +
+          '<td><span class="rc-stage-b s' + x.stage + '">' + STAGE[x.stage] + '</span></td>' +
+          '<td class="rc-ip">' + esc(d.ip) + (d.items.length ? '<span>' + esc(d.items.join(', ')) + '</span>' : '<span class="rc-warn">상품 목록에서 못 찾음</span>') + '</td>' +
+          '<td>' + mailCell + '</td>' +
+          '<td class="rc-dm">' + dmCell + '</td>' +
+          '<td>' + (x.joined ? '<span class="rc-ok">접수함</span>' : '<span class="rc-none">접수 전</span>') + '</td>' +
+          '<td><button class="mini rc-open' + (openRow ? ' is-open' : '') + '" data-k="' + k + '">' + (openRow ? '원고 닫기' : (d.again ? '재연락' : '초기 연락') + ' 원고') + '</button></td>' +
+          '</tr>' +
+          (openRow ? '<tr class="rc-draft"><td colspan="7"><div class="ou-card">' +
+            '<div class="ou-head"><div class="seg ou-kind"><button class="seg-o' + (!d.again ? ' is-on' : '') + '" data-k="' + k + '" data-kind="first">초기 연락</button><button class="seg-o' + (d.again ? ' is-on' : '') + '" data-k="' + k + '" data-kind="again">재연락</button></div>' +
+              '<span class="ou-why">' + (d.autoAgain ? '예전 메일이 있어 재연락으로 골랐습니다' + (d.prev ? ' · 지난: ' + esc(d.prev) : '') : '예전 메일이 없어 초기 연락으로 골랐습니다') + '</span>' +
+              (d.p.body != null || d.p.subject != null ? '<button class="mini ou-reset" data-k="' + k + '">고친 것 되돌리기</button>' : '') + '</div>' +
+            (tpl.sender ? '' : '<p class="ou-warn">⚠ 위 [이번 달 준비 → 원고 틀 고치기]에서 담당자 이름을 넣어 주세요</p>') +
+            '<div class="ou-row"><input class="ou-subj" data-k="' + k + '" value="' + esc(d.subject) + '" /><button class="mini ou-copy" data-what="subj">제목 복사</button></div>' +
+            '<textarea class="ou-body" data-k="' + k + '" rows="14">' + esc(d.body) + '</textarea>' +
+            '<div class="cd-act"><button class="mini is-main ou-copy" data-what="body">본문 복사</button><span class="cd-msg">메일을 보내면 [메일 가져오기] 뒤에 ‘보냄’이 자동으로 표시됩니다. DM으로 보냈으면 위 [DM 보냄]을 눌러 주세요.</span></div>' +
+            '</div></td></tr>' : '');
+      }).join('');
+      people = '<section class="rbox">' +
+        '<div class="rc-sum">' + STAGE.map(function (s, i) { return '<span class="rc-stage-b s' + i + '">' + s + ' <b>' + cnt[i] + '</b></span>'; }).join('') + '<span class="rc-sum-n">' + monthLabel(m) + ' 후보 ' + ppl.length + '명 · 연락 전인 분이 맨 위</span></div>' +
+        '<div class="scroll"><table class="rc-table"><thead><tr><th>이름 · 계정</th><th>단계</th><th>IP · 상품</th><th>메일 (자동)</th><th>DM</th><th>접수</th><th>원고</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
+        '<p class="foot">메일은 웍스 협업 폴더에서 자동으로 읽습니다(이번 달 오픈 40일 전부터). DM은 보드가 알 수 없어 버튼으로 남기며, 다른 기기·담당자와 공유됩니다. 접수는 크리에이터가 접수 폼을 내면 이름으로 이어집니다.</p>' +
+        '</section>';
+    }
 
-    var cards = cands.map(function (c) {
-      var key = settleKey(c.name), p = st.people[key] || {};
-      var g = null;
-      groups.forEach(function (x) { var a = ipNorm(x.ip), b = ipNorm(c.ip); if (!g && a && b && (a.indexOf(b) >= 0 || b.indexOf(a) >= 0)) g = x; });
-      var ip = g ? g.ip : (c.ip || 'IP');
-      var mail = outMailOf(c);
-      var autoAgain = !!(mail && mail.msgs && mail.msgs.length);
-      var again = p.kind ? p.kind === 'again' : autoAgain;
-      var prev = mail ? settlePromoGuess((mail.msgs || []).map(function (x) { return mailCleanSubject(x.subject); })) : '';
-      var items = g ? g.items : [];
-      var first = items.map(function (t) { return t.split(/\s+/)[0]; });
-      var summary = items.length && first.every(function (w) { return w === first[0]; }) ? ip + ' ' + first[0] : ip;
-      var v = {
-        '이름': c.name, 'IP': ip, '상품': items.length ? items.map(function (t) { return '- [' + ip + '] ' + t; }).join('\n') : '- 【상품을 넣어 주세요】',
-        '상품요약': summary, '월': String(+m.slice(5, 7)), '기간': period, '오픈일': mdw(open), '소개': outIntro(c.dir, ip),
-        '지난협업': prev ? prev + ' ' : '', '담당자': tpl.sender || '【담당자】'
-      };
-      var subject = p.subject != null ? p.subject : outFill(again ? tpl.againSubject : tpl.firstSubject, v);
-      var body = p.body != null ? p.body : outFill(again ? tpl.againBody : tpl.firstBody, v);
-      var warn = [];
-      if (!g) warn.push('상품 목록에서 “' + (c.ip || '?') + '” IP를 찾지 못함');
-      if (!tpl.sender) warn.push('담당자 이름 없음');
-      var accUrl = c.handle ? (c.platform === 'X' ? 'https://x.com/' + c.handle : c.platform === '유튜브' ? 'https://www.youtube.com/@' + c.handle : c.platform === '인스타' ? 'https://www.instagram.com/' + c.handle + '/' : '') : '';
-      return '<div class="ou-card">' +
-        '<div class="ou-head"><b>' + esc(c.name) + '</b>' +
-          (accUrl ? '<a class="ou-acc" href="' + esc(accUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(c.platform) + ' @' + esc(c.handle) + ' ↗</a>'
-            : c.handle ? '<span class="st-naver">' + esc(c.handle) + '</span>' : '<span class="ou-noacc">계정 아이디 없음</span>') +
-          '<div class="seg ou-kind"><button class="seg-o' + (!again ? ' is-on' : '') + '" data-k="' + esc(key) + '" data-kind="first">초기 연락</button><button class="seg-o' + (again ? ' is-on' : '') + '" data-k="' + esc(key) + '" data-kind="again">재연락</button></div>' +
-          '<span class="ou-why">' + (autoAgain ? '연락 이력에 메일 있음' + (prev ? ' · 지난: ' + esc(prev) : '') : '연락 이력에 메일 없음') + '</span>' +
-          '<span class="ou-ip">' + esc(ip) + (items.length ? ' · ' + items.length + '개 상품' : '') + '</span>' +
-          (p.body != null || p.subject != null ? '<button class="mini ou-reset" data-k="' + esc(key) + '">고친 것 되돌리기</button>' : '') +
-        '</div>' +
-        (warn.length ? '<p class="ou-warn">⚠ ' + esc(warn.join(' · ')) + '</p>' : '') +
-        '<div class="ou-row"><input class="ou-subj" data-k="' + esc(key) + '" value="' + esc(subject) + '" /><button class="mini ou-copy" data-what="subj" data-k="' + esc(key) + '">제목 복사</button></div>' +
-        '<textarea class="ou-body" data-k="' + esc(key) + '" rows="12">' + esc(body) + '</textarea>' +
-        '<div class="cd-act"><button class="mini is-main ou-copy" data-what="body" data-k="' + esc(key) + '">본문 복사</button></div>' +
-        '</div>';
-    }).join('');
-    return head + '<section class="rbox"><div class="cp-bar"><b>' + monthLabel(m) + ' 원고</b><span class="cp-n">' + cands.length + '명</span></div>' + cards + '</section>';
+    var turn = mailInfo && mailInfo.list ? mailInfo.list.filter(function (it) { return it.turn === 'me'; }).length : 0;
+    var mailFold = '<button class="st-fold" id="rc-mail">' + (outMailOpen ? '▾' : '▸') + ' 메일함 · 전체 연락 이력' + (turn ? ' — <b class="rc-turn-i">내가 답할 차례 ' + turn + '명</b>' : '') + ' (가져오기·이력 지우기도 여기)</button>' +
+      (outMailOpen ? mailBox() : '');
+    return setup + people + mailFold;
   }
 
-  function bindOutreach() {
+  function bindRecruit() {
     var m = outMonth;
     var each = function (sel, fn) { Array.prototype.forEach.call(document.querySelectorAll(sel), fn); };
+    var su = document.getElementById('ou-setup');
+    if (su) su.addEventListener('click', function () { outSetupOpen = !outSetupOpen; renderList(); });
+    var mf = document.getElementById('rc-mail');
+    if (mf) mf.addEventListener('click', function () { outMailOpen = !outMailOpen; renderList(); });
     var sel = document.getElementById('ou-month');
     if (sel) sel.addEventListener('change', function () { outMonth = sel.value; outMsg = ''; renderList(); });
     var per = document.getElementById('ou-period');
     if (per) { per.addEventListener('input', function () { outSave(m, function (st) { st.period = per.value; }); }); per.addEventListener('change', renderSoon); }
-    ['ou-products', 'ou-cands'].forEach(function (id) {
-      var el = document.getElementById(id);
-      if (!el) return;
-      el.addEventListener('input', function () { outSave(m, function (st) { st[id === 'ou-products' ? 'products' : 'cands'] = el.value; }); });
-      el.addEventListener('change', renderSoon);
-    });
+    var prod = document.getElementById('ou-products');
+    if (prod) { prod.addEventListener('input', function () { outSave(m, function (st) { st.products = prod.value; }); }); prod.addEventListener('change', renderSoon); }
+    var cd = document.getElementById('ou-cands');
+    if (cd) {
+      cd.addEventListener('input', function () { outSave(m, function (st) { st.cands = cd.value; }); });
+      cd.addEventListener('change', function () {
+        // 확정 후보 목록에도 이름을 더해 둔다(접수 연결·연락 이력의 '확정 후보' 표시에 쓰임). 이미 있는 이름은 서버가 건너뜀.
+        var items = outParseCands(cd.value).map(function (c) { return { name: c.name, link: '' }; }).filter(function (it) { return !candidates[it.name]; });
+        if (items.length) api({ code: code, action: 'cand-add', items: items }).then(function (r) { if (r.status === 200 && r.data.ok) { candidates = r.data.candidates || candidates; renderSoon(); } }).catch(function () { /* 다음에 다시 */ });
+        renderSoon();
+      });
+    }
     var to = document.getElementById('ou-tpl-open');
     if (to) to.addEventListener('click', function () { outTplOpen = !outTplOpen; renderList(); });
     var tv = function (id) { var el = document.getElementById(id); return el ? el.value : ''; };
@@ -3061,6 +3189,15 @@
       outTpl = Object.assign({}, OUT_TPL_DEFAULT, { sender: keep });
       outMsg = '처음 틀을 불러왔습니다. [틀 저장]을 눌러야 저장됩니다.'; renderList();
     });
+    each('.rc-open', function (b) { b.addEventListener('click', function () { var k = b.getAttribute('data-k'); outOpenRows[k] = !outOpenRows[k]; renderList(); }); });
+    each('.rc-btn', function (b) {
+      b.addEventListener('click', function () {
+        var n = b.getAttribute('data-n'), f = b.getAttribute('data-f');
+        var cur = contactMap && contactMap[n] && contactMap[n][f];
+        if (f === 'dm' && cur && !confirm(n + '님 DM 보냄 표시를 취소할까요?')) return;
+        contactSet(n, f, !cur);
+      });
+    });
     each('.seg-o', function (b) {
       b.addEventListener('click', function () {
         var k = b.getAttribute('data-k');
@@ -3075,10 +3212,9 @@
     });
     each('.ou-copy', function (b) {
       b.addEventListener('click', function () {
-        var k = b.getAttribute('data-k'), card = b.closest('.ou-card');
+        var card = b.closest('.ou-card');
         var el = card && card.querySelector(b.getAttribute('data-what') === 'subj' ? '.ou-subj' : '.ou-body');
-        var text = el ? el.value : '';
-        var label = b.textContent;
+        var text = el ? el.value : '', label = b.textContent;
         var done = function () { b.textContent = '복사됨'; setTimeout(function () { b.textContent = label; }, 1500); };
         if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
         else fallback(text, done);
@@ -3086,14 +3222,34 @@
     });
   }
 
+  // 탭은 하는 일 순서대로 셋. 진행·정산은 안에서 두 화면을 버튼으로 바꾼다.
+  var TABS = [
+    { key: 'recruit', label: '섭외', desc: '오픈 전, 후보에게 연락하고 답장을 챙길 때 씁니다. 노션 후보 표를 붙여넣으면 한 사람당 한 줄로 연락 상태와 원고가 정리됩니다.', subs: [['recruit', '']] },
+    { key: 'progress', label: '진행', desc: '접수가 들어온 뒤 초안·업로드·리워드 지급을 챙길 때 씁니다.', subs: [['list', '사람별'], ['round', '회차별']] },
+    { key: 'pay', label: '정산', desc: '오픈 후 쿠폰을 발급하고, 스마트스토어 실적을 노션에 기록할 때 씁니다.', subs: [['coupon', '쿠폰 발급'], ['settle', '노션 기록']] }
+  ];
+  var SUB_KEY = 'ib-subview';
+  function tabOf(v) { for (var i = 0; i < TABS.length; i++) if (TABS[i].subs.some(function (s2) { return s2[0] === v; })) return TABS[i]; return TABS[1]; }
+  function lastSub(t) {
+    try { var m2 = JSON.parse(localStorage.getItem(SUB_KEY) || '{}'); if (m2[t.key] && t.subs.some(function (s2) { return s2[0] === m2[t.key]; })) return m2[t.key]; } catch (e) { /* 기본값 */ }
+    return t.subs[0][0];
+  }
+  function rememberSub(v) {
+    try { var m2 = JSON.parse(localStorage.getItem(SUB_KEY) || '{}'); m2[tabOf(v).key] = v; localStorage.setItem(SUB_KEY, JSON.stringify(m2)); } catch (e) { /* 저장 못 해도 이번엔 바뀐다 */ }
+  }
   function viewTabs() {
-    return '<div class="tabs" role="tablist">' + Object.keys(VIEWS).map(function (k) {
-      return '<button class="tab' + (view === k ? ' is-on' : '') + '" role="tab" aria-selected="' + (view === k) + '" data-view="' + k + '">' + VIEWS[k] + '</button>';
-    }).join('') + '</div>';
+    var cur = tabOf(view);
+    return '<div class="tabs" role="tablist">' + TABS.map(function (t) {
+      var on = t === cur;
+      return '<button class="tab' + (on ? ' is-on' : '') + '" role="tab" aria-selected="' + on + '" data-view="' + (on ? view : lastSub(t)) + '">' + t.label + '</button>';
+    }).join('') + '</div>' +
+      '<div class="tab-desc">' + (cur.subs.length > 1 ? '<div class="seg">' + cur.subs.map(function (s2) {
+        return '<button class="seg-b subtab' + (s2[0] === view ? ' is-on' : '') + '" data-view="' + s2[0] + '">' + s2[1] + '</button>';
+      }).join('') + '</div>' : '') + '<span>' + cur.desc + '</span></div>';
   }
 
   function renderList() {
-    if ((view === 'mail' || view === 'cand' || view === 'settle' || view === 'outreach') && !mailSync.loaded) loadMailEvents();
+    if ((view === 'recruit' || view === 'settle') && !mailSync.loaded) loadMailEvents();
     var list = visibleRows();
     var liveRows = list.filter(function (r) { return r.latest && !isSettled(r); });
     var partCount = list.filter(function (r) { return r.latest && isPartPaid(r); }).length;
@@ -3199,12 +3355,12 @@
       '<p class="sub">같은 분이 <b>' + ROUND_GAP_DAYS + '일 안에</b> 다시 내신 것은 고쳐 내신 것으로 보고 <b>마지막 제출</b>만 유효합니다(지난 제출은 흐리게 표시). ' +
       '그보다 간격이 벌어지면 <b>다른 차수</b>로 보고 각각 따로 남습니다 — 같은 분과 달마다 협업하는 경우를 위해서입니다.</p>') +
       '<div class="bar fitw">' +
-      '<input class="search" id="q" type="search" placeholder="활동명으로 찾기" value="' + esc(keyword) + '" />' +
+      (view === 'list' ? '<input class="search" id="q" type="search" placeholder="활동명으로 찾기" value="' + esc(keyword) + '" />' : '<span class="bar-fill"></span>') +
       (view === 'list' ? '<button class="mini" id="copy">표 전체 복사</button>' : '') +
       '<button class="mini" id="reload">새로고침</button>' +
       '<button class="mini" id="lock">잠그기</button>' +
       '</div>' +
-      (view === 'round' ? roundBox() : view === 'coupon' ? couponBox() : view === 'cand' ? candBox() : view === 'mail' ? mailBox() : view === 'settle' ? settleBox() : view === 'outreach' ? outBox() : openBox() +
+      (view === 'round' ? roundBox() : view === 'coupon' ? couponBox() : view === 'cand' ? candBox() : view === 'mail' ? mailBox() : view === 'settle' ? settleBox() : view === 'recruit' ? recruitBox() : openBox() +
       (list.length
         ? '<div class="scroll"><table class="listtable"><thead><tr>' +
           '<th class="pick"></th><th>활동명</th><th>네이버 ID</th><th class="sortable' + (sortBy === 'draft' ? ' is-on' : '') + '" data-sort="draft">초안 예정일' + (sortBy === 'draft' ? ' <span class="sort-ar">▾</span>' : '') + '</th>' +
@@ -3221,7 +3377,7 @@
       '</div>';
 
     var q = document.getElementById('q');
-    q.addEventListener('input', function () {
+    if (q) q.addEventListener('input', function () {
       keyword = q.value.trim();
       var pos = q.selectionStart;
       renderList();
@@ -3231,14 +3387,15 @@
     });
     var copyBtn = document.getElementById('copy');
     if (copyBtn) copyBtn.addEventListener('click', function () { copyTable(this); });
-    Array.prototype.forEach.call(root.querySelectorAll('.tab'), function (b) {
+    Array.prototype.forEach.call(root.querySelectorAll('.tab, .subtab'), function (b) {
       b.addEventListener('click', function () {
         view = b.getAttribute('data-view');
+        rememberSub(view);
         try { localStorage.setItem(VIEW_KEY, view); } catch (e) { /* 저장 못 해도 이번엔 바뀐다 */ }
         renderList();
       });
     });
-    Array.prototype.forEach.call(root.querySelectorAll('.seg-b'), function (b) {
+    Array.prototype.forEach.call(root.querySelectorAll('.seg-b[data-range]'), function (b) {
       b.addEventListener('click', function () { couponRange = b.getAttribute('data-range'); renderList(); });
     });
     var cpCopy = document.getElementById('cp-copy');
@@ -3246,7 +3403,7 @@
     var cpCsv = document.getElementById('cp-csv');
     if (cpCsv) cpCsv.addEventListener('click', couponCsv);
     if (view === 'settle') bindSettle();
-    if (view === 'outreach') bindOutreach();
+    if (view === 'recruit') bindRecruit();
     var tabsEl = root.querySelector('.tabs'), tabOn = root.querySelector('.tab.is-on');
     if (tabsEl && tabOn) tabsEl.scrollLeft = tabOn.offsetLeft - (tabsEl.clientWidth - tabOn.offsetWidth) / 2;
     Array.prototype.forEach.call(root.querySelectorAll('.ml-sub-btn'), function (b) {

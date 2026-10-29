@@ -40,6 +40,7 @@ const GUARD_PATH = 'creator-logs/admin-guard.json';
 // 새 파일을 나란히 둔다 — 없으면 빈 목록으로 본다.
 const CANDIDATES_PATH = 'creator-logs/candidates.json';
 const OUTREACH_TPL_PATH = 'creator-logs/outreach-templates.json';   // 연락 원고 틀
+const CONTACT_PATH = 'creator-logs/contact-status.json';            // 섭외 DM 연락 상태
 const CAND_NAME_MAX = 40;
 const CAND_LINK_MAX = 200;
 const CAND_BATCH_MAX = 200;
@@ -321,6 +322,26 @@ export default async function handler(req, res) {
         sha: f ? f.sha : undefined,
       });
       res.status(200).json({ ok: true, candidates: map, added });
+      return;
+    }
+
+    // 섭외 연락 상태(DM 보냄 / DM 답장) 읽기·저장. 메일은 연락 이력에서 자동으로 알 수 있지만 DM은 알 수 없어서
+    // 담당자가 누른 날짜를 남긴다. 다른 기기·담당자와 같이 보도록 비공개 저장소에 둔다. 이름 → { dm, dmReply } (YYYY-MM-DD)
+    if (action === 'contact-get' || action === 'contact-set') {
+      const f = await readGithubFile({ ...gh, path: CONTACT_PATH });
+      let map = {};
+      if (f) { try { map = JSON.parse(f.content) || {}; } catch { map = {}; } }
+      if (action === 'contact-get') { res.status(200).json({ ok: true, contacts: map }); return; }
+      const b = req.body || {};
+      const name = String(b.name || '').replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, CAND_NAME_MAX);
+      const field = b.field;
+      const value = b.value == null ? null : String(b.value);
+      if (!name || !['dm', 'dmReply'].includes(field) || (value !== null && !/^\d{4}-\d{2}-\d{2}$/.test(value))) { res.status(400).json({ ok: false, reason: 'contact' }); return; }
+      const cur = { ...(map[name] || {}) };
+      if (value) cur[field] = value; else delete cur[field];
+      if (Object.keys(cur).length) map[name] = cur; else delete map[name];
+      await writeGithubFile({ ...gh, path: CONTACT_PATH, content: JSON.stringify(map, null, 2) + '\n', message: `creator-guide 섭외 연락 상태 (${field})`, sha: f ? f.sha : undefined });
+      res.status(200).json({ ok: true, contacts: map });
       return;
     }
 
