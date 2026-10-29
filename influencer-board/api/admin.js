@@ -39,6 +39,7 @@ const GUARD_PATH = 'creator-logs/admin-guard.json';
 // 확정된 사람만 담는다(이중 입력을 만들지 않으려고). 기존 파일을 고치지 않고
 // 새 파일을 나란히 둔다 — 없으면 빈 목록으로 본다.
 const CANDIDATES_PATH = 'creator-logs/candidates.json';
+const OUTREACH_TPL_PATH = 'creator-logs/outreach-templates.json';   // 연락 원고 틀
 const CAND_NAME_MAX = 40;
 const CAND_LINK_MAX = 200;
 const CAND_BATCH_MAX = 200;
@@ -320,6 +321,24 @@ export default async function handler(req, res) {
         sha: f ? f.sha : undefined,
       });
       res.status(200).json({ ok: true, candidates: map, added });
+      return;
+    }
+
+    // 연락 원고 틀(초기 연락 / 재연락) 읽기·저장. 다른 기기에서도 같은 틀을 쓰도록 비공개 저장소에 둔다.
+    // 틀은 문장뿐이고 개인 정보가 없다. 크기를 제한해 엉뚱한 큰 글이 저장되지 않게 한다.
+    if (action === 'tpl-get' || action === 'tpl-set') {
+      const f = await readGithubFile({ ...gh, path: OUTREACH_TPL_PATH });
+      let tpl = null;
+      if (f) { try { tpl = JSON.parse(f.content) || null; } catch { tpl = null; } }
+      if (action === 'tpl-get') { res.status(200).json({ ok: true, templates: tpl }); return; }
+      const t = req.body && req.body.templates;
+      const str = (v) => String(v == null ? '' : v).replace(/\u0000/g, '').slice(0, 6000);
+      if (!t || typeof t !== 'object') { res.status(400).json({ ok: false, reason: 'tpl' }); return; }
+      const clean = {};
+      ['firstSubject', 'firstBody', 'againSubject', 'againBody'].forEach((k) => { clean[k] = str(t[k]); });
+      clean.sender = str(t.sender).slice(0, 30);   // 원고에 들어갈 담당자 이름
+      await writeGithubFile({ ...gh, path: OUTREACH_TPL_PATH, content: JSON.stringify(clean, null, 2) + '\n', message: 'creator-guide 연락 원고 틀 저장', sha: f ? f.sha : undefined });
+      res.status(200).json({ ok: true, templates: clean });
       return;
     }
 
