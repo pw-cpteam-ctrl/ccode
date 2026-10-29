@@ -2328,11 +2328,15 @@
   function settleMonthTitles(name, mk) {
     return settleMonthMsgs(name, mk).map(function (x) { return mailCleanSubject(x.subject); });
   }
-  function settleMonthMsgs(name, mk) {
+  function settleMonthMsgs(name, mk) { return monthMsgs(settleMailMsgs(name), mk); }
+  // 메일 목록 중 그 협업 달 것만 — 제목에 '○월'이 있으면 그 달인 것만, 없으면 받은 날짜가 기간 안인 것.
+  // 기간 기본값은 앞 달 오픈일과의 중간 ~ 다음 달 오픈일과의 중간. fromEarly면 앞 달 응대 기간이 끝난 다음 날(앞 달 오픈 +6일)부터
+  // — 섭외 첫 연락은 오픈 한참 전에 하므로(섭외 탭용).
+  function monthMsgs(msgs, mk, fromEarly) {
     var open = openOfMonth(mk), prev = openOfMonth(shiftMonth(mk, -1)), next = openOfMonth(shiftMonth(mk, 1));
-    var from = new Date((prev.getTime() + open.getTime()) / 2), to = new Date((open.getTime() + next.getTime()) / 2);
+    var from = fromEarly ? new Date(prev.getTime() + 6 * 864e5) : new Date((prev.getTime() + open.getTime()) / 2), to = new Date((open.getTime() + next.getTime()) / 2);
     var mo = +mk.slice(5, 7);
-    return settleMailMsgs(name).filter(function (x) {
+    return (msgs || []).filter(function (x) {
       var t = String(x.subject || ''), mm = t.match(/메가하우스\s*(?:\d{2}년\s*)?(\d{1,2})월|\[[^\]]*?(\d{1,2})월[^\]]*\]/);
       if (mm) return +(mm[1] || mm[2]) === mo;
       return x.date >= from && x.date < to;
@@ -3016,9 +3020,12 @@
     groups.forEach(function (x) { var a = ipNorm(x.ip), b = ipNorm(c.ip); if (!g && a && b && (a.indexOf(b) >= 0 || b.indexOf(a) >= 0)) g = x; });
     var ip = g ? g.ip : (c.ip || 'IP');
     var mail = outMailOf(c);
-    var autoAgain = !!(mail && mail.msgs && mail.msgs.some(function (x) { return x.date < new Date(open.getTime() - 40 * 864e5); }));
+    // 재연락: 이번 달 협업 메일이 아닌, 더 예전 메일이 있으면
+    var cur = mail ? monthMsgs(mail.msgs, m, true) : [];
+    var older = mail ? (mail.msgs || []).filter(function (x) { return cur.indexOf(x) < 0 && x.date < open; }) : [];
+    var autoAgain = older.length > 0;
     var again = p.kind ? p.kind === 'again' : autoAgain;
-    var prev = mail ? settlePromoGuess((mail.msgs || []).filter(function (x) { return x.date < new Date(open.getTime() - 40 * 864e5); }).map(function (x) { return mailCleanSubject(x.subject); })) : '';
+    var prev = settlePromoGuess(older.map(function (x) { return mailCleanSubject(x.subject); }));
     var items = g ? g.items : [];
     var first = items.map(function (t) { return t.split(/\s+/)[0]; });
     var summary = items.length && first.every(function (w) { return w === first[0]; }) ? ip + ' ' + first[0] : ip;
@@ -3035,14 +3042,16 @@
   }
 
   // 메일 연락 상태 — 이번 달 섭외 기간(오픈 40일 전부터)의 메일만 본다(지난 협업 메일은 섞지 않음)
-  function outMailState(mail, open) {
-    if (!mail || !mail.msgs) return { sent: null, reply: null, myTurn: false };
-    var from = new Date(open.getTime() - 40 * 864e5);
-    var ms = mail.msgs.filter(function (x) { return x.date >= from; }).sort(function (a, b) { return a.date - b.date; });
+  // 메일 연락 상태 — 이번 달 협업 메일만 본다(제목의 '○월'이 이번 달이거나, 달 표시가 없으면 앞 달 응대가 끝난 뒤 메일).
+  // 보냄·답장은 '가장 최근' 날짜. (처음엔 이번 달 오픈 40일 전부터의 '첫' 보낸 메일을 봐서, 앞 달 협업 메일 10/2가 잡히고
+  // 오늘 보낸 메일은 안 보였음)
+  function outMailState(mail, mk) {
+    if (!mail || !mail.msgs) return { sent: null, reply: null, myTurn: false, any: false };
+    var ms = monthMsgs(mail.msgs, mk, true);   // 최근 것부터
     var sent = null, reply = null;
-    ms.forEach(function (x) { if (x.dir === '보냄' && !sent) sent = x.date; if (x.dir === '받음' && sent && x.date > sent) reply = x.date; });
-    var last = ms[ms.length - 1];
-    return { sent: sent, reply: reply, myTurn: !!(last && last.dir === '받음') };
+    ms.forEach(function (x) { if (x.dir === '보냄' && !sent) sent = x.date; if (x.dir === '받음' && !reply) reply = x.date; });
+    if (reply && !sent) reply = null;   // 우리가 연락하기 전에 온 메일은 이번 섭외의 답장이 아님
+    return { sent: sent, reply: reply, myTurn: !!(ms[0] && ms[0].dir === '받음' && sent), any: ms.length > 0 };
   }
 
   function recruitBox() {
@@ -3063,7 +3072,7 @@
     // 사람마다 상태
     var ppl = cands.map(function (c) {
       var d = outDraft(c, st, m, groups, tpl, period, open);
-      var ms = outMailState(d.mail, open), ct = cmap[c.name] || {};
+      var ms = outMailState(d.mail, m), ct = cmap[c.name] || {};
       var contacted = !!(ms.sent || ct.dm), replied = !!(ms.reply || ct.dmReply), isJoined = !!joined[candKey(c.name)];
       var stage = isJoined ? 3 : replied ? 2 : contacted ? 1 : 0;
       return { c: c, d: d, ms: ms, ct: ct, stage: stage, joined: isJoined };
@@ -3137,7 +3146,7 @@
       people = '<section class="rbox">' +
         '<div class="rc-sum">' + STAGE.map(function (s, i) { return '<span class="rc-stage-b s' + i + '">' + s + ' <b>' + cnt[i] + '</b></span>'; }).join('') + '<span class="rc-sum-n">' + monthLabel(m) + ' 후보 ' + ppl.length + '명 · 연락 전인 분이 맨 위</span></div>' +
         '<div class="scroll"><table class="rc-table"><thead><tr><th>이름 · 계정</th><th>단계</th><th>IP · 상품</th><th>메일 (자동)</th><th>DM</th><th>접수</th><th>원고</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
-        '<p class="foot">메일은 웍스 협업 폴더에서 자동으로 읽습니다(이번 달 오픈 40일 전부터). DM은 보드가 알 수 없어 버튼으로 남기며, 다른 기기·담당자와 공유됩니다. 접수는 크리에이터가 접수 폼을 내면 이름으로 이어집니다.</p>' +
+        '<p class="foot">메일은 웍스 협업 폴더에서 자동으로 읽습니다(이번 달 협업 메일만 — 제목의 ○월이 이번 달이거나, 달 표시가 없으면 앞 달 응대가 끝난 뒤 메일). 보냄·답장은 가장 최근 날짜입니다. DM은 보드가 알 수 없어 버튼으로 남기며, 다른 기기·담당자와 공유됩니다. 접수는 크리에이터가 접수 폼을 내면 이름으로 이어집니다.</p>' +
         '</section>';
     }
 
