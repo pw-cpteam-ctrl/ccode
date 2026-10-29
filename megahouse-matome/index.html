@@ -1135,8 +1135,8 @@ function makeCell(it, ri, pg) {
       const file = [...e.dataTransfer.files].find(f => f.type.startsWith('image/'));
       if (!file) return;
       const r = new FileReader();
-      r.onload = ev => resizeDataURL(ev.target.result, 900, src => {
-        it.src = src; it._fitted = false;
+      r.onload = ev => resizeDataURL(ev.target.result, IMG_MAX_SIDE, src => {
+        it.src = src; it._fitted = false; delete it.dummy;
         renderGrid(pg); saveState();
       });
       r.readAsDataURL(file);
@@ -1281,7 +1281,7 @@ function makeCell(it, ri, pg) {
     inp.addEventListener('change', () => {
       if (!inp.files[0]) return;
       const r = new FileReader();
-      r.onload = ev => resizeDataURL(ev.target.result, 900, src => { it.src = src; it._fitted = false; renderGrid(pg); saveState(); });
+      r.onload = ev => resizeDataURL(ev.target.result, IMG_MAX_SIDE, src => { it.src = src; it._fitted = false; delete it.dummy; renderGrid(pg); saveState(); });
       r.readAsDataURL(inp.files[0]);
     });
     inp.click();
@@ -1618,7 +1618,7 @@ function makeItemRow(it, i, pg) {
     inp.addEventListener('change', () => {
       if (!inp.files[0]) return;
       const r = new FileReader();
-      r.onload = ev => resizeDataURL(ev.target.result, 900, src => { it.src = src; it._fitted = false; renderGrid(pg); renderItemList(); saveState(); });
+      r.onload = ev => resizeDataURL(ev.target.result, IMG_MAX_SIDE, src => { it.src = src; it._fitted = false; delete it.dummy; renderGrid(pg); renderItemList(); saveState(); });
       r.readAsDataURL(inp.files[0]);
     });
     inp.click();
@@ -2320,7 +2320,12 @@ const _igImgs = new Map();        // 사진 id → 불러온 그림 (매번 다�
 /* 상세컷에 들어갈 사진들 — 모든 페이지를 순서대로 이은 목록. 더미 칸은 뺀다 */
 function igItems() {
   const out = [];
-  pages.forEach(pg => pg.forEach(it => { if (it.src && !it.dummy) out.push(it); }));
+  pages.forEach(pg => pg.forEach(it => {
+    // 회색 더미 자리에 사진을 갈아끼웠는데 '더미' 표시가 남아 있던 저장본 구제 —
+    // 그림이 더 이상 더미 그림이 아니면 실제 사진으로 본다
+    if (it.dummy && it.src && it.src !== DUMMY_SRC) delete it.dummy;
+    if (it.src && !it.dummy) out.push(it);
+  }));
   return out;
 }
 /* 몇 장이 되는지 계산 — 순서대로 둘씩 묶되, '단독'으로 찍힌 칸에서 끊고 그 다음부터 다시 둘씩 */
