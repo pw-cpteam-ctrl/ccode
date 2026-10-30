@@ -3067,7 +3067,12 @@
     if (outSetupOpen === null) outSetupOpen = !cands.length;
     var cmap = contactMap || {};
     var joined = {};
-    withLatestFlag(rows).forEach(function (r) { if (r.latest) joined[candKey(r.nick)] = true; });
+    // 접수: 이번 달(고른 오픈 달) 회차로 낸 접수만 센다. 여러 달 연속 협업하는 분은 지난달 접수가 있어도
+    // 이번 달 접수 전이면 '접수 전'이어야 한다(지난달 접수 기록 때문에 '접수함'으로 보이던 것을 고침).
+    withLatestFlag(rows).forEach(function (r) {
+      var o = r.latest && openDateFor(r.draftDate);
+      if (o && monthKey(o) === m) joined[candKey(r.nick)] = true;
+    });
 
     // 사람마다 상태
     var ppl = cands.map(function (c) {
@@ -3146,7 +3151,7 @@
       people = '<section class="rbox">' +
         '<div class="rc-sum">' + STAGE.map(function (s, i) { return '<span class="rc-stage-b s' + i + '">' + s + ' <b>' + cnt[i] + '</b></span>'; }).join('') + '<span class="rc-sum-n">' + monthLabel(m) + ' 후보 ' + ppl.length + '명 · 연락 전인 분이 맨 위</span></div>' +
         '<div class="scroll"><table class="rc-table"><thead><tr><th>이름 · 계정</th><th>단계</th><th>IP · 상품</th><th>메일 (자동)</th><th>DM</th><th>접수</th><th>원고</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
-        '<p class="foot">메일은 웍스 협업 폴더에서 자동으로 읽습니다(이번 달 협업 메일만 — 제목의 ○월이 이번 달이거나, 달 표시가 없으면 앞 달 응대가 끝난 뒤 메일). 보냄·답장은 가장 최근 날짜입니다. DM은 보드가 알 수 없어 버튼으로 남기며, 다른 기기·담당자와 공유됩니다. 접수는 크리에이터가 접수 폼을 내면 이름으로 이어집니다.</p>' +
+        '<p class="foot">메일은 웍스 협업 폴더에서 자동으로 읽습니다(이번 달 협업 메일만 — 제목의 ○월이 이번 달이거나, 달 표시가 없으면 앞 달 응대가 끝난 뒤 메일). 보냄·답장은 가장 최근 날짜입니다. DM은 보드가 알 수 없어 버튼으로 남기며, 다른 기기·담당자와 공유됩니다. 접수는 크리에이터가 이번 달 회차로 접수 폼을 내면 이름으로 이어집니다(지난달 접수는 세지 않음).</p>' +
         '</section>';
     }
 
