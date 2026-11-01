@@ -309,6 +309,13 @@
   /* ===== 모바일 (≤860px): 반응형 축소가 아니라 PC의 좌·우 2열을 세로 1열로 쌓고,
      미리보기는 기본 펼침(사진 넣으면 바로 보이게) + 큰 버튼으로 원하면 접을 수 있게 한다. ===== */
   .mobile-preview-toggle { display:none; } /* 데스크톱에선 숨김(미리보기 항상 표시) */
+  .pv-dl { display:none; }   /* 미리보기 밑 다운로드 — 폰에서만(컴퓨터는 하단 바가 넓어서 충분) */
+  @media (max-width:860px){
+    .pv-dl { display:flex; gap:8px; margin-top:12px; }
+    .pv-dl button { flex:1 1 0; min-height:46px; font-size:14px; font-weight:700; padding:10px 8px; }
+    .pv-dl button[hidden] { display:none; }
+    .pv-dl button:disabled { opacity:.45; }
+  }
   @media (max-width: 860px) {
     /* flex-wrap은 반드시 nowrap — column 방향에서 wrap이면 세로로 안 들어가는 카드가
        옆 칸(두 번째 열)으로 넘어가면서 화면이 가로로 늘어난다 */
@@ -521,6 +528,12 @@
         </div>
       </div>
       <div class="hint" id="previewHint">미리보기만 75% 축소 (다운로드 화질엔 영향 없음) · 드래그로 위치 조정</div>
+      <!-- 폰 전용: 하단 바 버튼이 작고(짧은 이름·아이콘) 화면 맨 아래라 잘 안 보여서, 미리보기 바로 밑에 크게 한 번 더 둔다.
+           누르면 하단 바의 같은 버튼을 대신 눌러 주는 것뿐이라 동작·잠금(빠진 항목)은 하단 바와 똑같다 -->
+      <div class="pv-dl" id="pvDl">
+        <button type="button" class="btn btn-primary" id="pvDlOne" disabled>⬇ PNG 다운로드</button>
+        <button type="button" class="btn-dock btn-dlall" id="pvDlAll" hidden disabled>⬇ 전체</button>
+      </div>
     </div>
     <button class="mobile-preview-toggle" id="previewToggle" type="button" aria-expanded="true">🖼 미리보기·편집칸 접기 ▲</button>
 
@@ -2569,7 +2582,21 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   }
   document.getElementById('postX').addEventListener('click', e=>postTo('x', e.currentTarget));
   document.getElementById('postIG').addEventListener('click', e=>postTo('ig', e.currentTarget));
-  build();
+
+  // ── 폰: 미리보기 밑 다운로드 버튼 — 하단 바 버튼을 대신 누르고, 잠금·보임·장수는 하단 바 버튼을 그대로 따라간다 ──
+  const pvOne=document.getElementById('pvDlOne'), pvAll=document.getElementById('pvDlAll');
+  pvOne.addEventListener('click', ()=>dlOne.click());
+  pvAll.addEventListener('click', ()=>dlAll.click());
+  function syncPv(){
+    const multi=!dlAll.hidden, L=pages(), i=Math.max(0,L.findIndex(p=>p.key===key));
+    pvOne.disabled=dlOne.disabled;
+    pvOne.textContent = !multi ? '⬇ PNG 다운로드' : `⬇ 이 장만 (${i===0?'카드':(i+1)+'장째'})`;
+    pvAll.hidden=!multi; pvAll.disabled=dlAll.disabled;
+    pvAll.textContent = dlAll.textContent==='준비 중…' ? '준비 중…' : `⬇ 전체 ${L.length}장`;
+  }
+  const mo=new MutationObserver(syncPv);
+  [dlOne, dlAll].forEach(el=>mo.observe(el, {attributes:true, attributeFilter:['disabled','hidden'], childList:true, characterData:true, subtree:true}));
+  build(); syncPv();
 })();
 </script>
 </body>
