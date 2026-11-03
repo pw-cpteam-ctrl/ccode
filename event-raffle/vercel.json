@@ -1,5 +1,5 @@
 {
-  "ignoreCommand": "[ -z \"$VERCEL_GIT_PREVIOUS_SHA\" ] && exit 1; git cat-file -e \"$VERCEL_GIT_PREVIOUS_SHA\" 2>/dev/null || exit 1; git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- ./ ':(exclude)./WORKLOG-event-raffle.md' ':(exclude)./CHANGELOG-event-raffle.md' ':(exclude)./local/'",
+  "ignoreCommand": "[ -z \"$VERCEL_GIT_PREVIOUS_SHA\" ] && exit 1; git cat-file -e \"$VERCEL_GIT_PREVIOUS_SHA\" 2>/dev/null || exit 1; git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- ./ ':!./WORKLOG-event-raffle.md' ':!./CHANGELOG-event-raffle.md' ':!./local/'",
   "git": {
     "deploymentEnabled": {
       "main": true,

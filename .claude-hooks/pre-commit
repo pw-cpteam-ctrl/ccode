@@ -34,6 +34,27 @@ if command -v jq >/dev/null 2>&1; then
     keys=$(git show ":$f" 2>/dev/null | jq -r 'keys[]? | select(startswith("_"))' 2>/dev/null | tr '\n' ' ')
     [ -n "$keys" ] && bad="$bad\n  $f : $keys"
   done
+  # ignoreCommand는 256자를 넘으면 안 된다.
+  #
+  # 넘으면 `should NOT be longer than 256 characters`로 배포가 거부된다. 제외 항목을
+  # 하나씩 늘리다 보면 모르는 사이에 넘기기 쉽고, 위의 설명용 칸과 똑같이 배포를
+  # 만들 때만 검사돼서 꺼둔 폴더에서는 몇 주씩 숨는다. event-raffle이 264자(8자 초과)로
+  # 10-19부터 15일 동안 모든 푸시에서 실패했는데, 증상이 "안 건드린 프로젝트가
+  # 실패한다"로 나와서 원인을 찾는 데 오래 걸렸다.
+  # 길이를 줄일 땐 ':(exclude)…' 대신 짧은 문법 ':!…'를 쓰면 항목당 8자가 준다.
+  long=""
+  for f in $(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)vercel\.json$'); do
+    n=$(git show ":$f" 2>/dev/null | jq -r '.ignoreCommand // "" | length' 2>/dev/null)
+    [ -n "$n" ] && [ "$n" -gt 256 ] 2>/dev/null && long="$long\n  $f : ${n}자"
+  done
+  if [ -n "$long" ]; then
+    echo "[pre-commit] 차단: vercel.json의 ignoreCommand가 256자를 넘습니다." >&2
+    printf "$long\n" >&2
+    echo "  Vercel이 'should NOT be longer than 256 characters'로 배포를 거부합니다." >&2
+    echo "  ':(exclude)…'를 짧은 문법 ':!…'로 바꾸면 항목당 8자가 줄어듭니다." >&2
+    exit 1
+  fi
+
   if [ -n "$bad" ]; then
     echo "[pre-commit] 차단: vercel.json에 Vercel이 허용하지 않는 설명용 칸이 있습니다." >&2
     printf "$bad\n" >&2
