@@ -53,7 +53,7 @@ const { buildStockComparison } = require('./stock-report');
 const { captureSnapshot } = require('./naver-stock-snapshot');
 const { appendFollowerSnapshot } = require('./follower-history');
 const { archiveAndGetPath } = require('./report-archive');
-const { prepareBrand, parseBrandArg, saveLastRun, readLastRun } = require('./brand-config');
+const { prepareBrand, parseBrandArg, saveLastRun, readLastRun, parseStockMode, isStockArg } = require('./brand-config');
 
 // 수집 계정·저장 경로는 전부 브랜드 설정(brands/<브랜드>.json)에서 가져옴 — 예전엔 여기에
 // 메가하우스 전용으로 하드코딩돼 있었는데, 브랜드가 늘어나면 같은 파일을 서로 덮어써서
