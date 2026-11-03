@@ -326,7 +326,7 @@ export default async function handler(req, res) {
     }
 
     // 섭외 연락 상태(DM 보냄 / DM 답장) 읽기·저장. 메일은 연락 이력에서 자동으로 알 수 있지만 DM은 알 수 없어서
-    // 담당자가 누른 날짜를 남긴다. 다른 기기·담당자와 같이 보도록 비공개 저장소에 둔다. 이름 → { dm, dmReply, draft } (YYYY-MM-DD) — draft는 DM·카톡 등 어디로든 초안을 받은 날
+    // 담당자가 누른 날짜를 남긴다. 다른 기기·담당자와 같이 보도록 비공개 저장소에 둔다. 이름 → { dm, dmReply, draft } (YYYY-MM-DD) — draft는 DM·카톡 등 어디로든 초안을 받은 날, joined는 담당자가 직접 '접수함'으로 표시한 날
     if (action === 'contact-get' || action === 'contact-set') {
       const f = await readGithubFile({ ...gh, path: CONTACT_PATH });
       let map = {};
@@ -336,7 +336,7 @@ export default async function handler(req, res) {
       const name = String(b.name || '').replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, CAND_NAME_MAX);
       const field = b.field;
       const value = b.value == null ? null : String(b.value);
-      if (!name || !['dm', 'dmReply', 'draft'].includes(field) || (value !== null && !/^\d{4}-\d{2}-\d{2}$/.test(value))) { res.status(400).json({ ok: false, reason: 'contact' }); return; }
+      if (!name || !['dm', 'dmReply', 'draft', 'joined'].includes(field) || (value !== null && !/^\d{4}-\d{2}-\d{2}$/.test(value))) { res.status(400).json({ ok: false, reason: 'contact' }); return; }
       const cur = { ...(map[name] || {}) };
       if (value) cur[field] = value; else delete cur[field];
       if (Object.keys(cur).length) map[name] = cur; else delete map[name];
