@@ -529,6 +529,13 @@
   .rc-stage-b.s1 { background: #fef3c7; color: #92400e; }
   .rc-stage-b.s2 { background: #dbeafe; color: #1d4ed8; }
   .rc-stage-b.s3 { background: #dcfce7; color: #166534; }
+  .rc-stage-b.s4 { background: #ede9fe; color: #6d28d9; }
+  .rc-jd { white-space: nowrap; }
+  .rc-jd .rc-btn { display: block; margin-top: 3px; }
+  .rc-due { display: block; font-size: 11.5px; color: var(--ink-500); }
+  .rc-late { display: block; font-size: 11.5px; font-weight: 800; color: var(--red); }
+  .rc-table th, .rc-table td { white-space: nowrap; }
+  .rc-table td.rc-ip { white-space: normal; min-width: 12em; }
   .rc-ok { display: block; font-size: 12.5px; color: #166534; white-space: nowrap; }
   .rc-none { font-size: 12.5px; color: var(--ink-400); white-space: nowrap; }
   .rc-turn { display: block; font-size: 12px; font-weight: 800; color: var(--red); white-space: nowrap; }
@@ -3071,20 +3078,26 @@
     // 이번 달 접수 전이면 '접수 전'이어야 한다(지난달 접수 기록 때문에 '접수함'으로 보이던 것을 고침).
     withLatestFlag(rows).forEach(function (r) {
       var o = r.latest && openDateFor(r.draftDate);
-      if (o && monthKey(o) === m) joined[candKey(r.nick)] = true;
+      if (o && monthKey(o) === m) joined[candKey(r.nick)] = r.draftDate || true;   // 접수 폼의 초안 예정일을 같이 기억
     });
+    var todayStr = monthKey(now) + '-' + String(now.getDate()).padStart(2, '0');
 
     // 사람마다 상태
     var ppl = cands.map(function (c) {
       var d = outDraft(c, st, m, groups, tpl, period, open);
       var ms = outMailState(d.mail, m), ct = cmap[c.name] || {};
       var contacted = !!(ms.sent || ct.dm), replied = !!(ms.reply || ct.dmReply), isJoined = !!joined[candKey(c.name)];
-      var stage = isJoined ? 3 : replied ? 2 : contacted ? 1 : 0;
-      return { c: c, d: d, ms: ms, ct: ct, stage: stage, joined: isJoined };
+      // 초안: 메일 제목으로는 알 수 없어(보통 '초안'이 안 들어감) 받은 채널과 상관없이 [초안 받음] 버튼으로 남긴다
+      var due = typeof joined[candKey(c.name)] === 'string' ? joined[candKey(c.name)] : '';
+      var gotDraft = !!ct.draft;
+      var late = isJoined && !gotDraft && due && due < todayStr;
+      var stage = gotDraft ? 4 : isJoined ? 3 : replied ? 2 : contacted ? 1 : 0;
+      return { c: c, d: d, ms: ms, ct: ct, stage: stage, joined: isJoined, due: due, late: late };
     });
-    ppl.sort(function (a, b) { return a.stage - b.stage; });
-    var cnt = [0, 0, 0, 0]; ppl.forEach(function (x) { cnt[x.stage]++; });
-    var STAGE = ['연락 전', '답 기다리는 중', '답장 옴', '접수함'];
+    // 초안 예정일이 지났는데 아직 못 받은 분을 맨 위로, 그다음 단계 순(연락 전부터)
+    ppl.sort(function (a, b) { return (b.late ? 1 : 0) - (a.late ? 1 : 0) || a.stage - b.stage; });
+    var cnt = [0, 0, 0, 0, 0]; ppl.forEach(function (x) { cnt[x.stage]++; });
+    var STAGE = ['연락 전', '답 기다리는 중', '답장 옴', '접수함', '초안 받음'];
 
     var setupSummary = monthLabel(m) + ' (오픈 ' + mdw(open) + ') · 업로드 ' + period + ' · 상품 ' + groups.reduce(function (n, g) { return n + g.items.length; }, 0) + '개 · 후보 ' + cands.length + '명' + (tpl.sender ? '' : ' · ⚠ 담당자 이름 없음');
     var setup = '<section class="rbox">' +
@@ -3128,14 +3141,20 @@
         var dmCell = ct.dm
           ? '<button class="rc-btn is-on" data-n="' + nm + '" data-f="dm" title="다시 누르면 취소">보냄 ' + ymdShort(ct.dm) + '</button>' +
             '<button class="rc-btn' + (ct.dmReply ? ' is-on' : '') + '" data-n="' + nm + '" data-f="dmReply" title="DM 답장이 왔으면 눌러 주세요">' + (ct.dmReply ? '답장 ' + ymdShort(ct.dmReply) : '답장 옴?') + '</button>'
-          : '<button class="rc-btn" data-n="' + nm + '" data-f="dm">DM 보냄</button>';
+          : '<button class="rc-btn" data-n="' + nm + '" data-f="dm" title="메일 말고 DM·카톡 등으로 연락했으면 눌러 주세요">DM·카톡 보냄</button>';
         return '<tr class="rc-stage' + x.stage + '">' +
           '<td class="rc-name"><b>' + nm + '</b>' + (accUrl ? '<a class="ou-acc" href="' + esc(accUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(c.platform) + ' @' + esc(c.handle) + ' ↗</a>' : '') + '</td>' +
           '<td><span class="rc-stage-b s' + x.stage + '">' + STAGE[x.stage] + '</span></td>' +
           '<td class="rc-ip">' + esc(d.ip) + (d.items.length ? '<span>' + esc(d.items.join(', ')) + '</span>' : '<span class="rc-warn">상품 목록에서 못 찾음</span>') + '</td>' +
           '<td>' + mailCell + '</td>' +
           '<td class="rc-dm">' + dmCell + '</td>' +
-          '<td>' + (x.joined ? '<span class="rc-ok">접수함</span>' : '<span class="rc-none">접수 전</span>') + '</td>' +
+          '<td class="rc-jd">' + (x.joined
+            ? '<span class="rc-ok">접수함</span>' +
+              (ct.draft
+                ? '<button class="rc-btn is-on" data-n="' + nm + '" data-f="draft" title="다시 누르면 취소">초안 받음 ' + ymdShort(ct.draft) + '</button>'
+                : (x.due ? '<span class="' + (x.late ? 'rc-late' : 'rc-due') + '">초안 예정 ' + ymdShort(x.due) + (x.late ? ' 지남' : '') + '</span>' : '') +
+                  '<button class="rc-btn" data-n="' + nm + '" data-f="draft">초안 받음</button>')
+            : '<span class="rc-none">접수 전</span>') + '</td>' +
           '<td><button class="mini rc-open' + (openRow ? ' is-open' : '') + '" data-k="' + k + '">' + (openRow ? '원고 닫기' : (d.again ? '재연락' : '초기 연락') + ' 원고') + '</button></td>' +
           '</tr>' +
           (openRow ? '<tr class="rc-draft"><td colspan="7"><div class="ou-card">' +
@@ -3150,8 +3169,8 @@
       }).join('');
       people = '<section class="rbox">' +
         '<div class="rc-sum">' + STAGE.map(function (s, i) { return '<span class="rc-stage-b s' + i + '">' + s + ' <b>' + cnt[i] + '</b></span>'; }).join('') + '<span class="rc-sum-n">' + monthLabel(m) + ' 후보 ' + ppl.length + '명 · 연락 전인 분이 맨 위</span></div>' +
-        '<div class="scroll"><table class="rc-table"><thead><tr><th>이름 · 계정</th><th>단계</th><th>IP · 상품</th><th>메일 (자동)</th><th>DM</th><th>접수</th><th>원고</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
-        '<p class="foot">메일은 웍스 협업 폴더에서 자동으로 읽습니다(이번 달 협업 메일만 — 제목의 ○월이 이번 달이거나, 달 표시가 없으면 앞 달 응대가 끝난 뒤 메일). 보냄·답장은 가장 최근 날짜입니다. DM은 보드가 알 수 없어 버튼으로 남기며, 다른 기기·담당자와 공유됩니다. 접수는 크리에이터가 이번 달 회차로 접수 폼을 내면 이름으로 이어집니다(지난달 접수는 세지 않음).</p>' +
+        '<div class="scroll"><table class="rc-table"><thead><tr><th>이름 · 계정</th><th>단계</th><th>IP · 상품</th><th>메일 (자동)</th><th>DM·카톡</th><th>접수 · 초안</th><th>원고</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
+        '<p class="foot">메일은 웍스 협업 폴더에서 자동으로 읽습니다(이번 달 협업 메일만 — 제목의 ○월이 이번 달이거나, 달 표시가 없으면 앞 달 응대가 끝난 뒤 메일). 보냄·답장은 가장 최근 날짜입니다. DM·카톡 연락과 초안 받음은 보드가 알 수 없어 버튼으로 남기며, 다른 기기·담당자와 공유됩니다. 초안 예정일은 접수 폼에 적힌 날짜이고, 지났는데 아직 못 받은 분은 맨 위로 올라옵니다. 접수는 크리에이터가 이번 달 회차로 접수 폼을 내면 이름으로 이어집니다(지난달 접수는 세지 않음).</p>' +
         '</section>';
     }
 
@@ -3208,7 +3227,7 @@
       b.addEventListener('click', function () {
         var n = b.getAttribute('data-n'), f = b.getAttribute('data-f');
         var cur = contactMap && contactMap[n] && contactMap[n][f];
-        if (f === 'dm' && cur && !confirm(n + '님 DM 보냄 표시를 취소할까요?')) return;
+        if ((f === 'dm' || f === 'draft') && cur && !confirm(n + '님 ' + (f === 'dm' ? 'DM 보냄' : '초안 받음') + ' 표시를 취소할까요?')) return;
         contactSet(n, f, !cur);
       });
     });
