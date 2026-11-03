@@ -34,11 +34,12 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
   const followers = await followerWatch.read();
   console.log(`[twitter:${account}] 팔로워 ${followers.count ?? '못 읽음'}${followers.approx ? ' (화면 줄임 표기라 근사치)' : ''}`);
 
-  await page.evaluate(() => {
-    window._tweetData = [];
-    window._seenLinks = new Set();
-    window._loggedSkips = new Set(); // 같은 링크로 스킵 사유를 여러 번 안 찍기 위한 중복 방지용
-  });
+  // 모은 글은 페이지 안이 아니라 여기(이 컴퓨터 쪽)에 쌓는다. 페이지 안에만 두면 X가 어떤
+  // 이유로든 페이지를 새로 읽어들이는 순간 지금까지 모은 게 통째로 날아가기 때문이다.
+  // 실제로 수집 도중 그 일이 생겨서, 남은 재시도를 전부 같은 오류로 헛쓰고 빈손으로 끝난 적이 있다.
+  const collected = [];
+  const collectedLinks = new Set(); // 페이지가 초기화되면 같은 글을 다시 집어오므로 여기서 한 번 더 거른다
+  let resetCount = 0;
 
   // 페르소나3 리로드 게시물처럼 "이유 없이 누락되는" 사례가 반복돼서, 추측으로 또 고치는 대신
   // 실제로 어느 조건에서 걸러지는지 콘솔에 그대로 남기게 함(원인 확정 전까지 임시 계측용).
@@ -46,7 +47,15 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
   // X가 그 카드를 querySelectorAll이 도는 시점에 아예 DOM에 렌더링을 안 해준 것 — 원인이
   // 완전히 다른 범주(가상 스크롤 타이밍)라는 뜻.
   async function collectOnce() {
-    const skipped = await page.evaluate((account) => {
+    const { skippedThisTick: skipped, wasReset, harvested } = await page.evaluate((account) => {
+      // 보관함이 없으면 여기서 만든다. 맨 처음 한 번만 만들어두면, 페이지가 새로 읽히는 순간
+      // 사라진 채로 끝까지 복구가 안 돼서 이후 모든 시도가 같은 오류로 실패한다.
+      const wasReset = !window._seenLinks;
+      if (wasReset) {
+        window._tweetData = [];
+        window._seenLinks = new Set();
+        window._loggedSkips = new Set(); // 같은 링크로 스킵 사유를 여러 번 안 찍기 위한 중복 방지용
+      }
       const skippedThisTick = [];
       document.querySelectorAll('article[data-testid="tweet"]').forEach(article => {
         const timeEl = article.querySelector('time');
@@ -111,9 +120,22 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
           text: textEl ? textEl.innerText : '',
         });
       });
-      return skippedThisTick;
+      // 이번에 새로 담긴 것만 넘기고 페이지 쪽 보관함은 비운다 — 바깥에 옮겨 쌓을 것이므로,
+      // 페이지가 초기화돼도 잃는 건 '이번 차례에 본 것'뿐이다.
+      const harvested = window._tweetData;
+      window._tweetData = [];
+      return { skippedThisTick, wasReset, harvested };
     }, account);
     skipped.forEach(s => console.log(`[twitter:${account}:skip] ${s.reason} — ${s.link}`));
+    // 맨 처음 만들 때도 wasReset이 true라, 첫 번째는 알림을 띄우지 않는다(정상적인 준비 과정).
+    if (wasReset && resetCount++ > 0) {
+      console.warn(`[twitter:${account}] 페이지가 새로 읽혀서 수집 보관함이 초기화됨 — 지금까지 모은 ${collected.length}건은 그대로 두고 이어서 모읍니다.`);
+    }
+    for (const t of harvested) {
+      if (collectedLinks.has(t.link)) continue;
+      collectedLinks.add(t.link);
+      collected.push(t);
+    }
   }
 
   let stop = false;
@@ -136,7 +158,7 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
       await page.mouse.wheel(0, SCROLL_STEP_PX);
       await page.waitForTimeout(2500);
 
-      const all = await page.evaluate(() => window._tweetData);
+      const all = collected;   // 페이지가 아니라 바깥에 쌓아둔 쪽을 본다 — 새로 읽혀도 안 사라진다
       if (all.length === 0) { retries++; if (retries >= MAX_RETRIES) stop = true; continue; }
 
       let streak = 0;
@@ -162,7 +184,7 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
   // RT/좋아요 0으로 잡혔던 항목 재수집 시도 (렌더링 지연 대응)
   await collectOnce();
 
-  const allTweets = await page.evaluate(() => window._tweetData);
+  const allTweets = collected;
   const filtered = allTweets.filter(t => {
     const d = new Date(t.datetime);
     return d >= rangeStartUTC && d <= rangeEndUTC;
