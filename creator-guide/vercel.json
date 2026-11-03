@@ -2,11 +2,9 @@
   "buildCommand": "node build-lock.js",
   "outputDirectory": "dist",
   "ignoreCommand": "[ -z \"$VERCEL_GIT_PREVIOUS_SHA\" ] && exit 1; git cat-file -e \"$VERCEL_GIT_PREVIOUS_SHA\" 2>/dev/null || exit 1; git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD ./",
-  "_comment_redirects": "관리자 화면이 influencer-board로 떠났다. 즐겨찾기를 해둔 사람이 깨지지 않도록 옛 주소를 새 주소로 넘긴다. permanent를 false로 둔 건, true(308)면 브라우저가 이 연결을 오래 캐시해서 주소가 또 바뀔 때 되돌리기 어렵기 때문이다.",
   "redirects": [
     { "source": "/reward-view-admin", "destination": "https://influencer-board-bice.vercel.app/", "permanent": false }
   ],
-  "_comment_deploy": "자동 배포를 꺼둠 (2026-10-19). 자주 고치지 않는 프로젝트라 배포 한도를 아끼려고 끈 것이다. 이미 올라가 있는 사이트와 API(챗봇)는 그대로 돌아간다 — 멈추는 건 '새 코드가 사이트에 반영되는 것'뿐이다. 주의: 이 프로젝트는 10-14부터 빌드가 실패 중이라(GUIDE_PASSWORD 환경변수 미등록) 라이브는 이미 그 이전 버전에 멈춰 있고, 위 redirects도 아직 반영되지 않았다. 다시 켤 때는 환경변수부터 등록해야 한다. 반영이 필요하면 아래 main을 true로 바꿔 코드 수정과 같은 push에 함께 올릴 것(따로 올리면 배포가 2번 돈다).",
   "git": {
     "deploymentEnabled": {
       "main": false,

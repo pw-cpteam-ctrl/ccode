@@ -16,4 +16,32 @@ if [ -n "$env_files" ]; then
   exit 1
 fi
 
+# vercel.json에 설명용 칸(`_`로 시작하는 항목)이 들어가면 차단.
+#
+# Vercel은 vercel.json에 정해진 항목만 받고, 처음 보는 항목이 있으면
+# "should NOT have additional property" 오류로 배포를 거부한다. 문제는 이게
+# 배포가 실제로 만들어질 때만 검사된다는 것이다 — 자동 배포를 꺼둔 폴더에
+# 넣어두면 아무 일도 안 일어나다가, 몇 주 뒤 다시 켜는 순간 터진다.
+# 실제로 2026-10-19에 넣은 "_comment_deploy" 때문에 insta-gen이 11-01에,
+# event-raffle은 10-19부터 15일 동안 배포가 깨진 채로 방치됐다.
+#
+# 증상이 "설정 파일을 건드린 적도 없는데 갑자기 빌드가 깨진다"로 나타나서
+# 원인에서 가장 먼 곳을 뒤지게 된다. 그래서 커밋 단계에서 아예 막는다.
+# 설명은 커밋 메시지나 그 폴더의 README/WORKLOG에 남길 것.
+if command -v jq >/dev/null 2>&1; then
+  bad=""
+  for f in $(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)vercel\.json$'); do
+    keys=$(git show ":$f" 2>/dev/null | jq -r 'keys[]? | select(startswith("_"))' 2>/dev/null | tr '\n' ' ')
+    [ -n "$keys" ] && bad="$bad\n  $f : $keys"
+  done
+  if [ -n "$bad" ]; then
+    echo "[pre-commit] 차단: vercel.json에 Vercel이 허용하지 않는 설명용 칸이 있습니다." >&2
+    printf "$bad\n" >&2
+    echo "  Vercel은 정해진 항목만 받습니다. 지금은 배포가 꺼져 있어 조용하더라도," >&2
+    echo "  다시 켜는 순간 'should NOT have additional property' 오류로 빌드가 깨집니다." >&2
+    echo "  해당 항목을 지우고, 설명은 커밋 메시지나 README/WORKLOG에 남기세요." >&2
+    exit 1
+  fi
+fi
+
 exit 0
