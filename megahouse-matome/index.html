@@ -661,7 +661,7 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
             <div class="field"><input type="range" id="ohLabelSize" min="8" max="36" value="30" oninput="syncOpenHeader()"/></div></div>
           <div class="frow pair"><span class="flbl">구분선<br>굵기 / 행간</span>
             <div class="field"><input type="range" id="ohSepW" min="0" max="6" value="4" oninput="syncOpenHeader()" title="0으로 두면 선이 사라집니다"/></div>
-            <div class="field"><input type="range" id="ohSepGap" min="0" max="24" value="12" oninput="syncOpenHeader()" title="설명과 날짜 사이 간격 — 줄일수록 두 줄이 붙고, 선은 항상 그 가운데"/></div></div>
+            <div class="field"><input type="range" id="ohSepGap" min="0" max="24" value="0" oninput="syncOpenHeader()" title="설명과 날짜 사이 간격 — 줄일수록 두 줄이 붙고, 선은 항상 그 가운데"/></div></div>
         </div>
       </div>
     </details>
@@ -1953,11 +1953,26 @@ function inkMetrics(text, weight, sizePx, family) {
   };
 }
 const _sepCenterJobs = [];
+const _sepFontDone = new Set();
 // 글자 상자 안의 위아래 빈 공간은 글꼴마다 달라서, 상자 기준으로 가운데를 잡으면
 // 눈에는 치우쳐 보인다. 실제로 글자가 그려진 범위(잉크)를 재서 그 한가운데에 선을 둔다
-function centerSep(labEl, slotEl, sepEl, dateEl) {
+function centerSep(labEl, slotEl, sepEl, dateEl, retried) {
   if (!labEl || !slotEl || !sepEl || !dateEl) return;
+  // 숨어 있는 동안은 위치가 전부 0으로 나와 엉뚱한 값이 잡힌다 — 보일 때만 잰다
+  if (!labEl.offsetHeight || !dateEl.offsetHeight) return;
   const lcs = getComputedStyle(labEl), dcs = getComputedStyle(dateEl);
+  // 글꼴이 아직 안 실렸으면 글자 높이를 대체 글꼴 기준으로 재게 돼 선이 치우친다.
+  // (check()는 목록에 sans-serif가 있으면 그냥 true라 믿을 수 없어서, 매번 한 번은 실제로 불러본다)
+  if (document.fonts && document.fonts.load) {
+    const specs = [`${lcs.fontWeight} ${lcs.fontSize} ${lcs.fontFamily}`,
+                   `${dcs.fontWeight} ${dcs.fontSize} ${dcs.fontFamily}`];
+    const key = specs.join('|');
+    if (!_sepFontDone.has(key)) {
+      _sepFontDone.add(key);
+      Promise.all(specs.map(sp => document.fonts.load(sp).catch(() => {})))
+        .then(() => centerSep(labEl, slotEl, sepEl, dateEl, 0));
+    }
+  }
   const lfs = parseFloat(lcs.fontSize), dfs = parseFloat(dcs.fontSize);
   const lm = inkMetrics(labEl.textContent, lcs.fontWeight, lfs, lcs.fontFamily);
   const dm = inkMetrics(dateEl.textContent, dcs.fontWeight, dfs, dcs.fontFamily);
@@ -1967,7 +1982,13 @@ function centerSep(labEl, slotEl, sepEl, dateEl) {
   const dInner = parseFloat(dcs.lineHeight);
   const dLead = (dInner - (dm.fontAsc + dm.fontDesc)) / 2;
   const inkTop = dateEl.offsetTop + parseFloat(dcs.paddingTop) + dLead + dm.fontAsc - dm.inkAsc;
-  sepEl.style.top = ((inkBottom + inkTop) / 2 - slotEl.offsetTop) + 'px';
+  const want = (inkBottom + inkTop) / 2 - slotEl.offsetTop;
+  const prev = parseFloat(sepEl.style.top);
+  sepEl.style.top = want + 'px';
+  // 배치가 한 박자 늦게 바뀌는 경우(글자 크기 자동축소 등)가 있어, 값이 안정될 때까지 몇 번 더 확인
+  const n = (retried | 0);
+  if (n < 3 && !(Math.abs(prev - want) < 0.5))
+    requestAnimationFrame(() => centerSep(labEl, slotEl, sepEl, dateEl, n + 1));
 }
 function syncOpenHeader() {
   ensurePageFlags();
@@ -1990,7 +2011,7 @@ function syncOpenHeader() {
     const sepEl = $(`#ohSep${p}`), slotEl = $(`#ohSepSlot${p}`);
     if (sepEl && slotEl) {
       const sw = $('#ohSepW') ? +$('#ohSepW').value : 4;
-      const sg = $('#ohSepGap') ? +$('#ohSepGap').value : 12;  // 설명-날짜 사이 행간
+      const sg = $('#ohSepGap') ? +$('#ohSepGap').value : 0;  // 설명-날짜 사이 행간
       sepEl.style.height = sw + 'px';
       slotEl.style.height = sg + 'px';
       // 선은 '상자'의 가운데가 아니라 두 글자의 실제 잉크 사이 가운데에 놓는다.
@@ -1998,7 +2019,9 @@ function syncOpenHeader() {
       // 윗공간이 있어서, 상자 기준으로 가운데를 잡으면 눈에는 치우쳐 보였다
       sepEl.style.transform = 'translateY(-50%)';
       sepEl.style.top = '50%';
-      _sepCenterJobs.push(() => centerSep(lEl, slotEl, sepEl, dEl));
+      // 포스터가 다시 그려지면 위 변수들은 화면에서 떨어져 나간 옛 요소가 되므로,
+      // 실행 시점에 페이지 번호로 다시 찾는다
+      _sepCenterJobs.push(() => centerSep($(`#ohLabel${p}`), $(`#ohSepSlot${p}`), $(`#ohSep${p}`), $(`#ohDate${p}`)));
       const on = !(!lb || !sw || pageOpenOn[i] === false);
       sepEl.style.display = on ? '' : 'none';
       // 빈 칸은 선을 꺼도 그대로 둬야 글자 자리가 안 흔들림 (설명 줄 자체가 없을 때만 접음)
@@ -2009,7 +2032,11 @@ function syncOpenHeader() {
     const sEl = $(`#ohStore${p}`); if (sEl) { sEl.textContent = s; sEl.dataset.baseSize = sSize; sEl.style.fontSize = sSize; }
   });
   // 타이틀/날짜가 스토어 배지와 겹치지 않게, 레이아웃 확정 후 공간 부족 시 자동 축소
-  requestAnimationFrame(() => { fitOpenHeaderTitles(); const js = _sepCenterJobs.splice(0); js.forEach(f => f()); });
+  // 선 위치는 글자 크기 자동축소까지 끝난 뒤의 실제 배치를 보고 잡아야 해서 한 박자 더 늦춤
+  requestAnimationFrame(() => {
+    fitOpenHeaderTitles();
+    requestAnimationFrame(() => { const js = _sepCenterJobs.splice(0); js.forEach(f => f()); });
+  });
   if (_bootDone) saveState();
 }
 // 오픈 헤더의 스토어명/타이틀/날짜가 서로 겹치거나 포스터 밖으로 넘치지 않도록 글자 크기 자동 축소
@@ -2057,6 +2084,8 @@ function toggleOpenHeader() {
   const on = $('#chkOpenHeader') ? $('#chkOpenHeader').checked : false;
   document.querySelectorAll('.poster').forEach(el => el.classList.toggle('use-open-header', on));
   requestAnimationFrame(fitScale);
+  // 켜지는 순간이 되어서야 글자 위치를 잴 수 있다(숨어 있을 땐 전부 0으로 나옴)
+  if (on) requestAnimationFrame(syncOpenHeader);
   if (_bootDone) saveState();
 }
 // 사진 위라 박스가 필요한 경우도, 박스가 오히려 거슬리는 경우도 있어서 끌 수 있게 3단으로
@@ -3228,7 +3257,7 @@ function buildState() {
       ohLabel: $('#inOhLabel') ? $('#inOhLabel').value : '',
       ohLabelSize: $('#ohLabelSize') ? $('#ohLabelSize').value : '30',
       ohSepW: $('#ohSepW') ? $('#ohSepW').value : '4',
-      ohSepGap: $('#ohSepGap') ? $('#ohSepGap').value : '12',
+      ohSepGap: $('#ohSepGap') ? $('#ohSepGap').value : '0',
       ohStoreSize: $('#ohStoreSize') ? $('#ohStoreSize').value : '34',
       ohTitleFontWeight: $('#ohTitleFontWeight') ? $('#ohTitleFontWeight').value : '900',
       ohBoxMode,
@@ -3349,7 +3378,7 @@ async function loadState() {
     if (st.ohSepGap != null && $('#ohSepGap')) {
       // 뜻이 '위치'(-6~6)에서 '행간'(0~24)으로 바뀌어서, 예전 값이면 기본값으로 되돌림
       const g = +st.ohSepGap;
-      $('#ohSepGap').value = (g >= 0 && g <= 24) ? g : 12;
+      $('#ohSepGap').value = (g >= 0 && g <= 24) ? g : 0;
     }
     if (st.ohStoreSize && $('#ohStoreSize')) $('#ohStoreSize').value = st.ohStoreSize;
     if (st.ohTitleFontWeight && $('#ohTitleFontWeight')) $('#ohTitleFontWeight').value = st.ohTitleFontWeight;
@@ -3380,6 +3409,9 @@ ensurePosterWrap(1);
   await loadState();
   await populateSlotSelect();
   _bootDone = true; // 이 시점부터는 sync* 함수의 saveState() 호출을 허용
+  // 글꼴이 늦게 도착하면 처음 잰 글자 높이가 대체 글꼴 기준이라 구분선이 치우친다.
+  // 글꼴이 다 실린 뒤 한 번 더 맞춤
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => syncOpenHeader());
   undoStack.length = 0; _lastSnap = makeSnap(); // 불러오기 직후를 실행취소의 출발점으로
   syncHeader();
   syncLogoSize();
