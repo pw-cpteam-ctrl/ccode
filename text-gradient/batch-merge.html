@@ -3253,6 +3253,20 @@ function exportFolderName(folder){
   if (cnt.size) return [...cnt.entries()].sort((a, b) => b[1] - a[1] || naturalCompare(a[0], b[0]))[0][0];
   return folder || '';
 }
+// 압축 파일 이름 — "합성결과_120장.zip"만으로는 받아 놓고 보면 어느 작품 건인지, 언제 만든
+// 건지 알 수가 없어서 파일이 쌓이면 구분이 안 된다. 날짜 + 맨 앞 작품명 + 폴더 수 + 장수를 담는다
+// 예) 261104_기동전사 건담 외 3건_합성결과 120장.zip
+function zipFileName(){
+  const d = new Date();
+  const p2 = n => String(n).padStart(2, '0');
+  const date = String(d.getFullYear()).slice(2) + p2(d.getMonth() + 1) + p2(d.getDate());
+  const folders = foldersInOrder();
+  const first = folders.length ? workKeyOf(folders[0]) : '';
+  const more = folders.length > 1 ? ` 외 ${folders.length - 1}건` : '';
+  const head = first ? `${first}${more}_` : '';
+  // 파일 이름에 쓸 수 없는 글자는 밑줄로 바꾼다 (폴더명에 : / 등이 섞여 들어올 수 있다)
+  return `${date}_${head}합성결과 ${items.length}장.zip`.replace(/[\\/:*?"<>|]/g, '_');
+}
 async function downloadSingleItem(it, nameOverride){
   const canvas = document.createElement('canvas');
   canvas.width = CW; canvas.height = CH;
@@ -4539,7 +4553,7 @@ $('#btnExportAll').addEventListener('click', async () => {
   });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(zipBlob);
-  a.download = '합성결과_' + items.length + '장.zip';
+  a.download = zipFileName();
   a.click();
   // 압축 파일은 수백 MB까지 가므로 다 쓴 주소는 놓아준다 (안 놓으면 내보낼 때마다 메모리에 쌓임)
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
