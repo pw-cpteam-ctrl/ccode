@@ -239,7 +239,13 @@
                   border-radius:7px; padding:4px 10px; font-size:11.5px; font-weight:600; cursor:pointer;
                   font-family:'Pretendard',sans-serif; }
   .igcrop-reset:hover { border-color:var(--danger); color:var(--danger); }
-  .igcrop-modal-btns { display:flex; gap:8px; width:100%; }
+  .igcrop-ask { position:fixed; inset:0; background:rgba(10,10,12,.55); display:flex; align-items:center; justify-content:center; z-index:10001; padding:20px; }
+  .igcrop-ask[hidden] { display:none; }
+  .igcrop-ask-inner { background:#fff; border-radius:14px; padding:20px; width:min(420px,100%); box-shadow:0 20px 60px rgba(0,0,0,.3); }
+  .igcrop-ask-t { font-size:16px; font-weight:800; margin-bottom:6px; } .igcrop-ask-t span { font-weight:500; color:var(--muted); font-size:13px; }
+  .igcrop-ask-d { font-size:13px; color:var(--muted); margin-bottom:14px; line-height:1.5; }
+  .igcrop-ask-btns { display:flex; flex-direction:column; gap:8px; } .igcrop-ask-btns button { min-height:44px; font-size:14px; }
+  .igcrop-modal-btns { display:flex; gap:8px; width:100%; flex-wrap:wrap; }
   .igcrop-modal-btns button { flex:1; }
 
   /* ===== 항목 버튼은 마우스 올릴 때만, 삭제는 선택했을 때만 =====
@@ -636,6 +642,19 @@
     </div>
   </dialog>
 
+  <!-- ⑤ 두 번째 사진(좌우 나누기) 받는 창 — 이 창이 떠 있는 동안 Ctrl+V는 카드가 아니라 이 칸으로 들어간다 -->
+  <div class="igcrop-ask" id="igcropAsk" hidden>
+    <div class="igcrop-ask-inner">
+      <div class="igcrop-ask-t">두 번째 사진 넣기 <span>(오른쪽 칸)</span></div>
+      <div class="igcrop-ask-d">지금 <b>Ctrl+V</b>(맥은 ⌘+V)로 바로 붙여넣거나, 아래 버튼을 누르세요</div>
+      <div class="igcrop-ask-btns">
+        <button type="button" class="btn btn-primary" id="igcropAskPaste">📋 복사한 사진 붙여넣기</button>
+        <button type="button" class="btn2" id="igcropAskFile">📁 파일 고르기</button>
+        <button type="button" class="btn2" id="igcropAskCancel">취소</button>
+      </div>
+    </div>
+  </div>
+
   <div class="igcrop-modal" id="igcropModal">
     <div class="igcrop-modal-inner">
       <canvas id="igcropModalCanvas" width="480" height="600"></canvas>
@@ -647,6 +666,8 @@
         <button type="button" id="igcropTiltReset">0으로</button>
       </div>
       <div class="igcrop-modal-btns">
+        <button class="btn2" id="igcropModalSecond">＋ 두 번째 사진</button>
+        <button class="btn2" id="igcropModalSwap" style="display:none">⇄ 좌우 바꾸기</button>
         <button class="btn2" id="igcropModalDownload">다운로드</button>
         <button class="btn2" id="igcropModalClose">닫기</button>
       </div>
@@ -2155,11 +2176,38 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
 
   // ── 아트보드 하나를 좌우 2분할로 만들기(⑤ 전용) ──
   // 기본은 사진 1장 = 아트보드 1개. 특정 아트보드를 고른 뒤 ＋를 눌러야 그 칸만 2분할이 된다.
+  // ＋를 누르면 예전엔 바로 파일 선택창만 열려서 복사해 둔 사진을 붙여넣을 방법이 없었다.
+  // 이제 작은 창을 띄워 ① Ctrl+V ② [붙여넣기] 버튼(폰 포함) ③ [파일 고르기] 중 편한 걸로 넣게 한다.
   let _pendingItem = null;
-  function pickSecondFor(item){ _pendingItem = item; second2Input.click(); }
+  const ask = document.getElementById('igcropAsk');
+  function pickSecondFor(item){ _pendingItem = item; ask.hidden = false; document.getElementById('igcropAskPaste').focus(); }
+  function closeAsk(){ ask.hidden = true; }
+  document.getElementById('igcropAskCancel').addEventListener('click', ()=>{ _pendingItem = null; closeAsk(); });
+  ask.addEventListener('click', e=>{ if(e.target===ask){ _pendingItem = null; closeAsk(); } });   // 바깥 누르면 취소
+  document.getElementById('igcropAskFile').addEventListener('click', ()=>{ closeAsk(); second2Input.click(); });
+  // [붙여넣기] 버튼 — 클립보드 읽기(브라우저가 한 번 허락을 물을 수 있음). 폰처럼 Ctrl+V가 없는 곳을 위해
+  document.getElementById('igcropAskPaste').addEventListener('click', async ()=>{
+    try{
+      const list = await navigator.clipboard.read();
+      for(const ci of list){ const t = ci.types.find(x=>x.startsWith('image/'));
+        if(t){ const blob = await ci.getType(t); const item=_pendingItem; _pendingItem=null; closeAsk(); await setSecondImage(item, blob); return; } }
+      showToast('⚠ 클립보드에 사진이 없어요 — 사진을 먼저 복사한 뒤 눌러주세요', true);
+    }catch(err){ console.error(err); showToast('⚠ 이 브라우저는 버튼으로 붙여넣기를 막고 있어요 — Ctrl+V로 붙여넣거나 [파일 고르기]를 써주세요', true); }
+  });
+  // 창이 떠 있는 동안의 Ctrl+V — 카드 사진 붙여넣기(문서 전체에 걸린 처리)보다 먼저 가로채서 이 칸으로 넣는다
+  window.addEventListener('paste', async e=>{
+    if(ask.hidden || !_pendingItem) return;
+    const f=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'));
+    e.preventDefault(); e.stopImmediatePropagation();
+    if(!f){ showToast('⚠ 붙여넣은 것 중에 사진이 없어요', true); return; }
+    const item=_pendingItem; _pendingItem=null; closeAsk(); await setSecondImage(item, f.getAsFile());
+  }, true);
   function clearSecondOf(item){
     item.img2 = null; item.tilt = 0; item.side = 1;
     item.focusX2 = 0.5; item.focusY2 = 0.5; item.zoom2 = 1;
+    // 반쪽 칸 기준이던 확대값을 한 장(전체 칸) 기준으로 다시 잡는다 — 안 하면 한쪽이 흰 여백으로 비어 보임
+    const b1 = boxOf(item, 1), pw = item.img.naturalWidth||item.img.width, ph = item.img.naturalHeight||item.img.height;
+    item.focusX = 0.5; item.focusY = 0.5; item.zoom = defaultZoom(pw, ph, b1.w, b1.h);
     syncItemUI(item); renderThumb(item);
     if(openItem && openItem.id===item.id) renderModal();
   }
@@ -2167,9 +2215,14 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     const file = e.target.files[0]; e.target.value='';
     const item = _pendingItem; _pendingItem = null;
     if(!file || !item || !file.type.startsWith('image/')) return;
+    await setSecondImage(item, file);
+  });
+  // 두 번째 사진을 이 아트보드 오른쪽 칸에 넣는다(파일·붙여넣기 공용)
+  async function setSecondImage(item, file){
+    if(!item || !file || !items.includes(item)) return;
     let img;
     try{ img = await igLoadImage(file); }
-    catch(err){ console.error(err); return; }
+    catch(err){ console.error(err); showToast('⚠ 사진을 불러오지 못했어요', true); return; }
     const pw = img.naturalWidth||img.width, ph = img.naturalHeight||img.height;
     item.img2 = img; item.tilt = item.tilt||0; item.side = 2;
     const bx = boxOf(item, 2);
@@ -2180,7 +2233,16 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     item.zoom = defaultZoom(p1w, p1h, b1.w, b1.h);
     syncItemUI(item); renderThumb(item);
     if(openItem && openItem.id===item.id) renderModal();
-  });
+  }
+  // ⇄ 좌우 바꾸기 — 사진과 각자의 위치·확대를 통째로 맞바꾼다(기울기는 그대로)
+  function swapSides(item){
+    if(!item || !item.img2) return;
+    [item.img, item.img2] = [item.img2, item.img];
+    [item.focusX, item.focusX2] = [item.focusX2, item.focusX];
+    [item.focusY, item.focusY2] = [item.focusY2, item.focusY];
+    [item.zoom, item.zoom2] = [item.zoom2, item.zoom];
+    renderThumb(item); if(openItem && openItem.id===item.id) renderModal();
+  }
   // 항목의 버튼 라벨·기울기 UI를 지금 상태에 맞춘다
   function syncItemUI(item){
     if(item.el){
@@ -2194,6 +2256,9 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     const row = document.getElementById('igcropTiltRow');
     if(!row) return;
     const on = !!(openItem && openItem.img2);
+    // 크게 보기 버튼: 한 장이면 [＋ 두 번째 사진], 2분할이면 [⇄ 좌우 바꾸기] + [⇤ 한 장으로]
+    document.getElementById('igcropModalSwap').style.display = on ? '' : 'none';
+    document.getElementById('igcropModalSecond').textContent = on ? '⇤ 한 장으로' : '＋ 두 번째 사진';
     row.style.display = on ? '' : 'none';
     if(on){
       document.getElementById('igcropTilt').value = openItem.tilt||0;
@@ -2273,6 +2338,11 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     openItem = null;
   }
   modalCloseBtn.addEventListener('click', closeModal);
+  document.getElementById('igcropModalSwap').addEventListener('click', ()=> swapSides(openItem));
+  document.getElementById('igcropModalSecond').addEventListener('click', ()=>{
+    if(!openItem) return;
+    if(openItem.img2) clearSecondOf(openItem); else pickSecondFor(openItem);
+  });
   modal.addEventListener('click', e=>{ if(e.target===modal) closeModal(); });
   modalDownloadBtn.addEventListener('click', ()=>{ if(openItem) downloadItem(openItem); });
 
