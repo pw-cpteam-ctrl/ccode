@@ -512,8 +512,8 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
         <button class="ghost igmode on" id="igPair2" onclick="igSetAllAlone(false)">2장씩</button>
         <button class="ghost igmode" id="igPair1" onclick="igSetAllAlone(true)">1장씩</button>
       </div></div>
-    <div class="frow"><span class="flbl">가운데 여백<br><span id="igGapVal">40</span>px</span>
-      <div class="field"><input type="range" id="igGapSlider" min="0" max="160" value="40" oninput="igSetGap(this.value)"/></div></div>
+    <div class="frow"><span class="flbl">가운데 여백<br><span id="igGapVal">0</span>px</span>
+      <div class="field"><input type="range" id="igGapSlider" min="0" max="160" value="0" oninput="igSetGap(this.value)"/></div></div>
     <div class="igNote" id="igNote"></div>
     <button class="ghost" style="width:100%;margin-top:9px" onclick="igDownloadAll()">상세컷 전체 다운로드</button>
     <div class="igHelp">
@@ -622,7 +622,7 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
       <input type="checkbox" id="chkOpenHeader" onchange="toggleOpenHeader();syncHeaderKind()"/>
     </div>
     <div class="frow" id="rowHeaderPad" style="display:none"><span class="flbl">헤더 끈 자리<br>여백</span>
-      <div class="field"><input type="range" id="headerPad" min="5" max="120" value="30" oninput="toggleHeader()"/></div></div>
+      <div class="field"><input type="range" id="headerPad" min="5" max="120" value="47" oninput="toggleHeader()"/></div></div>
 
     <details class="fold" id="foldType">
       <summary>글자 크기 · 위치 <span class="cnt" id="cntType"></span></summary>
@@ -639,7 +639,7 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
             </div>
           </div>
           <div class="frow pair"><span class="flbl">스토어명<br>크기 / 위치</span>
-            <div class="field"><input type="range" id="storeFontSize" min="14" max="40" value="22" oninput="syncHeader()"/></div>
+            <div class="field"><input type="range" id="storeFontSize" min="14" max="40" value="37" oninput="syncHeader()"/></div>
             <div class="field"><input type="range" id="storeOffset" min="-400" max="400" value="0" oninput="syncHeader()"/></div></div>
           <div class="frow"><span class="flbl">타이틀 크기</span>
             <div class="field"><input type="range" id="titleFontSize" min="40" max="120" value="92" oninput="syncHeader()"/></div></div>
@@ -654,13 +654,13 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
             </div>
           </div>
           <div class="frow pair"><span class="flbl">크기<br>타이틀 / 날짜</span>
-            <div class="field"><input type="range" id="ohTitleSize" min="20" max="80" value="38" oninput="syncOpenHeader()"/></div>
-            <div class="field"><input type="range" id="ohDateSize" min="12" max="48" value="22" oninput="syncOpenHeader()"/></div></div>
+            <div class="field"><input type="range" id="ohTitleSize" min="20" max="80" value="59" oninput="syncOpenHeader()"/></div>
+            <div class="field"><input type="range" id="ohDateSize" min="12" max="48" value="48" oninput="syncOpenHeader()"/></div></div>
           <div class="frow"><span class="flbl">설명 크기</span>
-            <div class="field"><input type="range" id="ohLabelSize" min="8" max="36" value="14" oninput="syncOpenHeader()"/></div></div>
+            <div class="field"><input type="range" id="ohLabelSize" min="8" max="36" value="30" oninput="syncOpenHeader()"/></div></div>
           <div class="frow pair"><span class="flbl">구분선<br>굵기 / 위치</span>
-            <div class="field"><input type="range" id="ohSepW" min="0" max="6" value="2" oninput="syncOpenHeader()" title="0으로 두면 선이 사라집니다"/></div>
-            <div class="field"><input type="range" id="ohSepGap" min="-6" max="6" value="0" oninput="syncOpenHeader()" title="가운데가 기본 — 왼쪽으로 가면 선이 위로, 오른쪽으로 가면 아래로"/></div></div>
+            <div class="field"><input type="range" id="ohSepW" min="0" max="6" value="4" oninput="syncOpenHeader()" title="0으로 두면 선이 사라집니다"/></div>
+            <div class="field"><input type="range" id="ohSepGap" min="-6" max="6" value="6" oninput="syncOpenHeader()" title="가운데가 기본 — 왼쪽으로 가면 선이 위로, 오른쪽으로 가면 아래로"/></div></div>
         </div>
       </div>
     </details>
@@ -675,13 +675,13 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
           <div class="field"><button id="badgeBlurBtn" class="ptab" style="width:100%;padding:5px 0;font-size:14px" onclick="toggleBadgeBlur()">OFF</button></div></div>
         <div id="colorOpen" style="display:none">
           <div class="frow pair"><span class="flbl">날짜 박스<br>색 / 투명도</span>
-            <div class="field"><button id="ohBoxBtn" class="ptab" style="width:100%;padding:5px 0;font-size:14px" onclick="toggleOhBox()">검정</button></div>
-            <div class="field"><input type="range" id="ohBoxOpacity" min="0" max="100" value="40" oninput="applyOhBox();saveState()"/></div></div>
+            <div class="field"><button id="ohBoxBtn" class="ptab" style="width:100%;padding:5px 0;font-size:14px" onclick="toggleOhBox()">투명</button></div>
+            <div class="field"><input type="range" id="ohBoxOpacity" min="0" max="100" value="58" oninput="applyOhBox();saveState()"/></div></div>
           <div class="frow pair"><span class="flbl">그라데이션<br>시작 / 퍼짐</span>
             <div class="field"><input type="range" id="ohGradStart" min="0" max="90" value="0" oninput="syncOhGrad()"/></div>
-            <div class="field"><input type="range" id="ohGradSpread" min="10" max="90" value="60" oninput="syncOhGrad()"/></div></div>
+            <div class="field"><input type="range" id="ohGradSpread" min="10" max="90" value="47" oninput="syncOhGrad()"/></div></div>
           <div class="frow pair"><span class="flbl">그라데이션<br>농도 / 압축</span>
-            <div class="field"><input type="range" id="ohGradOpacity" min="0" max="100" value="60" oninput="syncOhGrad()"/></div>
+            <div class="field"><input type="range" id="ohGradOpacity" min="0" max="100" value="53" oninput="syncOhGrad()"/></div>
             <div class="field"><input type="range" id="ohGradCompress" min="0" max="60" value="0" oninput="syncOhGrad()"/></div></div>
         </div>
       </div>
@@ -691,13 +691,13 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
       <summary>푸터 · 로고 <span class="cnt">슬라이더 5</span></summary>
       <div class="body">
         <div class="frow pair"><span class="flbl">푸터<br>크기 / 위치</span>
-          <div class="field"><input type="range" id="footerFontSize" min="10" max="28" value="18" oninput="syncHeader()"/></div>
+          <div class="field"><input type="range" id="footerFontSize" min="10" max="28" value="20" oninput="syncHeader()"/></div>
           <div class="field"><input type="range" id="footerOffset" min="-400" max="400" value="0" oninput="syncHeader()"/></div></div>
         <div class="frow"><span class="flbl">푸터 높이</span>
           <div class="field"><input type="range" id="footerHeight" min="40" max="160" value="54" oninput="syncHeader()"/></div></div>
         <div class="frow pair"><span class="flbl">로고 크기<br>상단 / 하단</span>
-          <div class="field"><input type="range" id="logoSize" min="32" max="120" value="64" oninput="syncLogoSize()"/></div>
-          <div class="field"><input type="range" id="pwLogoSize" min="16" max="100" value="32" oninput="syncLogoSize()"/></div></div>
+          <div class="field"><input type="range" id="logoSize" min="32" max="120" value="67" oninput="syncLogoSize()"/></div>
+          <div class="field"><input type="range" id="pwLogoSize" min="16" max="100" value="52" oninput="syncLogoSize()"/></div></div>
         <details class="logos" style="margin-top:8px">
           <summary>로고 직접 교체</summary>
           <div class="field" style="margin-top:7px"><label>메가하우스 로고</label><input type="file" id="logoMega" accept="image/*"/></div>
@@ -734,11 +734,11 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
       <div class="fin"><button class="ptab" style="flex:1;padding:6px" onclick="setAllBlur(true)">블러 전체 ON</button>
         <button class="ptab" style="flex:1;padding:6px" onclick="setAllBlur(false)">블러 전체 OFF</button></div></div>
     <div class="sec">하단 그라데이션</div>
-    <div class="frow pair"><span class="flbl">시작 <span id="gradValS">20%</span><br>퍼짐 <span id="gradValW">30%</span></span>
-      <div class="field"><input type="range" id="gradStart" min="0" max="90" value="20" step="1" oninput="syncGrad()"/></div>
-      <div class="field"><input type="range" id="gradWidth" min="5" max="200" value="30" step="1" oninput="syncGrad()"/></div></div>
-    <div class="frow pair"><span class="flbl">농도 <span id="gradValO">88%</span><br>압축 <span id="gradValC">0%</span></span>
-      <div class="field"><input type="range" id="gradOpacity" min="0" max="200" value="88" step="1" oninput="syncGrad()"/></div>
+    <div class="frow pair"><span class="flbl">시작 <span id="gradValS">54%</span><br>퍼짐 <span id="gradValW">35%</span></span>
+      <div class="field"><input type="range" id="gradStart" min="0" max="90" value="54" step="1" oninput="syncGrad()"/></div>
+      <div class="field"><input type="range" id="gradWidth" min="5" max="200" value="35" step="1" oninput="syncGrad()"/></div></div>
+    <div class="frow pair"><span class="flbl">농도 <span id="gradValO">51%</span><br>압축 <span id="gradValC">0%</span></span>
+      <div class="field"><input type="range" id="gradOpacity" min="0" max="200" value="51" step="1" oninput="syncGrad()"/></div>
       <div class="field"><input type="range" id="gradCompress" min="0" max="60" value="0" step="1" oninput="syncGrad()"/></div></div>
     </div>
 
@@ -830,6 +830,9 @@ let _bootDone = false; // loadState() 완료 전까지는 sync* 함수가 saveSt
 let curPage = 1;
 let idSeq = 1;
 let rowFontSizes = [38,38,38,38];
+// 1줄 높이 기본값 — 실제로 매달 쓰는 작업본에서 쓰던 값(126%)을 기본으로 둬서,
+// 처음 열거나 시크릿 창으로 들어와도 같은 모양으로 시작하게 함
+const FIRST_ROW_FLEX_DEFAULT = 126;
 let firstRowFlex = [null];
 // 오픈일 문구 자체는 모든 페이지 공통이고, 페이지마다 "보일지 말지"만 따로 기억함.
 // 페이지 추가 경로가 여러 곳(＋버튼, 사진 자동 분리, 항목 옮기기 등)이라 배열을
@@ -1527,7 +1530,7 @@ function applyRowHeights(pg) {
   if (!gridEl) return;
   const rows = gridEl.querySelectorAll('.p-row');
   if (rows.length > 1) {
-    const fr = firstRowFlex[pg-1] != null ? firstRowFlex[pg-1] : 100;
+    const fr = firstRowFlex[pg-1] != null ? firstRowFlex[pg-1] : FIRST_ROW_FLEX_DEFAULT;
     // First row gets fr, remaining rows share the rest equally (each gets 100)
     rows.forEach((r, ri) => { r.style.flex = ri === 0 ? fr : 100; });
   } else {
@@ -1556,7 +1559,7 @@ function renderRowControls() {
   }
   // 맨위 줄 높이 슬라이더 (rows > 1 일때만)
   if (counts.length > 1) {
-    const curFlex = firstRowFlex[pg-1] != null ? firstRowFlex[pg-1] : 100;
+    const curFlex = firstRowFlex[pg-1] != null ? firstRowFlex[pg-1] : FIRST_ROW_FLEX_DEFAULT;
     const hd = document.createElement('div'); hd.style.cssText='margin-bottom:6px;';
     hd.innerHTML = `<div class="rci" style="margin-bottom:0"><span class="lbl" style="min-width:60px">1줄 높이</span><input type="range" min="20" max="200" value="${curFlex}" id="firstRowSlider_${pg}"/><span class="val" id="firstRowVal_${pg}">${curFlex}%</span></div>`;
     hd.querySelector('input').addEventListener('input', e => {
@@ -1936,10 +1939,10 @@ function syncOpenHeader() {
   const t = $('#inOhTitle') ? $('#inOhTitle').value.trim() : '';
   const d = $('#inOhDate') ? $('#inOhDate').value.trim() : '';
   const s = $('#inOhStore') ? $('#inOhStore').value.trim() : '';
-  const tSize = $('#ohTitleSize') ? $('#ohTitleSize').value + 'px' : '38px';
-  const dSize = $('#ohDateSize') ? $('#ohDateSize').value + 'px' : '22px';
+  const tSize = $('#ohTitleSize') ? $('#ohTitleSize').value + 'px' : '59px';
+  const dSize = $('#ohDateSize') ? $('#ohDateSize').value + 'px' : '48px';
   const lb = $('#inOhLabel') ? $('#inOhLabel').value.trim() : '';
-  const lbSize = $('#ohLabelSize') ? $('#ohLabelSize').value + 'px' : '14px';
+  const lbSize = $('#ohLabelSize') ? $('#ohLabelSize').value + 'px' : '30px';
   const sSize = $('#ohStoreSize') ? $('#ohStoreSize').value + 'px' : '34px';
   const tWeight = $('#ohTitleFontWeight') ? $('#ohTitleFontWeight').value : '900';
   pages.forEach((_, i) => { const p = i+1;
@@ -1951,8 +1954,8 @@ function syncOpenHeader() {
       lEl.style.display = (!lb || pageOpenOn[i] === false) ? 'none' : ''; }
     const sepEl = $(`#ohSep${p}`), slotEl = $(`#ohSepSlot${p}`);
     if (sepEl && slotEl) {
-      const sw = $('#ohSepW') ? +$('#ohSepW').value : 2;
-      const sg = $('#ohSepGap') ? +$('#ohSepGap').value : 0;   // 가운데가 0, 음수면 위로
+      const sw = $('#ohSepW') ? +$('#ohSepW').value : 4;
+      const sg = $('#ohSepGap') ? +$('#ohSepGap').value : 6;   // 가운데가 0, 음수면 위로
       sepEl.style.height = sw + 'px';
       sepEl.style.transform = `translateY(calc(-50% + ${sg}px))`;
       const on = !(!lb || !sw || pageOpenOn[i] === false);
@@ -2017,7 +2020,7 @@ function toggleOpenHeader() {
 }
 // 사진 위라 박스가 필요한 경우도, 박스가 오히려 거슬리는 경우도 있어서 끌 수 있게 3단으로
 // ('dark' 검정 → 'light' 흰색 → 'none' 투명). 예전 저장본은 참/거짓 하나만 있어 불러올 때 변환함
-let ohBoxMode = 'dark';
+let ohBoxMode = 'none';
 const OH_BOX_NEXT = { dark:'light', light:'none', none:'dark' };
 const OH_BOX_LABEL = { dark:'검정', light:'흰색', none:'투명' };
 function toggleOhBox() {
@@ -2039,8 +2042,8 @@ function syncOhGrad() {
   if (_bootDone) saveState();
 }
 function applyOhBox() {
-  const btn = $('#ohBoxBtn'); if (btn) btn.textContent = OH_BOX_LABEL[ohBoxMode] || '검정';
-  const op = ($('#ohBoxOpacity') ? +$('#ohBoxOpacity').value : 40) / 100;
+  const btn = $('#ohBoxBtn'); if (btn) btn.textContent = OH_BOX_LABEL[ohBoxMode] || '투명';
+  const op = ($('#ohBoxOpacity') ? +$('#ohBoxOpacity').value : 58) / 100;
   const sl = $('#ohBoxOpacity'); if (sl) sl.disabled = (ohBoxMode === 'none');  // 투명일 땐 조절할 게 없음
   document.querySelectorAll('.oh-date').forEach(el => {
     if (ohBoxMode === 'none') { el.style.background = 'transparent'; el.style.color = '#fff'; }
@@ -2328,7 +2331,7 @@ async function downloadAllPNG() {
    안 망가진다).
 ═══════════════════════════════════════ */
 const IG_W = 1080, IG_H = 1350;   // 인스타 4:5
-let igGap = 40;                   // 2분할일 때 위아래 사이 흰 여백(px)
+let igGap = 0;                    // 2분할일 때 위아래 사이 흰 여백(px)
 let igView = 'all';               // 'all' 전체보기 | 'one' 한장크게
 let igSelKey = null;              // 한장크게에서 보고 있는 카드
 const _igImgs = new Map();        // 사진 id → 불러온 그림 (매번 다시 읽으면 느려서 담아둠)
@@ -3179,16 +3182,16 @@ function buildState() {
       ohTitle: $('#inOhTitle') ? $('#inOhTitle').value : '',
       ohDate: $('#inOhDate') ? $('#inOhDate').value : '',
       ohStore: $('#inOhStore') ? $('#inOhStore').value : '',
-      ohTitleSize: $('#ohTitleSize') ? $('#ohTitleSize').value : '38',
-      ohDateSize: $('#ohDateSize') ? $('#ohDateSize').value : '22',
+      ohTitleSize: $('#ohTitleSize') ? $('#ohTitleSize').value : '59',
+      ohDateSize: $('#ohDateSize') ? $('#ohDateSize').value : '48',
       ohLabel: $('#inOhLabel') ? $('#inOhLabel').value : '',
-      ohLabelSize: $('#ohLabelSize') ? $('#ohLabelSize').value : '14',
-      ohSepW: $('#ohSepW') ? $('#ohSepW').value : '2',
-      ohSepGap: $('#ohSepGap') ? $('#ohSepGap').value : '0',
+      ohLabelSize: $('#ohLabelSize') ? $('#ohLabelSize').value : '30',
+      ohSepW: $('#ohSepW') ? $('#ohSepW').value : '4',
+      ohSepGap: $('#ohSepGap') ? $('#ohSepGap').value : '6',
       ohStoreSize: $('#ohStoreSize') ? $('#ohStoreSize').value : '34',
       ohTitleFontWeight: $('#ohTitleFontWeight') ? $('#ohTitleFontWeight').value : '900',
       ohBoxMode,
-      ohBoxOpacity: $('#ohBoxOpacity') ? $('#ohBoxOpacity').value : '40',
+      ohBoxOpacity: $('#ohBoxOpacity') ? $('#ohBoxOpacity').value : '58',
       ohGradStart: $('#ohGradStart') ? $('#ohGradStart').value : '0',
       ohGradOpacity: $('#ohGradOpacity') ? $('#ohGradOpacity').value : '60',
       ohGradSpread: $('#ohGradSpread') ? $('#ohGradSpread').value : '60',
