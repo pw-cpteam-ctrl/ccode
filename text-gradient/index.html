@@ -489,9 +489,14 @@ function applyBulkMarkdown() {
       bulletsYOffset: layoutVal(g,'bulletsYOffset'), bulletsSize: layoutVal(g,'bulletsSize'),
       titleTracking: layoutVal(g,'titleTracking'), subtitleTracking: layoutVal(g,'subtitleTracking'), bulletsTracking: layoutVal(g,'bulletsTracking') };
   });
+  // 여기서 만든 슬롯은 불릿이 이미 여러 줄이므로 바로 2열로 나눠 둔다
+  // (예전에는 "직접 타이핑"만 대상이라, 일괄입력으로 넣으면 매번 손으로 체크해야 했다)
+  let splitCount = 0;
+  for (const s of slots) if (splitSlotToTwoCol(s)) splitCount++;
   curSlot = 1;
   renderTabs(); renderAllSlots(); loadInputsFromCurSlot(); persistState();
-  alert(`${items.length}개 슬롯 생성 완료`);
+  alert(`${items.length}개 슬롯 생성 완료`
+    + (splitCount ? `\n불릿이 여러 줄인 ${splitCount}개는 2열로 나눠 뒀습니다 (1열로 쓰려면 "2열 사용" 체크를 끄세요)` : ''));
 }
 
 /* ── 미리보기 배치 모드 (가로 일렬 ↔ 바둑판) ── */
@@ -520,6 +525,10 @@ function loadInputsFromCurSlot() {
   $('#inBadge').value = s.badge; $('#inTitleL').value = s.titleL; $('#inTitleR').value = s.titleR;
   growTitleBox($('#inTitleL')); growTitleBox($('#inTitleR'));   // 슬롯을 바꿔도 줄 수에 맞게 칸 높이를 맞춘다
   $('#inSubtitle').value = s.subtitle || '';
+  // 이미 들어 있는 내용에도 걸리게 한다 — 저장돼 있던 슬롯이나 일괄입력으로 들어온 것은
+  // 타이핑이 없어서 예전에는 아무리 줄이 많아도 1열로 남아 있었다.
+  // 2열을 직접 끈 슬롯(twoColAutoOff)은 건드리지 않는다
+  if (splitSlotToTwoCol(s)) persistState();
   $('#inBullets').value = s.bullets; $('#inBulletsR').value = s.bulletsR || '';
   $('#inBulletsTwoCol').checked = !!s.bulletsTwoCol;
   $('#inBulletsColRatio').value = s.bulletsColRatio ?? 50;
@@ -599,33 +608,52 @@ $('#inBulletsTwoCol').addEventListener('input', () => {
   persistState();
 });
 
-/* ── 좌열이 여러 줄이 되면 2열을 자동으로 켠다 ──
-   줄이 TWO_COL_AUTO_MIN_LINES개 이상이 되면 2열에 체크하고, 좌열 내용을 앞뒤 절반으로 나눠
-   우열로 옮긴다. 칸만 열고 내용을 그대로 두면 글자가 왼쪽 절반 폭만 쓰게 되어 모양이 깨진다.
-   - 손으로 입력할 때만 동작한다. 슬롯을 열거나 저장본을 불러올 때는 건드리지 않으므로,
-     예전에 1열로 만들어 둔 작업물이 저절로 바뀌는 일은 없다.
-   - 글자를 치는 도중에 바로 갈라지면 입력이 끊기므로, 잠시 멈췄을 때 적용한다.
-   - 적용 뒤에는 커서를 우열 끝으로 옮겨 하던 입력을 그대로 이어갈 수 있게 한다.
-   - pushUndo를 먼저 부르므로 Ctrl+Z 한 번으로 통째로 되돌아간다. */
+/* ── 불릿이 여러 줄이면 2열로 자동 분리 ──
+   좌열 줄이 TWO_COL_AUTO_MIN_LINES개 이상이면 2열에 체크하고 내용을 앞뒤 절반으로 나눠 우열로
+   옮긴다. 칸만 열고 내용을 그대로 두면 글자가 왼쪽 절반 폭만 쓰게 되어 모양이 깨진다.
+   예전에는 "직접 타이핑할 때"만 걸리게 해뒀는데, 그러면 마크다운 일괄입력으로 들어온 것이나
+   이미 저장돼 있던 슬롯은 아무리 줄이 많아도 그대로 1열로 남아 매번 손으로 체크해야 했다.
+   이제 내용이 어디서 들어오든 걸린다 — 직접 입력, 일괄입력으로 슬롯 만들기, 슬롯 열기.
+   단 2열 체크를 직접 끈 슬롯(twoColAutoOff)은 끝까지 그 선택을 지킨다. */
 const TWO_COL_AUTO_MIN_LINES = 2;
 const TWO_COL_AUTO_DELAY = 700;
 let _twoColAutoT = null;
+// 슬롯 하나를 2열로 나눈다. 화면을 건드리지 않고 값만 바꾸므로 어느 경로에서든 쓸 수 있다.
+// 실제로 나눴으면 true
+function splitSlotToTwoCol(s) {
+  if (!s || s.bulletsTwoCol || s.twoColAutoOff) return false;
+  const lines = (s.bullets || '').split('\n').filter(l => l.trim());
+  if (lines.length < TWO_COL_AUTO_MIN_LINES) return false;
+  const half = Math.ceil(lines.length / 2);
+  s.bullets = lines.slice(0, half).join('\n');
+  s.bulletsR = lines.slice(half).join('\n');
+  s.bulletsTwoCol = true;
+  return true;
+}
+function showTwoColNote(n) {
+  const note = $('#twoColAutoNote');
+  if (!note) return;
+  note.textContent = `줄이 ${n}개라 2열로 바꾸고 내용을 반씩 나눴습니다. 되돌리려면 Ctrl+Z, 1열로 쓰려면 위 체크를 끄세요.`;
+  note.style.display = '';
+  clearTimeout(note._t);
+  note._t = setTimeout(() => { note.style.display = 'none'; }, 8000);
+}
+// 지금 열려 있는 슬롯에 적용 — 입력칸·화면·저장까지 같이 맞춘다
 function maybeAutoTwoCol() {
   const s = slots[curSlot - 1];
-  if (s.bulletsTwoCol || s.twoColAutoOff) return;
-  const lines = $('#inBullets').value.split('\n').filter(l => l.trim());
-  if (lines.length < TWO_COL_AUTO_MIN_LINES) return;
+  if (!s || s.bulletsTwoCol || s.twoColAutoOff) return;
+  const n = (s.bullets || '').split('\n').filter(l => l.trim()).length;
+  if (n < TWO_COL_AUTO_MIN_LINES) return;
   // 되돌리기로 돌아간 자리는 "자동 2열을 원하지 않는 상태"여야 한다. 그냥 되돌리면 다음 글자를
   // 치는 순간 또 갈라져서 Ctrl+Z가 소용없어지므로, 되돌릴 지점에만 그 표시를 넣어 저장한다
   s.twoColAutoOff = true;
   pushUndo();
   s.twoColAutoOff = false;
-  const half = Math.ceil(lines.length / 2);
   const wasFocused = document.activeElement === $('#inBullets');
-  $('#inBullets').value = lines.slice(0, half).join('\n');
-  $('#inBulletsR').value = lines.slice(half).join('\n');
+  if (!splitSlotToTwoCol(s)) return;
+  $('#inBullets').value = s.bullets;
+  $('#inBulletsR').value = s.bulletsR;
   $('#inBulletsTwoCol').checked = true;
-  syncInputsToState();
   setTwoColFieldsVisible(true);
   renderCurSlotDom();
   persistState();
@@ -634,11 +662,7 @@ function maybeAutoTwoCol() {
     r.focus();
     r.setSelectionRange(r.value.length, r.value.length);
   }
-  const note = $('#twoColAutoNote');
-  note.textContent = `줄이 ${lines.length}개라 2열로 바꾸고 내용을 반씩 나눴습니다. 되돌리려면 Ctrl+Z, 1열로 쓰려면 위 체크를 끄세요.`;
-  note.style.display = '';
-  clearTimeout(note._t);
-  note._t = setTimeout(() => { note.style.display = 'none'; }, 8000);
+  showTwoColNote(n);
 }
 // 타이틀 입력칸은 엔터로 줄을 늘릴 수 있으므로, 내용만큼 칸 높이도 같이 늘려 준다
 // (줄을 넣었는데 칸이 그대로면 쓴 글자가 가려져 보인다)
@@ -1016,7 +1040,13 @@ async function boot() {
   if (saved && typeof saved.fileListText === 'string') fileListText = saved.fileListText;
   if (saved && typeof saved.folderPath === 'string') folderPath = saved.folderPath;
   if (saved && typeof saved.titleFolderPath === 'string') titleFolderPath = saved.titleFolderPath;
+  // 저장돼 있던 슬롯 중 불릿이 여러 줄인데 1열로 남아 있는 것들도 2열로 나눠 둔다.
+  // 열어 본 슬롯만 바뀌면 미리보기에서 어떤 건 1열, 어떤 건 2열로 제각각이 된다
+  // (2열을 직접 끈 슬롯은 그 선택을 지킨다)
+  let bootSplit = 0;
+  for (const sl of slots) if (splitSlotToTwoCol(sl)) bootSplit++;
   loadInputsFromCurSlot(); // 입력창을 복원된 값으로 먼저 맞춘 뒤 렌더 (부팅 중 저장 로직이 기본값을 덮어쓰는 것 방지)
+  if (bootSplit) persistState();
   $('#inFileList').value = fileListText;
   $('#inFolderPath').value = folderPath;
   $('#inTitleFolderPath').value = titleFolderPath;
