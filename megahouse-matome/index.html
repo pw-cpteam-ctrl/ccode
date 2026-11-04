@@ -1937,6 +1937,38 @@ function toggleHeader() {
   requestAnimationFrame(fitScale);
   if (_bootDone) saveState();
 }
+// 글자의 '실제 잉크' 위아래 끝을 재는 자. 글자 상자(box)는 글꼴마다 위아래 빈 공간이
+// 다르게 들어 있어서, 상자 기준으로 가운데를 잡으면 눈에는 한쪽으로 치우쳐 보인다.
+let _inkCv = null;
+function inkMetrics(text, weight, sizePx, family) {
+  if (!_inkCv) _inkCv = document.createElement('canvas');
+  const g = _inkCv.getContext('2d');
+  g.font = `${weight} ${sizePx}px ${family}`;
+  const m = g.measureText(text || '가');
+  return {
+    fontAsc: m.fontBoundingBoxAscent,
+    fontDesc: m.fontBoundingBoxDescent,
+    inkAsc: m.actualBoundingBoxAscent,
+    inkDesc: m.actualBoundingBoxDescent
+  };
+}
+const _sepCenterJobs = [];
+// 글자 상자 안의 위아래 빈 공간은 글꼴마다 달라서, 상자 기준으로 가운데를 잡으면
+// 눈에는 치우쳐 보인다. 실제로 글자가 그려진 범위(잉크)를 재서 그 한가운데에 선을 둔다
+function centerSep(labEl, slotEl, sepEl, dateEl) {
+  if (!labEl || !slotEl || !sepEl || !dateEl) return;
+  const lcs = getComputedStyle(labEl), dcs = getComputedStyle(dateEl);
+  const lfs = parseFloat(lcs.fontSize), dfs = parseFloat(dcs.fontSize);
+  const lm = inkMetrics(labEl.textContent, lcs.fontWeight, lfs, lcs.fontFamily);
+  const dm = inkMetrics(dateEl.textContent, dcs.fontWeight, dfs, dcs.fontFamily);
+  // 글자 상자 안에서 기준선(baseline)이 어디인지 = 윗여백 + 글꼴 위쪽 높이
+  const lLead = (labEl.offsetHeight - (lm.fontAsc + lm.fontDesc)) / 2;
+  const inkBottom = labEl.offsetTop + lLead + lm.fontAsc + lm.inkDesc;
+  const dInner = parseFloat(dcs.lineHeight);
+  const dLead = (dInner - (dm.fontAsc + dm.fontDesc)) / 2;
+  const inkTop = dateEl.offsetTop + parseFloat(dcs.paddingTop) + dLead + dm.fontAsc - dm.inkAsc;
+  sepEl.style.top = ((inkBottom + inkTop) / 2 - slotEl.offsetTop) + 'px';
+}
 function syncOpenHeader() {
   ensurePageFlags();
   const t = $('#inOhTitle') ? $('#inOhTitle').value.trim() : '';
@@ -1958,10 +1990,15 @@ function syncOpenHeader() {
     const sepEl = $(`#ohSep${p}`), slotEl = $(`#ohSepSlot${p}`);
     if (sepEl && slotEl) {
       const sw = $('#ohSepW') ? +$('#ohSepW').value : 4;
-      const sg = $('#ohSepGap') ? +$('#ohSepGap').value : 12;  // 설명-날짜 사이 행간. 선은 늘 그 가운데
+      const sg = $('#ohSepGap') ? +$('#ohSepGap').value : 12;  // 설명-날짜 사이 행간
       sepEl.style.height = sw + 'px';
-      sepEl.style.transform = 'translateY(-50%)';
       slotEl.style.height = sg + 'px';
+      // 선은 '상자'의 가운데가 아니라 두 글자의 실제 잉크 사이 가운데에 놓는다.
+      // 설명 글자 밑에는 글꼴 여백이, 날짜 위에는 알약 안쪽 여백(8px)과 큰 글씨의
+      // 윗공간이 있어서, 상자 기준으로 가운데를 잡으면 눈에는 치우쳐 보였다
+      sepEl.style.transform = 'translateY(-50%)';
+      sepEl.style.top = '50%';
+      _sepCenterJobs.push(() => centerSep(lEl, slotEl, sepEl, dEl));
       const on = !(!lb || !sw || pageOpenOn[i] === false);
       sepEl.style.display = on ? '' : 'none';
       // 빈 칸은 선을 꺼도 그대로 둬야 글자 자리가 안 흔들림 (설명 줄 자체가 없을 때만 접음)
@@ -1972,7 +2009,7 @@ function syncOpenHeader() {
     const sEl = $(`#ohStore${p}`); if (sEl) { sEl.textContent = s; sEl.dataset.baseSize = sSize; sEl.style.fontSize = sSize; }
   });
   // 타이틀/날짜가 스토어 배지와 겹치지 않게, 레이아웃 확정 후 공간 부족 시 자동 축소
-  requestAnimationFrame(fitOpenHeaderTitles);
+  requestAnimationFrame(() => { fitOpenHeaderTitles(); const js = _sepCenterJobs.splice(0); js.forEach(f => f()); });
   if (_bootDone) saveState();
 }
 // 오픈 헤더의 스토어명/타이틀/날짜가 서로 겹치거나 포스터 밖으로 넘치지 않도록 글자 크기 자동 축소
