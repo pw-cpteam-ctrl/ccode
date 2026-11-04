@@ -597,11 +597,34 @@ function setTwoColFieldsVisible(on) {
   $('#inBulletsColRatioField').style.display = on ? '' : 'none';
 }
 $('#inBulletsTwoCol').addEventListener('input', () => {
+  pushUndo();                 // 내용이 합쳐지거나 나뉘므로 Ctrl+Z 한 번으로 되돌아가게
   syncInputsToState();
   const on = $('#inBulletsTwoCol').checked;
+  const s = slots[curSlot - 1];
   // 직접 끈 슬롯에서는 자동으로 다시 켜지 않는다 — 안 그러면 끄자마자 다음 글자를 칠 때
   // 도로 켜져서 끌 방법이 없어진다. 직접 켜면 그 표시를 지워 다시 자동 대상이 된다
-  slots[curSlot - 1].twoColAutoOff = !on;
+  s.twoColAutoOff = !on;
+  if (!on) {
+    // 2열을 끄면 우열은 그려지지도, 보이지도 않는다. 그대로 두면 거기 적어둔 항목이 통째로
+    // 사라진 것처럼 되므로, 좌열 뒤에 이어 붙여 한 줄로 쭉 나열되게 한다
+    const left = (s.bullets || '').split('\n').filter(l => l.trim());
+    const right = (s.bulletsR || '').split('\n').filter(l => l.trim());
+    if (right.length) {
+      s.bullets = left.concat(right).join('\n');
+      s.bulletsR = '';
+      $('#inBullets').value = s.bullets;
+      $('#inBulletsR').value = '';
+    }
+  } else if (!(s.bulletsR || '').trim()) {
+    // 직접 켰는데 우열이 비어 있으면 좌열을 반씩 나눠 준다 (칸만 열리면 글자가 왼쪽 절반 폭만 쓴다)
+    const prevOff = s.twoColAutoOff, prevTwo = s.bulletsTwoCol;
+    s.twoColAutoOff = false; s.bulletsTwoCol = false;
+    if (splitSlotToTwoCol(s)) {
+      $('#inBullets').value = s.bullets;
+      $('#inBulletsR').value = s.bulletsR;
+    } else { s.bulletsTwoCol = prevTwo || true; }
+    s.twoColAutoOff = prevOff;
+  }
   $('#twoColAutoNote').style.display = 'none';
   setTwoColFieldsVisible(on);
   renderCurSlotDom();
