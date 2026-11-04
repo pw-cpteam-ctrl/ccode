@@ -375,8 +375,24 @@ function readImageFile(file) {
   });
 }
 
+// 한 번에 올릴 수 있는 원본 장수. 예전엔 3장이었는데 기술적 근거가 없었고, 넘긴 파일을
+// 아무 말 없이 버려서 "왜 안 올라갔지?"가 되는 쪽이 더 나빴다. 10장(상품 200개 안팎)까지는
+// 실제로 올려보니 오류 없이 돌아가고, 상한을 아예 없애지 않는 이유는 원본 사진이 재크롭·
+// 확대 기능 때문에 메모리에 계속 남아 있어서다 — 수십 장을 한꺼번에 떨어뜨리면 탭이 죽고
+// 그때는 작업 중이던 내용까지 같이 날아간다.
+const MAX_SOURCES = 10;
+
 async function handleFilesSelected(fileList) {
-  const files = Array.from(fileList).slice(0, 3 - state.sources.length);
+  const picked = Array.from(fileList);
+  const room = Math.max(0, MAX_SOURCES - state.sources.length);
+  const files = picked.slice(0, room);
+  const dropped = picked.length - files.length;
+  if (dropped > 0) {
+    alert(room === 0
+      ? `원본은 한 번에 ${MAX_SOURCES}장까지만 올릴 수 있어요.\n이미 ${MAX_SOURCES}장이 올라와 있어 더 추가하지 못했습니다.\n\n지금 작업을 끝낸 뒤 나머지를 따로 진행해 주세요.`
+      : `원본은 한 번에 ${MAX_SOURCES}장까지만 올릴 수 있어요.\n고른 ${picked.length}장 중 ${files.length}장을 추가하고 ${dropped}장은 제외했습니다.\n\n제외된 사진은 지금 작업을 끝낸 뒤 따로 한 번 더 진행해 주세요.`);
+  }
+  if (!files.length) return;
   // 이미지 로딩은 순차 로딩이 눈에 띄게 느리므로 Promise.all... 대신 allSettled를 쓴다 —
   // 여러 장 중 하나가 손상됐거나 이미지가 아니어도(readImageFile이 reject) 나머지 멀쩡한
   // 파일까지 통째로 무효화되면 안 되기 때문 (예전엔 Promise.all이라 하나만 실패해도
@@ -2489,7 +2505,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 파일 선택창을 거치지 않고 클립보드에서 스크린샷을 바로 Ctrl+V로 붙여넣을 수 있게 지원 —
   // 캡처 도구로 찍은 이미지를 저장 없이 바로 붙여넣는 흐름이 훨씬 빠르다.
   document.addEventListener('paste', (e) => {
-    if (state.step !== 1 || state.sources.length >= 3) return;
+    // 장수가 찼는지는 여기서 거르지 않는다 — handleFilesSelected가 안내를 띄우게 맡긴다.
+    // 예전엔 여기서 조용히 return해서, 붙여넣어도 아무 일도 안 일어나는 것처럼 보였다.
+    if (state.step !== 1) return;
     const imageItem = Array.from(e.clipboardData?.items || []).find((it) => it.type.startsWith('image/'));
     if (!imageItem) return;
     e.preventDefault();
