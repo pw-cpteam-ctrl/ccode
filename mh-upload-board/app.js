@@ -727,23 +727,44 @@ function doOrder(){
 }
 
 /* 링크 */
+// 네이버 스마트스토어 "마케팅 링크 생성" 화면을 표째로 복사하면, 칸(구분/상품번호/상품명/
+// 전시상태/링크/복사)이 한 줄씩 떨어져서 붙는다 — "상품명 링크" 한 줄 형식과는 다르다.
+// 그래서 URL이 적힌 줄을 기준으로 거슬러 올라가며 "상품명으로 보이는 가장 가까운 줄"을 찾는다.
+const LINK_STOP = new Set(['복사','전시중','전시중지','품절','판매중지','판매중','스마트스토어','자사몰','구분','마케팅 링크','상품명','상품번호','전시상태','링크 복사']);
+function parseLinkPaste(text){
+  const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
+  const isUrl = s => /^https?:\/\/\S+$/.test(s);
+  const looksLikeName = s => s && !isUrl(s) && !LINK_STOP.has(s) && !/^\d+$/.test(s);
+  const pairs = [];
+  for (let i = 0; i < lines.length; i++) {
+    const inline = lines[i].match(/^(.*?)\s+(https?:\/\/\S+)\s*$/);
+    if (inline && inline[1].trim()){ pairs.push([inline[1].trim(), inline[2]]); continue; }
+    if (!isUrl(lines[i])) continue;
+    for (let back = 1; back <= 4 && i - back >= 0; back++) {
+      const cand = lines[i - back];
+      if (!looksLikeName(cand)) continue;
+      pairs.push([cand, lines[i]]);
+      break;
+    }
+  }
+  return pairs;
+}
+
 function doLinks(){
   const miss = active().filter(p => !p.link);
   openModal('스마트스토어 링크 한번에 붙여넣기',
-    `<p>한 줄에 <b>상품명 + 링크</b>를 붙여넣으면 상품명으로 짝을 맞춰 채웁니다. 이미 링크가 있는 상품은 새 링크로 바뀝니다.</p>
-     <textarea id="linkTa" placeholder="로로노아 조로	https://smartstore.naver.com/…&#10;고죠 사토루 https://smartstore.naver.com/…"></textarea>
+    `<p>네이버 <b>"마케팅 링크 생성" 목록을 표째로 복사</b>해서 붙여넣어도 되고, 한 줄에 <b>상품명 + 링크</b>로 붙여넣어도 됩니다. 상품명으로 짝을 맞춰 채우고, 이미 링크가 있는 상품은 새 링크로 바뀝니다.</p>
+     <textarea id="linkTa" placeholder="로로노아 조로	https://smartstore.naver.com/…&#10;고죠 사토루 https://smartstore.naver.com/…&#10;&#10;(또는 마케팅 링크 생성 화면에서 표 전체를 그대로 복사해서 붙여넣기)"></textarea>
      <p style="font-size:12px">지금 링크 없는 상품 ${miss.length}개${miss.length ? ': ' + miss.slice(0, 12).map(p => esc(p.name)).join(', ') + (miss.length > 12 ? ' 외' : '') : ''}. 하나씩 넣으려면 목록에서 '링크 없음'을 누르세요.</p>`,
     [{label:'취소'}, {label:'링크 채우기', primary:true, fn: () => {
       let ok = 0; const fail = [];
-      $('#linkTa').value.split('\n').forEach(line => {
-        const m = line.trim().match(/^(.*?)\s*(https?:\/\/\S+)\s*$/); if (!m) return;
-        const key = m[1].trim(); if (!key){ fail.push(m[2]); return; }
+      parseLinkPaste($('#linkTa').value).forEach(([key, link]) => {
         const p = active().find(x => norm(x.name) === norm(key)) || active().find(x => nameMatch(x, key));
-        if (p){ p.link = m[2]; ok++; } else fail.push(key);
+        if (p){ p.link = link; ok++; } else fail.push(key);
       });
       if (ok && !active().some(p => !p.link)) R().tasks.d1_links = true;
       closeModal(); commit();
-      toast(`링크 ${ok}개 채움${fail.length ? ` · 짝 못 찾음 ${fail.length}개: ${fail.slice(0, 5).join(', ')}` : ''}`);
+      toast(ok ? `링크 ${ok}개 채움${fail.length ? ` · 짝 못 찾음 ${fail.length}개: ${fail.slice(0, 5).join(', ')}` : ''}` : '짝이 맞는 상품을 못 찾았어요 — 상품명이 많이 다르면 직접 넣어주세요');
     }}]);
 }
 
