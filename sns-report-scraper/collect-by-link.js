@@ -249,6 +249,40 @@ function findTweetCountsInJson(root, postId) {
   return null;
 }
 
+/**
+ * "화면에 숫자가 뜰 때까지" 기다리되, 원본 응답으로 이미 받았으면 즉시 그만둔다.
+ *
+ * 왜 필요했나 — X·인스타는 숫자를 두 경로로 준다. 하나는 화면에 그려지는 글자, 다른 하나는
+ * 페이지가 주고받는 원본 응답이다. 원본 응답 쪽이 더 정확해서 그걸 우선 쓰는데, 정작
+ * 기다리는 코드는 그 사실을 모른 채 화면만 쳐다보고 있었다. 그래서 숫자를 이미 다 받아놓고도
+ * 제한 시간(X 10초·인스타 8초)을 꽉 채우는 일이 흔했다. 글이 스무 건이면 3분 가까이가
+ * 아무것도 기다리지 않는 데 쓰인다.
+ *
+ * 두 기다림을 경주시켜서 먼저 끝나는 쪽을 따른다. 쓰는 값은 전과 똑같으므로 정확도는
+ * 변하지 않고, 줄어드는 건 '이미 받은 뒤의 헛된 대기'뿐이다.
+ *
+ * @param {Function} alreadyGot 원본 응답으로 충분히 받았는지 판단 — 참이 되는 순간 그만둔다
+ */
+async function waitForScreenUnlessAlreadyGot(page, pageFn, arg, timeout, alreadyGot) {
+  if (alreadyGot()) return 'already';           // 들어오기도 전에 이미 받은 경우
+  const onScreen = (arg === undefined
+    ? page.waitForFunction(pageFn, { timeout })
+    : page.waitForFunction(pageFn, arg, { timeout })
+  ).then(() => 'screen').catch(() => 'timeout');
+  // 응답은 이 함수 밖(page.on('response'))에서 채워지므로, 짧게 되물어보는 수밖에 없다.
+  const byResponse = (async () => {
+    const until = Date.now() + timeout;
+    while (Date.now() < until) {
+      if (alreadyGot()) return 'already';
+      await new Promise(r => setTimeout(r, 100));
+    }
+    return 'timeout';
+  })();
+  const who = await Promise.race([onScreen, byResponse]);
+  onScreen.catch(() => {});   // 진 쪽이 나중에 터져도 조용히 넘긴다
+  return who;
+}
+
 async function readTwitterPost(page, target) {
   // ⚠️ 응답 가로채기는 goto **전에** 붙여야 함 — 페이지를 열고 나서 붙이면 이미 지나간
   // 응답을 놓침.
@@ -277,14 +311,21 @@ async function readTwitterPost(page, target) {
     // 화면에 그 줄이 나타날 때까지 기다린다 — 안 나타나도 죽지 않고 그대로 진행.
     // 화면 밖 요소는 아예 안 그려질 수 있어서(가상 렌더링) 살짝 스크롤해 렌더링을 유도.
     await page.evaluate(() => window.scrollBy(0, 220)).catch(() => {});
-    await page.waitForFunction((postId) => {
-      if (document.querySelector(`a[href$="/${postId}/quotes"]`)) return true;
-      if (document.querySelector(`a[href$="/${postId}/retweets"]`)) return true;
-      return [...document.querySelectorAll('a, span, div')].some(el => {
-        const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
-        return t.length <= 24 && /(인용|Quotes?|引用)/i.test(t) && /[\d,.]/.test(t);
-      });
-    }, target.postId, { timeout: 10000 }).catch(() => {});
+    await waitForScreenUnlessAlreadyGot(
+      page,
+      (postId) => {
+        if (document.querySelector(`a[href$="/${postId}/quotes"]`)) return true;
+        if (document.querySelector(`a[href$="/${postId}/retweets"]`)) return true;
+        return [...document.querySelectorAll('a, span, div')].some(el => {
+          const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+          return t.length <= 24 && /(인용|Quotes?|引用)/i.test(t) && /[\d,.]/.test(t);
+        });
+      },
+      target.postId,
+      10000,
+      // 화면을 기다리는 건 인용 수 때문이다. 원본 응답으로 이미 받았으면 기다릴 이유가 없다.
+      () => seen.counts && seen.counts.quotes != null,
+    );
     // 응답이 살짝 늦게 오는 경우가 있어 조금 더 기다림
     for (let i = 0; i < 10 && !seen.counts; i++) await page.waitForTimeout(400);
 
@@ -457,7 +498,10 @@ async function readInstagramPostInner(page, target, seen) {
   await gotoStable(page, target.url);
   // 인스타는 사진·캡션을 먼저 그리고 좋아요/댓글 숫자를 뒤늦게 채움 — 고정 대기로 읽으면
   // 게시물마다 성공/실패가 갈림(instagram.js에서 같은 문제를 겪고 대기 조건으로 바꿨음).
-  await page.waitForFunction(() => {
+  // 안 나타나도 죽지 않고 그대로 진행(좋아요 숨긴 글 등).
+  // 원본 응답으로 숫자를 이미 받았으면 화면을 기다리지 않는다 — 같은 값을 두 경로로
+  // 얻는 것이라, 받아놓고도 8초를 더 기다리는 건 순수한 낭비였다.
+  await waitForScreenUnlessAlreadyGot(page, () => {
     const numeric = /^[\d,.]+[만천KM]?$/;
     const byCoord = [...document.querySelectorAll('span')].some(el => {
       const r = el.getBoundingClientRect();
@@ -465,7 +509,7 @@ async function readInstagramPostInner(page, target, seen) {
     });
     if (byCoord) return true;
     return [...document.querySelectorAll('span')].some(el => /명이 좋아합니다|likes$/.test(el.innerText));
-  }, { timeout: 8000 }).catch(() => {}); // 안 나타나도 죽지 않고 그대로 진행(좋아요 숨긴 글 등)
+  }, undefined, 8000, () => !!seen.counts);
 
   // 원본 응답이 화면보다 늦게 도착하는 경우가 있어 조금 더 기다려줌(X와 같은 처리).
   for (let i = 0; i < 10 && !seen.counts; i++) await page.waitForTimeout(400);
