@@ -21,7 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const { collectPostsByLink } = require('./collect-by-link');
 const { saveMatchupReport } = require('./matchup-report');
-const { archiveAndGetPath } = require('./report-archive');
+const { archiveAndGetPath, revealAndCopyPath, revealMessage } = require('./report-archive');
 const { prepareBrand, parseBrandArg } = require('./brand-config');
 
 
@@ -130,6 +130,8 @@ async function main() {
   const outPath = archiveAndGetPath(outDir, 'matchup', 'html');
   saveMatchupReport({ title, brandLabel: brand.label, collectedAt: new Date().toISOString(), pairs }, outPath);
   console.log(`✅ HTML 저장 완료: ${outPath}`);
+  const reveal = revealMessage(revealAndCopyPath(outPath));
+  if (reveal) console.log(reveal);
 
   // 다음에 링크를 몇 개 더 붙여서 다시 볼 수 있게 입력을 그대로 남겨둠 — 리포트만 보면
   // 어떤 주소를 넣었는지 다시 찾아야 해서.

@@ -52,7 +52,7 @@ const { saveHtmlReport } = require('./html-report');
 const { buildStockComparison } = require('./stock-report');
 const { captureSnapshot } = require('./naver-stock-snapshot');
 const { appendFollowerSnapshot } = require('./follower-history');
-const { archiveAndGetPath } = require('./report-archive');
+const { archiveAndGetPath, revealAndCopyPath, revealMessage } = require('./report-archive');
 const { prepareBrand, parseBrandArg, saveLastRun, readLastRun, parseStockMode, isStockArg } = require('./brand-config');
 
 // 수집 계정·저장 경로는 전부 브랜드 설정(brands/<브랜드>.json)에서 가져옴 — 예전엔 여기에
@@ -354,6 +354,8 @@ async function main() {
     keyword, keywordExcluded: { pw: ownFiltered.excluded, bh: bhFiltered.excluded },
   });
   console.log(`✅ HTML 저장 완료: ${htmlOutputPath} (브라우저로 열어서 확인, 이전 파일은 ${path.relative(__dirname, CONFIG.htmlOutputDir)}/old/로 이동됨)`);
+  const reveal = revealMessage(revealAndCopyPath(htmlOutputPath));
+  if (reveal) console.log(reveal);
 
   // 이번에 수집한 기간을 기록 — 다음에 "마지막 수집 이후 전부"를 누르면 여기서부터 이어받음
   saveLastRun(brand, { startDate: CONFIG.startDate, endDate: CONFIG.endDate });
