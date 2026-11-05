@@ -256,6 +256,11 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 .oh-sepslot{align-self:stretch;position:relative;height:12px;flex:0 0 auto;}
 .oh-dsep{position:absolute;left:0;right:0;top:50%;height:2px;
   background:rgba(255,255,255,.75);border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.35);}
+/* 가로 1줄 배치: 설명 | 날짜 를 옆으로 나란히, 구분선은 세로 막대가 된다 */
+.oh-date-wrap.row{flex-direction:row;align-items:center;}
+.oh-date-wrap.row .oh-dlabel{padding-right:0;}
+.oh-date-wrap.row .oh-sepslot{height:auto;align-self:stretch;}
+.oh-date-wrap.row .oh-dsep{left:50%;right:auto;top:10%;bottom:10%;height:auto;transform:translateX(-50%);border-radius:2px;}
 .oh-store-wrap{display:flex;align-items:center;gap:14px;flex-shrink:0;}
 .oh-store{font-family:'Pretendard',sans-serif;background:rgba(0,0,0,.4);color:#fff;font-weight:350;border-radius:999px;padding:8px 20px;white-space:nowrap;}
 .oh-logo{width:52px;height:52px;object-fit:contain;display:block;border-radius:50%;
@@ -659,7 +664,9 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
             <div class="field"><input type="range" id="ohDateSize" min="12" max="48" value="48" oninput="syncOpenHeader()"/></div></div>
           <div class="frow"><span class="flbl">설명 크기</span>
             <div class="field"><input type="range" id="ohLabelSize" min="8" max="36" value="30" oninput="syncOpenHeader()"/></div></div>
-          <div class="frow pair"><span class="flbl">구분선<br>굵기 / 행간</span>
+          <div class="frow"><span class="flbl">설명 배치</span>
+            <div class="field"><button id="ohRowBtn" class="ptab" style="width:100%;padding:5px 0;font-size:12px" onclick="toggleOhRow()">세로 2단</button></div></div>
+          <div class="frow pair"><span class="flbl">구분선<br>굵기 / 간격</span>
             <div class="field"><input type="range" id="ohSepW" min="0" max="6" value="4" oninput="syncOpenHeader()" title="0으로 두면 선이 사라집니다"/></div>
             <div class="field"><input type="range" id="ohSepGap" min="0" max="24" value="0" oninput="syncOpenHeader()" title="설명과 날짜 사이 간격 — 줄일수록 두 줄이 붙고, 선은 항상 그 가운데"/></div></div>
         </div>
@@ -1952,6 +1959,10 @@ function inkMetrics(text, weight, sizePx, family) {
     inkDesc: m.actualBoundingBoxDescent
   };
 }
+// 설명 줄을 날짜 위에 둘지(세로 2단), 옆에 나란히 둘지(가로 1줄)
+let ohRow = false;
+function toggleOhRow() { ohRow = !ohRow; syncOhRowBtn(); syncOpenHeader(); if (_bootDone) saveState(); }
+function syncOhRowBtn() { const b = $('#ohRowBtn'); if (b) b.textContent = ohRow ? '가로 1줄' : '세로 2단'; }
 const _sepCenterJobs = [];
 const _sepFontDone = new Set();
 // 글자 상자 안의 위아래 빈 공간은 글꼴마다 달라서, 상자 기준으로 가운데를 잡으면
@@ -2012,23 +2023,34 @@ function syncOpenHeader() {
     if (sepEl && slotEl) {
       const sw = $('#ohSepW') ? +$('#ohSepW').value : 4;
       const sg = $('#ohSepGap') ? +$('#ohSepGap').value : 0;  // 설명-날짜 사이 행간
-      sepEl.style.height = sw + 'px';
-      slotEl.style.height = sg + 'px';
-      // 선은 '상자'의 가운데가 아니라 두 글자의 실제 잉크 사이 가운데에 놓는다.
-      // 설명 글자 밑에는 글꼴 여백이, 날짜 위에는 알약 안쪽 여백(8px)과 큰 글씨의
-      // 윗공간이 있어서, 상자 기준으로 가운데를 잡으면 눈에는 치우쳐 보였다
-      sepEl.style.transform = 'translateY(-50%)';
-      sepEl.style.top = '50%';
-      // 포스터가 다시 그려지면 위 변수들은 화면에서 떨어져 나간 옛 요소가 되므로,
-      // 실행 시점에 페이지 번호로 다시 찾는다
-      _sepCenterJobs.push(() => centerSep($(`#ohLabel${p}`), $(`#ohSepSlot${p}`), $(`#ohSep${p}`), $(`#ohDate${p}`)));
+      if (ohRow) {
+        // 가로 1줄 — 선은 세로 막대. 굵기는 가로폭이 되고, 간격은 좌우 여백이 된다
+        sepEl.style.height = '';
+        sepEl.style.width = sw + 'px';
+        sepEl.style.top = ''; sepEl.style.transform = '';
+        slotEl.style.height = ''; slotEl.style.width = (sg + sw) + 'px';
+      } else {
+        sepEl.style.height = sw + 'px';
+        sepEl.style.width = '';
+        slotEl.style.width = '';
+        slotEl.style.height = sg + 'px';
+        // 선은 '상자'의 가운데가 아니라 두 글자의 실제 잉크 사이 가운데에 놓는다.
+        // 설명 글자 밑에는 글꼴 여백이, 날짜 위에는 알약 안쪽 여백(8px)과 큰 글씨의
+        // 윗공간이 있어서, 상자 기준으로 가운데를 잡으면 눈에는 치우쳐 보였다
+        sepEl.style.transform = 'translateY(-50%)';
+        sepEl.style.top = '50%';
+        // 포스터가 다시 그려지면 위 변수들은 화면에서 떨어져 나간 옛 요소가 되므로,
+        // 실행 시점에 페이지 번호로 다시 찾는다
+        _sepCenterJobs.push(() => centerSep($(`#ohLabel${p}`), $(`#ohSepSlot${p}`), $(`#ohSep${p}`), $(`#ohDate${p}`)));
+      }
       const on = !(!lb || !sw || pageOpenOn[i] === false);
       sepEl.style.display = on ? '' : 'none';
       // 빈 칸은 선을 꺼도 그대로 둬야 글자 자리가 안 흔들림 (설명 줄 자체가 없을 때만 접음)
       slotEl.style.display = (!lb || pageOpenOn[i] === false) ? 'none' : '';
     }
     const wEl = $(`#ohDateWrap${p}`);
-    if (wEl) wEl.style.display = pageOpenOn[i] === false ? 'none' : '';
+    if (wEl) { wEl.style.display = pageOpenOn[i] === false ? 'none' : '';
+      wEl.classList.toggle('row', ohRow); }
     const sEl = $(`#ohStore${p}`); if (sEl) { sEl.textContent = s; sEl.dataset.baseSize = sSize; sEl.style.fontSize = sSize; }
   });
   // 타이틀/날짜가 스토어 배지와 겹치지 않게, 레이아웃 확정 후 공간 부족 시 자동 축소
@@ -3258,6 +3280,7 @@ function buildState() {
       ohLabelSize: $('#ohLabelSize') ? $('#ohLabelSize').value : '30',
       ohSepW: $('#ohSepW') ? $('#ohSepW').value : '4',
       ohSepGap: $('#ohSepGap') ? $('#ohSepGap').value : '0',
+      ohRow,
       ohStoreSize: $('#ohStoreSize') ? $('#ohStoreSize').value : '34',
       ohTitleFontWeight: $('#ohTitleFontWeight') ? $('#ohTitleFontWeight').value : '900',
       ohBoxMode,
@@ -3374,6 +3397,8 @@ async function loadState() {
     if (st.ohDateSize && $('#ohDateSize')) $('#ohDateSize').value = st.ohDateSize;
     if (st.ohLabel != null && $('#inOhLabel')) $('#inOhLabel').value = st.ohLabel;
     if (st.ohLabelSize && $('#ohLabelSize')) $('#ohLabelSize').value = st.ohLabelSize;
+    if (st.ohRow !== undefined) ohRow = !!st.ohRow;   // 예전 저장본엔 없으니 기본은 세로 2단
+    syncOhRowBtn();
     if (st.ohSepW != null && $('#ohSepW')) $('#ohSepW').value = st.ohSepW;
     if (st.ohSepGap != null && $('#ohSepGap')) {
       // 뜻이 '위치'(-6~6)에서 '행간'(0~24)으로 바뀌어서, 예전 값이면 기본값으로 되돌림
@@ -3408,6 +3433,7 @@ ensurePosterWrap(1);
   if (navigator.storage && navigator.storage.persist) { try { await navigator.storage.persist(); } catch(e) {} }
   await loadState();
   await populateSlotSelect();
+  syncOhRowBtn();
   _bootDone = true; // 이 시점부터는 sync* 함수의 saveState() 호출을 허용
   // 글꼴이 늦게 도착하면 처음 잰 글자 높이가 대체 글꼴 기준이라 구분선이 치우친다.
   // 글꼴이 다 실린 뒤 한 번 더 맞춤
