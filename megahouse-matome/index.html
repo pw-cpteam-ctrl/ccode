@@ -258,7 +258,8 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
   background:rgba(255,255,255,.75);border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.35);}
 /* 가로 1줄 배치: 설명 | 날짜 를 옆으로 나란히, 구분선은 세로 막대가 된다 */
 .oh-date-wrap.row{flex-direction:row;align-items:center;}
-.oh-date-wrap.row .oh-dlabel{padding-right:0;}
+/* 설명의 오른쪽 여백(20px)은 날짜 알약의 왼쪽 안쪽 여백(20px)과 짝이라 그대로 둔다.
+   없애면 막대가 설명에만 딱 붙고 날짜 쪽만 벌어진다 */
 .oh-date-wrap.row .oh-sepslot{height:auto;align-self:stretch;}
 .oh-date-wrap.row .oh-dsep{left:50%;right:auto;transform:translateX(-50%);border-radius:2px;}
 .oh-store-wrap{display:flex;align-items:center;gap:14px;flex-shrink:0;}
