@@ -2073,10 +2073,24 @@ async function getOverlayImg(name){
 let overlayPoolVersion = 0;
 // 드롭다운 옵션을 미리 다 만들어두면 사진 300장 × 후보 수십 개 = 수천 개 옵션이 한꺼번에 생겨서 무거워지므로,
 // 평소엔 현재 값 하나만 넣어두고 실제로 펼칠 때(클릭/포커스) 전체 후보를 채운다
+// 드롭다운은 포커스만 있으면 화살표키로 값이 바뀐다. 이 도구는 Ctrl+←/→ 같은 단축키를 쓰다 보니
+// 드롭다운에 포커스가 남은 줄 모르고 화살표를 눌러 배정이 통째로 풀리는 일이 생긴다.
+// 마우스로 펼쳐서 고르는 것은 그대로 두고, 닫힌 상태에서 키로 값이 넘어가는 것만 막는다
+function guardSelectKeys(sel){
+  if (sel._keyGuarded) return;
+  sel._keyGuarded = true;
+  sel.addEventListener('keydown', e => {
+    if (['ArrowUp','ArrowDown','PageUp','PageDown','Home','End'].includes(e.key)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
+}
 function fillOverlaySelect(sel, curName){
   if (sel.dataset.poolVer === String(overlayPoolVersion)) return;
-  sel.innerHTML = '<option value="">(없음)</option>' +
-    overlayFiles.map(f => `<option value="${f.name}">${f.name}</option>`).join('');
+  sel.innerHTML = (curName ? '' : '<option value="">(없음)</option>')
+    + overlayFiles.map(f => `<option value="${f.name}">${f.name}</option>`).join('')
+    + (curName ? '<option value="">— 배정 해제 —</option>' : '');
   sel.value = curName || '';
   sel.dataset.poolVer = String(overlayPoolVersion);
 }
@@ -2139,6 +2153,11 @@ async function assignOverlayMany(list, name){
     syncOverlayCell(it);
   }
   if (unhidden) log(`그중 ${unhidden}장은 "제목 숨김" 상태였는데 제목을 배정하면서 같이 켰습니다. 다시 숨기려면 "투명 끄기"를 쓰세요.`);
+  // 여러 장이 한꺼번에 풀리는 건 실수인 경우가 많아, 되돌리는 법을 눈에 띄게 알려준다
+  if (!name && list.length > 1) {
+    reportAction(`${list.length}장 배정 해제 — Ctrl+Z로 되돌리기`);
+    log(`⚠ ${list.length}장의 제목 배정이 한꺼번에 해제됐습니다. 실수라면 Ctrl+Z를 누르세요.`);
+  }
   updateListProgress();
   refreshFolderHeads();   // 폴더 머리의 배정 현황·드롭다운도 같이 맞춤
   updateSortButton();     // 제목이 배정되면 그 폴더의 작품이 확정되므로 정렬 대상 수도 달라진다
@@ -2260,6 +2279,7 @@ function fillSelBarOverlaySelect(){
     overlayFiles.map(f => `<option value="${f.name}">${f.name}</option>`).join('');
   sel.value = SEL_OVERLAY_PLACEHOLDER;
 }
+guardSelectKeys($('#selOverlaySel'));
 $('#selOverlaySel').addEventListener('mousedown', fillSelBarOverlaySelect);
 $('#selOverlaySel').addEventListener('focus', fillSelBarOverlaySelect);
 $('#selOverlaySel').addEventListener('change', async (e) => {
@@ -3385,7 +3405,10 @@ function makeFolderHead(folder){
   if (cur === '') sel.classList.add('none');
   const opts = [];
   if (cur === '__mixed__') opts.push(`<option value="__mixed__">(섞여 있음)</option>`);
-  opts.push(`<option value="">투명 없음</option>`);
+  // 지금 값이 "없음"일 때만 맨 위에 둔다. 배정돼 있는 폴더에서는 맨 아래로 내린다 —
+  // 맨 위에 있으면 드롭다운에 포커스가 간 채 화살표 위를 한 번 누르기만 해도 폴더 전체 배정이
+  // 통째로 풀려서, 손도 안 댄 것처럼 제목이 사라진다
+  if (cur === '') opts.push(`<option value="">투명 없음</option>`);
   // 사전으로 작품이 잡히면 그 작품 PNG를 맨 위 묶음으로 올린다.
   // 나머지도 아래 묶음에 그대로 남겨둔다 — 사전이 틀렸을 때 손으로 고를 길을 막지 않기 위해
   const nar = overlayCandidatesForFolder(folder);
@@ -3403,9 +3426,11 @@ function makeFolderHead(folder){
   } else {
     for (const n of all) opts.push(`<option value="${n}">${n}</option>`);
   }
+  if (cur !== '') opts.push(`<option value="">— 배정 해제 (투명 없음) —</option>`);
   sel.innerHTML = opts.join('');
   sel.value = cur;
   sel.addEventListener('mousedown', e => e.stopPropagation());
+  guardSelectKeys(sel);
   sel.addEventListener('change', async (e) => {
     e.stopPropagation();
     if (sel.value === '__mixed__') return;
@@ -3638,6 +3663,7 @@ function renderGrid(){
     ovSel.addEventListener('focus', openFill);
     ovSel.addEventListener('keydown', openFill);
     ovSel.addEventListener('click', (e) => e.stopPropagation());   // 칸 클릭(편집기 열기) 방지
+    guardSelectKeys(ovSel);   // 화살표키로 배정이 넘어가 버리는 것 방지
     ovSel.addEventListener('change', async (e) => {
       e.stopPropagation();
       // 여러 장을 골라둔 상태(폴더 이름표 클릭 등)에서 고르면 고른 전부에 한꺼번에 적용된다
