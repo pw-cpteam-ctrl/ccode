@@ -567,19 +567,19 @@ button:disabled{opacity:.4;cursor:default;}
             <option value="200">200 ExtraLight</option>
             <option value="300">300 Light</option>
             <option value="400">400 Regular</option>
-            <option value="500">500 Medium</option>
+            <option value="500" selected>500 Medium</option>
             <option value="600">600 Bold</option>
-            <option value="700" selected>700 ExtraBold</option>
+            <option value="700">700 ExtraBold</option>
             <option value="800">800 Heavy</option>
             <option value="900">900 Black</option>
           </select>
         </label>
         <!-- 월이 "10월"처럼 두 자리가 되면 글자가 꽉 차 보여서, 크기와 자간을 직접 맞출 수 있게 둔다 -->
         <label>월 글자 크기 <input type="range" id="badgeMonthSize" min="40" max="110" value="80" style="width:110px;"/><b id="badgeMonthSizeVal" style="min-width:34px;">80</b></label>
-        <label>월 자간 <input type="range" id="badgeTracking" min="-20" max="20" value="0" style="width:110px;"/><b id="badgeTrackingVal" style="min-width:34px;">0</b></label>
+        <label>월 자간 <input type="range" id="badgeTracking" min="-20" max="20" value="-8" style="width:110px;"/><b id="badgeTrackingVal" style="min-width:34px;">-8</b></label>
         <!-- 색상은 고르는 것 말고 코드로도 넣을 수 있게. 브랜드 색을 코드로 받아 적을 때 필요하다 -->
-        <label>뱃지 색상 <input type="color" id="badgeColor" value="#ffd400"/>
-          <input type="text" id="badgeColorHex" value="#ffd400" spellcheck="false"
+        <label>뱃지 색상 <input type="color" id="badgeColor" value="#fef1b4"/>
+          <input type="text" id="badgeColorHex" value="#fef1b4" spellcheck="false"
                  style="width:84px;font-family:inherit;font-size:12px;padding:4px 6px;border:1px solid #ccc4b4;border-radius:6px;text-transform:lowercase;"/></label>
         <span>스토어명 글자색
           <button id="btnStoreBlack" class="storeColorBtn">검정</button><button id="btnStoreWhite" class="storeColorBtn">흰색</button>
@@ -1470,8 +1470,8 @@ function undo(){
       badgeMonth = state.settings.badgeMonth; badgeColor = state.settings.badgeColor;
       badgeWeight = state.settings.badgeWeight; storeTextColor = state.settings.storeTextColor;
       // 예전에 쌓아둔 되돌리기 기록에는 이 두 값이 없으므로 기본값으로 읽는다
-      badgeMonthSize = state.settings.badgeMonthSize ?? 80;
-      badgeTracking = state.settings.badgeTracking ?? 0;
+      badgeMonthSize = state.settings.badgeMonthSize ?? BADGE_DEFAULTS.monthSize;
+      badgeTracking = state.settings.badgeTracking ?? BADGE_DEFAULTS.tracking;
       $('#badgeMonth').value = badgeMonth; $('#badgeColor').value = badgeColor;
       $('#badgeColorHex').value = badgeColor;
       $('#badgeWeight').value = String(badgeWeight);
@@ -2448,14 +2448,18 @@ $('#btnApplyList').addEventListener('click', async () => {
 });
 
 // ---------- 3번째 레이어: 월 리본 뱃지 + 스토어명 (둘 다 캔버스에 코드로 직접 그림, 이미지 아님) ----------
-let badgeMonth = '', badgeWeight = 700, badgeColor = '#ffd400', storeTextColor = '#111111';
+// 뱃지 기본 설정 — 저장된 값이 없을 때(처음 들어온 사람, 시크릿 창) 보이는 값.
+// 화면 입력칸의 기본값과 어긋나면 "보이는 값과 실제 값이 다른" 상태가 되므로 한 곳에서만 관리한다
+const BADGE_DEFAULTS = { weight: 500, monthSize: 80, tracking: -8, color: '#fef1b4' };
+let badgeMonth = '', badgeWeight = BADGE_DEFAULTS.weight, badgeColor = BADGE_DEFAULTS.color, storeTextColor = '#111111';
 // 월 글자 크기·자간 — 예전 저장분에는 없는 값이라 ?? 로 기본값을 깔아 둔다
-let badgeMonthSize = 80, badgeTracking = 0;
+let badgeMonthSize = BADGE_DEFAULTS.monthSize, badgeTracking = BADGE_DEFAULTS.tracking;
 function loadBadgeSettings(){
   try {
     const s = JSON.parse(localStorage.getItem('batch_merge_badge_settings') || 'null');
-    if (s) { badgeMonth = s.month || ''; badgeWeight = s.weight || 700; badgeColor = s.color || '#ffd400'; storeTextColor = s.storeTextColor || '#111111';
-      badgeMonthSize = s.monthSize ?? 80; badgeTracking = s.tracking ?? 0; }
+    if (s) { badgeMonth = s.month || ''; badgeWeight = s.weight || BADGE_DEFAULTS.weight;
+      badgeColor = s.color || BADGE_DEFAULTS.color; storeTextColor = s.storeTextColor || '#111111';
+      badgeMonthSize = s.monthSize ?? BADGE_DEFAULTS.monthSize; badgeTracking = s.tracking ?? BADGE_DEFAULTS.tracking; }
   } catch (e) {}
   $('#badgeMonth').value = badgeMonth;
   $('#badgeWeight').value = String(badgeWeight);
@@ -2540,7 +2544,7 @@ function roundedPolyPath(ctx, pts, radii){
 }
 
 function readableTextColor(hex){
-  const h = (hex || '#ffd400').replace('#', '');
+  const h = (hex || BADGE_DEFAULTS.color).replace('#', '');
   const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
   const r = parseInt(full.slice(0, 2), 16), g = parseInt(full.slice(2, 4), 16), b = parseInt(full.slice(4, 6), 16);
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
