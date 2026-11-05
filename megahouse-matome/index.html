@@ -2001,17 +2001,26 @@ function centerSep(labEl, slotEl, sepEl, dateEl, retried) {
   if (n < 3 && !(Math.abs(prev - want) < 0.5))
     requestAnimationFrame(() => centerSep(labEl, slotEl, sepEl, dateEl, n + 1));
 }
-// 가로 1줄일 때 세로 막대의 높이·위치 — 날짜 글자의 실제 잉크 범위에 맞춘다
-function sepBarRow(slotEl, sepEl, dateEl) {
-  if (!slotEl || !sepEl || !dateEl || !dateEl.offsetHeight) return;
-  const dcs = getComputedStyle(dateEl);
-  const dfs = parseFloat(dcs.fontSize);
-  const dm = inkMetrics(dateEl.textContent, dcs.fontWeight, dfs, dcs.fontFamily);
-  const lead = (parseFloat(dcs.lineHeight) - (dm.fontAsc + dm.fontDesc)) / 2;
-  const base = dateEl.offsetTop + parseFloat(dcs.paddingTop) + lead + dm.fontAsc;  // 기준선
-  const top = base - dm.inkAsc, bottom = base + dm.inkDesc;
-  sepEl.style.height = (bottom - top) + 'px';
-  sepEl.style.top = (top - slotEl.offsetTop) + 'px';
+// 글자가 실제로 그려진 범위(잉크)의 위/아래 끝을 구한다
+function inkRange(el) {
+  const cs = getComputedStyle(el);
+  const fs = parseFloat(cs.fontSize);
+  const m = inkMetrics(el.textContent, cs.fontWeight, fs, cs.fontFamily);
+  const lh = parseFloat(cs.lineHeight) || fs;
+  const lead = (lh - (m.fontAsc + m.fontDesc)) / 2;
+  const base = el.offsetTop + parseFloat(cs.paddingTop || 0) + lead + m.fontAsc;  // 기준선
+  return { top: base - m.inkAsc, bottom: base + m.inkDesc };
+}
+// 가로 1줄 정렬 — 상자 기준으로 가운데를 맞추면 설명과 날짜의 글자 크기 차이,
+// 날짜 알약의 안쪽 여백 때문에 선이 혼자 떠 보인다. 글자 잉크 기준으로 다시 맞춘다
+function sepBarRow(labEl, slotEl, sepEl, dateEl) {
+  if (!labEl || !slotEl || !sepEl || !dateEl || !dateEl.offsetHeight) return;
+  labEl.style.transform = '';
+  const d = inkRange(dateEl), l = inkRange(labEl);
+  const dc = (d.top + d.bottom) / 2, lc = (l.top + l.bottom) / 2;
+  labEl.style.transform = `translateY(${(dc - lc).toFixed(2)}px)`;   // 설명 글자를 날짜 가운데에 맞춤
+  sepEl.style.height = (d.bottom - d.top) + 'px';
+  sepEl.style.top = (d.top - slotEl.offsetTop) + 'px';
 }
 function syncOpenHeader() {
   ensurePageFlags();
@@ -2041,12 +2050,13 @@ function syncOpenHeader() {
         sepEl.style.width = sw + 'px';
         sepEl.style.transform = '';
         slotEl.style.height = ''; slotEl.style.width = (sg + sw) + 'px';
-        _sepCenterJobs.push(() => sepBarRow($(`#ohSepSlot${p}`), $(`#ohSep${p}`), $(`#ohDate${p}`)));
+        _sepCenterJobs.push(() => sepBarRow($(`#ohLabel${p}`), $(`#ohSepSlot${p}`), $(`#ohSep${p}`), $(`#ohDate${p}`)));
       } else {
         sepEl.style.height = sw + 'px';
         sepEl.style.width = '';
         slotEl.style.width = '';
         slotEl.style.height = sg + 'px';
+        if (lEl) lEl.style.transform = '';
         // 선은 '상자'의 가운데가 아니라 두 글자의 실제 잉크 사이 가운데에 놓는다.
         // 설명 글자 밑에는 글꼴 여백이, 날짜 위에는 알약 안쪽 여백(8px)과 큰 글씨의
         // 윗공간이 있어서, 상자 기준으로 가운데를 잡으면 눈에는 치우쳐 보였다
