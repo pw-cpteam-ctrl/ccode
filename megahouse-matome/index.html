@@ -260,7 +260,7 @@ details.logos summary{font-size:13px;color:var(--ui-sub);cursor:pointer;padding:
 .oh-date-wrap.row{flex-direction:row;align-items:center;}
 .oh-date-wrap.row .oh-dlabel{padding-right:0;}
 .oh-date-wrap.row .oh-sepslot{height:auto;align-self:stretch;}
-.oh-date-wrap.row .oh-dsep{left:50%;right:auto;top:10%;bottom:10%;height:auto;transform:translateX(-50%);border-radius:2px;}
+.oh-date-wrap.row .oh-dsep{left:50%;right:auto;transform:translateX(-50%);border-radius:2px;}
 .oh-store-wrap{display:flex;align-items:center;gap:14px;flex-shrink:0;}
 .oh-store{font-family:'Pretendard',sans-serif;background:rgba(0,0,0,.4);color:#fff;font-weight:350;border-radius:999px;padding:8px 20px;white-space:nowrap;}
 .oh-logo{width:52px;height:52px;object-fit:contain;display:block;border-radius:50%;
@@ -2001,6 +2001,18 @@ function centerSep(labEl, slotEl, sepEl, dateEl, retried) {
   if (n < 3 && !(Math.abs(prev - want) < 0.5))
     requestAnimationFrame(() => centerSep(labEl, slotEl, sepEl, dateEl, n + 1));
 }
+// 가로 1줄일 때 세로 막대의 높이·위치 — 날짜 글자의 실제 잉크 범위에 맞춘다
+function sepBarRow(slotEl, sepEl, dateEl) {
+  if (!slotEl || !sepEl || !dateEl || !dateEl.offsetHeight) return;
+  const dcs = getComputedStyle(dateEl);
+  const dfs = parseFloat(dcs.fontSize);
+  const dm = inkMetrics(dateEl.textContent, dcs.fontWeight, dfs, dcs.fontFamily);
+  const lead = (parseFloat(dcs.lineHeight) - (dm.fontAsc + dm.fontDesc)) / 2;
+  const base = dateEl.offsetTop + parseFloat(dcs.paddingTop) + lead + dm.fontAsc;  // 기준선
+  const top = base - dm.inkAsc, bottom = base + dm.inkDesc;
+  sepEl.style.height = (bottom - top) + 'px';
+  sepEl.style.top = (top - slotEl.offsetTop) + 'px';
+}
 function syncOpenHeader() {
   ensurePageFlags();
   const t = $('#inOhTitle') ? $('#inOhTitle').value.trim() : '';
@@ -2024,11 +2036,12 @@ function syncOpenHeader() {
       const sw = $('#ohSepW') ? +$('#ohSepW').value : 4;
       const sg = $('#ohSepGap') ? +$('#ohSepGap').value : 0;  // 설명-날짜 사이 행간
       if (ohRow) {
-        // 가로 1줄 — 선은 세로 막대. 굵기는 가로폭이 되고, 간격은 좌우 여백이 된다
-        sepEl.style.height = '';
+        // 가로 1줄 — 선은 세로 막대. 굵기는 가로폭이 되고, 간격은 좌우 여백이 된다.
+        // 높이·위치는 날짜 글자가 실제로 그려진 범위에 맞춘다(상자 기준이면 알약 여백 탓에 치우침)
         sepEl.style.width = sw + 'px';
-        sepEl.style.top = ''; sepEl.style.transform = '';
+        sepEl.style.transform = '';
         slotEl.style.height = ''; slotEl.style.width = (sg + sw) + 'px';
+        _sepCenterJobs.push(() => sepBarRow($(`#ohSepSlot${p}`), $(`#ohSep${p}`), $(`#ohDate${p}`)));
       } else {
         sepEl.style.height = sw + 'px';
         sepEl.style.width = '';
@@ -2073,8 +2086,10 @@ function fitOpenHeaderTitles() {
     if (storeEl && storeWrapEl) {
       let ss = parseFloat(storeEl.dataset.baseSize || storeEl.style.fontSize || '22');
       storeEl.style.fontSize = ss + 'px';
-      // export 여유 감안해 헤더폭의 38%로 제한 (스토어+로고가 화면 밖으로 안 밀리게)
-      const storeMax = topEl.clientWidth * 0.38;
+      // export 여유 감안해 폭 제한 (날짜+로고가 화면 밖으로 안 밀리게).
+      // 가로 1줄은 설명까지 옆에 붙어 폭이 두 배가 되므로, 38%로 두면 날짜를 키우는 족족
+      // 설명이 같이 줄어든다(서로 반비례하는 것처럼 보임). 가로일 땐 한도를 넓게 둔다
+      const storeMax = topEl.clientWidth * (ohRow ? 0.62 : 0.38);
       const minStore = 12;
       let ls = labelEl ? parseFloat(labelEl.dataset.baseSize || labelEl.style.fontSize || '14') : 0;
       if (labelEl) labelEl.style.fontSize = ls + 'px';
