@@ -23,7 +23,7 @@ const { buildComparisonReport, applyManualPosts, filterCollectionsByKeyword } = 
 const { saveReportToExcel } = require('./excel');
 const { saveHtmlReport } = require('./html-report');
 const { buildStockComparison } = require('./stock-report');
-const { archiveAndGetPath } = require('./report-archive');
+const { archiveAndGetPath, revealAndCopyPath, revealMessage } = require('./report-archive');
 const { prepareBrand, parseBrandArg, parseStockMode } = require('./brand-config');
 
 /** 게시 시각(ISO)을 한국 날짜(YYYY-MM-DD)로. 서버 시간대에 안 휘둘리게 시간대를 직접 지정한다. */
@@ -120,6 +120,66 @@ function printList(brand, caches) {
   });
 }
 
+
+/**
+ * 합쳐진 게시물 목록으로 엑셀·HTML 리포트를 만들어 저장한다.
+ *
+ * 따로 떼어둔 이유 — 수치만 다시 읽는 refresh-counts.js도 이 뒤의 과정이 똑같다.
+ * 복사해두면 한쪽만 고쳐져서 두 리포트가 서로 다른 모양이 되므로 한 곳에서 쓴다.
+ */
+async function buildAndSaveReport(brand, { startDate, endDate, ownCollections, bhCollections, rest }) {
+  const readJson = p => (fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf-8')) : {});
+  const manualMatches = readJson(brand.paths.manualMatches);
+  const ignorePosts = readJson(brand.paths.ignorePosts);
+  const manualPosts = readJson(brand.paths.manualPosts);
+
+  const { own, competitors } = applyManualPosts(ownCollections, bhCollections, manualPosts);
+  const keywordArg = rest.find(a => /^--?keyword=/.test(a) || /^keyword=/.test(a));
+  const keyword = keywordArg ? keywordArg.slice(keywordArg.indexOf('=') + 1).trim() : '';
+  const ownFiltered = filterCollectionsByKeyword(own, keyword);
+  const bhFiltered = filterCollectionsByKeyword(competitors, keyword);
+
+  const report = buildComparisonReport({
+    startDate, endDate,
+    own: ownFiltered.collections,
+    competitors: bhFiltered.collections,
+    manualMatches, ignorePosts,
+  });
+
+  const sheetName = await saveReportToExcel(report, brand.paths.excel);
+  console.log(`✅ 엑셀 저장 완료: ${brand.paths.excel} (시트: ${sheetName})`);
+
+  const stockMode = parseStockMode(rest, brand.defaultStockMode);
+  const stockHistory = stockMode !== 'none' && fs.existsSync(brand.paths.stockHistory)
+    ? JSON.parse(fs.readFileSync(brand.paths.stockHistory, 'utf-8'))
+    : null;
+  const stockComparison = stockHistory ? buildStockComparison(stockHistory) : null;
+
+  // 재고가 리포트에 들어갔는지, 안 들어갔으면 왜인지 화면에 적는다.
+  // #stock을 쳤는데 아무 반응이 없어 한참 헤맨 적이 있다. 그때 파일에는 재고 섹션 자체가
+  // 없었는데(그래서 보여줄 게 없었는데), 실행 화면만 봐서는 그걸 알 길이 없었다.
+  if (stockComparison && stockMode !== 'none') {
+    console.log(`📦 재고 포함 — 리포트 주소 끝에 #stock 을 붙이면 재고 탭이 열립니다(스냅샷 ${stockComparison.snapshotCount}개).`);
+  } else if (stockMode === 'none') {
+    console.log('📦 재고 미포함(설정이 none) — 넣으려면 끝에 stock 을 붙여서 다시 돌리세요.');
+  } else {
+    console.log(`📦 재고 미포함 — 재고 기록이 없습니다(${path.relative(__dirname, brand.paths.stockHistory)}). 먼저 node naver-stock-snapshot.js 를 돌리세요.`);
+  }
+  const followerHistory = fs.existsSync(brand.paths.followerHistory)
+    ? JSON.parse(fs.readFileSync(brand.paths.followerHistory, 'utf-8'))
+    : null;
+
+  const htmlOutputPath = archiveAndGetPath(brand.paths.htmlDir, brand.paths.htmlBaseName, 'html');
+  saveHtmlReport(report, htmlOutputPath, stockComparison, {
+    brandLabel: brand.label, stockMode, followerHistory,
+    keyword, keywordExcluded: { pw: ownFiltered.excluded, bh: bhFiltered.excluded },
+  });
+  console.log(`✅ HTML 저장 완료: ${htmlOutputPath}`);
+  const reveal = revealMessage(revealAndCopyPath(htmlOutputPath));
+  if (reveal) console.log(reveal);
+  return htmlOutputPath;
+}
+
 async function main() {
   const { brandKey, rest } = parseBrandArg(process.argv.slice(2));
   const brand = prepareBrand(brandKey);
@@ -162,56 +222,16 @@ async function main() {
     process.exit(1);
   }
 
-  const readJson = p => (fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf-8')) : {});
-  const manualMatches = readJson(brand.paths.manualMatches);
-  const ignorePosts = readJson(brand.paths.ignorePosts);
-  const manualPosts = readJson(brand.paths.manualPosts);
-
-  const { own, competitors } = applyManualPosts(ownMerged.collections, bhMerged.collections, manualPosts);
-  const keywordArg = rest.find(a => /^--?keyword=/.test(a) || /^keyword=/.test(a));
-  const keyword = keywordArg ? keywordArg.slice(keywordArg.indexOf('=') + 1).trim() : '';
-  const ownFiltered = filterCollectionsByKeyword(own, keyword);
-  const bhFiltered = filterCollectionsByKeyword(competitors, keyword);
-
-  const report = buildComparisonReport({
-    startDate, endDate,
-    own: ownFiltered.collections,
-    competitors: bhFiltered.collections,
-    manualMatches, ignorePosts,
-  });
-
-  const sheetName = await saveReportToExcel(report, brand.paths.excel);
-  console.log(`✅ 엑셀 저장 완료: ${brand.paths.excel} (시트: ${sheetName})`);
-
-  const stockMode = parseStockMode(rest, brand.defaultStockMode);
-  const stockHistory = stockMode !== 'none' && fs.existsSync(brand.paths.stockHistory)
-    ? JSON.parse(fs.readFileSync(brand.paths.stockHistory, 'utf-8'))
-    : null;
-  const stockComparison = stockHistory ? buildStockComparison(stockHistory) : null;
-
-  // 재고가 리포트에 들어갔는지, 안 들어갔으면 왜인지 화면에 적는다.
-  // #stock을 쳤는데 아무 반응이 없어 한참 헤맨 적이 있다. 그때 파일에는 재고 섹션 자체가
-  // 없었는데(그래서 보여줄 게 없었는데), 실행 화면만 봐서는 그걸 알 길이 없었다.
-  if (stockComparison && stockMode !== 'none') {
-    console.log(`📦 재고 포함 — 리포트 주소 끝에 #stock 을 붙이면 재고 탭이 열립니다(스냅샷 ${stockComparison.snapshotCount}개).`);
-  } else if (stockMode === 'none') {
-    console.log('📦 재고 미포함(설정이 none) — 넣으려면 끝에 stock 을 붙여서 다시 돌리세요.');
-  } else {
-    console.log(`📦 재고 미포함 — 재고 기록이 없습니다(${path.relative(__dirname, brand.paths.stockHistory)}). 먼저 node naver-stock-snapshot.js 를 돌리세요.`);
-  }
-  const followerHistory = fs.existsSync(brand.paths.followerHistory)
-    ? JSON.parse(fs.readFileSync(brand.paths.followerHistory, 'utf-8'))
-    : null;
-
-  const htmlOutputPath = archiveAndGetPath(brand.paths.htmlDir, brand.paths.htmlBaseName, 'html');
-  saveHtmlReport(report, htmlOutputPath, stockComparison, {
-    brandLabel: brand.label, stockMode, followerHistory,
-    keyword, keywordExcluded: { pw: ownFiltered.excluded, bh: bhFiltered.excluded },
-  });
-  console.log(`✅ HTML 저장 완료: ${htmlOutputPath}`);
+  await buildAndSaveReport(brand, { startDate, endDate, ownCollections: ownMerged.collections, bhCollections: bhMerged.collections, rest });
 }
 
-main().catch(err => {
-  console.error('❌ 실행 중 오류:', err);
-  process.exit(1);
-});
+// 이 파일을 '명령어로 직접 돌렸을 때만' 실행한다. refresh-counts.js가 위 함수들을 가져다
+// 쓰는데, 이 막음이 없으면 가져오는 순간 합치기가 멋대로 한 번 돌아버린다.
+if (require.main === module) {
+  main().catch(err => {
+    console.error('❌ 실행 중 오류:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = { loadAllCaches, mergeCollections, buildAndSaveReport, kstDate };
