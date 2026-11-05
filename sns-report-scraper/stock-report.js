@@ -40,6 +40,7 @@
  * — 후자는 SNS 상품과 매칭 안 되는(또는 SNS에 아예 안 올라온) 상품까지 포함한 전체 현황용.
  */
 
+const fs = require('fs');
 const { extractKeywords, detectProductLine } = require('./aggregate');
 
 function escapeHtml(s) {
@@ -828,8 +829,85 @@ tr.trend-row td{padding:14px}
 .trend-scroll{overflow-x:auto}
 `;
 
+/**
+ * 📄 판매 개수·재고 수량이 그대로 들어간 '나만 보는' 상세 파일을 따로 만든다.
+ *
+ * 공유용 리포트(sns-report_*.html)에는 이 숫자를 **아예 넣지 않는다**는 방침은 그대로다.
+ * 가리는 게 아니라 안 넣는 것이라 소스 보기로도 안 나온다. 그런데 정작 본인이 개수를 보려면
+ * 엑셀을 열거나 기록 파일을 뒤져야 해서 볼 길이 마땅치 않았다 — 그래서 파일을 둘로 나눈다.
+ *
+ * 파일을 아예 갈라놓는 이유는 실수를 막기 위해서다. 한 파일에 명령어로 켜고 끄는 방식이면
+ * 나중에 그 파일만 봐서는 어느 쪽인지 구분이 안 돼, 대외비가 든 파일을 그대로 공유하게 된다.
+ * 이름이 다르면 헷갈릴 일이 없다.
+ */
+function buildStockDetailHtml(comparison, { brandLabel = '' } = {}) {
+  const title = `${brandLabel ? `${brandLabel} ` : ''}재고·판매 상세 (대외비)`;
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(title)}</title><style>
+*{box-sizing:border-box}body{margin:0;font-family:'Malgun Gothic',system-ui,sans-serif;background:#f4f6fb;color:#1f2937}
+.wrap{max-width:1200px;margin:0 auto;padding:28px 18px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:0 0 12px}h3{font-size:14px;margin:0 0 8px;color:#374151}
+.sub{color:#6b7280;font-size:13px;margin-bottom:16px}
+section.platform{margin-bottom:36px}
+.section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.toggle-all{display:flex;gap:8px}
+.toggle-all-btn{border:1px solid #d0d5e0;background:#fff;color:#3b5bdb;font-size:12px;padding:5px 12px;border-radius:8px;cursor:pointer}
+.toggle-all-btn:hover{background:#eef2ff}
+.toggle-btn{border:1px solid #d0d5e0;background:#fff;color:#3b5bdb;font-size:12px;padding:4px 10px;border-radius:8px;cursor:pointer}
+.table-wrap{overflow-x:auto;background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+table{width:100%;border-collapse:collapse;white-space:nowrap}
+th{background:#3b5bdb;color:#fff;font-size:12px;padding:10px 8px;position:sticky;top:0}
+td{padding:9px 8px;border-bottom:1px solid #eef0f4;font-size:13px;text-align:center;vertical-align:middle}
+tr:hover{background:#f0f4ff}
+td.empty{color:#9099a6;padding:24px}
+.foot{margin-top:16px;color:#6b7280;font-size:12px;line-height:1.6;background:#fff;border-radius:10px;padding:14px 16px}
+.secret{background:#fff0f0;border:1px solid #ffc9c9;color:#c0504d;border-radius:10px;padding:14px 16px;margin-bottom:20px;font-size:13px;line-height:1.7}
+.secret b{font-size:14px}
+${STOCK_SECTION_STYLE}
+</style></head><body><div class="wrap">
+<h1>📦 ${escapeHtml(title)}</h1>
+<div class="sub">최신 수집: ${escapeHtml(formatTakenAt(comparison.latestTakenAt))} (KST) · 누적 스냅샷 ${comparison.snapshotCount}개</div>
+<div class="secret">
+  <b>⚠️ 이 파일은 공유하면 안 됩니다.</b><br>
+  판매 개수·재고 수량이 그대로 들어 있습니다. 팀·외부에 보낼 파일은 같은 폴더의
+  <code>sns-report_날짜.html</code>(점유율·증감률만 들어간 것)입니다.
+</div>
+${renderStockSectionHtml(comparison)}
+<div class="foot">
+  ※ 판매 추정치는 "처음 보인 판매한도에서 얼마나 줄었는가"로 역산한 값입니다 — 판매자가
+  한도를 중간에 바꾸면 실제와 어긋날 수 있습니다.<br>
+  ※ 재판·입고로 재고가 다시 늘어난 상품은 판매 역산을 하지 않습니다(틀린 수를 내놓느니 비웁니다).
+</div>
+</div>
+<script>
+function toggleStockTrend(rowId, btn) {
+  var row = document.getElementById(rowId);
+  var opening = !row.classList.contains('open');
+  row.classList.toggle('open');
+  btn.textContent = opening ? '▼ 접기' : '▶ 보기';
+}
+function toggleAllStockTrends(forceOpen) {
+  document.querySelectorAll('tr.trend-row[id^="stock-trend-"]').forEach(function (row) {
+    var isOpen = row.classList.contains('open');
+    if (forceOpen === isOpen) return;
+    var btn = row.previousElementSibling.querySelector('.toggle-btn');
+    toggleStockTrend(row.id, btn);
+  });
+}
+</script></body></html>`;
+}
+
+/** 위 상세 파일을 저장하고 경로를 돌려준다. 재고 기록이 없으면 아무것도 만들지 않고 null. */
+function saveStockDetailReport(comparison, outPath, options = {}) {
+  if (!comparison) return null;
+  fs.writeFileSync(outPath, buildStockDetailHtml(comparison, options));
+  return outPath;
+}
+
 module.exports = {
   buildStockComparison,
+  buildStockDetailHtml,
+  saveStockDetailReport,
   formatTakenAt,
   rankMedal,
   rankStockProducts,

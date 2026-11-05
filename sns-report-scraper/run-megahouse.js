@@ -49,7 +49,7 @@ const { collectInstagram } = require('./instagram');
 const { buildComparisonReport, applyManualPosts, filterCollectionsByKeyword } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
 const { saveHtmlReport } = require('./html-report');
-const { buildStockComparison } = require('./stock-report');
+const { buildStockComparison, saveStockDetailReport } = require('./stock-report');
 const { captureSnapshot } = require('./naver-stock-snapshot');
 const { appendFollowerSnapshot } = require('./follower-history');
 const { archiveAndGetPath, revealAndCopyPath, revealMessage } = require('./report-archive');
@@ -354,6 +354,15 @@ async function main() {
     keyword, keywordExcluded: { pw: ownFiltered.excluded, bh: bhFiltered.excluded },
   });
   console.log(`✅ HTML 저장 완료: ${htmlOutputPath} (브라우저로 열어서 확인, 이전 파일은 ${path.relative(__dirname, CONFIG.htmlOutputDir)}/old/로 이동됨)`);
+
+  // 개수가 들어간 '나만 보는' 상세 파일을 따로 하나 더 만든다. 위 리포트에는 개수를 아예
+  // 넣지 않는 방침이 그대로라, 본인이 볼 길을 파일을 갈라서 따로 둔 것이다(섞으면 그 파일을
+  // 실수로 공유했을 때 대외비가 샌다).
+  if (stockComparison && stockMode !== 'none') {
+    const detailPath = archiveAndGetPath(CONFIG.htmlOutputDir, 'stock-detail', 'html');
+    saveStockDetailReport(stockComparison, detailPath, { brandLabel: brand.label });
+    console.log(`🔒 재고·판매 상세(개수 포함, 공유 금지) 따로 저장: ${detailPath}`);
+  }
   const reveal = revealMessage(revealAndCopyPath(htmlOutputPath));
   if (reveal) console.log(reveal);
 
