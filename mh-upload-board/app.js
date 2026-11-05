@@ -585,22 +585,50 @@ function nudge(id, dir){
 // 재판 표시는 "(재판)"과 "【재판】" 둘 다 인식한다.
 const REPRINT_RE = /\s*(?:[\(（]재판[\)）]|【재판】)/g;
 function stripReprint(s){ REPRINT_RE.lastIndex = 0; const re = REPRINT_RE.test(s); REPRINT_RE.lastIndex = 0; return {re, text: s.replace(REPRINT_RE, '').trim()}; }
+const BRACKET_HEADER_RE = /^[^\p{L}\p{N}]*【([^】]+)】\s*$/u;
+function isBarHeader(line){
+  const bar = line.split(/\s*\|\s*/);
+  return bar.length >= 2 && !line.includes('/') ? bar : null;
+}
 function parseListLines(text){
+  const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
+  // ①(머리글+"-" 목록) 형식인지 먼저 훑어서 확인한다. 머리글이 하나라도 있으면
+  // "-"/"•" 줄이 아닌 다른 줄은 전부 공지문 서두이거나(상품 목록 시작 전) 상품명이
+  // 줄바꿈으로 잘려 이어지는 줄로 보고, 제멋대로 상품으로 잡지 않는다.
+  const hasHeader = lines.some(line => BRACKET_HEADER_RE.test(line) || isBarHeader(line));
+
   const out = [];
   let curIp = '', curSeries = '';
-  for (const raw of text.split('\n')) {
-    const line = raw.trim();
-    if (!line) continue;
+  for (const line of lines) {
     const bullet = line.match(/^[-•·]\s*(.+)$/);
     if (bullet){
       const {re, text: name} = stripReprint(bullet[1]);
       out.push(normProduct({ip: curIp, series: curSeries, name, reprint: re, secured: re, tier:'미정'}));
       continue;
     }
-    const bar = line.split(/\s*\|\s*/);
-    if (bar.length >= 2 && !line.includes('/')){
+    // ③ "이모지【작품명】" 형태 머리글 — "|"로 분류를 안 적고 대괄호만 쓰는 공지문 변형.
+    //    분류가 없으니 curSeries는 비운다.
+    const bracketOnly = line.match(BRACKET_HEADER_RE);
+    if (bracketOnly){
+      curIp = bracketOnly[1].trim();
+      curSeries = '';
+      continue;
+    }
+    const bar = isBarHeader(line);
+    if (bar){
       curIp = bar[0].replace(/^[^\p{L}\p{N}]+/u, '').trim();
       curSeries = bar.slice(1).join(' | ').trim();
+      continue;
+    }
+    if (hasHeader){
+      // 상품명이 줄바꿈으로 잘려 다음 줄에 이어진 경우 — 직전 상품에 이어 붙인다.
+      // 아직 상품이 하나도 안 나온 시점이면 공지문 서두("📢 …안내" 등)이므로 버린다.
+      if (out.length){
+        const {re, text: extra} = stripReprint(line);
+        const last = out[out.length - 1];
+        last.name = `${last.name} ${extra}`.trim();
+        if (re){ last.reprint = true; last.secured = true; }
+      }
       continue;
     }
     // 옛 한 줄 형식
