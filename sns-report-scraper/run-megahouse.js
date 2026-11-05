@@ -49,10 +49,10 @@ const { collectInstagram } = require('./instagram');
 const { buildComparisonReport, applyManualPosts, filterCollectionsByKeyword } = require('./aggregate');
 const { saveReportToExcel } = require('./excel');
 const { saveHtmlReport } = require('./html-report');
-const { buildStockComparison, saveStockDetailReport } = require('./stock-report');
+const { buildStockComparison, saveStockDetailReport, latestStockItemNames } = require('./stock-report');
 const { captureSnapshot } = require('./naver-stock-snapshot');
 const { appendFollowerSnapshot } = require('./follower-history');
-const { archiveAndGetPath, revealAndCopyPath, revealMessage } = require('./report-archive');
+const { archiveAndGetPath, revealAndCopyPath, revealMessage, isNewEra, readEraMarker, writeEraMarker } = require('./report-archive');
 const { prepareBrand, parseBrandArg, saveLastRun, readLastRun, parseStockMode, isStockArg } = require('./brand-config');
 
 // 수집 계정·저장 경로는 전부 브랜드 설정(brands/<브랜드>.json)에서 가져옴 — 예전엔 여기에
@@ -348,7 +348,13 @@ async function main() {
     ? JSON.parse(fs.readFileSync(CONFIG.followerHistoryPath, 'utf-8'))
     : null;
 
-  const htmlOutputPath = archiveAndGetPath(CONFIG.htmlOutputDir, CONFIG.htmlOutputBaseName, 'html');
+  // 스토어 상품 구성이 절반 이상 갈렸고 지난 리포트로부터 30일도 지났으면, 밀려나는 예전
+  // 리포트에 _final을 붙인다 — old/ 폴더에서 "여기까지가 그 구성 기준의 마지막"이 보이게.
+  const eraMarkerPath = path.join(CONFIG.htmlOutputDir, '_report-era.json');
+  const stockItems = latestStockItemNames(stockHistory);
+  const newEra = isNewEra(readEraMarker(eraMarkerPath), stockItems);
+  if (newEra) console.log('🪧 스토어 상품 구성이 크게 바뀌었습니다 — 직전 리포트를 _final 로 표시해 old/ 로 옮깁니다.');
+  const htmlOutputPath = archiveAndGetPath(CONFIG.htmlOutputDir, CONFIG.htmlOutputBaseName, 'html', { markFinal: newEra });
   saveHtmlReport(report, htmlOutputPath, stockComparison, {
     brandLabel: brand.label, stockMode, followerHistory,
     keyword, keywordExcluded: { pw: ownFiltered.excluded, bh: bhFiltered.excluded },
@@ -359,10 +365,13 @@ async function main() {
   // 넣지 않는 방침이 그대로라, 본인이 볼 길을 파일을 갈라서 따로 둔 것이다(섞으면 그 파일을
   // 실수로 공유했을 때 대외비가 샌다).
   if (stockComparison && stockMode !== 'none') {
-    const detailPath = archiveAndGetPath(CONFIG.htmlOutputDir, 'stock-detail', 'html');
+    const detailPath = archiveAndGetPath(CONFIG.htmlOutputDir, 'stock-detail', 'html', { markFinal: newEra });
     saveStockDetailReport(stockComparison, detailPath, { brandLabel: brand.label });
     console.log(`🔒 재고·판매 상세(개수 포함, 공유 금지) 따로 저장: ${detailPath}`);
   }
+  // 이번 상품 구성을 기록해둔다 — 다음 리포트 때 이것과 비교해서 경계를 판단한다.
+  // 재고를 안 넣은 실행(stockMode none)은 상품 목록을 모르므로 기록도 건드리지 않는다.
+  if (stockItems.length > 0) writeEraMarker(eraMarkerPath, stockItems);
   const reveal = revealMessage(revealAndCopyPath(htmlOutputPath));
   if (reveal) console.log(reveal);
 

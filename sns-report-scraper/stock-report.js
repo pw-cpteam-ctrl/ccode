@@ -897,6 +897,21 @@ function toggleAllStockTrends(forceOpen) {
 </script></body></html>`;
 }
 
+/**
+ * 가장 최근 스냅샷에 들어있던 상품 이름들(스토어 구분 없이 한 덩어리로).
+ * "상품 구성이 바뀌었는가"를 판단할 때 쓴다 — 재고 기록이 없으면 빈 배열.
+ */
+function latestStockItemNames(stockHistory) {
+  const snaps = (stockHistory && stockHistory.snapshots) || [];
+  const last = snaps[snaps.length - 1];
+  if (!last || !last.stores) return [];
+  const names = new Set();
+  for (const rows of Object.values(last.stores)) {
+    for (const r of rows || []) if (r && r.name) names.add(String(r.name).trim());
+  }
+  return [...names];
+}
+
 /** 위 상세 파일을 저장하고 경로를 돌려준다. 재고 기록이 없으면 아무것도 만들지 않고 null. */
 function saveStockDetailReport(comparison, outPath, options = {}) {
   if (!comparison) return null;
@@ -908,6 +923,7 @@ module.exports = {
   buildStockComparison,
   buildStockDetailHtml,
   saveStockDetailReport,
+  latestStockItemNames,
   formatTakenAt,
   rankMedal,
   rankStockProducts,
