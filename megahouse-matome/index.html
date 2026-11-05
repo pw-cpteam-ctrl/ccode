@@ -450,6 +450,12 @@ hr.pdiv{border:none;border-top:1px solid var(--ui-border);margin:15px 0 11px;}
   background:rgba(0,100,180,.65);color:#fff;font-size:26px;cursor:pointer;
   opacity:0;transition:opacity .15s;user-select:none;}
 .cell:hover .cell-replace-btn{opacity:1;}
+/* 내보내기 중에는 편집용 버튼을 완전히 숨긴다.
+   이미지 생성 라이브러리는 '그 순간의 화면 상태'를 그대로 읽어가기 때문에,
+   마우스가 올라가 있던 칸의 ⠿ / × / 🔄 가 PNG에 그대로 찍혀 나갔다 */
+body.exporting .cell-drag-handle,
+body.exporting .cell-del-btn,
+body.exporting .cell-replace-btn{display:none!important;}
 .thumb-wrap{position:relative;flex-shrink:0;}
 .thumb-wrap .thumb-repl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   background:rgba(0,0,0,.5);color:#fff;font-size:11px;font-weight:700;border-radius:6px;
@@ -2420,10 +2426,15 @@ async function _savePng(el, name) {
   const fontEmbedCSS = await getFontEmbedCSS();
   fitOpenHeaderTitles();            // 캡처 직전 오픈 헤더 글자 크기 재조정
   fitCellNames();                   // 캡처 직전 제품명 글자 크기 재조정
-  await new Promise(r => requestAnimationFrame(r));
-  const dataUrl = await htmlToImage.toPng(el, {pixelRatio:1, width:1080, height:1350, cacheBust:true, backgroundColor:'#fff', fontEmbedCSS});
-  const a = document.createElement('a'); a.download = name + '.png'; a.href = dataUrl; a.click();
-  await new Promise(r => setTimeout(r, 400));
+  document.body.classList.add('exporting');   // 편집용 버튼 숨김 (아래 CSS)
+  try {
+    await new Promise(r => requestAnimationFrame(r));
+    const dataUrl = await htmlToImage.toPng(el, {pixelRatio:1, width:1080, height:1350, cacheBust:true, backgroundColor:'#fff', fontEmbedCSS});
+    const a = document.createElement('a'); a.download = name + '.png'; a.href = dataUrl; a.click();
+    await new Promise(r => setTimeout(r, 400));
+  } finally {
+    document.body.classList.remove('exporting');
+  }
 }
 function todayStr() {
   const d = new Date();
