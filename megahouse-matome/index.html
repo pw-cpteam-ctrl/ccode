@@ -2427,6 +2427,11 @@ function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
 }
+// 하루에 여러 번 내보낼 때 파일명이 겹치지 않게 시각까지 붙인다 (예: 20261105-1432)
+function stampStr() {
+  const d = new Date();
+  return `${todayStr()}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
+}
 async function downloadPNG() {
   if (typeof htmlToImage === 'undefined') { toast('라이브러리 로드 실패 (인터넷 필요)'); return; }
   const m = $('#inMonth').value.trim().replace(/\s+/g,'') || 'preview';
@@ -2434,14 +2439,14 @@ async function downloadPNG() {
   if (!pg || !pg.length) { toast('현재 페이지에 사진이 없습니다'); return; }
   toast('이미지 생성 중…');
   try {
-    await _savePng(document.getElementById('poster'+curPage), `megahouse_matome_${todayStr()}_${m}_p${curPage}`);
+    await _savePng(document.getElementById('poster'+curPage), `megahouse_matome_${stampStr()}_${m}_p${curPage}`);
     toast('다운로드 완료!');
   } catch(err) { toast('생성 실패: '+err.message); }
 }
 async function downloadAllPNG() {
   if (typeof htmlToImage === 'undefined') { toast('라이브러리 로드 실패 (인터넷 필요)'); return; }
   const m = $('#inMonth').value.trim().replace(/\s+/g,'') || 'preview';
-  const toDownload = pages.map((pg,i) => pg.length ? {el:document.getElementById('poster'+(i+1)), name:`megahouse_matome_${todayStr()}_${m}_p${i+1}`} : null).filter(Boolean);
+  const toDownload = pages.map((pg,i) => pg.length ? {el:document.getElementById('poster'+(i+1)), name:`megahouse_matome_${stampStr()}_${m}_p${i+1}`} : null).filter(Boolean);
   if (!toDownload.length) { toast('사진을 먼저 올려주세요'); return; }
   toast('이미지 생성 중…');
   for (const {el, name} of toDownload) {
@@ -2964,7 +2969,7 @@ $('#btnExport').addEventListener('click', async () => {
   const blob = new Blob([raw], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `megahouse_matome_${todayStr()}.json`;
+  a.download = `megahouse_matome_${stampStr()}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
 });
