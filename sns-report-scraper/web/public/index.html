@@ -12,20 +12,38 @@
      - 설명문 면적이 조작 요소의 2.02배, 폭 15% 버튼이 혼자 한 줄 먹는 곳 7군데
    자세한 진단·처방은 레포 루트 UI-리뉴얼-시-신경쓸것.md 절차를 따름 */
 
-/* 2026-11-06 테마 교체 — "눈에 안 들어온다"는 신고. 색을 토큰으로 묶고 크림/화이트 톤으로.
-   바꾼 근거(흰 카드 위 대비, 4.5 이상이 읽기 기준):
-     - 보조 글자 #9099a6 → #7d7568 : 2.88(기준 미달) → 4.55
-     - 본문 글자 #1f2937 → #252018 : 14.68 → 16.17
-     - 포인트색 #3b5bdb → #1452c0 : 5.67 → 7.01
-   바탕이 차가운 회청(#f4f6fb)이라 흰 카드와 거의 붙어 보였는데, 크림(#f0ede7)으로
-   바꾸면서 카드가 떠오른다 — 경계선을 더 긋지 않고도 구역이 갈린다.
-   다크모드는 넣지 않는다(요청). 참고한 테마에는 들어있으므로 가져올 때 의식적으로 뺀 것. */
+/* 2026-11-06 테마 교체 — "눈에 안 들어온다"는 신고.
+   1차로 크림 톤 + 파란 포인트 하나로 바꿨는데 여전히 안 들어온다는 재신고.
+   원인: 참고한 mh-upload-board 파일에는 테마가 두 벌 들어있고, 뒤쪽 것이 앞을 덮어쓴다.
+   실제로 보이던 것은 뒤쪽 — "흰 바탕 + 구역마다 다른 포인트 색"이었다. 색값만 베끼고
+   그 문장을 흘려서, 화면 전체가 한 가지 파랑이 됐다. 대비를 아무리 올려도 구역이 안 갈린다.
+
+   그래서 구역마다 색을 준다. 눈이 "여기는 저기와 다른 곳"을 색으로 먼저 알아채고,
+   그라데이션은 그 색을 머리말에 옅게 깔아 구역의 시작을 알리는 역할만 한다.
+   색은 작업의 성격과 묶는다(수집=파랑, 맞대결=보라, 재고=주황, 결과=초록) — 외울 필요 없이
+   같은 색이 같은 일을 가리키면 된다.
+
+   대비(흰 바탕 기준, 4.5 이상이 읽기 기준): 본문 #111827 = 16.1, 보조 #4b5563 = 7.5.
+   다크모드는 넣지 않는다(요청). 참고 파일에는 있으므로 가져올 때 의식적으로 뺀 것. */
 :root{
-  --bg:#f0ede7; --panel:#faf8f4; --card:#ffffff; --line:#ddd8ce; --line-soft:#e9e4da;
-  --text:#252018; --sub:#7d7568; --faint:#a39b8c;
-  --accent:#1452c0; --accent-soft:#e6edfb; --accent-ink:#ffffff;
-  --ok:#1d7a46; --ok-soft:#e2f3e8; --warn:#9a5a00; --warn-soft:#fdf0d8; --bad:#b3261e; --bad-soft:#fbe5e2;
-  --shadow:0 1px 2px rgba(37,32,24,.06),0 4px 14px rgba(37,32,24,.06);
+  --bg:#f4f6f9; --panel:#ffffff; --card:#ffffff; --line:#e6e9ef; --line-soft:#eef1f5;
+  --text:#111827; --sub:#4b5563; --faint:#8b91a1;
+  --accent:#2563eb; --accent-soft:#eaf1ff; --accent-ink:#ffffff;
+  --ok:#059669; --ok-soft:#e3f7ef; --warn:#b45309; --warn-soft:#fef5e6; --bad:#dc2626; --bad-soft:#fdeceb;
+  /* 구역 색 — 짝(진한색/밝은색)으로 둬서 그라데이션에 그대로 쓴다 */
+  --c-collect:#2563eb; --c-collect2:#38bdf8; --c-collect-soft:#eaf1ff;  /* 기간 수집 */
+  --c-vs:#7c3aed;      --c-vs2:#a78bfa;      --c-vs-soft:#f1ebff;        /* 맞대결 */
+  --c-one:#0d9488;     --c-one2:#34d399;     --c-one-soft:#e3f6f2;       /* 계정 단독 */
+  --c-span:#0891b2;    --c-span2:#22d3ee;    --c-span-soft:#e0f7fb;      /* 기간끼리 */
+  --c-notion:#475569;  --c-notion2:#94a3b8;  --c-notion-soft:#eef1f5;    /* 노션 */
+  --c-stock:#ea580c;   --c-stock2:#fbbf24;   --c-stock-soft:#fff3e6;     /* 재고 */
+  --c-done:#059669;    --c-done2:#34d399;    --c-done-soft:#e3f7ef;      /* 결과물 */
+  /* 위 색 중 넷은 흰 바탕 글자로 쓰기엔 대비가 4.5에 못 미친다(청록 3.74·하늘 3.68·주황
+     3.56·초록 3.77). 그라데이션·테두리에는 그대로 쓰고, 글자에는 아래 진한 짝을 쓴다. */
+  --c-collect-ink:#2563eb; --c-vs-ink:#7c3aed; --c-one-ink:#0f766e;
+  --c-span-ink:#0e7490; --c-notion-ink:#475569; --c-stock-ink:#c2410c; --c-done-ink:#047857;
+  --sec:var(--accent); --sec2:var(--accent); --sec-soft:var(--accent-soft); --sec-ink:var(--accent);
+  --shadow:0 1px 3px rgba(16,24,40,.07),0 1px 2px rgba(16,24,40,.04);
 }
 *{box-sizing:border-box}
 body{margin:0;font-family:'Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--text)}
@@ -37,7 +55,8 @@ button.secondary:hover{background:var(--accent-soft);filter:none}
 button.secondary:disabled{background:var(--panel);color:var(--faint);border-color:var(--line-soft)}
 button.ghost{background:var(--card);color:var(--text);border-color:var(--line)}
 button.ghost:hover{background:var(--panel);filter:none}
-button.big{font-size:15px;padding:13px 30px;font-weight:700}
+button.big{font-size:15px;padding:13px 30px;font-weight:700;background:linear-gradient(135deg,var(--sec-ink),var(--sec2));border-color:transparent;box-shadow:0 2px 8px color-mix(in srgb,var(--sec-ink) 32%,transparent)}
+button.big:disabled{background:var(--line);box-shadow:none}
 /* 키보드로 넘길 때 어디에 있는지 보이게 — 마우스 클릭에는 안 뜬다 */
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 input,select,textarea{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;background:var(--card);color:var(--text)}
@@ -50,7 +69,8 @@ code{background:var(--panel);border:1px solid var(--line-soft);border-radius:4px
 /* ── 머리줄: 제목 + 브랜드 + 로그인 상태를 한 줄로 ──
    진단: 브랜드 패널은 가로 11%, 로그인 패널은 47%만 쓰면서 둘이 세로 305px을 먹었음 */
 .topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px}
-.topbar h1{font-size:18px;margin:0 10px 0 0;white-space:nowrap}
+.topbar h1{font-size:18px;margin:0 10px 0 0;white-space:nowrap;display:flex;align-items:center;gap:9px}
+.topbar h1::before{content:"";width:22px;height:22px;border-radius:7px;background:linear-gradient(135deg,var(--c-collect),var(--c-vs2));flex:none}
 /* 브랜드 고르기는 따로 떨어진 버튼 두 개가 아니라 한 덩어리(세그먼트)다 — 떨어져 있으면
    "둘 중 하나를 고르는 것"으로 안 읽히고 각자 누르는 버튼처럼 보인다. */
 .brand-tabs{display:inline-flex;gap:4px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px}
@@ -76,7 +96,11 @@ code{background:var(--panel);border:1px solid var(--line-soft);border-radius:4px
    1px 줄여서, 카드를 누를 때마다 글자가 미세하게 흔들렸다. 색만 바꾸면 흔들리지 않는다. */
 .bigcard{background:var(--card);border:2px solid var(--line-soft);border-radius:12px;padding:15px 17px;cursor:pointer;text-align:left;color:inherit;font:inherit;box-shadow:var(--shadow);display:block;width:100%}
 .bigcard:hover{border-color:var(--line);filter:none}
-.bigcard.on{border-color:var(--accent);background:var(--accent-soft)}
+.bigcard[data-pane=period]{--sec:var(--c-collect);--sec2:var(--c-collect2);--sec-soft:var(--c-collect-soft);--sec-ink:var(--c-collect-ink)}
+.bigcard[data-pane=matchup]{--sec:var(--c-vs);--sec2:var(--c-vs2);--sec-soft:var(--c-vs-soft);--sec-ink:var(--c-vs-ink)}
+.bigcard .ttl::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:7px;background:linear-gradient(135deg,var(--sec-ink),var(--sec2));vertical-align:baseline}
+.bigcard.on{border-color:var(--sec);background:linear-gradient(135deg,var(--sec-soft),var(--card) 72%)}
+.bigcard.on .ttl{color:var(--sec-ink)}
 .bigcard .ttl{font-size:15px;font-weight:700;margin-bottom:8px}
 .bigcard .body{font-size:12px;color:var(--sub);line-height:1.7}
 .bigcard .eg{display:block;margin-top:8px;color:var(--faint)}
@@ -85,7 +109,16 @@ code{background:var(--panel);border:1px solid var(--line-soft);border-radius:4px
 .row-cards{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
 .rowcard{background:var(--card);border:2px solid var(--line-soft);border-radius:10px;padding:10px 13px;cursor:pointer;text-align:left;color:inherit;font:inherit;display:flex;align-items:center;gap:12px;width:100%}
 .rowcard:hover{border-color:var(--line);filter:none}
-.rowcard.on{border-color:var(--accent);background:var(--accent-soft)}
+.rowcard[data-pane=account]{--sec:var(--c-one);--sec2:var(--c-one2);--sec-soft:var(--c-one-soft);--sec-ink:var(--c-one-ink)}
+.rowcard[data-pane=periods]{--sec:var(--c-span);--sec2:var(--c-span2);--sec-soft:var(--c-span-soft);--sec-ink:var(--c-span-ink)}
+.rowcard[data-pane=notion]{--sec:var(--c-notion);--sec2:var(--c-notion2);--sec-soft:var(--c-notion-soft);--sec-ink:var(--c-notion-ink)}
+.rowcard[data-pane=stock]{--sec:var(--c-stock);--sec2:var(--c-stock2);--sec-soft:var(--c-stock-soft);--sec-ink:var(--c-stock-ink)}
+/* 가로줄 카드는 생김새가 다 같아서 줄줄이 늘어서면 구분이 안 된다. 왼쪽 색막대로 각자
+   무슨 작업인지 색부터 보이게 한다(고르기 전에도). */
+.rowcard{border-left-width:5px;border-left-color:var(--sec2)}
+.rowcard:hover{border-left-color:var(--sec-ink)}
+.rowcard.on{border-color:var(--sec);border-left-color:var(--sec);background:linear-gradient(135deg,var(--sec-soft),var(--card) 72%)}
+.rowcard.on .ttl{color:var(--sec-ink)}
 .rowcard .ttl{font-size:13px;font-weight:700;white-space:nowrap}
 .rowcard .body{font-size:12px;color:var(--sub);flex:1;min-width:0}
 .rowcard .arrow{color:var(--faint);font-size:14px}
@@ -94,8 +127,26 @@ code{background:var(--panel);border:1px solid var(--line-soft);border-radius:4px
 
 /* ── 작업 화면 ── */
 .work{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;box-shadow:var(--shadow)}
-.work h2{font-size:15px;margin:0 0 4px}
+/* 구역의 시작을 색으로 알린다 — 제목 왼쪽 색막대 + 머리말에 옅게 깔리는 그라데이션.
+   글자는 진한 짝(--sec-ink)을 쓴다. 밝은 쪽은 대비가 모자라 작은 글자로 못 쓴다. */
+.work{position:relative;overflow:hidden}
+.work::before{content:"";position:absolute;inset:0 0 auto;height:3px;background:linear-gradient(90deg,var(--sec-ink),var(--sec2))}
+.work h2{font-size:15px;margin:0 0 4px;color:var(--sec-ink);display:flex;align-items:center;gap:7px}
+.pane.on>h2{margin:-18px -20px 10px;padding:16px 20px 12px;background:linear-gradient(180deg,var(--sec-soft),transparent)}
 .work .lead{font-size:12px;color:var(--sub);margin:0 0 14px;line-height:1.6}
+#pane-period{--sec:var(--c-collect);--sec2:var(--c-collect2);--sec-soft:var(--c-collect-soft);--sec-ink:var(--c-collect-ink)}
+#pane-matchup{--sec:var(--c-vs);--sec2:var(--c-vs2);--sec-soft:var(--c-vs-soft);--sec-ink:var(--c-vs-ink)}
+#pane-account{--sec:var(--c-one);--sec2:var(--c-one2);--sec-soft:var(--c-one-soft);--sec-ink:var(--c-one-ink)}
+#pane-periods{--sec:var(--c-span);--sec2:var(--c-span2);--sec-soft:var(--c-span-soft);--sec-ink:var(--c-span-ink)}
+#pane-notion{--sec:var(--c-notion);--sec2:var(--c-notion2);--sec-soft:var(--c-notion-soft);--sec-ink:var(--c-notion-ink)}
+#pane-stock{--sec:var(--c-stock);--sec2:var(--c-stock2);--sec-soft:var(--c-stock-soft);--sec-ink:var(--c-stock-ink)}
+/* 열려 있는 작업 화면의 색이 바깥 카드(.work) 테두리·버튼까지 따라오게 끌어올린다 */
+.work:has(#pane-period.on){--sec:var(--c-collect);--sec2:var(--c-collect2);--sec-soft:var(--c-collect-soft);--sec-ink:var(--c-collect-ink)}
+.work:has(#pane-matchup.on){--sec:var(--c-vs);--sec2:var(--c-vs2);--sec-soft:var(--c-vs-soft);--sec-ink:var(--c-vs-ink)}
+.work:has(#pane-account.on){--sec:var(--c-one);--sec2:var(--c-one2);--sec-soft:var(--c-one-soft);--sec-ink:var(--c-one-ink)}
+.work:has(#pane-periods.on){--sec:var(--c-span);--sec2:var(--c-span2);--sec-soft:var(--c-span-soft);--sec-ink:var(--c-span-ink)}
+.work:has(#pane-notion.on){--sec:var(--c-notion);--sec2:var(--c-notion2);--sec-soft:var(--c-notion-soft);--sec-ink:var(--c-notion-ink)}
+.work:has(#pane-stock.on){--sec:var(--c-stock);--sec2:var(--c-stock2);--sec-soft:var(--c-stock-soft);--sec-ink:var(--c-stock-ink)}
 .pane{display:none}
 .pane.on{display:block}
 .step{font-size:13px;font-weight:700;color:var(--text);margin:0 0 8px}
@@ -135,7 +186,11 @@ details.more .in{font-size:12px;color:var(--sub);line-height:1.7;margin-top:8px}
 /* ── 오른쪽 결과 열: 화면에 붙되 화면보다 커지지 않게(안쪽만 스크롤) ── */
 .side{position:sticky;top:20px;display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 40px)}
 .sidebox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);display:flex;flex-direction:column;min-height:0}
-.sidebox h2{font-size:14px;margin:0 0 4px;display:flex;align-items:center;gap:8px}
+.sidebox{position:relative;overflow:hidden}
+.sidebox::before{content:"";position:absolute;inset:0 0 auto;height:3px;background:linear-gradient(90deg,var(--sec-ink),var(--sec2))}
+.sidebox h2{font-size:14px;margin:-14px -16px 8px;padding:13px 16px 10px;background:linear-gradient(180deg,var(--sec-soft),transparent);color:var(--sec-ink);display:flex;align-items:center;gap:8px}
+#jobBox{--sec:var(--c-span);--sec2:var(--c-span2);--sec-soft:var(--c-span-soft);--sec-ink:var(--c-span-ink)}
+#reportBox{--sec:var(--c-done);--sec2:var(--c-done2);--sec-soft:var(--c-done-soft);--sec-ink:var(--c-done-ink)}
 /* 상태를 나타내는 알약은 전부 같은 색 규칙을 쓴다(진행=경고색, 완료=성공색, 오류=오류색).
    예전엔 뱃지마다 색이 제각각이어서 색만 보고는 상태를 알 수 없었다. */
 .pill{font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px;background:var(--panel);color:var(--sub);white-space:nowrap;border:1px solid var(--line-soft)}
@@ -400,7 +455,7 @@ details.more .in{font-size:12px;color:var(--sub);line-height:1.7;margin-top:8px}
 
     <!-- ── 오른쪽: 결과 (항상 보임) ── -->
     <div class="side">
-      <div class="sidebox">
+      <div class="sidebox" id="jobBox">
         <h2>진행 상황 <span class="pill" id="jobPill">대기 중</span></h2>
         <div class="muted" style="font-size:12px" id="jobLabel">아직 실행한 작업이 없어요.</div>
         <div id="jobStatus" style="font-size:12px;color:var(--sub);margin-top:4px"></div>
@@ -410,7 +465,7 @@ details.more .in{font-size:12px;color:var(--sub);line-height:1.7;margin-top:8px}
         <div id="log"></div>
       </div>
 
-      <div class="sidebox" style="flex:1;min-height:0">
+      <div class="sidebox" id="reportBox" style="flex:1;min-height:0">
         <h2>만들어진 리포트 <span class="pill" id="reportCount"></span></h2>
         <div class="meta">받아서 메일·메신저로 그대로 공유할 수 있어요(서버 공유 아님)</div>
         <ul class="report-list" id="reportList"></ul>
