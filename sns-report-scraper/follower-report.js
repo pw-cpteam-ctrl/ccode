@@ -7,7 +7,7 @@
  * 무엇을 보여주나 — 핵심은 '지금 몇 명'이 아니라 '얼마나 빠르게 느는가'다.
  * 예전 경쟁사 분석에서, 당사 기반이 경쟁사의 두 배인데도 "그 기간 늘어난 수"만 보고
  * 당사가 열위라고 잘못 결론 낸 적이 있다(기반 규모를 안 봤다). 그래서 여기서는
- *   (1) 지금 몇 명  (2) 직전 수집 대비 증감  (3) 첫 기록 대비 증가율
+ *   (1) 지금 몇 명  (2) 직전 수집 대비 증감  (3) 최근 30일 대비 증가율
  * 셋을 항상 같이 놓는다. 하나만 보면 반드시 틀린 결론이 나온다.
  *
  * 숫자를 그대로 적는 이유: 팔로워 수는 계정 화면에 들어가면 누구나 보이는 공개 정보라
@@ -37,6 +37,26 @@ function shortDate(iso) {
   if (Number.isNaN(d.getTime())) return '';
   const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit' }).format(d);
   return p.replace('-', '/');
+}
+
+// 증가율을 잴 때 "며칠 전과 비교할지". 상품 교체 주기(30~35일)에 맞춰 한 사이클로 둔다.
+const WINDOW_DAYS = 30;
+
+/**
+ * 증가율의 비교 대상이 될 기록을 고른다 — days일 전에 가장 가까운(그보다 오래된) 기록.
+ *
+ * 수집은 일정한 주기로 돌지 않아서 "몇 번째 전 기록"으로 세면 기간이 들쭉날쭉해진다.
+ * 날짜로 고르면 하루 두 번 찍은 날이 있어도 기준이 안 흔들린다.
+ * 아직 그만큼 안 쌓였으면 가장 오래된 기록을 쓴다(없는 것보다 낫고, 실제 기간은 따로 적는다).
+ */
+function pickBaseline(real, days) {
+  if (real.length < 2) return null;
+  const latest = real[real.length - 1];
+  const cutoff = new Date(latest.takenAt).getTime() - days * 86400000;
+  for (let i = real.length - 2; i >= 0; i -= 1) {
+    if (new Date(real[i].takenAt).getTime() <= cutoff) return real[i];
+  }
+  return real[0];
 }
 
 /**
@@ -77,10 +97,23 @@ function buildFollowerSummary(history) {
     const first = real[0] || null;
     const deltaPrev = latest && prev ? latest.count - prev.count : null;
     const deltaFirst = latest && first && first !== latest ? latest.count - first.count : null;
-    // 증가율은 '처음 잰 날 대비'다. 기반 규모가 다른 두 계정을 나란히 놓으려면
-    // 늘어난 사람 수(절대값)가 아니라 이 비율로 봐야 한다 — 큰 계정은 가만히 있어도
-    // 늘어나는 사람 수가 더 많아서, 절대값만 비교하면 항상 큰 쪽이 이긴 것처럼 보인다.
-    const ratePct = deltaFirst !== null && first.count > 0 ? (deltaFirst / first.count) * 100 : null;
+
+    // 증가율은 '최근 30일 대비'다. 기반 규모가 다른 두 계정을 나란히 놓으려면 늘어난 사람
+    // 수(절대값)가 아니라 비율로 봐야 한다 — 큰 계정은 가만히 있어도 늘어나는 사람 수가 더
+    // 많아서, 절대값만 비교하면 항상 큰 쪽이 이긴 것처럼 보인다.
+    //
+    // 예전엔 '처음 잰 날 대비'였는데, 기록이 쌓일수록 기준이 낡아서 지금 상황을 못 보여줬다.
+    // 실제로 "직전 +22명인데 왜 마이너스냐"는 신고가 있었다 — 반년 전 어느 시점보다는 조금
+    // 줄었다는 뜻이었고, 지금 늘고 있다는 사실이 그 숫자에 가려져 있었다.
+    // 30일로 잡은 것은 상품 교체 주기(30~35일)와 맞아 "이번 사이클에 얼마나 늘었나"로 읽히기 때문.
+    const base = pickBaseline(real, WINDOW_DAYS);
+    const deltaWindow = latest && base && base !== latest ? latest.count - base.count : null;
+    const ratePct = deltaWindow !== null && base.count > 0 ? (deltaWindow / base.count) * 100 : null;
+    // 30일치가 아직 안 쌓였으면 있는 것 중 가장 오래된 것과 비교한다. 그때 "30일"이라고 적으면
+    // 거짓말이 되므로, 실제 며칠인지를 같이 들고 가서 화면에 그대로 적는다.
+    const windowDays = latest && base && base !== latest
+      ? Math.max(1, Math.round((new Date(latest.takenAt) - new Date(base.takenAt)) / 86400000))
+      : null;
     return {
       ...g,
       latest: latest ? latest.count : null,
@@ -88,6 +121,7 @@ function buildFollowerSummary(history) {
       deltaPrev,
       deltaFirst,
       ratePct,
+      windowDays,
       firstAt: first ? first.takenAt : null,
       prevAt: prev ? prev.takenAt : null,
       latestAt: latest ? latest.takenAt : null,
@@ -172,7 +206,12 @@ function renderCell(g, minIdx, maxIdx, tMin, tMax) {
   const plat = PLATFORM_SHORT[g.platform] || g.platform;
   // 계정 아이디와 세는 대상 이름(관심고객수 등)은 마우스를 올리면 보이게 둔다 —
   // 줄을 하나 더 쓰면 여섯 칸이 전부 그만큼 길어져서 다시 자리를 먹는다.
-  const tip = g.label ? `${g.label} (${g.account || ''})` : `@${g.account || ''}`;
+  const who = g.label ? `${g.label} (${g.account || ''})` : `@${g.account || ''}`;
+  // 두 숫자의 기준이 다르다는 걸 칸 안 작은 글자로도 적지만, 마우스를 올리면 풀어서 보여준다.
+  const tip = [who,
+    g.deltaPrev === null ? '' : `직전 기록 대비 ${g.deltaPrev >= 0 ? '+' : '−'}${comma(Math.abs(g.deltaPrev))}명`,
+    g.ratePct === null ? '' : `${g.windowDays || 30}일 전 대비 ${g.ratePct >= 0 ? '+' : '−'}${Math.abs(g.ratePct).toFixed(2)}% (규모가 다른 계정끼리 비교하려고 비율로 봅니다)`,
+  ].filter(Boolean).join(' · ');
   const d = sparkPath(g.points, minIdx, maxIdx, tMin, tMax, 100, 24);
   const line = d
     ? `<svg class="fo-spark" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" fill="none" stroke="${side === 'pw' ? '#1971c2' : '#c0504d'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
@@ -183,7 +222,10 @@ function renderCell(g, minIdx, maxIdx, tMin, tMax) {
   <div class="fo-v">${comma(g.latest)}${g.approx ? '<span class="fo-approx" title="화면에 줄여서 표시된 숫자(2.3만 등)를 되돌린 값이라 실제와 차이가 날 수 있습니다.">≈</span>' : ''}</div>
   <div class="fo-d">${g.deltaPrev === null && g.measured === 1
     ? '<span class="fo-flat">첫 기록</span>'
-    : deltaHtml(g.deltaPrev) + (g.ratePct === null ? '' : `<span class="fo-rate"> · ${ratePctHtml(g.ratePct)}</span>`)}</div>
+    : `<span class="fo-lab">직전</span>${deltaHtml(g.deltaPrev)}` + (g.ratePct === null ? ''
+      // 두 숫자는 기준이 다르다(앞은 바로 앞번 기록, 뒤는 30일 전). 글자를 안 붙여두면 같은
+      // 기준으로 읽혀서 "+22인데 왜 마이너스냐"가 된다 — 실제로 그 신고를 받았다.
+      : `<span class="fo-rate"> · <span class="fo-lab">${g.windowDays || 30}일</span>${ratePctHtml(g.ratePct)}</span>`)}</div>
   ${line}
 </div>`;
 }
@@ -277,6 +319,7 @@ body.view-stock .follower-section{display:none}
 .fo-approx{font-size:11px;color:#9099a6;margin-left:2px;cursor:help}
 .fo-d{font-size:11px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fo-rate{color:#9099a6}
+.fo-lab{color:#9aa3b2;font-weight:400;font-size:10px;margin-right:2px}
 .fo-up{color:#2f9e44;font-weight:700}
 .fo-down{color:#c0504d;font-weight:700}
 .fo-flat{color:#9099a6}
