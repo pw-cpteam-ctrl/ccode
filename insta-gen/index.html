@@ -324,7 +324,8 @@
   /* ===== 모바일 (≤860px): 반응형 축소가 아니라 PC의 좌·우 2열을 세로 1열로 쌓고,
      미리보기는 기본 펼침(사진 넣으면 바로 보이게) + 큰 버튼으로 원하면 접을 수 있게 한다. ===== */
   .mobile-preview-toggle { display:none; } /* 데스크톱에선 숨김(미리보기 항상 표시) */
-  .pv-dl, .pv-dlmsg { display:none; }   /* 미리보기 밑 다운로드 — 폰에서만(컴퓨터는 하단 바가 넓어서 충분) */
+  .pv-dl, .pv-dlmsg { display:none; }
+  .mnav, .mtweet, .mfold { display:none; }   /* 폰 전용 요소 — 컴퓨터에선 안 보임 */   /* 미리보기 밑 다운로드 — 폰에서만(컴퓨터는 하단 바가 넓어서 충분) */
   @media (max-width:860px){
     .pv-dl { display:flex; gap:8px; margin-top:12px; }
     .pv-dl button { flex:1 1 0; min-height:46px; font-size:14px; font-weight:700; padding:10px 8px; }
@@ -370,6 +371,38 @@
     .mobile-preview-toggle:active { background:#f9dbe6; }
     body:not(.preview-open) .cardPreview,
     body:not(.preview-open) .box-y { display:none; } /* 접으면 미리보기+노란 편집칸(3·텍스트)까지 같이 숨겨 스크롤 절약(모바일 한정) */
+
+    /* ── 폰 배치 v2 (2026-11): 결과 먼저, 고칠 것은 접어두기 ──
+       트윗 링크 → 미리보기(+받기) → 사진 확대·배경 → 원고 → [텍스트 수정▼][사진·원문▼][크롭▼][이전 입력▼] */
+    .mobile-preview-toggle { display:none !important; }   /* 미리보기는 늘 보이고, 대신 아래 접기 버튼들로 */
+    .mnav { display:flex; order:0; position:sticky; top:0; z-index:60; gap:6px; background:rgba(255,255,255,.96);
+            padding:7px; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,.08); }
+    .mnav button { flex:1; border:none; border-radius:8px; background:#f6eef2; color:var(--accent); font-size:14px; font-weight:800; padding:11px 0; }
+    .mtweet { display:block; order:2; }
+    .cardPreview { order:3 !important; } .cardCrop { order:4 !important; } .box-b { order:5 !important; }
+    .cardPreview, .box-b, .box-y, .cardInput, .igcrop-wrap, .cardSlots { scroll-margin-top:70px; }   /* 위 고정 바에 가리지 않게 */
+    .mfold { display:flex; justify-content:space-between; align-items:center; width:100%; text-align:left; background:#fff;
+             border:1.5px solid var(--line2); border-radius:14px; padding:15px 16px; font-size:16px; font-weight:800; color:var(--text); }
+    .mfold small { display:block; color:var(--muted); font-weight:500; font-size:12.5px; margin-top:3px; }
+    .mfold b { color:var(--accent); }
+    .mfold[data-fold=text]{order:10} .box-y{order:11 !important}
+    .mfold[data-fold=input]{order:12} .cardInput{order:13 !important}
+    .mfold[data-fold=crop]{order:14} .igcrop-wrap{order:15 !important}
+    .mfold[data-fold=slots]{order:16} .cardSlots{order:17 !important}
+    .box-g{order:18 !important}
+    body:not(.f-text) .box-y, body:not(.f-input) .cardInput, body:not(.f-crop) .igcrop-wrap, body:not(.f-slots) .cardSlots { display:none; }
+    /* 미리보기: 엄지 하나 폭만큼 줄이고, 그 자리에 썸네일을 세로로 */
+    .cardPreview { display:grid; grid-template-columns:minmax(0,1fr) 58px; column-gap:10px; align-items:start; }
+    .cardPreview .imagerow { grid-column:1; grid-row:1; margin:0; }
+    .cardPreview .stagewrap, .cardPreview #stage, .cardPreview #pageStage { width:100% !important; }
+    .cardPreview #pageThumbs { grid-column:2; grid-row:1; flex-direction:column; flex-wrap:nowrap; gap:9px; margin:0;
+                               padding:6px 0 0 4px; overflow-y:auto; max-height:var(--pvH, 400px); }
+    .cardPreview .pthumb canvas { width:48px; height:60px; }
+    .cardPreview .th-star, .cardPreview .th-del { width:20px; height:20px; top:-6px; font-size:11px; }
+    .cardPreview .th-star { left:-6px; } .cardPreview .th-del { right:-6px; }
+    .cardPreview .pnum { font-size:9px; padding:0 3px; left:2px; bottom:2px; }
+    .cardPreview > .hint, .cardPreview .pv-dl, .cardPreview .pv-dlmsg { grid-column:1 / -1; }
+    .cardPreview #pageThumbs[hidden] + .imagerow { grid-column:1 / -1; }   /* 한 장뿐이면 썸네일 칸 없이 넓게 */
 
     .stagewrap { flex:0 0 auto; width:auto; max-width:100%; }
     /* 좁은 폰에선 '표시 크기'만 화면폭에 맞춰 축소. canvas width/height 속성(1080×1350)은
@@ -623,6 +656,18 @@
   </div>
 
   <!-- ══ 하단 고정 바 — 결과물이 항상 손 닿는 곳에 · "확정하고 다음" 관문 없이 변경만 알림 ══ -->
+  <!-- ══ 폰 전용(가로 860px 이하) — 결과 먼저, 고칠 것은 접어두기. 컴퓨터 화면에선 전부 숨김 ══ -->
+  <nav class="mnav" id="mNav">
+    <button type="button" data-go="preview">미리보기</button>
+    <button type="button" data-go="copy">원고</button>
+    <button type="button" data-go="text">수정 ▾</button>
+  </nav>
+  <div class="card mtweet" id="mTweet"></div>
+  <button type="button" class="mfold" data-fold="text"><span>✏️ 텍스트 수정<small>헤드라인·작품명·캐릭터·글자 크기·안내문</small></span><b>▼</b></button>
+  <button type="button" class="mfold" data-fold="input"><span>📷 사진 · 원문<small>사진 바꾸기·원문 고치기·자동 채우기</small></span><b>▼</b></button>
+  <button type="button" class="mfold" data-fold="crop"><span>🧩 인스타 규격 크롭<small>좌우 나누기·장별 세부 조정</small></span><b>▼</b></button>
+  <button type="button" class="mfold" data-fold="slots"><span>🕘 이전 입력<small>지난 작업 불러오기</small></span><b>▼</b></button>
+
   <div class="dockbar" id="dockbar">
     <div class="dstatus"><span class="ddot"></span><span><span id="dockMsg">준비 중</span> <span class="dsub" id="blockmsg"></span></span></div>
     <div class="dspacer"></div>
@@ -1775,6 +1820,32 @@ async function saveMemoNote(){
 }
 document.getElementById('btnSaveMemo').addEventListener('click', saveMemoNote);
 
+/* ── 폰 배치 v2 동작 — 폰 크기에서만. 컴퓨터로 돌아오면(창 넓히기) 원래 자리로 되돌린다 ── */
+const MOBILE = matchMedia('(max-width:860px)');
+(function(){
+  const mT=document.getElementById('mTweet'), row=document.querySelector('.tweetrow'), st=document.getElementById('tweetStatus'),
+        home=document.querySelector('.cardInput .combo12');
+  function place(){ if(MOBILE.matches){ mT.append(row, st); } else { home.before(row, st); } }
+  place(); MOBILE.addEventListener('change', place);
+  const target={ text:'.box-y', input:'.cardInput', crop:'.igcrop-wrap', slots:'.cardSlots' };
+  function setFold(k, open){ document.body.classList.toggle('f-'+k, open);
+    const b=document.querySelector(`.mfold[data-fold=${k}] b`); if(b) b.textContent = open ? '▲' : '▼'; }
+  document.querySelectorAll('.mfold').forEach(btn=>btn.addEventListener('click', ()=>{
+    const k=btn.dataset.fold, open=!document.body.classList.contains('f-'+k); setFold(k, open);
+    if(open) document.querySelector(target[k]).scrollIntoView({behavior:'smooth', block:'start'}); }));
+  document.querySelectorAll('#mNav button').forEach(btn=>btn.addEventListener('click', ()=>{
+    const g=btn.dataset.go;
+    if(g==='text') setFold('text', true);
+    document.querySelector(g==='preview' ? '.cardPreview' : g==='copy' ? '.box-b' : '.box-y').scrollIntoView({behavior:'smooth', block:'start'}); }));
+  // 썸네일 세로 칸 높이 = 미리보기 높이(넘치면 그 안에서 스크롤)
+  const syncH=()=>{ const v=document.querySelector('.cardPreview .stagewrap'); if(v) document.querySelector('.cardPreview').style.setProperty('--pvH', v.getBoundingClientRect().height+'px'); };
+  new ResizeObserver(syncH).observe(document.querySelector('.cardPreview .stagewrap'));
+  // 폰: 트윗을 가져오면 원고까지 만들어 두고 미리보기로 이동(붙여넣기 → 확인 → 받기·올리기로 끝나게)
+  window.afterTweetMobile = ()=>{ if(!MOBILE.matches) return;
+    document.getElementById('genCopy').click();
+    document.querySelector('.cardPreview').scrollIntoView({behavior:'smooth', block:'start'}); };
+})();
+
 document.getElementById('previewToggle').addEventListener('click', function(){
   const open = document.body.classList.toggle('preview-open');
   this.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -1954,6 +2025,7 @@ async function applyTweetHandoffInner(h){
   st.textContent = msgs.join(' · ') + (st.textContent ? ' / ' + st.textContent : '');
   const ts=document.getElementById('tweetStatus'); ts.textContent=msgs.join(' · '); ts.classList.toggle('warn', warn);
   document.dispatchEvent(new CustomEvent('pages:select', {detail:{key:'card'}}));   // 미리보기는 카드로
+  if(window.afterTweetMobile) window.afterTweetMobile();
 }
 
 /* ── ① 트윗 링크 칸 — 붙여넣거나 [가져오기]를 누르면 /api/tweet에서 원문·사진을 받아 위 함수로 채운다.
