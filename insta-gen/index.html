@@ -186,6 +186,8 @@
   .ccount b { font-weight:700; }
   /* 280 넘치는 부분 형광펜 — 글자칸 뒤에 같은 글자를 투명하게 깔고, 넘친 부분만 연빨강 배경을 칠한다
      (textarea는 일부만 색칠할 수 없어서 뒤판으로 흉내. 글꼴·여백·줄간격이 글자칸과 같아야 겹친다) */
+  .follow-tg { width:100%; margin:0 0 8px; font-size:12.5px; padding:7px 10px; }
+  .follow-tg.off { border-color:var(--accent); color:var(--accent); font-weight:700; }
   .copywrap { position:relative; }
   .copywrap #t_copy { position:relative; background:transparent; z-index:1; }
   .copyhl { position:absolute; inset:0; overflow:hidden; pointer-events:none; color:transparent; background:#fff;
@@ -594,6 +596,7 @@
         <button class="btn2" id="genCopy">원고 생성 / 새로고침</button>
         <button class="btn2" id="doCopy">복사</button>
       </div>
+      <button type="button" class="btn2 follow-tg" id="copyFollow" title="X 280자를 넘길 때 팔로우 문장만 통째로 빼거나 다시 넣기 (일본 국내 안내문은 그대로)">팔로우 문장 빼기</button>
       <div class="copywrap"><div class="copyhl" id="copyHl" aria-hidden="true"></div>
       <textarea id="t_copy" placeholder="'원고 생성'을 누르면 위 텍스트값으로 캡션이 만들어집니다. 만든 뒤 자유롭게 수정하세요."></textarea></div>
       <div class="ccount" id="copyCount">0 / 280 (한글 0/140)</div>
@@ -900,7 +903,7 @@ function initJpNotice(now=new Date(), keepChoice=false){
 let copyFingerprint = null;
 function currentFingerprint(){
   return JSON.stringify([state.text.headline, state.work, state.line, state.linePrefix,
-                         state.text.product, state.jp, state.saleDate, state.bullet, copyJpNotice()]);
+                         state.text.product, state.jp, state.saleDate, state.bullet, copyJpNotice(), copyFollowOn]);
 }
 function markCopyFresh(){ copyFingerprint = currentFingerprint(); runValidation(); }
 
@@ -1323,7 +1326,7 @@ function buildCopy(){
   const tags=[...new Set(raw)].join(' ');
   // 개발중(원형/채색원형 최초공개) → 팔로우 멘트 / 그 외(판매정보) → ※ 멘트 (줄바꿈 고정)
   const bottom = isDev
-    ? '메가하우스 공식 스토어를 팔로우하고\n기다리는 굿즈의 후속 정보를 가장 빠르게 받아보세요!'
+    ? (copyFollowOn ? FOLLOW_TEXT : '')   // 팔로우 문장은 버튼으로 뺄 수 있음(280 넘을 때)
     : '※ 예약 오픈 시 별도 공지\n※ 일본 현지 기준 소식으로, 국내외 사정에 따라 일부 사항이 변동될 수 있습니다.';
   const parts = [`📢[${h}] ${headTitle}`.trim(), block];
   if(state.saleDate.trim()) parts.push(`⏰${state.saleDate.trim()}(${state.saleDow||'목'}) 예약판매 시작!`);
@@ -1334,6 +1337,25 @@ function buildCopy(){
 }
 // 원고 안내문 — 카드 맨 아래 노란 안내문과 같은 문장. 원문에 일본어(가나)가 있고, 카드 안내문 체크박스가
 // 켜져 있을 때만 넣는다. 체크박스는 오픈 D-7~당일엔 자동으로 꺼지므로 그 기간엔 원고에서도 자동으로 빠짐.
+// 팔로우 문장 켜고 끄기 — 원고가 X 280을 넘을 때 이 문장만 통째로 빼서 줄인다. 일본 국내 안내문은 1순위라
+// 이 버튼으로 빠지지 않는다. 도구를 열 때마다 켜진 상태로 시작(저장 안 함)
+const FOLLOW_TEXT='메가하우스 공식 스토어를 팔로우하고\n기다리는 굿즈의 후속 정보를 가장 빠르게 받아보세요!';
+var copyFollowOn=true;
+function setCopyFollow(on){
+  copyFollowOn=on;
+  const b=document.getElementById('copyFollow'); b.textContent = on ? '팔로우 문장 빼기' : '팔로우 문장 다시 넣기'; b.classList.toggle('off', !on);
+  // 이미 만든(또는 손본) 원고에도 바로 반영 — 다시 만들면 손본 내용이 날아가니 그 문장만 빼고 넣는다
+  const ta=document.getElementById('t_copy'); let t=ta.value;
+  if(t.trim()){
+    if(!on) t=t.replace('\n\n'+FOLLOW_TEXT,'').replace(FOLLOW_TEXT+'\n\n','').replace(FOLLOW_TEXT,'');
+    else if(!t.includes(FOLLOW_TEXT)){
+      const at = t.indexOf(JP_NOTICE_TEXT)>=0 ? t.indexOf(JP_NOTICE_TEXT) : t.lastIndexOf('\n\n#')>=0 ? t.lastIndexOf('\n\n#')+2 : t.length;
+      t = t.slice(0,at) + FOLLOW_TEXT + (at<t.length ? '\n\n' : '') + t.slice(at);
+    }
+    ta.value=t; updateCopyCount(); markCopyFresh();
+  }
+}
+document.getElementById('copyFollow').addEventListener('click', ()=>setCopyFollow(!copyFollowOn));
 const JP_NOTICE_TEXT='※ 일본 국내에서 발표된 정보입니다. 한국에서의 수주, 판매는 결정되는대로 안내하겠습니다.';
 function copyJpNotice(){
   const src=(document.getElementById('t_source')?.value||'')+(typeof appliedSource==='string'?appliedSource:'');
@@ -1641,7 +1663,7 @@ new ResizeObserver(paintCopyOverflow).observe(document.getElementById('t_copy'))
 document.getElementById('t_copy').addEventListener('input', updateCopyCount);
 document.getElementById('genCopy').addEventListener('click', ()=>{ document.getElementById('t_copy').value=buildCopy(); updateCopyCount(); markCopyFresh();
   // 만들자마자 X 280자(한글 140자)를 넘으면 바로 알림 — 올리기 직전에 알면 늦다
-  const w=tweetWeight(document.getElementById('t_copy').value); if(w>280) showToast(`원고가 X 기준 ${w}/280이라 ${w-280}만큼 넘어요 — 연빨강으로 칠한 부분을 줄여주세요(한글 1자 = 2)`); });
+  const w=tweetWeight(document.getElementById('t_copy').value); if(w>280) showToast(`원고가 X 기준 ${w}/280이라 ${w-280}만큼 넘어요 — 연빨강 부분을 줄여주세요`+(copyFollowOn && document.getElementById('t_copy').value.includes(FOLLOW_TEXT) ? ' (많이 넘으면 [팔로우 문장 빼기])' : '')); });
 document.getElementById('dockRegen').addEventListener('click', ()=>document.getElementById('genCopy').click());
 document.getElementById('dockCopy').addEventListener('click', ()=>document.getElementById('doCopy').click());
 document.getElementById('doCopy').addEventListener('click', async ()=>{ const t=document.getElementById('t_copy'); try{ await navigator.clipboard.writeText(t.value); }catch{ t.select(); document.execCommand('copy'); } const b=document.getElementById('doCopy'); const o=b.textContent; b.textContent='복사됨!'; setTimeout(()=>b.textContent=o,1200); });
