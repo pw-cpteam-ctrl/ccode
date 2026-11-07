@@ -1010,6 +1010,12 @@ function bestHeadline(txt){
   const hits=HEADS.filter(h=>h.kw.some(k=>inc(txt||'',k))).map(h=>h.kr);
   return hits.sort((a,b)=>headRank(a)-headRank(b))[0] || '';
 }
+// 원형 최초공개(색이 없는 시제품)면 캐릭터 줄마다 뒤에 '(미채색)'을 붙인다 — 채색원형과 구분되게.
+// 원문·AI가 이미 미채색을 넣었으면 그대로 둔다. 채우기(무료·AI) 때만 붙이고, 그 뒤엔 칸에서 자유롭게 고칠 수 있다
+function withMichaesaek(prod, head){
+  if(head!=='원형 최초공개' || !prod) return prod;
+  return prod.split('\n').map(l=> !l.trim() || /미채색/.test(l) ? l : l.replace(/\s+$/,'')+' (미채색)').join('\n');
+}
 function parseJP(txt){
   const r={};
   const inc=(h,n)=>h.toLowerCase().includes(n.toLowerCase());   // 대소문자 무시 (gem→GEM)
@@ -1231,7 +1237,7 @@ function applySource(){
   if(head){ if(!setSelect('t_headline',head)) miss.push('헤드라인'); else state.text.headline=head; } else miss.push('헤드라인');
   { const wv = work || '[작품명]'; document.getElementById('t_work').value = wv; state.work = wv; if(!work) miss.push('작품'); }
   if(line){ if(!setLineSelect(line, R&&R.charPrefix)) miss.push('라인('+line+')'); else state.line=line; } else miss.push('라인');
-  { const v=(prod||'').split(/[\n／/]/).map(s=>s.trim()).filter(Boolean).join('\n'); document.getElementById('t_product').value=v; state.text.product=v; if(!v) miss.push('제품명(캐릭터)'); }
+  { const v=withMichaesaek((prod||'').split(/[\n／/]/).map(s=>s.trim()).filter(Boolean).join('\n'), head); document.getElementById('t_product').value=v; state.text.product=v; if(!v) miss.push('제품명(캐릭터)'); }
   document.getElementById('t_jp').value = jp||''; state.jp = jp||'';
   document.getElementById('t_saledate').value = date||''; state.saleDate = date||''; state.saleDow = dow;
   state.linePrefix = (R && R.charPrefix) || '';   // 테노히라 등 접두어 (원고 시리즈 줄에 사용)
@@ -1539,7 +1545,7 @@ function applyParsed(data, originalTxt) {
   if (head) { if (!setSelect('t_headline', head)) miss.push('헤드라인'); else state.text.headline = head; } else miss.push('헤드라인');
   { const wv = work || '[작품명]'; document.getElementById('t_work').value = wv; state.work = wv; if (!work) miss.push('작품'); }
   if (line) { if (!setLineSelect(line, data.linePrefix)) miss.push('라인(' + line + ')'); else state.line = line; } else miss.push('라인');
-  document.getElementById('t_product').value = prod; state.text.product = prod;
+  { const v = withMichaesaek(prod, head); document.getElementById('t_product').value = v; state.text.product = v; }
   document.getElementById('t_jp').value = jp; state.jp = jp;
   document.getElementById('t_saledate').value = date; state.saleDate = date; state.saleDow = '목';
   state.linePrefix = data.linePrefix || '';
