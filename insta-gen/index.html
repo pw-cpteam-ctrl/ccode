@@ -322,12 +322,14 @@
   /* ===== 모바일 (≤860px): 반응형 축소가 아니라 PC의 좌·우 2열을 세로 1열로 쌓고,
      미리보기는 기본 펼침(사진 넣으면 바로 보이게) + 큰 버튼으로 원하면 접을 수 있게 한다. ===== */
   .mobile-preview-toggle { display:none; } /* 데스크톱에선 숨김(미리보기 항상 표시) */
-  .pv-dl { display:none; }   /* 미리보기 밑 다운로드 — 폰에서만(컴퓨터는 하단 바가 넓어서 충분) */
+  .pv-dl, .pv-dlmsg { display:none; }   /* 미리보기 밑 다운로드 — 폰에서만(컴퓨터는 하단 바가 넓어서 충분) */
   @media (max-width:860px){
     .pv-dl { display:flex; gap:8px; margin-top:12px; }
     .pv-dl button { flex:1 1 0; min-height:46px; font-size:14px; font-weight:700; padding:10px 8px; }
     .pv-dl button[hidden] { display:none; }
     .pv-dl button:disabled { opacity:.45; }
+    .pv-dlmsg { display:block; font-size:13px; color:var(--danger); font-weight:600; margin-top:8px; text-align:center; }
+    .pv-dlmsg:empty { display:none; }
   }
   @media (max-width: 860px) {
     /* flex-wrap은 반드시 nowrap — column 방향에서 wrap이면 세로로 안 들어가는 카드가
@@ -547,6 +549,7 @@
         <button type="button" class="btn btn-primary" id="pvDlOne" disabled>⬇ PNG 다운로드</button>
         <button type="button" class="btn-dock btn-dlall" id="pvDlAll" hidden disabled>⬇ 전체</button>
       </div>
+      <div class="pv-dlmsg" id="pvDlMsg"></div>
     </div>
     <button class="mobile-preview-toggle" id="previewToggle" type="button" aria-expanded="true">🖼 미리보기·편집칸 접기 ▲</button>
 
@@ -906,14 +909,17 @@ function runValidation(){
   const dock=document.getElementById('dockbar'), dmsg=document.getElementById('dockMsg');
   const regen=document.getElementById('dockRegen');
   const src = document.getElementById('t_source').value.trim();
-  const filled = !!state.work.trim() && !!state.text.product.trim();
+  // 상품화 결정 공지는 캐릭터가 아직 안 나온 경우가 많아(예: 「東方Project 商品化決定！」) 제품명이 비어도 통과
+  const needProduct = state.text.headline!=='상품화 결정';
+  const filled = !!state.work.trim() && (!needProduct || !!state.text.product.trim());
   let blocked = true;
   if(!state.img){ dl.disabled=true; bm.textContent='사진을 먼저 올려주세요.'; }
   else if(!src){ dl.disabled=true; bm.textContent='2번 원문 입력은 필수입니다.'; }
-  else if(!filled){ dl.disabled=true; bm.textContent='작품명과 제품명을 채워주세요.'; }
+  else if(!filled){ dl.disabled=true; bm.textContent= needProduct ? '작품명과 제품명(캐릭터)을 채워주세요.' : '작품명을 채워주세요.'; }
   else { dl.disabled=false; bm.textContent=''; blocked=false; }
   const dla=document.getElementById('downloadAll'); if(dla) dla.disabled=blocked;   // 전체 다운로드도 같은 기준
   ['postX','postIG'].forEach(id=>{ const b=document.getElementById(id); if(b) b.disabled=blocked; });   // SNS 올리기도 같은 기준
+  { const pm=document.getElementById('pvDlMsg'); if(pm) pm.textContent = blocked ? '⚠ '+bm.textContent : ''; }   // 폰: 하단 바엔 빨간 점만 보여서, 미리보기 밑에 잠긴 이유를 글자로
 
   // 하단 바 상태등: 빨강=아직 못 받음 / 노랑=원고가 옛날 값 / 초록=최신
   if(dock){
@@ -1321,7 +1327,7 @@ function buildCopy(){
     : '※ 예약 오픈 시 별도 공지\n※ 일본 현지 기준 소식으로, 국내외 사정에 따라 일부 사항이 변동될 수 있습니다.';
   const parts = [`📢[${h}] ${headTitle}`.trim(), block];
   if(state.saleDate.trim()) parts.push(`⏰${state.saleDate.trim()}(${state.saleDow||'목'}) 예약판매 시작!`);
-  parts.push(bottom);
+  if(bottom) parts.push(bottom);
   if(copyJpNotice()) parts.push(JP_NOTICE_TEXT);   // 2번째 문장 — 일본 발표 원문일 때만(오픈 D-7~당일엔 빠짐)
   parts.push(tags);
   return parts.join('\n\n');
@@ -1510,7 +1516,7 @@ cv.addEventListener('pointerup', _endDrag); cv.addEventListener('pointercancel',
 cv.addEventListener('wheel', e=>{ if(!state.img) return; e.preventDefault(); setSel(halfAtClientX(e.clientX)); const fg=activeFg(); const nz=Math.max(1,Math.min(3, fg.zoom*(e.deltaY<0?1.06:0.94))); fg.zoom=nz; _syncZoomUI(nz); render(); }, {passive:false});
 
 /* ── 입력 연결 ── */
-document.getElementById('t_headline').addEventListener('change', e=>{ state.text.headline=e.target.value; render(); });
+document.getElementById('t_headline').addEventListener('change', e=>{ state.text.headline=e.target.value; render(); runValidation(); });   // runValidation: 상품화 결정이면 제품명 없어도 받을 수 있어서
 document.getElementById('t_work').addEventListener('input', e=>{ state.work=e.target.value; composeTitle(); updatePreview(); render(); runValidation(); checkWorkSpacing(); });
 document.getElementById('t_work').addEventListener('focus', e=>{ if(e.target.value==='[작품명]') e.target.select(); });  // 더미는 클릭 시 전체선택
 document.getElementById('t_line').addEventListener('change', e=>{
