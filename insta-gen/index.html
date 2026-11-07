@@ -966,7 +966,8 @@ function runValidation(){
   const regen=document.getElementById('dockRegen');
   const src = document.getElementById('t_source').value.trim();
   // 상품화 결정 공지는 캐릭터가 아직 안 나온 경우가 많아(예: 「東方Project 商品化決定！」) 제품명이 비어도 통과
-  const needProduct = state.text.headline!=='상품화 결정';
+  // 컬렉션 계열(컬렉션 굿즈·피규어·아크릴 등)은 여러 명 묶음이라 원문부터 캐릭터를 안 적는 경우가 많아 역시 통과
+  const needProduct = state.text.headline!=='상품화 결정' && !/컬렉션/.test(state.line||'');
   // 작품명 칸의 자리표시 '[작품명]'은 비어 있는 것으로 본다(예전엔 글자가 있다고 통과돼 '[작품명]'이 찍힌 카드가 나갈 수 있었음)
   const workOk = !!state.work.trim() && state.work.trim()!=='[작품명]';
   const filled = workOk && (!needProduct || !!state.text.product.trim());
@@ -1605,11 +1606,11 @@ document.getElementById('t_line').addEventListener('change', e=>{
   // 직접 골랐을 때도 접두어가 반영되게 여기서 세팅. 접두어 없는 옵션이면 비움.
   state.linePrefix = e.target.selectedOptions[0]?.dataset.prefix || '';
   document.getElementById('t_lineprefix').value = state.linePrefix;   // 자동 채움(이후 직접 수정 가능)
-  composeTitle(); updatePreview(); render();
+  composeTitle(); updatePreview(); render(); runValidation();   // runValidation: 컬렉션 계열이면 제품명 없어도 받을 수 있어서
 });
 // 세부 설명은 드롭다운이 자동으로 채워주지만, "토비마스 (6종 세트)"처럼 부가 설명을 덧붙이는 등
 // 직접 수정도 가능해야 해서 별도 텍스트박스로 뺌 — 드롭다운 선택과 별개로 이 값이 그대로 쓰인다.
-document.getElementById('t_linecustom').addEventListener('input', e=>{ state.line=e.target.value.trim(); composeTitle(); updatePreview(); render(); });
+document.getElementById('t_linecustom').addEventListener('input', e=>{ state.line=e.target.value.trim(); composeTitle(); updatePreview(); render(); runValidation(); });
 document.getElementById('t_lineprefix').addEventListener('input', e=>{ state.linePrefix=e.target.value; render(); });
 document.getElementById('t_product').addEventListener('input', e=>{ state.text.product=e.target.value; render(); runValidation(); });
 document.getElementById('t_footer').addEventListener('input', e=>{ state.text.footer=e.target.value; render(); });
