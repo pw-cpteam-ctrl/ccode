@@ -1904,6 +1904,8 @@ async function applyTweetHandoffInner(h){
   else clearCardPhoto();   // 사진 없는 트윗(또는 하나도 못 받음) — 지난 작업 카드 사진이 남지 않게 비움
   // 2장째부터는 ⑤ 크롭(캐러셀 2페이지~)으로
   document.dispatchEvent(new CustomEvent('igcrop:addFiles', {detail:{files:files.slice(1), fromTweet:true}}));
+  // 가공하지 않은 원본 그대로도 목록 맨 뒤에(카드·4:5 크롭에서 잘린 부분까지 그대로 올리고 싶을 때)
+  if(window.setTweetOriginals) await window.setTweetOriginals(files);
   const text=(h.text||'').trim();
   document.getElementById('t_source').value=text;
   // 트윗 본문은 문장형이라 무료 사전 방식은 캐릭터명에 조사까지 붙여 집는 일이 잦다 — AI로 바로 채우고,
@@ -2476,10 +2478,23 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   const api=()=>window.igcropPages;
   // ⑤의 '카드 생성기 사진'(카드에 쓴 사진 원본)도 목록에 넣는다 — 카드 액자 안에서는 사진 가장자리
   // (카피라이트 표기 등)가 잘릴 수 있어서, 원본을 2장째로 같이 올려야 한다. ★로 표지를 바꾸면 이 장도 따라 바뀐다.
-  function pages(){ const L=[{key:'card'}]; (api()?api().list():[]).forEach(p=>L.push({key:'p'+p.id, id:p.id, name:p.name, fromMain:p.fromMain})); return L; }
+  // 트윗에서 받은 사진 '원본 그대로'(4:5로 자르지 않은 것) — 목록 맨 뒤에 붙고, 받을 때도 원래 크기·형식 그대로 나간다.
+  // 새 작업(새 트윗·이전 입력 슬롯)으로 넘어가면 비운다. { file, img(ImageBitmap) }
+  let originals=[];
+  window.setTweetOriginals = async files=>{
+    originals=[]; for(const f of files){ try{ originals.push({ file:f, img: await createImageBitmap(f) }); }catch(e){ console.error(e); } }
+    build();
+  };
+  document.addEventListener('igcrop:newWork', ()=>{ if(originals.length){ originals=[]; build(); } });
+  function pages(){ const L=[{key:'card'}]; (api()?api().list():[]).forEach(p=>L.push({key:'p'+p.id, id:p.id, name:p.name, fromMain:p.fromMain}));
+    originals.forEach((o,j)=>L.push({key:'o'+j, orig:j, name:'트윗 원본 '+(j+1)})); return L; }
+  // 원본 장 그리기 — 잘라내지 않고 칸 안에 통째로(남는 곳은 흰 바탕)
+  function drawOrig(o, x, W, H){ const s=Math.min(W/o.img.width, H/o.img.height), w=o.img.width*s, h=o.img.height*s;
+    x.fillStyle='#fff'; x.fillRect(0,0,W,H); x.drawImage(o.img,(W-w)/2,(H-h)/2,w,h); }
   let neighborIdx=0, busy=false;   // 지운 장 자리(크게 보던 장을 지우면 이웃 장으로 옮기려고)
   function paint(pg, c){ const x=c.getContext('2d'); x.clearRect(0,0,c.width,c.height);
     if(pg.key==='card') x.drawImage(stage,0,0,c.width,c.height);   // 카드는 이미 그려진 큰 캔버스를 줄여서
+    else if(pg.orig!=null){ const o=originals[pg.orig]; if(o) drawOrig(o,x,c.width,c.height); }
     else if(api()) api().draw(pg.id, x, c.width, c.height); }        // 사진 장은 ⑤와 같은 함수로
   function build(){
     const L=pages(); if(!L.find(p=>p.key===key)) key=(L[neighborIdx]||L[neighborIdx-1]||L[0]).key;
@@ -2491,15 +2506,18 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
       const w=document.createElement('div'); w.className='pthumb'+(pg.key===key?' sel':''); w.dataset.key=pg.key;
       w.title = pg.key==='card' ? '카드' : pg.fromMain ? `${i+1}장째 · 표지 사진 원본(카드에서 잘리는 부분까지 전체)` : `${i+1}장째 · ${pg.name}`;
       const c=document.createElement('canvas'); c.width=TW; c.height=TH; paint(pg,c);
-      const n=document.createElement('span'); n.className='pnum'; n.textContent = i===0 ? '카드' : pg.fromMain ? `${i+1} 원본` : String(i+1);
+      const n=document.createElement('span'); n.className='pnum'; n.textContent = i===0 ? '카드' : pg.fromMain ? `${i+1} 원본` : pg.orig!=null ? `${i+1} 그대로` : String(i+1);
+      if(pg.orig!=null) w.title=`${i+1}장째 · 트윗 원본 그대로(자르지 않음 — 받을 때도 원래 크기)`;
       // ★ = 표지. 1장째(카드)가 늘 표지이고, 사진 장의 ★를 누르면 그 사진이 카드 사진이 된다(맞바꾸기)
       const star=document.createElement('div'); star.className='th-star'+(pg.key==='card'?' on':'');
       star.textContent='★'; star.title = pg.key==='card' ? '지금 표지(카드)' : '이 사진을 표지(카드)로 — 원래 카드 사진은 이 자리로';
       star.addEventListener('click', e=>{ e.stopPropagation(); if(pg.key!=='card') setCover(pg.id); });   // stopPropagation: 없으면 선택까지 같이 바뀜
-      w.append(c,n); if(!pg.fromMain) w.appendChild(star);   // 원본 장은 이미 표지 사진 그 자체라 ★ 없음
+      w.append(c,n); if(!pg.fromMain && pg.orig==null) w.appendChild(star);   // 원본 그대로 장도 ★ 없음(자르지 않은 사진이라)   // 원본 장은 이미 표지 사진 그 자체라 ★ 없음
       if(pg.key!=='card'){   // 카드(표지)는 지울 수 없다 — ✕는 사진 장에만, ★ 반대편 모서리에
         const del=document.createElement('div'); del.className='th-del'; del.textContent='✕'; del.title='이 장 지우기';
-        del.addEventListener('click', e=>{ e.stopPropagation(); removePage(pg, i); });
+        del.addEventListener('click', e=>{ e.stopPropagation();
+          if(pg.orig!=null){ neighborIdx=i; originals.splice(pg.orig,1); build(); return; }   // 원본 그대로 장은 목록에서만 뺌
+          removePage(pg, i); });
         w.appendChild(del);
       }
       w.addEventListener('click',()=>select(pg.key)); row.appendChild(w);
@@ -2513,6 +2531,8 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     labelOne();
     if(card){ hint.textContent=HINT_CARD; return; }
     const L=pages(), i=L.findIndex(p=>p.key===key), pg=L[i];
+    if(pg && pg.orig!=null){ drawOrig(originals[pg.orig], pstage.getContext('2d'), PW, PH);
+      hint.textContent=`${i+1}장째 · 트윗 원본 그대로(자르거나 늘리지 않음) — 받을 때 원래 크기·형식 그대로 나가요`; return; }
     if(pg && api()) api().draw(pg.id, pstage.getContext('2d'), PW, PH);
     hint.textContent=`${i+1}장째 사진 · 드래그로 위치, 휠·두 손가락으로 확대/축소 (좌우 나누기·삭제·다운로드는 맨 아래 인스타 규격 크롭)`;
   }
@@ -2529,8 +2549,8 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     current: ()=>key,
     async downloadCurrent(){
       const L=pages(), i=L.findIndex(p=>p.key===key), pg=L[i]; if(!pg || pg.key==='card') return;
-      const blob=await api().blob(pg.id), a=document.createElement('a');
-      a.href=URL.createObjectURL(blob); a.download=`${buildDownloadName().replace(/\.png$/,'')}_${String(i+1).padStart(2,'0')}.png`;
+      const isO=pg.orig!=null, blob= isO ? originals[pg.orig].file : await api().blob(pg.id), a=document.createElement('a');
+      a.href=URL.createObjectURL(blob); a.download= isO ? origName(i, blob) : `${buildDownloadName().replace(/\.png$/,'')}_${String(i+1).padStart(2,'0')}.png`;
       document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
     },
   };
@@ -2559,13 +2579,16 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   document.addEventListener('igcrop:list', build);
   document.addEventListener('igcrop:changed', e=>{ const k='p'+e.detail.id; repaint(k); if(k===key) show(); });
   document.addEventListener('pages:select', e=>{ build(); select(e.detail && e.detail.key || 'card'); });
-  if(api()) api().attach(pstage, ()=> key==='card' ? null : +key.slice(1), PW, PH);
+  if(api()) api().attach(pstage, ()=> key[0]==='p' ? +key.slice(1) : null, PW, PH);   // 카드·원본 그대로 장은 끌어서 조정 안 함
 
   // ── 전체 다운로드: 카드 + 사진 장을 목록 순서대로 번호 붙여 한 장씩 내려받는다(ZIP 없이) ──
   // 파일 이름: 작품_라인_01_카드.png, 작품_라인_02.png … — 폴더에서 이름순 정렬하면 올릴 순서 그대로.
   // 폰은 공유 창으로 한 번에 넘겨서 "이미지 N개 저장"으로 사진첩에 바로 넣게 한다(한 장씩 받으면
   // 파일 앱으로 가고 매번 확인창이 떠서 불편). 공유가 안 되는 폰이면 한 장씩 받기로 내려간다.
   // 목록 순서대로 PNG 파일을 만든다(전체 다운로드·SNS 올리기가 같이 씀) — 파일 이름: 작품_라인_01_카드.png, _02.png …
+  // 원본 그대로 파일 이름 — 작품_라인_05_원본.jpg (확장자는 원래 형식대로)
+  function origName(i, f){ const ext=(f.type.split('/')[1]||'jpg').replace('jpeg','jpg');
+    return `${buildDownloadName().replace(/\.png$/,'')}_${String(i+1).padStart(2,'0')}_원본.${ext}`; }
   async function makeFiles(){
     const L=pages(), base=buildDownloadName().replace(/\.png$/,''), files=[];
     // 만들기 시작한 순간의 사진 지문 — '이미 받음' 기록은 반드시 이 값으로 남긴다. 다 만든 뒤에 다시 재면
@@ -2573,6 +2596,7 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     files.key=photoKey();
     for(let i=0;i<L.length;i++){
       const pg=L[i];
+      if(pg.orig!=null){ const f=originals[pg.orig].file; files.push(new File([f], origName(i,f), {type:f.type||'image/jpeg'})); continue; }
       const blob = pg.key==='card' ? await new Promise((res,rej)=>stage.toBlob(b=>b?res(b):rej(new Error('카드 변환 실패')),'image/png'))
                                    : await api().blob(pg.id);
       files.push(new File([blob], `${base}_${String(i+1).padStart(2,'0')}${pg.key==='card'?'_카드':''}.png`, {type:'image/png'}));
@@ -2592,7 +2616,7 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   // 마지막으로 내려받은 시점의 '사진 내용 지문'과 장수를 기억해 두고, 사진이 그대로면 다시 받지 않는다.
   // 지문 = 실행취소가 기억하는 값(글자·위치·확대·사진 번호표·⑤ 목록)에서 사진에 안 찍히는 원문만 뺀 것.
   let saved=null;   // { key, n } — n: 앞에서부터 몇 장째까지 받았는지(X는 4장만 받으니 인스타 때 나머지만 더 받게)
-  function photoKey(){ try{ const { src, applied, ...rest }=readUndoState(); return JSON.stringify(rest); }catch{ return 'x'+Date.now(); } }
+  function photoKey(){ try{ const { src, applied, ...rest }=readUndoState(); return JSON.stringify(rest)+'|원본'+originals.length; }catch{ return 'x'+Date.now(); } }
   // files 중 아직 안 받은 것만 받고, 몇 장을 새로 받았는지 돌려준다
   async function downloadNew(files){
     const key=files.key, from = saved && saved.key===key ? saved.n : 0;
