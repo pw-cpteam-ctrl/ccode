@@ -2497,7 +2497,7 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
       document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
     },
   };
-  window.onCardRendered=()=>{ if(!row.hidden) repaint('card'); };
+  window.onCardRendered=()=>{ if(!row.hidden) repaint('card'); if(typeof prebuild==='function') prebuild(); };
 
   // ★ 표지 맞바꾸기 — 고른 사진을 카드 사진으로, 원래 카드 사진은 그 장 자리로. 다시 ★를 누르면 되돌릴 수 있다.
   // '지금 크게 보는 장'(key)과 '표지'는 다른 개념이라 선택은 건드리지 않는다.
@@ -2570,13 +2570,28 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   const canShareFiles=()=> matchMedia('(hover:none)').matches && !!navigator.canShare &&
     navigator.canShare({files:[new File([''],'a.png',{type:'image/png'})]});
 
+  // ── 폰: 공유할 사진을 미리 만들어 두기 ──
+  // 폰 공유 창은 '버튼을 누른 순간'에만 열 수 있는데, 누른 뒤 사진(PNG 여러 장)을 만들다 보면 그 순간이 지나
+  // 공유가 막힌다(아이폰에서 흔함 → "전체 다운로드가 가끔 안 됨"). 그래서 손을 멈추면(1.5초) 미리 만들어 두고,
+  // 누르면 바로 공유한다. 내용이 바뀌면 지문(photoKey)이 달라져 새로 만든다.
+  let preFiles=null, preT=null;
+  function prebuild(){
+    if(!canShareFiles()) return;
+    clearTimeout(preT);
+    preT=setTimeout(async()=>{ if(dlAll.disabled) return;
+      try{ const f=await makeFiles(); if(f.key===photoKey()) preFiles=f; }catch(e){ console.error(e); } }, 1500);
+  }
+  const readyFiles=()=> (preFiles && preFiles.key===photoKey()) ? preFiles : null;
+  document.addEventListener('igcrop:list', prebuild);
+  document.addEventListener('igcrop:changed', prebuild);
+
   dlAll.addEventListener('click', async ()=>{
     if(!runValidation()){ showToast('⚠ 3번 칸에 빠진 항목이 있어 카드를 내려받을 수 없어요 — 표시된 항목을 먼저 채워주세요', true); return; }
     dlAll.disabled=true; const label=dlAll.innerHTML; dlAll.textContent='준비 중…';
     try{
       const phone=canShareFiles();
       // 폰: 방금 막혀서 준비해 둔 파일이 있고 그 뒤로 사진이 그대로면 바로 공유
-      const files = (phone && dlCache && dlCache.files.key===photoKey() && Date.now()-dlCache.at<60000) ? dlCache.files : await makeFiles();
+      const files = (phone && readyFiles()) || ((phone && dlCache && dlCache.files.key===photoKey() && Date.now()-dlCache.at<60000) ? dlCache.files : await makeFiles());
       if(phone){
         try{ await navigator.share({files}); dlCache=null; logAiLearningOnDownload(); return; }
         catch(e){
@@ -2584,6 +2599,8 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
           // 사진 만드는 사이 '누른 순간' 효력이 끝나 막힘(아이폰에서 흔함) — 한 장씩 받기로 넘기면 사진첩이 아니라
           // 파일 앱으로 가니, X·인스타 버튼처럼 만든 파일을 들고 있다가 한 번 더 누를 때 바로 공유한다
           if(e && e.name==='NotAllowedError'){ dlCache={files, at:Date.now()}; showToast('사진 준비가 끝났어요 — [전체] 버튼을 한 번 더 눌러주세요'); return; }
+          // 그 밖의 거절(장수·용량 등) — 이유를 화면에 남겨야 다음에 원인을 잡을 수 있다
+          showToast(`⚠ 폰 공유 창이 거절했어요(${e && e.name || '알 수 없음'}) — 한 장씩 받기로 바꿔요. 계속되면 이 문구를 알려주세요`, true);
         }
       }
       saved={ key:files.key, n:files.length };   // 받기 전에 기록(이유는 downloadNew와 같음)
@@ -2647,7 +2664,7 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
     }
     btn.disabled=true; const label=btn.innerHTML; btn.querySelector('.sns-t') && (btn.querySelector('.sns-t').textContent='준비 중…');
     try{
-      let files=await makeFiles();
+      let files=(phone && readyFiles()) || await makeFiles();   // 폰은 미리 만들어 둔 것이 있으면 바로(누른 순간 안에 공유)
       if(kind==='x' && files.length>X_MAX){ const k=files.key; files=files.slice(0,X_MAX); files.key=k; showToast(`X는 사진 ${X_MAX}장까지라 앞 ${X_MAX}장만 넣어요`); }
       if(phone){
         await shareOnPhone(kind, files, kind==='x' ? text : '', kind==='ig' ? ()=>showToast('원고를 복사해 뒀어요 — 인스타 글쓰기 칸에 붙여넣기 하세요') : null);
