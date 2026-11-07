@@ -914,7 +914,9 @@ function runValidation(){
   const src = document.getElementById('t_source').value.trim();
   // 상품화 결정 공지는 캐릭터가 아직 안 나온 경우가 많아(예: 「東方Project 商品化決定！」) 제품명이 비어도 통과
   const needProduct = state.text.headline!=='상품화 결정';
-  const filled = !!state.work.trim() && (!needProduct || !!state.text.product.trim());
+  // 작품명 칸의 자리표시 '[작품명]'은 비어 있는 것으로 본다(예전엔 글자가 있다고 통과돼 '[작품명]'이 찍힌 카드가 나갈 수 있었음)
+  const workOk = !!state.work.trim() && state.work.trim()!=='[작품명]';
+  const filled = workOk && (!needProduct || !!state.text.product.trim());
   let blocked = true;
   if(!state.img){ dl.disabled=true; bm.textContent='사진을 먼저 올려주세요.'; }
   else if(!src){ dl.disabled=true; bm.textContent='2번 원문 입력은 필수입니다.'; }
