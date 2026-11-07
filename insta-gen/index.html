@@ -185,6 +185,7 @@
   .ccount { font-size:12px; color:var(--muted); margin-top:7px; font-variant-numeric:tabular-nums; }
   .ccount b { font-weight:700; }
   .ccount.over { color:var(--danger); font-weight:600; }
+  #t_copy.over { border-color:var(--danger); box-shadow:0 0 0 2px rgba(211,51,51,.15); }
   .slotbox-h { font-size:12px; font-weight:700; color:#4b5563; letter-spacing:.3px; margin-bottom:4px; }
   .slotbox-note { font-size:11px; color:var(--muted); line-height:1.45; margin-bottom:8px; }
   .spacewarn { font-size:12px; color:var(--danger); font-weight:600; line-height:1.5; margin-top:6px; min-height:0; }
@@ -889,7 +890,7 @@ function initJpNotice(now=new Date(), keepChoice=false){
 let copyFingerprint = null;
 function currentFingerprint(){
   return JSON.stringify([state.text.headline, state.work, state.line, state.linePrefix,
-                         state.text.product, state.jp, state.saleDate, state.bullet]);
+                         state.text.product, state.jp, state.saleDate, state.bullet, copyJpNotice()]);
 }
 function markCopyFresh(){ copyFingerprint = currentFingerprint(); runValidation(); }
 
@@ -1307,8 +1308,17 @@ function buildCopy(){
     : '※ 예약 오픈 시 별도 공지\n※ 일본 현지 기준 소식으로, 국내외 사정에 따라 일부 사항이 변동될 수 있습니다.';
   const parts = [`📢[${h}] ${headTitle}`.trim(), block];
   if(state.saleDate.trim()) parts.push(`⏰${state.saleDate.trim()}(${state.saleDow||'목'}) 예약판매 시작!`);
-  parts.push(bottom, tags);
+  parts.push(bottom);
+  if(copyJpNotice()) parts.push(JP_NOTICE_TEXT);   // 2번째 문장 — 일본 발표 원문일 때만(오픈 D-7~당일엔 빠짐)
+  parts.push(tags);
   return parts.join('\n\n');
+}
+// 원고 안내문 — 카드 맨 아래 노란 안내문과 같은 문장. 원문에 일본어(가나)가 있고, 카드 안내문 체크박스가
+// 켜져 있을 때만 넣는다. 체크박스는 오픈 D-7~당일엔 자동으로 꺼지므로 그 기간엔 원고에서도 자동으로 빠짐.
+const JP_NOTICE_TEXT='※ 일본 국내에서 발표된 정보입니다. 한국에서의 수주, 판매는 결정되는대로 안내하겠습니다.';
+function copyJpNotice(){
+  const src=(document.getElementById('t_source')?.value||'')+(typeof appliedSource==='string'?appliedSource:'');
+  return !!state.jpNotice && /[぀-ヿ]/.test(src);
 }
 
 /* ── 이미지 입력 ── */
@@ -1575,7 +1585,7 @@ async function aiParse() {
 document.getElementById('aiParseSrc').addEventListener('click', aiParse);
 document.getElementById('c_bullet').addEventListener('change', e=>{ state.bullet=e.target.checked; render(); });
 document.getElementById('c_charshrink').addEventListener('change', e=>{ state.charShrink=e.target.checked; render(); });
-document.getElementById('c_jpnotice').addEventListener('change', e=>{ _jpTouched=true; state.jpNotice=e.target.checked; render(); });
+document.getElementById('c_jpnotice').addEventListener('change', e=>{ _jpTouched=true; state.jpNotice=e.target.checked; render(); runValidation(); });   // runValidation: 원고 안내문도 따라 바뀌니 '원고 옛날 값' 표시
 
 const z=document.getElementById('s_zoom'),op=document.getElementById('s_op'),bl=document.getElementById('s_blur');
 z.addEventListener('input',()=>{ activeFg().zoom=z.value/100; v_zoom.textContent=(z.value/100).toFixed(1)+'×'; render(); });
@@ -1596,9 +1606,12 @@ function updateCopyCount(){
   const el=document.getElementById('copyCount');
   el.innerHTML = '<b>'+w+'</b> / 280 (한글 '+Math.ceil(w/2)+'/140 · 실제 '+chars+'자)' + (w>280 ? ' · 글자수 조정이 필요합니다.' : '');
   el.classList.toggle('over', w>280);
+  document.getElementById('t_copy').classList.toggle('over', w>280);   // 원고 칸 테두리도 빨갛게 — 작은 글씨만으론 놓치기 쉬움
 }
 document.getElementById('t_copy').addEventListener('input', updateCopyCount);
-document.getElementById('genCopy').addEventListener('click', ()=>{ document.getElementById('t_copy').value=buildCopy(); updateCopyCount(); markCopyFresh(); });
+document.getElementById('genCopy').addEventListener('click', ()=>{ document.getElementById('t_copy').value=buildCopy(); updateCopyCount(); markCopyFresh();
+  // 만들자마자 X 280자(한글 140자)를 넘으면 바로 알림 — 올리기 직전에 알면 늦다
+  const w=tweetWeight(document.getElementById('t_copy').value); if(w>280) showToast(`⚠ 원고가 X 기준 ${w}/280으로 ${w-280}만큼 넘어요 — 줄여주세요(한글 1자 = 2)`, true); });
 document.getElementById('dockRegen').addEventListener('click', ()=>document.getElementById('genCopy').click());
 document.getElementById('dockCopy').addEventListener('click', ()=>document.getElementById('doCopy').click());
 document.getElementById('doCopy').addEventListener('click', async ()=>{ const t=document.getElementById('t_copy'); try{ await navigator.clipboard.writeText(t.value); }catch{ t.select(); document.execCommand('copy'); } const b=document.getElementById('doCopy'); const o=b.textContent; b.textContent='복사됨!'; setTimeout(()=>b.textContent=o,1200); });
@@ -2647,6 +2660,7 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   async function postTo(kind, btn){
     if(!runValidation()){ showToast('⚠ 3번 칸에 빠진 항목이 있어 올릴 수 없어요 — 표시된 항목을 먼저 채워주세요', true); return; }
     const text=postText(), phone=canShareFiles();
+    if(kind==='x' && tweetWeight(text)>280) showToast(`⚠ 원고가 X 기준 ${tweetWeight(text)}/280으로 넘어요 — X에서 올리기 전에 줄여주세요`, true);
     if(document.getElementById('dockbar').classList.contains('stale'))
       showToast('⚠ 원고가 지금 입력값과 달라요(옛날 값) — 필요하면 [원고 다시 만들기] 후 다시 눌러주세요', true);
     // 인스타는 원고 글자를 받지 않으니 누른 순간 복사해 둔다 — 복사는 누른 순간 + 이 페이지에 포커스가 있을 때만
