@@ -1383,7 +1383,7 @@ function buildCopy(){
   // 개발중(원형/채색원형 최초공개) → 팔로우 멘트 / 그 외(판매정보) → ※ 멘트 (줄바꿈 고정)
   const bottom = isDev
     ? (copyFollowOn ? FOLLOW_TEXT : '')   // 팔로우 문장은 버튼으로 뺄 수 있음(280 넘을 때)
-    : '※ 예약 오픈 시 별도 공지\n※ 일본 현지 기준 소식으로, 국내외 사정에 따라 일부 사항이 변동될 수 있습니다.';
+    : '※ 예약 오픈 시 별도 공지';   // '일본 현지 기준 소식으로…' 줄은 뺐다 — 일본 국내 안내문(JP_NOTICE_TEXT)과 같은 말이 두 번 나와서(2026-11 정책)
   const parts = [`📢[${h}] ${headTitle}`.trim(), block];
   if(state.saleDate.trim()) parts.push(`⏰${state.saleDate.trim()}(${state.saleDow||'목'}) 예약판매 시작!`);
   if(bottom) parts.push(bottom);
