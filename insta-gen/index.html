@@ -184,8 +184,14 @@
   #t_copy { width:100%; min-height:220px; background:#fff; border:1px solid var(--line2); border-radius:8px; color:var(--text); padding:11px; font-size:13px; line-height:1.6; font-family:'Pretendard',sans-serif; resize:vertical; }
   .ccount { font-size:12px; color:var(--muted); margin-top:7px; font-variant-numeric:tabular-nums; }
   .ccount b { font-weight:700; }
-  .ccount.over { color:var(--danger); font-weight:600; }
-  #t_copy.over { border-color:var(--danger); box-shadow:0 0 0 2px rgba(211,51,51,.15); }
+  /* 280 넘치는 부분 형광펜 — 글자칸 뒤에 같은 글자를 투명하게 깔고, 넘친 부분만 연빨강 배경을 칠한다
+     (textarea는 일부만 색칠할 수 없어서 뒤판으로 흉내. 글꼴·여백·줄간격이 글자칸과 같아야 겹친다) */
+  .copywrap { position:relative; }
+  .copywrap #t_copy { position:relative; background:transparent; z-index:1; }
+  .copyhl { position:absolute; inset:0; overflow:hidden; pointer-events:none; color:transparent; background:#fff;
+            border:1px solid transparent; border-radius:8px; padding:11px; font-size:13px; line-height:1.6;
+            font-family:'Pretendard',sans-serif; white-space:pre-wrap; overflow-wrap:break-word; word-break:break-word; }
+  .copyhl mark { background:#ffd3d6; color:transparent; border-radius:2px; }
   .slotbox-h { font-size:12px; font-weight:700; color:#4b5563; letter-spacing:.3px; margin-bottom:4px; }
   .slotbox-note { font-size:11px; color:var(--muted); line-height:1.45; margin-bottom:8px; }
   .spacewarn { font-size:12px; color:var(--danger); font-weight:600; line-height:1.5; margin-top:6px; min-height:0; }
@@ -585,7 +591,8 @@
         <button class="btn2" id="genCopy">원고 생성 / 새로고침</button>
         <button class="btn2" id="doCopy">복사</button>
       </div>
-      <textarea id="t_copy" placeholder="'원고 생성'을 누르면 위 텍스트값으로 캡션이 만들어집니다. 만든 뒤 자유롭게 수정하세요."></textarea>
+      <div class="copywrap"><div class="copyhl" id="copyHl" aria-hidden="true"></div>
+      <textarea id="t_copy" placeholder="'원고 생성'을 누르면 위 텍스트값으로 캡션이 만들어집니다. 만든 뒤 자유롭게 수정하세요."></textarea></div>
       <div class="ccount" id="copyCount">0 / 280 (한글 0/140)</div>
     </div>
 
@@ -1610,14 +1617,25 @@ function updateCopyCount(){
   const t=document.getElementById('t_copy').value;
   const w=tweetWeight(t), chars=[...t].length;
   const el=document.getElementById('copyCount');
-  el.innerHTML = '<b>'+w+'</b> / 280 (한글 '+Math.ceil(w/2)+'/140 · 실제 '+chars+'자)' + (w>280 ? ' · 글자수 조정이 필요합니다.' : '');
-  el.classList.toggle('over', w>280);
-  document.getElementById('t_copy').classList.toggle('over', w>280);   // 원고 칸 테두리도 빨갛게 — 작은 글씨만으론 놓치기 쉬움
+  el.innerHTML = '<b>'+w+'</b> / 280 (한글 '+Math.ceil(w/2)+'/140 · 실제 '+chars+'자)' + (w>280 ? ' · '+(w-280)+' 넘음(연빨강 표시 부분)' : '');
+  paintCopyOverflow();
 }
+// 넘친 부분(X 기준 280 넘는 글자부터)을 뒤판에 형광펜으로 — 글자칸 크기·스크롤도 맞춘다
+function paintCopyOverflow(){
+  const ta=document.getElementById('t_copy'), hl=document.getElementById('copyHl'); if(!hl) return;
+  const t=ta.value; let w=0, cut=-1, i=0;
+  for(const ch of t){ w+=tweetWeight(ch); if(w>280){ cut=i; break; } i+=ch.length; }
+  const esc=x=>x.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  hl.innerHTML = cut<0 ? esc(t) : esc(t.slice(0,cut))+'<mark>'+esc(t.slice(cut))+'</mark>';
+  hl.innerHTML += '\n';   // 마지막 줄바꿈 높이 맞춤
+  hl.style.height=ta.offsetHeight+'px'; hl.scrollTop=ta.scrollTop;
+}
+document.getElementById('t_copy').addEventListener('scroll', ()=>{ document.getElementById('copyHl').scrollTop=document.getElementById('t_copy').scrollTop; });
+new ResizeObserver(paintCopyOverflow).observe(document.getElementById('t_copy'));
 document.getElementById('t_copy').addEventListener('input', updateCopyCount);
 document.getElementById('genCopy').addEventListener('click', ()=>{ document.getElementById('t_copy').value=buildCopy(); updateCopyCount(); markCopyFresh();
   // 만들자마자 X 280자(한글 140자)를 넘으면 바로 알림 — 올리기 직전에 알면 늦다
-  const w=tweetWeight(document.getElementById('t_copy').value); if(w>280) showToast(`⚠ 원고가 X 기준 ${w}/280으로 ${w-280}만큼 넘어요 — 줄여주세요(한글 1자 = 2)`, true); });
+  const w=tweetWeight(document.getElementById('t_copy').value); if(w>280) showToast(`원고가 X 기준 ${w}/280이라 ${w-280}만큼 넘어요 — 연빨강으로 칠한 부분을 줄여주세요(한글 1자 = 2)`); });
 document.getElementById('dockRegen').addEventListener('click', ()=>document.getElementById('genCopy').click());
 document.getElementById('dockCopy').addEventListener('click', ()=>document.getElementById('doCopy').click());
 document.getElementById('doCopy').addEventListener('click', async ()=>{ const t=document.getElementById('t_copy'); try{ await navigator.clipboard.writeText(t.value); }catch{ t.select(); document.execCommand('copy'); } const b=document.getElementById('doCopy'); const o=b.textContent; b.textContent='복사됨!'; setTimeout(()=>b.textContent=o,1200); });
@@ -2654,7 +2672,7 @@ document.getElementById('t_source').addEventListener('paste', e=>{ const t=(e.cl
   async function postTo(kind, btn){
     if(!runValidation()){ showToast('⚠ 3번 칸에 빠진 항목이 있어 올릴 수 없어요 — 표시된 항목을 먼저 채워주세요', true); return; }
     const text=postText(), phone=canShareFiles();
-    if(kind==='x' && tweetWeight(text)>280) showToast(`⚠ 원고가 X 기준 ${tweetWeight(text)}/280으로 넘어요 — X에서 올리기 전에 줄여주세요`, true);
+    if(kind==='x' && tweetWeight(text)>280) showToast(`원고가 X 기준 ${tweetWeight(text)}/280이라 넘어요 — X에서 올리기 전에 줄여주세요`);
     if(document.getElementById('dockbar').classList.contains('stale'))
       showToast('⚠ 원고가 지금 입력값과 달라요(옛날 값) — 필요하면 [원고 다시 만들기] 후 다시 눌러주세요', true);
     // 인스타는 원고 글자를 받지 않으니 누른 순간 복사해 둔다 — 복사는 누른 순간 + 이 페이지에 포커스가 있을 때만
