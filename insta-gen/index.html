@@ -789,6 +789,14 @@ function drawCover(img,x,y,w,h,fg){
 function splitHalfW(){ return (FRAME.w - SPLIT_GAP)/2; }
 // 붙여넣기·확대가 적용될 칸의 크롭 상태
 function activeFg(){ return state.sel===2 ? state.fg2 : state.fg; }
+// ── 가로로 긴 사진은 가로 100%가 보이게 ──
+// 카드 사진 칸은 정사각이라 가로로 긴 사진을 꽉 채우면 양옆이 잘렸다. 칸보다 가로로 긴 사진은 기본·최소 확대를
+// '전체가 보이는 크기'(1보다 작음)로 잡아 가로를 다 보이고 위아래가 흰 여백으로 남게 한다. 휠·두 손가락·슬라이더로
+// 키우면 예전처럼 꽉 채울 수 있다. ⑤ 인스타 규격 크롭은 원래 이렇게 동작함(isWideImg)
+function cardBox(){ return state.img2 ? { w:splitHalfW(), h:FRAME.h } : { w:FRAME.w, h:FRAME.h }; }
+function fitZoom(img, box){ if(!img) return 1; const sx=box.w/img.width, sy=box.h/img.height;
+  return img.width/img.height > box.w/box.h ? Math.min(sx,sy)/Math.max(sx,sy) : 1; }
+function minZoomActive(){ return fitZoom(state.sel===2 ? state.img2 : state.img, cardBox()); }
 function fitText(text,weight,size,maxW){ let s=size; setFont(weight,s); while(ctx.measureText(text).width>maxW && s>14){ s-=1; setFont(weight,s); } return s; }
 function render(){
   ctx.clearRect(0,0,W,H);
@@ -1422,10 +1430,10 @@ function loadImageInto(which, src, keepView){
     const im=new Image();
     im.onload=()=>{
       if(which===2){
-        state.img2=im; if(!keepView) state.fg2={zoom:1,panX:0,panY:0};
+        state.img2=im; if(!keepView) state.fg2={zoom:fitZoom(im, { w:splitHalfW(), h:FRAME.h }),panX:0,panY:0};
         state.imgData2=compressImage(im); state.slot2Open=true; state.sel=2;
       } else {
-        state.img=im; if(!keepView) state.fg={zoom:1,panX:0,panY:0};
+        state.img=im; if(!keepView) state.fg={zoom:fitZoom(im, cardBox()),panX:0,panY:0};
         state.imgData=compressImage(im);
         // 하단 크롭 도구의 1페이지는 카드 생성기의 "첫 번째" 사진을 따라간다
         document.dispatchEvent(new CustomEvent('igcrop:mainImage', {detail:{img:im}}));
@@ -1517,7 +1525,7 @@ function renderPhotoSlots(){
 function syncControlsUI(){
   const z=document.getElementById('s_zoom'),op=document.getElementById('s_op'),bl=document.getElementById('s_blur');
   const _fg=activeFg();
-  z.value=Math.round(_fg.zoom*100); document.getElementById('v_zoom').textContent=_fg.zoom.toFixed(1)+'×';
+  z.min=Math.floor(minZoomActive()*100); z.value=Math.round(_fg.zoom*100); document.getElementById('v_zoom').textContent=_fg.zoom.toFixed(1)+'×';   // 하한: 가로로 긴 사진은 전체가 보이는 크기까지
   op.value=Math.round(state.bg.opacity*100); document.getElementById('v_op').textContent=Math.round(state.bg.opacity*100)+'%';
   bl.value=state.bg.blur; document.getElementById('v_blur').textContent=state.bg.blur;
   document.getElementById('v_titleSize').textContent=state.size.title;
@@ -1572,7 +1580,7 @@ cv.addEventListener('pointermove', e=>{ if(!state.img) return;
   if(_pts.has(e.pointerId)) _pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
   const sc=cv.width/cv.getBoundingClientRect().width, fg=activeFg();
   if(_pinch && _pts.size>=2){ const i=_pinchInfo();
-    const nz=Math.max(1,Math.min(3,_pinch.z0*i.d/_pinch.d0)); fg.zoom=nz; _syncZoomUI(nz);
+    const nz=Math.max(minZoomActive(),Math.min(3,_pinch.z0*i.d/_pinch.d0)); fg.zoom=nz; _syncZoomUI(nz);
     fg.panX+=(i.mx-_pinch.mx)*sc; fg.panY+=(i.my-_pinch.my)*sc; _pinch.mx=i.mx; _pinch.my=i.my;   // 두 손가락을 같이 움직이면 위치도 이동
     render(); return; }
   if(!_drag) return; fg.panX+=(e.clientX-_lx)*sc; fg.panY+=(e.clientY-_ly)*sc; _lx=e.clientX; _ly=e.clientY; render(); });
@@ -1582,7 +1590,7 @@ function _endDrag(e){ if(e) _pts.delete(e.pointerId);
   if(_pts.size===1){ const [p]=[..._pts.values()]; _drag=true; _lx=p.x; _ly=p.y; return; }
   _drag=false; cv.classList.remove('drag'); }
 cv.addEventListener('pointerup', _endDrag); cv.addEventListener('pointercancel', _endDrag); cv.addEventListener('pointerleave', e=>{ if(_drag && e.pointerType==='mouse') _endDrag(e); });
-cv.addEventListener('wheel', e=>{ if(!state.img) return; e.preventDefault(); setSel(halfAtClientX(e.clientX)); const fg=activeFg(); const nz=Math.max(1,Math.min(3, fg.zoom*(e.deltaY<0?1.06:0.94))); fg.zoom=nz; _syncZoomUI(nz); render(); }, {passive:false});
+cv.addEventListener('wheel', e=>{ if(!state.img) return; e.preventDefault(); setSel(halfAtClientX(e.clientX)); const fg=activeFg(); const nz=Math.max(minZoomActive(),Math.min(3, fg.zoom*(e.deltaY<0?1.06:0.94))); fg.zoom=nz; _syncZoomUI(nz); render(); }, {passive:false});
 
 /* ── 입력 연결 ── */
 document.getElementById('t_headline').addEventListener('change', e=>{ state.text.headline=e.target.value; render(); runValidation(); });   // runValidation: 상품화 결정이면 제품명 없어도 받을 수 있어서
