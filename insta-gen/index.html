@@ -998,10 +998,21 @@ function buildProductFromEntries(entries, prefix){
   return entries.map(e=>{ const krs=e.filter(c=>c.kr).map(c=>c.kr); return krs.length ? (prefix||'')+krs.join(' & ') : ''; }).filter(Boolean).join('\n');
 }
 
+/* ── 헤드라인 경중(중요한 순서) ──
+   한 공지에 여러 소식이 같이 있으면(예: 「商品化決定&原型初公開」) 더 중요한 쪽을 제목으로 한다.
+   실물이 처음 보이는 '공개'가 '상품화 결정'보다 중요하고, 공개 중에선 채색원형 > 원형 > 샘플.
+   AI가 글에 먼저 나온 걸 집어도 아래 bestHeadline으로 다시 확인해서 바로잡는다(판단은 코드가). */
+const HEAD_PRIORITY=['채색원형 최초공개','원형 최초공개','샘플 최초공개','한정 재판매 결정','재판매 결정','예약 시작','상품화 결정'];
+const headRank=h=>{ const i=HEAD_PRIORITY.indexOf(h); return i<0 ? 99 : i; };
+function bestHeadline(txt){
+  const inc=(h,n)=>h.toLowerCase().includes(n.toLowerCase());
+  const hits=HEADS.filter(h=>h.kw.some(k=>inc(txt||'',k))).map(h=>h.kr);
+  return hits.sort((a,b)=>headRank(a)-headRank(b))[0] || '';
+}
 function parseJP(txt){
   const r={};
   const inc=(h,n)=>h.toLowerCase().includes(n.toLowerCase());   // 대소문자 무시 (gem→GEM)
-  for(const h of HEADS) if(h.kw.some(k=>inc(txt,k))){ r.headline=h.kr; break; }
+  { const bh=bestHeadline(txt); if(bh) r.headline=bh; }
   for(const l of LINES) if(l.kw.some(k=>inc(txt,k))){ r.line=l.kr; break; }
   const dm = txt.match(/予約開始[^0-9０-９]*([0-9０-９]{1,2})\s*月\s*([0-9０-９]{1,2})\s*日/) || txt.match(/예약[^0-9]*([0-9]{1,2})\s*월\s*([0-9]{1,2})\s*일/);
   if(dm) r.date=z2h(dm[1])+'월 '+z2h(dm[2])+'일';
@@ -1504,7 +1515,9 @@ document.getElementById('applySrc').addEventListener('click', applySource);
 /* ── AI 파싱 ── */
 function applyParsed(data, originalTxt) {
   const miss = [];
-  const head = data.headline || '';
+  let head = data.headline || '';
+  // AI가 덜 중요한 소식(예: 상품화 결정)을 골랐는데 원문에 더 중요한 소식(원형·채색원형 공개 등)이 있으면 그걸로
+  { const bh = bestHeadline(originalTxt||''); if (bh && headRank(bh) < headRank(head)) head = bh; }
   const work = data.work || '';
   const line = data.line || '';
   const prod = (data.product || '').split('\n').map(s => s.trim()).filter(Boolean).join('\n');
