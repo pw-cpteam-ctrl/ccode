@@ -809,3 +809,38 @@ body {
   color: var(--ink-800);
 }
 .optA .reward-subnotes li + li { margin-top: 6px; }
+
+/* ─── 01 시작 카드 ───────────────────────────────────────────────
+   전체 분량이 주는 부담을 먼저 덜고, 마지막에 회신할 것을 미리 알린다. */
+.optA .opener{
+  background: #fff; border: 1px solid var(--blue-200);
+  border-radius: 14px; padding: 16px 18px; margin-bottom: 14px;
+}
+.optA .opener-h{ font-size: 15px; font-weight: 800; color: var(--blue-700); letter-spacing: -0.01em; }
+.optA .opener-lead{ margin: 5px 0 10px; font-size: 13px; line-height: 1.6; color: var(--ink-800); }
+.optA .opener-keys{ margin: 0; padding-left: 17px; }
+.optA .opener-keys li{ font-size: 12.5px; line-height: 1.65; color: var(--ink-700); margin-bottom: 4px; }
+.optA .opener-ask{
+  margin-top: 13px; padding: 12px 13px;
+  background: var(--blue-50); border-radius: 11px;
+}
+.optA .opener-ask-h{ font-size: 13px; font-weight: 800; color: var(--blue-700); }
+.optA .opener-asks{ margin: 7px 0 0; padding-left: 19px; }
+.optA .opener-asks li{ font-size: 12.5px; line-height: 1.65; color: var(--ink-800); font-weight: 600; }
+.optA .opener-ask-note{ margin-top: 7px; font-size: 11.5px; color: var(--ink-600); }
+
+/* ─── 03 본문 작성 — 접히는 서문 ───────────────────────────────── */
+.optA .body-style-toggle {
+  border: 1px solid var(--ink-200); border-left: 3px solid var(--blue-500);
+  border-radius: 12px; background: oklch(0.98 0.01 90); overflow: hidden;
+}
+.optA .body-style-toggle summary {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  list-style: none; padding: 14px 16px; font-size: 13px; line-height: 1.7; color: var(--ink-900);
+}
+.optA .body-style-toggle summary::-webkit-details-marker { display: none; }
+.optA .body-style-toggle-icon { margin-left: auto; flex: 0 0 auto; color: var(--blue-600); font-size: 18px; transition: transform .18s ease; }
+.optA .body-style-toggle[open] .body-style-toggle-icon { transform: rotate(180deg); }
+.optA .body-style-toggle-content { padding: 0 16px 15px; border-top: 1px solid var(--ink-200); }
+.optA .body-style-toggle-content p { margin: 12px 0 0; font-size: 12.5px; line-height: 1.75; color: var(--ink-800); }
+.optA .body-style-toggle-content strong { color: var(--ink-900); }

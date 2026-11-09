@@ -225,6 +225,23 @@ function Final_Flow() {
         ]}
       />
 
+      {/* 전체 분량이 주는 부담을 먼저 덜고, 마지막에 무엇을 회신해야 하는지
+          미리 알려 준다. 다 읽고 나서야 숙제가 처음 등장하던 구조를 바꾼 것. */}
+      <div className="opener">
+        <div className="opener-h">📌 {GUIDE.opener.t}</div>
+        <p className="opener-lead">{GUIDE.opener.lead}</p>
+        <ul className="opener-keys">
+          {GUIDE.opener.keys.map((k, i) => <li key={i}>{k}</li>)}
+        </ul>
+        <div className="opener-ask">
+          <div className="opener-ask-h">📨 {GUIDE.opener.askT}</div>
+          <ol className="opener-asks">
+            {GUIDE.opener.asks.map((a, i) => <li key={i}>{a}</li>)}
+          </ol>
+          <div className="opener-ask-note">{GUIDE.opener.askNote}</div>
+        </div>
+      </div>
+
       {/* STEP 1 */}
       <div className="step-card">
         <div className="step-num">{step1.n}</div>
@@ -393,33 +410,7 @@ function Final_Upload() {
 function Final_Body() {
   return (
     <div className="section">
-      {/* 도입부 */}
-      <div className="body-intro">
-        <div className="body-intro-lead">
-          <div className="body-intro-mark">💬</div>
-          <p>{GUIDE.body.intro1}</p>
-        </div>
-        <div className="body-intro-points">
-          <div className="body-intro-point">
-            <span className="bi-num" aria-hidden>
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-            </span>
-            <p>{GUIDE.body.intro2}</p>
-          </div>
-          <div className="body-intro-point">
-            <span className="bi-num" aria-hidden>
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-            </span>
-            <p>{GUIDE.body.intro3}</p>
-          </div>
-        </div>
-        <div className="body-intro-highlight">
-          <p><strong>{GUIDE.body.intro4}</strong></p>
-          <p>{GUIDE.body.intro5}</p>
-        </div>
-      </div>
-
-      <h2 style={{ marginTop: 28 }}>📌 본문 구성을 위한 안내사항</h2>
+      <h2 style={{ marginTop: 4 }}>📌 본문 구성을 위한 안내사항</h2>
       <p style={{ fontSize: 13, color: 'var(--ink-800)', marginTop: 0, marginBottom: 14, lineHeight: 1.7 }}>
         {GUIDE.body.mustIntro}
       </p>
@@ -432,6 +423,25 @@ function Final_Body() {
           </div>
         </div>
       ))}
+
+      {/* 서문은 필수 항목 뒤로. 먼저 나오면 "꼭 넣어야 할 것"이 서문에 밀린다 */}
+      <div className="body-intro" style={{ marginTop: 20 }}>
+        <div className="body-intro-lead">
+          <div className="body-intro-mark">💬</div>
+          <p>{GUIDE.body.intro1}</p>
+        </div>
+        {/* 같은 말이 반복되던 문단은 눌러서 펼치게 — 기본은 접어 둔다 */}
+        <details className="body-style-toggle">
+          <summary>
+            <span>{GUIDE.body.intro2}</span>
+            <span className="body-style-toggle-icon" aria-hidden="true">⌄</span>
+          </summary>
+          <div className="body-style-toggle-content">
+            <p><strong>{GUIDE.body.styleNote1}</strong></p>
+            <p>{GUIDE.body.styleNote2}</p>
+          </div>
+        </details>
+      </div>
 
       <h2 style={{ marginTop: 28, fontSize: 16 }}>보충 안내</h2>
       <div className="alert info"><Icon.info /><span>{GUIDE.body.check1}</span></div>

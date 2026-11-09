@@ -5,9 +5,12 @@
   "redirects": [
     { "source": "/reward-view-admin", "destination": "https://influencer-board-bice.vercel.app/", "permanent": false }
   ],
+  "rewrites": [
+    { "source": "/gsbs", "destination": "/brand2.html" }
+  ],
   "git": {
     "deploymentEnabled": {
-      "main": false,
+      "main": true,
       "**": false
     }
   },
