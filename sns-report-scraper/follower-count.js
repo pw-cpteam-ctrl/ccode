@@ -215,7 +215,44 @@ function watchFollowers(page, { platform, account }) {
         const n = parseCount(text);
         const shortened = /[KkMmBb만천억]/.test(String(text));
 
-        // 5순위(인스타 전용) — 페이지에 미리 실려 오는 데이터에서 찾는다.
+        // 5순위(인스타 전용) — 첫 HTML에 박혀 오는 구조화 데이터(ld+json).
+        //
+        // 2026-11-09 실측: 인스타는 이제 팔로워 수를 '응답'으로 보내지 않는다. 프로필을 열 때
+        // 오는 graphql 응답에는 계정 정보(XDTUserDict)만 있고 팔로워 칸이 아예 없다(두 계정
+        // 모두 확인). 그래서 응답을 뒤지는 1~2순위가 구조적으로 못 찾는다 — 숫자는 처음
+        // 내려오는 HTML 안에 박혀 있다.
+        //
+        // 검색 엔진에 보여주려고 넣는 칸이라 줄임 없이 정확한 수가 들어간다:
+        //   {"interactionType":".../FollowAction","userInteractionCount":24123}
+        if (!isX) {
+          const ld = await page.evaluate(() => {
+            const out = [];
+            document.querySelectorAll('script[type="application/ld+json"]').forEach(s => out.push(s.textContent || ''));
+            return out;
+          }).catch(() => []);
+          const cands = [];
+          for (const raw of ld || []) {
+            let json;
+            try { json = JSON.parse(raw); } catch { continue; }
+            deepFind(json, node => {
+              const type = String(node.interactionType || node['@type'] || '');
+              const c = node.userInteractionCount;
+              if (/FollowAction/i.test(type) && typeof c === 'number' && c > 0) cands.push(c);
+              return null;      // 끝까지 훑으려고 일부러 아무것도 돌려주지 않는다
+            });
+          }
+          const uniqLd = [...new Set(cands)];
+          // 화면 글자를 읽었으면 대조까지 해서 엉뚱한 수를 거른다. 못 읽었어도 후보가 하나뿐이면
+          // 그대로 쓴다 — 이 칸은 팔로워 전용이라 다른 숫자가 섞일 자리가 아니다.
+          const okLd = uniqLd.length === 1
+            && (typeof n !== 'number' || Math.abs(uniqLd[0] - n) / Math.max(n, 1) <= 0.2);
+          if (okLd) return { count: uniqLd[0], from: 'ld-json', approx: false, tried };
+          tried.push(uniqLd.length === 0
+            ? 'HTML에 박힌 구조화 데이터(ld+json)에 팔로워 수가 없었음'
+            : `구조화 데이터의 팔로워 수가 화면 글자와 어긋나거나 여러 개였음(${uniqLd.join(', ')})`);
+        }
+
+        // 6순위(인스타 전용) — 페이지에 미리 실려 오는 데이터에서 찾는다.
         //
         // 인스타는 화면을 그리기 전에 쓸 자료를 <script> 안에 JSON으로 같이 실어 보낸다.
         // 거기엔 줄이지 않은 정확한 수가 들어있다. 내부 주소가 막히고 title도 사라진

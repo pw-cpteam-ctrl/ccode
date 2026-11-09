@@ -66,11 +66,23 @@ async function probeOne({ platform, account, sessionFile }, headless, debugDir =
     await page.waitForTimeout(3500);
     const result = await watch.read();
 
-    if (debugDir && seen.length) {
+    if (debugDir) {
+      // 응답만 남겼다가 정작 숫자가 있는 곳을 못 본 적이 있다(2026-11-09: 인스타는 팔로워
+      // 수를 응답이 아니라 첫 HTML에 박아 보냈다). 그래서 화면 쪽도 같이 남긴다.
+      const page_ = await page.evaluate(() => ({
+        ld: [...document.querySelectorAll('script[type="application/ld+json"]')].map(s => (s.textContent || '').slice(0, 20000)),
+        og: document.querySelector('meta[property="og:description"]')?.content || null,
+        title: document.title,
+        // 팔로워라는 말 주변의 글자만 추려서 — HTML 전체는 수 MB라 너무 크다.
+        near: [...document.querySelectorAll('a[href*="/followers"], header section, header li')]
+          .map(e => (e.innerText || '').replace(/\s+/g, ' ').slice(0, 300)).slice(0, 10),
+        titles: [...document.querySelectorAll('header [title]')]
+          .map(e => ({ title: e.getAttribute('title'), shown: (e.innerText || '').trim().slice(0, 30) })).slice(0, 20),
+      })).catch(() => null);
       fs.mkdirSync(debugDir, { recursive: true });
       const out = path.join(debugDir, `_debug-follower-${platform}-${account}.json`);
-      fs.writeFileSync(out, JSON.stringify({ account, platform, result: { ...result }, responses: seen }, null, 2));
-      console.log(`\n        💾 오간 응답 ${seen.length}건을 남겼습니다: ${out}`);
+      fs.writeFileSync(out, JSON.stringify({ account, platform, result: { ...result }, page: page_, responses: seen }, null, 2));
+      console.log(`\n        💾 응답 ${seen.length}건 + 화면 내용을 남겼습니다: ${out}`);
     }
     return result;
   } finally {
