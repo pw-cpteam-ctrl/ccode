@@ -49,6 +49,8 @@ async function probeOne({ platform, account, sessionFile }, headless, debugDir =
 
     // 길이 전부 막혔을 때 추측으로 고치지 않으려면, 실제로 무엇이 오는지를 봐야 한다.
     // '팔로워'라는 말이 들어간 응답만 골라 주소와 본문 일부를 남긴다(본문 전체는 너무 크다).
+    // '팔로워'라는 말이 든 응답만 담았다가, 정작 숫자가 없다는 것만 확인하고 끝난 적이 있다.
+    // 이번엔 거르지 않고 전부 담는다 — 무엇이 오고 무엇이 안 오는지를 알아야 한다.
     const seen = [];
     if (debugDir) {
       page.on('response', async res => {
@@ -56,14 +58,19 @@ async function probeOne({ platform, account, sessionFile }, headless, debugDir =
           const ct = res.headers()['content-type'] || '';
           if (!ct.includes('json')) return;
           const body = await res.text();
-          if (!/follow/i.test(body)) return;
-          seen.push({ url: res.url().slice(0, 300), status: res.status(), size: body.length, body: body.slice(0, 200000) });
+          // 숫자가 들어있을 만한 응답은 본문째로, 나머지는 주소만 — 파일이 너무 커지지 않게.
+          const interesting = /follow|count|user/i.test(body);
+          seen.push({
+            url: res.url().slice(0, 300), status: res.status(), size: body.length,
+            body: interesting ? body.slice(0, 300000) : null,
+          });
         } catch { /* 본문이 이미 사라진 응답은 넘어간다 */ }
       });
     }
 
     await page.goto(PROFILE_URL[platform](account), { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(3500);
+    // 기록을 남길 때는 더 기다린다 — 머리말 숫자가 늦게 채워지는 것이라면 3.5초로는 놓친다.
+    await page.waitForTimeout(debugDir ? 12000 : 3500);
     const result = await watch.read();
 
     if (debugDir) {
@@ -79,9 +86,34 @@ async function probeOne({ platform, account, sessionFile }, headless, debugDir =
         titles: [...document.querySelectorAll('header [title]')]
           .map(e => ({ title: e.getAttribute('title'), shown: (e.innerText || '').trim().slice(0, 30) })).slice(0, 20),
       })).catch(() => null);
+      // 로그인하지 않은 채로도 한 번 열어본다. 인스타가 로그인한 사람에게는 줄인 숫자만
+      // 보여주면서, 검색 엔진에 보여주려고 로그인 없는 화면에는 정확한 수를 적어두는 경우가
+      // 있다. 둘을 같이 남겨두면 어느 쪽에 숫자가 있는지 한 번에 가려진다.
+      let anon = null;
+      if (platform === 'instagram') {
+        try {
+          const ctx2 = await browser.newContext({ ...STEALTH_CONTEXT_OPTIONS, viewport: { width: 1400, height: 1200 } });
+          await applyStealth(ctx2);
+          const p2 = await ctx2.newPage();
+          await p2.goto(PROFILE_URL[platform](account), { waitUntil: 'domcontentloaded' });
+          await p2.waitForTimeout(5000);
+          anon = await p2.evaluate(() => ({
+            og: document.querySelector('meta[property="og:description"]')?.content || null,
+            desc: document.querySelector('meta[name="description"]')?.content || null,
+            ld: [...document.querySelectorAll('script[type="application/ld+json"]')].map(s => (s.textContent || '').slice(0, 20000)),
+            title: document.title,
+          }));
+          await ctx2.close();
+        } catch (e) { anon = { error: String(e && e.message) }; }
+      }
+
+      // 화면에 그려진 글자 전체도 남긴다(HTML 원본은 수 MB라 글자만). 숫자가 화면 어딘가에
+      // 적혀 있다면 여기서 찾을 수 있고, 없다면 '인스타가 아예 안 보여준다'가 확정된다.
+      const bodyText = await page.evaluate(() => (document.body.innerText || '').slice(0, 20000)).catch(() => null);
+
       fs.mkdirSync(debugDir, { recursive: true });
       const out = path.join(debugDir, `_debug-follower-${platform}-${account}.json`);
-      fs.writeFileSync(out, JSON.stringify({ account, platform, result: { ...result }, page: page_, responses: seen }, null, 2));
+      fs.writeFileSync(out, JSON.stringify({ account, platform, result: { ...result }, page: page_, anon, bodyText, responses: seen }, null, 2));
       console.log(`\n        💾 응답 ${seen.length}건 + 화면 내용을 남겼습니다: ${out}`);
     }
     return result;
