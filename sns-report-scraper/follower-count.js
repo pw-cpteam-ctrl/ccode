@@ -134,19 +134,39 @@ function watchFollowers(page, { platform, account }) {
         // 안 불렀으면 우리가 직접 부르면 된다. 페이지 안에서 부르므로 로그인 상태가 그대로
         // 따라가고, 바깥에서 부를 때처럼 막히지 않는다.
         if (!isX) {
-          const exact = await page.evaluate(async (acct) => {
-            try {
-              const res = await fetch(`/api/v1/users/web_profile_info/?username=${encodeURIComponent(acct)}`, {
-                headers: { 'x-ig-app-id': '936619743392459' },  // 이 값이 없으면 인스타가 거절한다
-                credentials: 'include',
-              });
-              if (!res.ok) return null;
-              return await res.json();
-            } catch { return null; }
+          // 로그인한 상태로 내부 주소를 부를 때는 'csrftoken'이라는 표식을 같이 보내야 한다.
+          // 없으면 로그인 쿠키가 있어도 거절당한다 — 2026-11-09 실측에서 계속 거절당한
+          // 이유가 이것으로 보인다. 그 값은 쿠키에 들어 있으니 꺼내서 같이 보낸다.
+          // 왜 거절했는지(몇 번 오류인지)도 같이 받아둔다. '거절당했다'만으로는 표식이
+          // 모자란 것인지, 로그인이 풀린 것인지, 너무 자주 불러 막힌 것인지 알 수 없다.
+          const got = await page.evaluate(async (acct) => {
+            const csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+            const call = async (url) => {
+              try {
+                const res = await fetch(url, {
+                  headers: {
+                    'x-ig-app-id': '936619743392459',   // 이 값이 없으면 인스타가 거절한다
+                    'x-asbd-id': '129477',
+                    'x-requested-with': 'XMLHttpRequest',
+                    ...(csrf ? { 'x-csrftoken': csrf } : {}),
+                  },
+                  credentials: 'include',
+                });
+                if (!res.ok) return { status: res.status, json: null };
+                return { status: res.status, json: await res.json() };
+              } catch (e) { return { status: 0, json: null, error: String(e && e.message) }; }
+            };
+            const a = await call(`/api/v1/users/web_profile_info/?username=${encodeURIComponent(acct)}`);
+            if (a.json) return { ...a, csrf: Boolean(csrf) };
+            // 주소가 바뀌었을 수 있어 예전 주소도 한 번 — 둘 다 막히면 그때 포기한다.
+            const b = await call(`/api/v1/users/web_profile_info/?username=${encodeURIComponent(acct)}&__a=1`);
+            return { ...(b.json ? b : a), csrf: Boolean(csrf) };
           }, account).catch(() => null);
-          const c = exact ? findInstagramFollowers(exact, account) : null;
+          const c = got && got.json ? findInstagramFollowers(got.json, account) : null;
           if (typeof c === 'number') return { count: c, from: 'api-direct', approx: false, tried };
-          tried.push(exact ? '직접 물어본 응답에 팔로워 수가 없었음(응답 모양이 바뀜)' : '직접 물어봤으나 인스타가 거절함');
+          tried.push(!got ? '직접 물어보지 못함'
+            : got.json ? '직접 물어본 응답에 팔로워 수가 없었음(응답 모양이 바뀜)'
+            : `직접 물어봤으나 인스타가 거절함(${got.status || '응답 없음'}${got.csrf ? '' : ', 표식(csrftoken)이 쿠키에 없음'})`);
         }
 
         // 3순위(인스타 전용) — 화면에 적힌 글자 말고, 그 글자가 달고 있는 '정확한 수'를 본다.
