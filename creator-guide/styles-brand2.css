@@ -795,3 +795,17 @@ body {
   padding-top: 4px;
 }
 .done-copyright strong { color: var(--ink-800); font-weight: 600; }
+
+/* 보상 항목 하단 보충 안내 — 작지만 또렷하게 읽히도록 옅은 배경 + 진한 글자색 */
+.optA .reward-subnotes {
+  margin: 10px 0 0;
+  padding: 11px 14px 11px 28px;
+  list-style: disc;
+  background: oklch(0.96 0.005 90);
+  border: 1px solid oklch(0.89 0.008 90);
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--ink-800);
+}
+.optA .reward-subnotes li + li { margin-top: 6px; }

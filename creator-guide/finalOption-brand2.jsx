@@ -584,6 +584,10 @@ function Final_Reward() {
       <div className="alert info" style={{ marginTop: 10 }}>
         <Icon.info /><span>{GUIDE.reward.note}</span>
       </div>
+      {/* 작은 글씨지만 흐려 보이지 않게, 옅은 배경 위에 진한 글자색으로 둔다. */}
+      <ul className="reward-subnotes">
+        {GUIDE.reward.subNotes.map((t, i) => (<li key={i}>{t}</li>))}
+      </ul>
     </div>
   );
 }
