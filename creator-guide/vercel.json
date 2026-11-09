@@ -6,11 +6,12 @@
     { "source": "/reward-view-admin", "destination": "https://influencer-board-bice.vercel.app/", "permanent": false }
   ],
   "rewrites": [
+    { "source": "/", "has": [{ "type": "host", "value": "pw-creator-guide-gsbs.vercel.app" }], "destination": "/brand2.html" },
     { "source": "/gsbs", "destination": "/brand2.html" }
   ],
   "git": {
     "deploymentEnabled": {
-      "main": false,
+      "main": true,
       "**": false
     }
   },
