@@ -59,10 +59,18 @@ const PUBLIC = [
 // gate.js와 반드시 같은 값이어야 한다. 한쪽만 바꾸면 열리지 않는다.
 const PBKDF2_ITERATIONS = 200000;
 
-// [원본 HTML, 잠근 본문을 저장할 이름]
+// [원본 HTML, 잠근 본문을 저장할 이름, 배포 폴더에 놓을 이름]
+//
+// 왜 index.html 을 그대로 두지 않나:
+//   굿스마일 가이드는 pw-creator-guide-gsbs.vercel.app 의 '/' 에서 열려야 하고,
+//   메가하우스 가이드는 pw-creator-guide.vercel.app 의 '/' 에서 열려야 한다.
+//   주소가 같고 가리키는 곳만 다르므로 vercel.json 의 규칙(rewrites)으로 갈라야
+//   하는데, Vercel 은 '규칙'보다 '실제 파일'을 먼저 찾는다. 루트에 index.html 이
+//   있으면 그 파일이 먼저 잡혀 규칙이 아예 돌지 않는다. 그래서 루트에는 아무
+//   파일도 두지 않고, 두 가이드 모두 규칙으로 연결한다.
 const TARGETS = [
-  ['index.html', 'megahouse.enc'],
-  ['brand2.html', 'brand2.enc'],
+  ['index.html', 'megahouse.enc', 'megahouse.html'],
+  ['brand2.html', 'brand2.enc', 'brand2.html'],
 ];
 
 const password = process.env.GUIDE_PASSWORD;
@@ -142,7 +150,7 @@ function extract(html) {
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(LOCK_DIR, { recursive: true });
 
-for (const [srcName, lockName] of TARGETS) {
+for (const [srcName, lockName, outName] of TARGETS) {
   const html = fs.readFileSync(path.join(DIR, srcName), 'utf-8');
   const { code, html: stripped, used } = extract(html);
 
@@ -157,13 +165,13 @@ for (const [srcName, lockName] of TARGETS) {
   const gateTag =
     `<script src="gate.js?v=5" data-locked="locked/${lockName}"></script>\n`;
   fs.writeFileSync(
-    path.join(OUT, srcName),
+    path.join(OUT, outName),
     stripped.replace(/<\/body>/i, `${gateTag}</body>`),
     'utf-8'
   );
 
   const kb = (fs.statSync(path.join(LOCK_DIR, lockName)).size / 1024).toFixed(0);
-  console.log(`[잠금] ${srcName} → locked/${lockName} (${kb}KB, 원본 ${used.length}개)`);
+  console.log(`[잠금] ${srcName} → ${outName} + locked/${lockName} (${kb}KB, 원본 ${used.length}개)`);
 }
 
 // 공개해도 되는 파일만 골라 담는다.

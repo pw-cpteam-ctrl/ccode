@@ -7,7 +7,9 @@
   ],
   "rewrites": [
     { "source": "/", "has": [{ "type": "host", "value": "pw-creator-guide-gsbs.vercel.app" }], "destination": "/brand2.html" },
-    { "source": "/gsbs", "destination": "/brand2.html" }
+    { "source": "/", "destination": "/megahouse.html" },
+    { "source": "/gsbs", "destination": "/brand2.html" },
+    { "source": "/index.html", "destination": "/megahouse.html" }
   ],
   "git": {
     "deploymentEnabled": {
