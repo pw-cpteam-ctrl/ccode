@@ -1717,7 +1717,7 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
     // 1:1도 마찬가지다. 한 명씩 달린 것으로 좋아요 3배 차이를 덮으면 판정이 거꾸로 틀린다.
     const tie = buildComparisonReport({
       startDate: '2026-11-05', endDate: '2026-11-05',
-      own: [ig2(300, 1, '테노히라')], competitors: [ig2(100, 1, '테노히라')],
+      own: [ig2(300, 1, '은혼 테노히라')], competitors: [ig2(100, 1, '은혼 테노히라')],
       manualMatches: {}, ignorePosts: {},
     });
     assert.strictEqual(tie.platforms.instagram.productComparison.products[0].verdict, '우세',
