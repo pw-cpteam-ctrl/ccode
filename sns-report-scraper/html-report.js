@@ -86,8 +86,11 @@ function metricBar(pw, bh, diffText) {
   const total = pw + bh;
   // 양쪽 다 0인 칸은 막대도 숫자도 그리지 않고 '–' 하나만 둔다. 0 : 0 을 그대로 적으면
   // "둘 다 0점으로 비겼다"처럼 읽히는데, 실제로는 잴 것이 없었다는 뜻이라 판정에서도 뺀다.
-  if (total === 0) {
-    return `<div class="metriccell nodata" title="양쪽 다 반응이 없어 이 지표는 판정에서 뺐습니다">–</div>`;
+  // 양쪽 다 1 이하인 칸은 막대도 숫자도 그리지 않고 '–' 하나만 둔다. 0 : 0 이나 1 : 1 을
+  // 그대로 적으면 "비겼다"처럼 읽히는데, 실제로는 들여다볼 값이 없다는 뜻이라 판정에서도 뺀다.
+  if (Math.max(pw, bh) <= 1) {
+    const why = total === 0 ? '양쪽 다 반응이 없어' : '양쪽 다 한 건 이하라';
+    return `<div class="metriccell nodata" title="${why} 이 지표는 판정에서 뺐습니다 (${pw} : ${bh})">–</div>`;
   }
   const title = `PW ${pw.toLocaleString()} · BH ${bh.toLocaleString()}`;
   const pwPct = total > 0 ? (pw / total) * 100 : 0;

@@ -395,7 +395,12 @@ function buildProductEntry(ownPosts, competitorPosts, fields, displayFields, tit
   // 그래서 좋아요에서 크게 이겨도 댓글이 0:0이면 차이가 0이라 "전부 플러스"가 깨져 자동으로
   // 경합이 됐다. 인스타 경합 16건 중 13건이 이 경우였다 — 댓글이 원래 적은 플랫폼이라
   // 판정이 거의 무력화돼 있었다. 양쪽 다 0인 지표는 빼고 남은 지표로 판정한다.
-  const judged = displayFields.filter(f => !(ownSummary[`total_${f}`] === 0 && competitorSummary[`total_${f}`] === 0));
+  //
+  // 0:0뿐 아니라 1:1, 1:0도 뺀다. 한 명씩 달린 것은 우열이 아니라 "아무도 안 달린 것"에 가깝고,
+  // 그 한 건으로 좋아요 3배 차이를 덮어서 경합으로 만들면 판정이 거꾸로 틀린다. 양쪽 다
+  // 1 이하인 지표는 들여다볼 값이 없다고 본다.
+  const judged = displayFields.filter(f =>
+    Math.max(ownSummary[`total_${f}`], competitorSummary[`total_${f}`]) > 1);
   const skipped = displayFields.filter(f => !judged.includes(f));
   const diffValues = judged.map(f => diffs[f]);
 

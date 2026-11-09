@@ -1701,8 +1701,9 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
   check('판정: 양쪽 다 0인 지표는 비긴 것이 아니라 빼고 봐야 함', () => {
     // 인스타는 댓글이 원래 적어서 양사 0:0이 흔하다. 차이가 0이면 "전부 플러스"가 깨져서,
     // 좋아요에서 크게 이겨도 자동으로 경합이 됐다(실제로 경합 16건 중 13건이 이 경우였다).
-    const ig = (l, c, t) => ({ platform: 'instagram', account: 'a',
+    const ig2 = (l, c, t) => ({ platform: 'instagram', account: 'a',
       posts: [{ url: 'u' + t + l, datetime: '2026-11-05T05:00:00Z', likes: String(l), comments: String(c), caption: t }] });
+    const ig = ig2;
     const r = buildComparisonReport({
       startDate: '2026-11-05', endDate: '2026-11-05',
       own: [ig(500, 0, '은혼 테노히라')], competitors: [ig(100, 0, '은혼 테노히라')],
@@ -1712,6 +1713,15 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
     assert.strictEqual(p.verdict, '우세', '댓글 0:0 때문에 경합이 되면 안 됨');
     assert.deepStrictEqual(p.verdictBasis.judged, ['likes'], '판정에 쓴 지표를 남겨야 함');
     assert.deepStrictEqual(p.verdictBasis.skipped, ['comments'], '뺀 지표를 남겨야 함');
+
+    // 1:1도 마찬가지다. 한 명씩 달린 것으로 좋아요 3배 차이를 덮으면 판정이 거꾸로 틀린다.
+    const tie = buildComparisonReport({
+      startDate: '2026-11-05', endDate: '2026-11-05',
+      own: [ig2(300, 1, '테노히라')], competitors: [ig2(100, 1, '테노히라')],
+      manualMatches: {}, ignorePosts: {},
+    });
+    assert.strictEqual(tie.platforms.instagram.productComparison.products[0].verdict, '우세',
+      '댓글 1:1 때문에 경합이 되면 안 됨');
   });
 
   check('판정: 차이가 미미하면(5% 이내) 우열이 아니라 경합이어야 함', () => {
