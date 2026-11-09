@@ -111,6 +111,10 @@ function buildFollowerSummary(history) {
     const ratePct = deltaWindow !== null && base.count > 0 ? (deltaWindow / base.count) * 100 : null;
     // 30일치가 아직 안 쌓였으면 있는 것 중 가장 오래된 것과 비교한다. 그때 "30일"이라고 적으면
     // 거짓말이 되므로, 실제 며칠인지를 같이 들고 가서 화면에 그대로 적는다.
+    // 재는 방법이 바뀌면(근사치 → 정확값) 실제로 변한 게 아닌데도 숫자가 튄다. 예를 들어
+    // 24,000(1,000 단위로 뭉갠 값)에서 23,606(정확값)으로 바뀌면 394명 줄어든 것처럼 보인다.
+    // 비교한 두 시점 중 하나라도 근사치면 그 사실을 같이 들고 가서 화면에 밝힌다.
+    const rateApprox = Boolean((latest && latest.approx) || (base && base.approx));
     const windowDays = latest && base && base !== latest
       ? Math.max(1, Math.round((new Date(latest.takenAt) - new Date(base.takenAt)) / 86400000))
       : null;
@@ -121,6 +125,7 @@ function buildFollowerSummary(history) {
       deltaPrev,
       deltaFirst,
       ratePct,
+      rateApprox,
       windowDays,
       firstAt: first ? first.takenAt : null,
       prevAt: prev ? prev.takenAt : null,
@@ -225,7 +230,8 @@ function renderCell(g, minIdx, maxIdx, tMin, tMax) {
     : `<span class="fo-lab">직전</span>${deltaHtml(g.deltaPrev)}` + (g.ratePct === null ? ''
       // 두 숫자는 기준이 다르다(앞은 바로 앞번 기록, 뒤는 30일 전). 글자를 안 붙여두면 같은
       // 기준으로 읽혀서 "+22인데 왜 마이너스냐"가 된다 — 실제로 그 신고를 받았다.
-      : `<span class="fo-rate"> · <span class="fo-lab">${g.windowDays || 30}일</span>${ratePctHtml(g.ratePct)}</span>`)}</div>
+      : `<span class="fo-rate"> · <span class="fo-lab">${g.windowDays || 30}일</span>${ratePctHtml(g.ratePct)}${
+        g.rateApprox ? '<span class="fo-approx" title="비교한 두 시점 중 하나가 근사치라(인스타가 줄여 적은 값) 이 증감률은 어림입니다.">≈</span>' : ''}</span>`)}</div>
   ${line}
 </div>`;
 }

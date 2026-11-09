@@ -127,6 +127,9 @@ const FROM_LABEL = {
   'api-direct': '내부 주소에 직접 물어봄 — 정확',
   'dom-title': '화면에 숨어 있는 정확한 수(title) — 정확',
   'page-data': '페이지에 미리 실려 온 데이터 — 정확',
+  'anon-exact': '로그인 없이 다시 열어서 — 정확',
+  'anon-text': '로그인 없는 영문 화면 글자(100명 단위)',
+  'ld-json': 'HTML에 박힌 구조화 데이터 — 정확',
   dom: '화면에 적힌 글자',
   none: '어디서도 못 읽음',
 };

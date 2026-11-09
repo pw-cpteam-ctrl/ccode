@@ -91,6 +91,63 @@ function parseCount(text) {
 }
 
 /**
+ * 로그인하지 않은 채로 인스타 프로필을 열어 팔로워 수를 읽는다.
+ *
+ * 인스타는 로그인한 사람에게는 '2.3만'처럼 줄여서만 보여주는데, 로그인하지 않은 화면에는
+ * 정확한 수를 그대로 실어 보낸다(2026-11-09 실측). 팔로워를 셀 때만 잠깐 그 화면을 빌린다.
+ *
+ * 정확한 수가 없으면 영문 화면 글자라도 읽는다 — '23.6K'(100 단위)가 한국어의 '2.3만'
+ * (1,000 단위)보다 열 배 덜 뭉개진 값이다.
+ */
+async function readInstagramAnon(browser, account, attempts = 3) {
+  let last = { count: null, from: 'anon-none', approx: false, approxStep: null, shownText: null };
+  for (let i = 1; i <= attempts; i += 1) {
+    let ctx = null;
+    try {
+      // 로그인 쿠키를 넣지 않는다. 넣으면 다시 줄인 숫자만 보인다.
+      ctx = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' } });
+      const p = await ctx.newPage();
+      await p.goto(`https://www.instagram.com/${encodeURIComponent(account)}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await p.waitForTimeout(4000);
+
+      const got = await p.evaluate((acct) => {
+        const out = { exact: [], shown: null, isProfile: false };
+        const body = document.body.innerText || '';
+        // 인스타는 가끔 프로필 대신 로그인 화면을 내준다(실측 3번 중 1번). 그 화면에는
+        // 계정 이름도 팔로워 글자도 없으므로, 그걸로 '제대로 열렸는지'를 가린다.
+        out.isProfile = /followers/i.test(body) || body.includes(acct);
+        const pats = [/"edge_followed_by"\s*:\s*\{\s*"count"\s*:\s*(\d+)/g, /"follower_count"\s*:\s*(\d+)/g];
+        for (const sc of document.querySelectorAll('script')) {
+          const t = sc.textContent || '';
+          if (t.length > 4000000 || !/follow/i.test(t)) continue;
+          for (const re of pats) { re.lastIndex = 0; let m; while ((m = re.exec(t)) && out.exact.length < 40) out.exact.push(Number(m[1])); }
+        }
+        const m = body.match(/([\d.,]+\s*[KkMm]?)\s*followers/i);
+        out.shown = m ? m[1].trim() : null;
+        return out;
+      }, account);
+
+      if (!got.isProfile) { last = { ...last, from: 'anon-login-wall' }; continue; }
+
+      // 남의 계정(추천 목록 등) 숫자가 섞일 수 있으니, 화면에 적힌 값과 맞는 것만 쓴다.
+      const shownN = parseCount(got.shown);
+      const uniq = [...new Set(got.exact.filter(v => Number.isFinite(v) && v > 0))];
+      const fit = shownN === null ? uniq : uniq.filter(v => Math.abs(v - shownN) / Math.max(shownN, 1) <= 0.2);
+      if (fit.length === 1) {
+        return { count: fit[0], from: 'anon-exact', approx: false, approxStep: 1, shownText: got.shown };
+      }
+      if (shownN !== null) {
+        // 정확한 수를 못 건져도 영문 화면 글자는 100명 단위라, 한국어의 1,000명 단위보다 낫다.
+        const short = /[KkMmBb]/.test(String(got.shown));
+        last = { count: shownN, from: 'anon-text', approx: short, approxStep: short ? 100 : 1, shownText: got.shown };
+      }
+    } catch { /* 한 번 더 여는 것뿐이라, 실패하면 다음 시도로 넘어간다 */ }
+    finally { if (ctx) await ctx.close().catch(() => {}); }
+  }
+  return last;
+}
+
+/**
  * 프로필 페이지를 열기 "전에" 호출해서 응답 가로채기를 걸어둔다.
  * goto 뒤에 걸면 이미 지나간 응답을 놓친다(인스타 릴스 지표에서 겪었던 것과 같은 함정).
  * @returns {{ read: (page) => Promise<{count:number|null, from:string, approx:boolean}> }}
@@ -306,7 +363,30 @@ function watchFollowers(page, { platform, account }) {
             : '페이지에 실린 데이터에서도 못 찾음');
         }
 
-        if (typeof n === 'number') return { count: n, from: 'dom', approx: shortened, tried };
+        // 7순위(인스타 전용) — 같은 프로필을 '로그인 없이' 한 번 더 연다.
+        //
+        // 2026-11-09 실측(두 계정 모두 재현). 인스타는 로그인한 사람에게는 줄인 숫자만
+        // 보여주지만, 로그인하지 않은 화면에는 정확한 수를 그대로 실어 보낸다:
+        //   로그인 화면(한국어) : 팔로워 2.3만  → 1,000 단위
+        //   로그인 없는 화면     : 23,606      → 정확
+        // 그래서 팔로워를 셀 때만 잠깐 '남처럼' 들어가서 읽는다. 로그인 세션은 건드리지 않고
+        // 새 창을 따로 열었다 닫으므로, 수집에 쓰는 로그인 상태에는 영향이 없다.
+        if (!isX) {
+          const browser = page.context().browser();
+          if (browser) {
+            const anon = await readInstagramAnon(browser, account).catch(() => null);
+            // 로그인 화면에서 읽은 줄임 값과 20% 안에서 맞아야 같은 계정으로 본다.
+            if (anon && typeof anon.count === 'number'
+              && (typeof n !== 'number' || Math.abs(anon.count - n) / Math.max(n, 1) <= 0.2)) {
+              return { ...anon, tried };
+            }
+            tried.push(anon && anon.count !== null
+              ? `로그인 없는 화면의 값(${anon.count})이 화면 글자와 어긋남`
+              : '로그인 없는 화면에서도 못 읽음');
+          }
+        }
+
+        if (typeof n === 'number') return { count: n, from: 'dom', approx: shortened, approxStep: shortened ? 1000 : 1, shownText: text, tried };
         tried.push('화면 글자에서도 숫자를 못 읽음');
         return { count: null, from: 'none', approx: false, tried };
       } finally {
@@ -316,4 +396,4 @@ function watchFollowers(page, { platform, account }) {
   };
 }
 
-module.exports = { watchFollowers, parseCount, findTwitterFollowers, findInstagramFollowers };
+module.exports = { watchFollowers, parseCount, findTwitterFollowers, findInstagramFollowers, readInstagramAnon };
