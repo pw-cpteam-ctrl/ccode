@@ -384,15 +384,48 @@ function buildProductEntry(ownPosts, competitorPosts, fields, displayFields, tit
     diffs[f] = ownSummary[`total_${f}`] - competitorSummary[`total_${f}`];
     diffText[f] = formatDiffWithMultiplier(ownSummary[`total_${f}`], competitorSummary[`total_${f}`]);
   });
-  const diffValues = displayFields.map(f => diffs[f]);
   // 양쪽 지표가 전부 0이면 "경합"(접전)이 아니라 판단할 근거가 없는 것 — 예전엔 리트윗 0
   // 좋아요 0인 행까지 "경합"으로 나와서 "박빙이었다"는 뜻으로 잘못 읽혔음(실제로는 둘 다
   // 반응이 없었던 것). 표시를 분리해서 오해를 없앰.
   const allZero = displayFields.every(f => ownSummary[`total_${f}`] === 0 && competitorSummary[`total_${f}`] === 0);
-  const verdict = allZero ? '지표 없음'
+
+  // 지표 하나가 양쪽 다 0이면 그 지표는 '비긴 것'이 아니라 '잴 게 없는 것'이다. 위에서 전체가
+  // 0일 때 이미 같은 판단을 하고 있었는데, 지표 하나 단위로는 안 하고 있었다.
+  //
+  // 그래서 좋아요에서 크게 이겨도 댓글이 0:0이면 차이가 0이라 "전부 플러스"가 깨져 자동으로
+  // 경합이 됐다. 인스타 경합 16건 중 13건이 이 경우였다 — 댓글이 원래 적은 플랫폼이라
+  // 판정이 거의 무력화돼 있었다. 양쪽 다 0인 지표는 빼고 남은 지표로 판정한다.
+  const judged = displayFields.filter(f => !(ownSummary[`total_${f}`] === 0 && competitorSummary[`total_${f}`] === 0));
+  const skipped = displayFields.filter(f => !judged.includes(f));
+  const diffValues = judged.map(f => diffs[f]);
+
+  // 1이라도 앞서면 우세로 찍던 것도 과했다. 222:231(−4%)을 '약세'라고 부르면 보고할 때마다
+  // "차이가 크지 않습니다"를 손으로 덧붙이게 된다. 비등한 범위는 경합으로 둔다.
+  const TIE_RATIO = 0.05;   // 양쪽 평균의 5% 이내 차이는 우열로 보지 않음
+  const within = judged.every(f => {
+    const a = ownSummary[`total_${f}`], b = competitorSummary[`total_${f}`];
+    const base = (a + b) / 2;
+    return base > 0 && Math.abs(a - b) / base <= TIE_RATIO;
+  });
+
+  // 반응 자체가 적으면 배수가 커도 우열의 폭을 크게 보기 어렵다(5:1은 5배지만 4개 차이다).
+  // 초동이 지나면 수치가 거의 고정되므로 "더 기다리면 쌓인다"는 뜻의 표현은 쓰지 않는다 —
+  // 더 모일 것이 없는데 미완성처럼 읽히기 때문이다. 판정은 그대로 내고 꼬리말로만 알린다.
+  const LOW_VOLUME = 30;    // 판정에 쓴 지표들의 양사 합계
+  const volume = judged.reduce((n, f) => n + ownSummary[`total_${f}`] + competitorSummary[`total_${f}`], 0);
+
+  const verdict = allZero || judged.length === 0 ? '지표 없음'
+    : within ? '경합'
     : diffValues.every(d => d > 0) ? '우세'
     : diffValues.every(d => d < 0) ? '약세'
     : '경합';
+  // 무엇을 근거로 판정했는지 남긴다. 뺀 지표를 말하지 않으면 "댓글은 안 보고 판단했냐"는
+  // 되물음이 보고받는 쪽에서 나온다.
+  const verdictBasis = {
+    judged, skipped,
+    lowVolume: verdict !== '지표 없음' && volume < LOW_VOLUME,
+    volume,
+  };
   const needsReview = !isManual && (ownPosts.length + competitorPosts.length) >= PRODUCT_GROUP_REVIEW_THRESHOLD;
 
   return {
@@ -400,7 +433,7 @@ function buildProductEntry(ownPosts, competitorPosts, fields, displayFields, tit
     own: ownSummary, competitor: competitorSummary,
     ownPosts, competitorPosts,
     pwTime: formatKstTime(pwTime), bhTime: formatKstTime(bhTime), timeDiffMinutes, timeDiffSignedMinutes, timeDiffSignedSeconds,
-    diffText, verdict, needsReview,
+    diffText, verdict, verdictBasis, needsReview,
   };
 }
 

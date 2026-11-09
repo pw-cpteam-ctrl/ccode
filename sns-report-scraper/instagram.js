@@ -58,6 +58,11 @@ async function collectInstagram({ account, sessionFile, startDate, endDate, head
 
   const followers = await followerWatch.read();
   console.log(`[instagram:${account}] 팔로워 ${followers.count ?? '못 읽음'}${followers.approx ? ' (화면 줄임 표기라 근사치)' : ''}`);
+  // 정확한 수를 못 얻었을 때만 어느 길이 막혔는지 적는다. 결과만 보면 '≈'가 떠도 응답이
+  // 거절당한 것인지 화면 구조가 바뀐 것인지 알 수 없어, 매번 추측으로 고치게 된다.
+  if ((followers.approx || followers.count === null) && followers.tried?.length) {
+    followers.tried.forEach(t => console.log(`   ⓘ ${t}`));
+  }
 
   const links = new Set();
   const orderedLinks = []; // 발견 순서 보존 (그리드는 최신→과거 순으로 쌓임)

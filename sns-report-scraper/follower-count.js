@@ -94,8 +94,12 @@ function watchFollowers(page, { platform, account }) {
 
   return {
     async read() {
+      // 어느 길이 왜 막혔는지 남긴다. 지금까지는 결과만 보여서, '≈'가 떠도 응답이 거절당한
+      // 것인지 화면 구조가 바뀐 것인지 알 수 없었다 — 원인을 모르니 매번 추측으로 고치게 된다.
+      const tried = [];
       try {
-        if (typeof fromApi === 'number') return { count: fromApi, from: 'api', approx: false };
+        if (typeof fromApi === 'number') return { count: fromApi, from: 'api', approx: false, tried };
+        tried.push('페이지가 주고받은 응답에 팔로워 수가 없었음');
 
         // 2순위(인스타 전용) — 프로필 화면에서 내부 주소를 직접 한 번 더 불러본다.
         //
@@ -120,7 +124,8 @@ function watchFollowers(page, { platform, account }) {
             } catch { return null; }
           }, account).catch(() => null);
           const c = exact ? findInstagramFollowers(exact, account) : null;
-          if (typeof c === 'number') return { count: c, from: 'api-direct', approx: false };
+          if (typeof c === 'number') return { count: c, from: 'api-direct', approx: false, tried };
+          tried.push(exact ? '직접 물어본 응답에 팔로워 수가 없었음(응답 모양이 바뀜)' : '직접 물어봤으나 인스타가 거절함');
         }
 
         // 3순위(인스타 전용) — 화면에 적힌 글자 말고, 그 글자가 달고 있는 '정확한 수'를 본다.
@@ -159,11 +164,16 @@ function watchFollowers(page, { platform, account }) {
             // 아래 단계로 내려가 근사치라고 솔직히 적는 편이 낫다.
             if (shown === null) continue;
             if (Math.abs(n - shown) / Math.max(shown, 1) > 0.2) continue;
-            return { count: n, from: 'dom-title', approx: false };
+            return { count: n, from: 'dom-title', approx: false, tried };
           }
+          tried.push((exactDom && exactDom.length)
+            ? '화면에 숨은 정확한 수가 있었지만 보이는 글자와 어긋나 버림'
+            : '화면에 숨은 정확한 수(title)가 없었음');
         }
 
         // 4순위 — 화면 글자. 못 읽어도 수집 자체는 계속돼야 하므로 예외를 밖으로 던지지 않는다.
+        //
+        // 아래 '페이지에 미리 실린 데이터' 경로가 이 값을 대조용으로 쓰기 때문에 먼저 읽는다.
         const text = await page.evaluate((isX) => {
           if (isX) {
             const a = document.querySelector('a[href$="/verified_followers"], a[href$="/followers"]');
@@ -182,11 +192,45 @@ function watchFollowers(page, { platform, account }) {
         // 그대로 정확한 값이라 근사치로 깎아내릴 이유가 없다 — 무조건 근사치로 적어두면
         // 나중에 "이 값은 못 믿는다"고 잘못 판단하게 된다.
         const n = parseCount(text);
-        if (typeof n === 'number') {
-          const shortened = /[KkMmBb만천억]/.test(String(text));
-          return { count: n, from: 'dom', approx: shortened };
+        const shortened = /[KkMmBb만천억]/.test(String(text));
+
+        // 5순위(인스타 전용) — 페이지에 미리 실려 오는 데이터에서 찾는다.
+        //
+        // 인스타는 화면을 그리기 전에 쓸 자료를 <script> 안에 JSON으로 같이 실어 보낸다.
+        // 거기엔 줄이지 않은 정확한 수가 들어있다. 내부 주소가 막히고 title도 사라진
+        // 상황에서도 이건 남아 있는 경우가 있어, 길을 하나 더 두는 것이다.
+        //
+        // ⚠️ 그 JSON에는 '추천 계정' 같은 남의 팔로워 수도 섞여 있다. 그래서 화면에 보이는
+        //    줄임 값(2.3만)과 20% 안에서 맞는 것만 쓴다 — 엉뚱한 계정 수를 우리 기록에
+        //    남기느니, 근사치라고 솔직히 적는 편이 낫다.
+        if (!isX && shortened && typeof n === 'number') {
+          const cands = await page.evaluate(() => {
+            const out = [];
+            const pats = [/"edge_followed_by"\s*:\s*\{\s*"count"\s*:\s*(\d+)/g, /"follower_count"\s*:\s*(\d+)/g];
+            for (const sc of document.querySelectorAll('script')) {
+              const t = sc.textContent || '';
+              if (t.length > 4000000 || !/follow/i.test(t)) continue;
+              for (const re of pats) {
+                re.lastIndex = 0;
+                let m;
+                while ((m = re.exec(t)) && out.length < 40) out.push(Number(m[1]));
+              }
+            }
+            return out;
+          }).catch(() => []);
+          const fit = (cands || []).filter(v => Number.isFinite(v) && v > 0
+            && Math.abs(v - n) / Math.max(n, 1) <= 0.2);
+          // 맞는 후보가 여럿이면 어느 것이 이 계정인지 가릴 수 없으므로 쓰지 않는다.
+          const uniq = [...new Set(fit)];
+          if (uniq.length === 1) return { count: uniq[0], from: 'page-data', approx: false, tried };
+          tried.push(uniq.length > 1
+            ? `페이지에 실린 데이터에 비슷한 수가 ${uniq.length}개라 어느 계정인지 가릴 수 없었음`
+            : '페이지에 실린 데이터에서도 못 찾음');
         }
-        return { count: null, from: 'none', approx: false };
+
+        if (typeof n === 'number') return { count: n, from: 'dom', approx: shortened, tried };
+        tried.push('화면 글자에서도 숫자를 못 읽음');
+        return { count: null, from: 'none', approx: false, tried };
       } finally {
         page.off('response', onResponse);
       }

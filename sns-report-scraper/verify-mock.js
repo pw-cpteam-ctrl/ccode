@@ -1698,6 +1698,41 @@ check('report-archive: 기존 리포트(고정이름+타임스탬프 이름 둘 
     assert.strictEqual(html.includes('BH 100%'), false, '0:0을 경쟁사 100%로 그리면 안 됨');
   });
 
+  check('판정: 양쪽 다 0인 지표는 비긴 것이 아니라 빼고 봐야 함', () => {
+    // 인스타는 댓글이 원래 적어서 양사 0:0이 흔하다. 차이가 0이면 "전부 플러스"가 깨져서,
+    // 좋아요에서 크게 이겨도 자동으로 경합이 됐다(실제로 경합 16건 중 13건이 이 경우였다).
+    const ig = (l, c, t) => ({ platform: 'instagram', account: 'a',
+      posts: [{ url: 'u' + t + l, datetime: '2026-11-05T05:00:00Z', likes: String(l), comments: String(c), caption: t }] });
+    const r = buildComparisonReport({
+      startDate: '2026-11-05', endDate: '2026-11-05',
+      own: [ig(500, 0, '은혼 테노히라')], competitors: [ig(100, 0, '은혼 테노히라')],
+      manualMatches: {}, ignorePosts: {},
+    });
+    const p = r.platforms.instagram.productComparison.products[0];
+    assert.strictEqual(p.verdict, '우세', '댓글 0:0 때문에 경합이 되면 안 됨');
+    assert.deepStrictEqual(p.verdictBasis.judged, ['likes'], '판정에 쓴 지표를 남겨야 함');
+    assert.deepStrictEqual(p.verdictBasis.skipped, ['comments'], '뺀 지표를 남겨야 함');
+  });
+
+  check('판정: 차이가 미미하면(5% 이내) 우열이 아니라 경합이어야 함', () => {
+    // 222 : 231(−4%)을 '약세'로 적으면 보고할 때마다 "차이가 크지 않습니다"를 손으로 덧붙이게 된다.
+    const ig = (l, t) => ({ platform: 'instagram', account: 'a',
+      posts: [{ url: 'u' + t + l, datetime: '2026-11-05T05:00:00Z', likes: String(l), comments: '0', caption: t }] });
+    const near = buildComparisonReport({
+      startDate: '2026-11-05', endDate: '2026-11-05',
+      own: [ig(222, '이누야샤 룩업')], competitors: [ig(231, '이누야샤 룩업')],
+      manualMatches: {}, ignorePosts: {},
+    });
+    assert.strictEqual(near.platforms.instagram.productComparison.products[0].verdict, '경합');
+    const far = buildComparisonReport({
+      startDate: '2026-11-05', endDate: '2026-11-05',
+      own: [ig(117, '붕괴 스타레일')], competitors: [ig(134, '붕괴 스타레일')],
+      manualMatches: {}, ignorePosts: {},
+    });
+    assert.strictEqual(far.platforms.instagram.productComparison.products[0].verdict, '약세',
+      '13% 차이는 경합으로 뭉개면 안 됨');
+  });
+
   check('맞대결 리포트: 조회수는 칸으로만 보이고 "총 반응" 합계에는 들어가면 안 됨', () => {
     // 조회수는 반응이 아니라 '얼마나 퍼졌나'라서 자릿수가 두 자리 더 크다. 합계에 같이
     // 더했더니 14,838이던 총 반응이 1,057,461이 돼 98%가 조회수인 숫자가 됐다.

@@ -33,6 +33,11 @@ async function collectTwitter({ account, sessionFile, startDate, endDate, headle
 
   const followers = await followerWatch.read();
   console.log(`[twitter:${account}] 팔로워 ${followers.count ?? '못 읽음'}${followers.approx ? ' (화면 줄임 표기라 근사치)' : ''}`);
+  // 정확한 수를 못 얻었을 때만 어느 길이 막혔는지 적는다. 결과만 보면 '≈'가 떠도 응답이
+  // 거절당한 것인지 화면 구조가 바뀐 것인지 알 수 없어, 매번 추측으로 고치게 된다.
+  if ((followers.approx || followers.count === null) && followers.tried?.length) {
+    followers.tried.forEach(t => console.log(`   ⓘ ${t}`));
+  }
 
   // 모은 글은 페이지 안이 아니라 여기(이 컴퓨터 쪽)에 쌓는다. 페이지 안에만 두면 X가 어떤
   // 이유로든 페이지를 새로 읽어들이는 순간 지금까지 모은 게 통째로 날아가기 때문이다.

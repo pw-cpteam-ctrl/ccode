@@ -12,6 +12,20 @@ function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+/** 판정 아래 작게 붙는 꼬리말 — 무엇으로 판정했는지, 반응이 적었는지. */
+function verdictNote(basis) {
+  if (!basis) return '';
+  const bits = [];
+  if (basis.skipped && basis.skipped.length && basis.judged && basis.judged.length) {
+    // 뺀 지표를 말하지 않으면 "댓글은 안 보고 판단했냐"는 되물음이 보고받는 쪽에서 나온다.
+    bits.push(`${basis.judged.map(f => FIELD_LABELS[f] || f).join('·')} 기준`);
+  }
+  // "표본이 작다"는 말은 쓰지 않는다 — 더 모으면 달라진다는 뜻으로 읽히는데, 초동이 지나면
+  // 수치는 거의 고정되므로 사실이 아니다. 지금 반응의 크기를 그대로 말한다.
+  if (basis.lowVolume) bits.push('반응 적음');
+  return bits.length ? `<div class="verdict-note">${escapeHtml(bits.join(' · '))}</div>` : '';
+}
+
 function verdictBadge(verdict, needsReview) {
   // '지표 없음'(양쪽 다 0)은 우열 판단이 아니라 데이터가 없는 상태라 회색 중립 배지로 구분
   const cls = { 우세: 'ok', 경합: 'mid', 약세: 'low', '지표 없음': 'none' }[verdict] || 'mid';
@@ -70,6 +84,11 @@ function fieldIcon(f) {
 // 구간이 라벨을 담을 폭이 안 나오므로, "잘리는 라벨"보다 "끝에 고정된 라벨"이 항상 안전함.
 function metricBar(pw, bh, diffText) {
   const total = pw + bh;
+  // 양쪽 다 0인 칸은 막대도 숫자도 그리지 않고 '–' 하나만 둔다. 0 : 0 을 그대로 적으면
+  // "둘 다 0점으로 비겼다"처럼 읽히는데, 실제로는 잴 것이 없었다는 뜻이라 판정에서도 뺀다.
+  if (total === 0) {
+    return `<div class="metriccell nodata" title="양쪽 다 반응이 없어 이 지표는 판정에서 뺐습니다">–</div>`;
+  }
   const title = `PW ${pw.toLocaleString()} · BH ${bh.toLocaleString()}`;
   const pwPct = total > 0 ? (pw / total) * 100 : 0;
   const track = total > 0
@@ -271,7 +290,7 @@ function renderPlatformSection(platformKey, data, stockComparison, stockMode = '
       `<td>${escapeHtml(p.line || '-')}</td>`,
       ...displayFields.map(f => `<td class="metric">${metricBar(p.own[`total_${f}`], p.competitor[`total_${f}`], p.diffText[f])}</td>`),
       `<td class="metric">${timeCell(p.pwTime, p.bhTime, p.timeDiffSignedMinutes, p.timeDiffSignedSeconds)}</td>`,
-      `<td>${verdictBadge(p.verdict, p.needsReview)}</td>`,
+      `<td>${verdictBadge(p.verdict, p.needsReview)}${verdictNote(p.verdictBasis)}</td>`,
       `<td><button class="toggle-btn" onclick="toggleEmbeds('${embedRowId}','${platformKey}',this)">▶ 보기</button></td>`,
       ...(hasStock ? [
         salesBar(pwStockAssignment.get(p) || null, bhStockAssignment.get(p) || null, stockMode),
@@ -462,6 +481,8 @@ section.platform{margin-bottom:36px}
 table{width:100%;border-collapse:collapse;white-space:nowrap}
 th{background:#3b5bdb;color:#fff;font-size:12px;padding:10px 8px;position:sticky;top:0}
 td{padding:9px 8px;border-bottom:1px solid #eef0f4;font-size:13px;text-align:center;vertical-align:middle}
+.metriccell.nodata{color:#c9ced8;font-size:15px}
+.verdict-note{font-size:10px;color:#9099a6;margin-top:3px;line-height:1.3}
 tr.verdict-mid{background:#fff9db}tr.verdict-low{background:#fff0f0}tr:hover{background:#f0f4ff}
 .rank{font-size:15px;font-weight:700;width:38px}
 td.name{text-align:left;font-weight:600;max-width:130px;overflow:hidden;text-overflow:ellipsis}
