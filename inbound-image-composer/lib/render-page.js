@@ -41,8 +41,10 @@ async function ensureFontsLoaded() {
   return fontsReadyPromise;
 }
 
-function drawCartIcon(ctx, x, y, color) {
+function drawCartIcon(ctx, x, y, color, s = 1) {
   ctx.save();
+  // 열을 늘려 카드가 작아지면 아이콘도 같이 줄어야 글자와 균형이 맞는다.
+  if (s !== 1) { ctx.translate(x, y); ctx.scale(s, s); x = 0; y = 0; }
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
   ctx.lineWidth = 1.3;
@@ -154,26 +156,63 @@ function drawTagBadge(ctx, x, baselineY, text, tagSize = 13) {
   return w + 4; // width consumed, for layout chaining
 }
 
-// ---- shared layout constants (tuned for 1080x1350 / 5 cols) ----
-const LAYOUT = {
-  photo: 176, colGap: 20, padX: 60, photoToText: 8,
+// ---- 레이아웃 치수 (1080x1350 / 5열을 기준값으로 두고 열 수에 맞춰 비례 축소) ----
+//
+// 원래는 5열 고정 상수였다. 상품이 많으면 6~7장까지 나와서 X에 올리기 전에 따로
+// 4장으로 재배치해야 한다는 요청 때문에, 열을 늘려 한 장에 더 담을 수 있게 바꿨다.
+// 열이 늘면 사진이 작아지므로 글자 크기·간격도 같은 비율로 줄여야 균형이 유지된다
+// (사진만 줄이면 글자가 상대적으로 거대해져서 카드가 글자 덩어리처럼 보인다).
+const BASE = {
+  cols: 5, photo: 176, colGap: 20, padX: 60, photoToText: 8,
   ipSize: 25, priceSize: 17, shipSize: 15, tagSize: 13,
-  rowGap: 18,
+  rowGap: 18, gapIpPrice: 9, gapPriceShip: 7, shipTextX: 22,
+  ipLineGap: 4, twoLineThreshold: 18, twoLineSize: 20, ipMinSize: 15,
 };
-LAYOUT.textH = LAYOUT.ipSize + 9 + LAYOUT.priceSize + 7 + LAYOUT.shipSize;
-LAYOUT.cardBlock = LAYOUT.photo + LAYOUT.photoToText + LAYOUT.textH;
+
+function layoutFor(cols = 5, pageW = 1080) {
+  const padX = BASE.padX;
+  // 열이 늘수록 칸 사이 여백도 줄여야 사진이 과하게 작아지지 않는다.
+  const colGap = cols <= BASE.cols ? BASE.colGap : Math.max(10, Math.round(100 / cols));
+  const photo = Math.floor((pageW - padX * 2 - colGap * (cols - 1)) / cols);
+  const s = photo / BASE.photo; // 5열 대비 축소 비율
+  const px = (v, min) => Math.max(min, Math.round(v * s));
+  const L = {
+    cols, photo, colGap, padX, scale: s,
+    photoToText: px(BASE.photoToText, 4),
+    ipSize: px(BASE.ipSize, 12),
+    priceSize: px(BASE.priceSize, 9),
+    shipSize: px(BASE.shipSize, 8),
+    tagSize: px(BASE.tagSize, 7),
+    rowGap: px(BASE.rowGap, 8),
+    gapIpPrice: px(BASE.gapIpPrice, 4),
+    gapPriceShip: px(BASE.gapPriceShip, 3),
+    shipTextX: px(BASE.shipTextX, 12),
+    ipLineGap: px(BASE.ipLineGap, 2),
+    twoLineThreshold: px(BASE.twoLineThreshold, 10),
+    twoLineSize: px(BASE.twoLineSize, 11),
+    ipMinSize: px(BASE.ipMinSize, 9),
+  };
+  L.textH = L.ipSize + L.gapIpPrice + L.priceSize + L.gapPriceShip + L.shipSize;
+  L.cardBlock = L.photo + L.photoToText + L.textH;
+  return L;
+}
+
+const LAYOUT = layoutFor(BASE.cols);
 
 // IP명이 너무 길어서 한 줄에 우겨넣으면 이 크기 밑으로 줄여야 하는 경우, 억지로 작게
 // 만들지 않고 2줄로 나눠서 IP_TWO_LINE_SIZE(1줄 최소값 15px보다 크고 기본 25px보다는
 // 작은 절충값)로 보여준다. 2줄이 된 카드가 있는 행은 그만큼 행 높이가 늘어나야 다음
 // 행과 안 겹친다 — 이 계산은 rowExtraHeight()가 한다.
-const IP_TWO_LINE_THRESHOLD = 18;
-const IP_TWO_LINE_SIZE = 20;
+// (실제 값은 열 수에 따라 달라지므로 layoutFor()가 계산한 L.twoLineThreshold /
+//  L.twoLineSize / L.ipMinSize를 쓴다. 5열일 때는 예전과 같은 18 / 20 / 15다.)
 
 // 특정 IP명이 photo 폭 안에 1줄로 들어갈지, 2줄로 나눠야 할지 미리 계산만 한다(그리지
 // 않음) — 실제 그리기(drawCard)와 행 높이 계산(rowExtraHeight) 양쪽에서 공용으로 쓴다.
-function ipTextPlan(ctx, item) {
-  const { photo, tagSize, ipSize } = LAYOUT;
+function ipTextPlan(ctx, item, L = LAYOUT) {
+  const { photo, tagSize, ipSize } = L;
+  const IP_TWO_LINE_THRESHOLD = L.twoLineThreshold;
+  const IP_TWO_LINE_SIZE = L.twoLineSize;
+  const IP_MIN = L.ipMinSize;
   const ip = item.ip || '';
   let reserve = 0;
   if (item.tag) {
@@ -187,15 +226,15 @@ function ipTextPlan(ctx, item) {
   if (ip.includes('\n')) {
     const [first, ...rest] = ip.split('\n').map((s) => s.trim());
     const second = rest.filter((s) => s.length).join(' ');
-    if (!second) return { lines: [first], size: fitFont(ctx, first, maxWidth, ipSize, 15) };
+    if (!second) return { lines: [first], size: fitFont(ctx, first, maxWidth, ipSize, IP_MIN) };
     const size = Math.min(
-      fitFont(ctx, first, maxWidth, IP_TWO_LINE_SIZE, 15),
-      fitFont(ctx, second, maxWidth, IP_TWO_LINE_SIZE, 15),
+      fitFont(ctx, first, maxWidth, IP_TWO_LINE_SIZE, IP_MIN),
+      fitFont(ctx, second, maxWidth, IP_TWO_LINE_SIZE, IP_MIN),
     );
     return { lines: [first, second], size };
   }
 
-  const oneLineSize = fitFont(ctx, ip, maxWidth, ipSize, 15);
+  const oneLineSize = fitFont(ctx, ip, maxWidth, ipSize, IP_MIN);
   if (!ip || oneLineSize >= IP_TWO_LINE_THRESHOLD) return { lines: [ip], size: oneLineSize };
 
   // 1줄로는 너무 작아지는 경우 → 2줄로 나눠서 더 큰 글자로 보여준다. 단어(공백)
@@ -204,7 +243,7 @@ function ipTextPlan(ctx, item) {
   // 내서 부자연스러웠음). IP_TWO_LINE_SIZE(20px)부터 시작해 2줄 안에 들어올
   // 때까지 폰트를 낮춰가며(최소 15px) 시도 — 폰트를 낮출수록 한 줄에 더 많은
   // 단어가 들어가서 줄 수가 줄어든다.
-  for (let size = IP_TWO_LINE_SIZE; size >= 15; size--) {
+  for (let size = IP_TWO_LINE_SIZE; size >= IP_MIN; size--) {
     const lines = wrapTextByWord(ctx, ip, `800 ${size}px ${FONT}`, maxWidth);
     if (lines.length <= 2) return { lines, size };
   }
@@ -222,8 +261,8 @@ function ipTextPlan(ctx, item) {
     const first = ip.slice(0, mid);
     const second = ip.slice(mid);
     const size = Math.min(
-      fitFont(ctx, first, maxWidth, IP_TWO_LINE_SIZE, 15),
-      fitFont(ctx, second, maxWidth, IP_TWO_LINE_SIZE, 15),
+      fitFont(ctx, first, maxWidth, IP_TWO_LINE_SIZE, IP_MIN),
+      fitFont(ctx, second, maxWidth, IP_TWO_LINE_SIZE, IP_MIN),
     );
     return { lines: [first, second], size };
   }
@@ -239,8 +278,8 @@ function ipTextPlan(ctx, item) {
   const first = words.slice(0, bestSplit).join(' ');
   const second = words.slice(bestSplit).join(' ');
   const size = Math.min(
-    fitFont(ctx, first, maxWidth, IP_TWO_LINE_SIZE, 15),
-    fitFont(ctx, second, maxWidth, IP_TWO_LINE_SIZE, 15),
+    fitFont(ctx, first, maxWidth, IP_TWO_LINE_SIZE, IP_MIN),
+    fitFont(ctx, second, maxWidth, IP_TWO_LINE_SIZE, IP_MIN),
   );
   return { lines: [first, second], size };
 }
@@ -248,9 +287,9 @@ function ipTextPlan(ctx, item) {
 // 한 행(row)에 속한 카드들 중 하나라도 IP명이 2줄로 넘어가면, 그 행 전체 높이를
 // 한 줄만큼 더 늘려야 한다 — measureCtx는 실제로 그릴 캔버스가 아니어도 되고
 // measureText만 정확하면 된다(폰트가 로드된 뒤라면 임시 캔버스로도 충분).
-function rowExtraHeight(measureCtx, rowItems) {
-  const needsTwoLines = rowItems.some((it) => ipTextPlan(measureCtx, it).lines.length === 2);
-  return needsTwoLines ? IP_TWO_LINE_SIZE + 4 : 0;
+function rowExtraHeight(measureCtx, rowItems, L = LAYOUT) {
+  const needsTwoLines = rowItems.some((it) => ipTextPlan(measureCtx, it, L).lines.length === 2);
+  return needsTwoLines ? L.twoLineSize + L.ipLineGap : 0;
 }
 
 /**
@@ -262,46 +301,71 @@ function rowExtraHeight(measureCtx, rowItems) {
  * 그린다 — 이 줄 아래에 다른 카드/텍스트가 없어서(카드 블록 높이는 LAYOUT.cardBlock으로
  * 항상 고정) 꺼도 위쪽 IP명/가격 위치나 다음 줄 카드 위치는 전혀 안 밀린다.
  */
-function drawCard(ctx, item, cx, cy, showShipping = true) {
-  const { photo, photoToText, priceSize, shipSize, tagSize } = LAYOUT;
+function drawCard(ctx, item, cx, cy, showShipping = true, L = LAYOUT) {
+  const { photo, photoToText, priceSize, shipSize, tagSize } = L;
   const { photo: photoImg, price, ship, tag } = item;
 
   if (photoImg) ctx.drawImage(photoImg, cx, cy, photo, photo);
 
   ctx.textBaseline = 'alphabetic';
-  const plan = ipTextPlan(ctx, item);
+  const plan = ipTextPlan(ctx, item, L);
   const ipY = cy + photo + photoToText + plan.size - 4;
+
+  // 아주 긴 상품명은 "글자가 사라지는 것보다 낫다"는 이유로 칸 폭을 조금 넘겨서라도
+  // 2줄에 전부 담는 경로가 있다. 5열일 땐 카드 사이 여백이 20px이라 티가 안 났지만,
+  // 열을 늘리면 그 초과분이 바로 옆 카드 글자를 덮어버린다. 그래서 칸을 넘는 줄만
+  // 가로로 살짝 눌러서(글자는 다 보이게) 칸 안에 넣는다 — 잘라내지도, 넘치지도 않는다.
+  let tagReserve = 0;
+  if (tag) {
+    ctx.font = `700 ${tagSize}px ${FONT}`;
+    tagReserve = ctx.measureText(tag).width + 14;
+  }
+  const ipMaxW = photo - 2 - tagReserve;
+  const drawFitted = (text, x, y) => {
+    const w = ctx.measureText(text).width;
+    if (w <= ipMaxW || w === 0) { ctx.fillText(text, x, y); return Math.min(w, ipMaxW); }
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(ipMaxW / w, 1);
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
+    return ipMaxW;
+  };
 
   ctx.fillStyle = '#1b1b1f';
   ctx.font = `800 ${plan.size}px ${FONT}`;
-  ctx.fillText(plan.lines[0], cx + 2, ipY);
+  let lastLineWidth = drawFitted(plan.lines[0], cx + 2, ipY);
   let lastIpLineY = ipY;
   if (plan.lines.length === 2) {
-    lastIpLineY = ipY + plan.size + 4;
-    ctx.fillText(plan.lines[1], cx + 2, lastIpLineY);
+    lastIpLineY = ipY + plan.size + L.ipLineGap;
+    lastLineWidth = drawFitted(plan.lines[1], cx + 2, lastIpLineY);
   }
 
   if (tag) {
     // 태그 배지는 항상 "마지막 줄" 옆에 붙인다. 2줄로 나뉜 경우 첫 줄 끝(줄바꿈 지점)에
     // 붙이면 IP명이 잘려 보이는 중간에 배지가 끼어든 것처럼 보인다 — IP명이 실제로
-    // 끝나는 마지막 줄 옆에 붙어야 자연스럽다. ctx.font는 fillText 이후에도 그대로
-    // IP명 폰트라 마지막 줄 폭을 그대로 재측정할 수 있다.
-    const lastLineText = plan.lines[plan.lines.length - 1];
-    const lastLineWidth = ctx.measureText(lastLineText).width;
-    drawTagBadge(ctx, cx + 2 + lastLineWidth + 5, lastIpLineY, tag, tagSize);
+    // 끝나는 마지막 줄 옆에 붙어야 자연스럽다.
+    //
+    // 어디에 붙든 카드 오른쪽 끝은 넘지 않게 고정한다. 안 그러면 마지막 열에서는
+    // 페이지 밖으로, 가운데 열에서는 옆 카드 위로 배지가 튀어나간다.
+    ctx.font = `700 ${tagSize}px ${FONT}`;
+    const badgeW = ctx.measureText(tag).width + 10;
+    const wantX = cx + 2 + lastLineWidth + 5;
+    const maxX = cx + photo - badgeW;
+    drawTagBadge(ctx, Math.max(cx + 2, Math.min(wantX, maxX)), lastIpLineY, tag, tagSize);
   }
 
-  const priceY = lastIpLineY + 9 + priceSize;
+  const priceY = lastIpLineY + L.gapIpPrice + priceSize;
   ctx.fillStyle = '#3b3b3b';
   ctx.font = `500 ${priceSize}px ${FONT}`; // NOTE: price must always render SMALLER + LIGHTER than ip name
   ctx.fillText(price || '', cx + 2, priceY);
 
   if (showShipping) {
-    const shipY = priceY + 7 + shipSize;
-    drawCartIcon(ctx, cx + 2, shipY - 12, '#a8adb4');
+    const shipY = priceY + L.gapPriceShip + shipSize;
+    drawCartIcon(ctx, cx + 2, shipY - Math.round(12 * L.scale), '#a8adb4', L.scale);
     ctx.fillStyle = '#9aa0a8';
     ctx.font = `500 ${shipSize}px ${FONT}`;
-    ctx.fillText(ship || '', cx + 22, shipY);
+    ctx.fillText(ship || '', cx + L.shipTextX, shipY);
   }
 }
 
@@ -333,7 +397,8 @@ async function renderPage(items, headerImg, options = {}) {
     ctx.drawImage(headerImg, 0, 0, pageW, headerH);
   }
 
-  const { photo, colGap, padX, cardBlock, rowGap } = LAYOUT;
+  const L = layoutFor(cols, pageW);
+  const { photo, colGap, padX, cardBlock, rowGap } = L;
   const usedRows = Math.min(rows, Math.ceil(items.length / cols));
 
   // IP명이 2줄로 넘어가는 카드가 있는 행은 기본 카드 높이(cardBlock)보다 실제로 더
@@ -342,7 +407,7 @@ async function renderPage(items, headerImg, options = {}) {
   const rowHeights = [];
   for (let r = 0; r < usedRows; r++) {
     const rowItems = items.slice(r * cols, r * cols + cols);
-    rowHeights.push(cardBlock + rowExtraHeight(ctx, rowItems));
+    rowHeights.push(cardBlock + rowExtraHeight(ctx, rowItems, L));
   }
 
   // 최대 개수(rows*cols)보다 상품이 적어서 행이 덜 채워진 경우, 남는 세로 공간을
@@ -354,7 +419,7 @@ async function renderPage(items, headerImg, options = {}) {
       const i = r * cols + c;
       if (i >= items.length) continue;
       const cx = padX + c * (photo + colGap);
-      drawCard(ctx, items[i], cx, yCursor, showShipping);
+      drawCard(ctx, items[i], cx, yCursor, showShipping, L);
     }
     yCursor += rowHeights[r] + rowGap;
   }
@@ -415,6 +480,7 @@ function drawCopyright(ctx, text, pageW, pageH) {
 // 부르면 결과가 부정확하다. 호출 전에 ensureFontsLoaded()를 먼저 기다려야 한다.
 function pageOverflowPx(items, headerImg, options = {}) {
   const { cols = 5, rows = 4, pageW = 1080, pageH = 1350, padTop = 24 } = options;
+  const L = layoutFor(cols, pageW);
   const measureCtx = document.createElement('canvas').getContext('2d');
   const headerH = headerImg ? Math.round(headerImg.height * (pageW / headerImg.width)) : 0;
   const usedRows = Math.min(rows, Math.ceil(items.length / cols));
@@ -422,8 +488,8 @@ function pageOverflowPx(items, headerImg, options = {}) {
   let y = headerH + padTop;
   for (let r = 0; r < usedRows; r++) {
     const rowItems = items.slice(r * cols, r * cols + cols);
-    y += LAYOUT.cardBlock + rowExtraHeight(measureCtx, rowItems);
-    if (r < usedRows - 1) y += LAYOUT.rowGap;
+    y += L.cardBlock + rowExtraHeight(measureCtx, rowItems, L);
+    if (r < usedRows - 1) y += L.rowGap;
   }
   return Math.max(0, Math.round(y) - pageH);
 }
@@ -442,6 +508,64 @@ function itemsPerPage(allItems, headerImg, options = {}) {
   return PAGE_SIZE_FULL;
 }
 
+// ── 장수 맞추기 (열·행 자동 선택) ──────────────────────────
+// 상품이 많으면 5열 20개 기준으로 6~7장까지 나오는데, X는 한 글에 사진 4장까지만
+// 올라가서 사람이 따로 4장으로 재배치하고 있었다. 그래서 "목표 장수 안에 들어오는
+// 가장 헐거운(=사진이 가장 큰) 배치"를 자동으로 고른다.
+//
+// 원칙은 "되도록 안 쑤셔넣는다"다 — 5열로 목표 장수를 맞출 수 있으면 열을 절대
+// 늘리지 않는다. 열을 늘리는 건 그러지 않으면 목표 장수를 못 맞출 때뿐이고, 그때도
+// 한 단계씩만 늘린다. 사진이 작아지는 건 되돌릴 수 없는 손해라서 마지막 수단이다.
+const COLS_STEPS = [5, 6, 7, 8];
+
+// 주어진 열 수에서 페이지 안에 들어가는 최대 행 수. 실제 항목으로 재기 때문에
+// 헤더 배너 높이와 상품명 2줄 카드까지 반영된다.
+function fitRows(allItems, headerImg, cols, options = {}) {
+  const { pageW = 1080, pageH = 1350, padTop = 24 } = options;
+  const L = layoutFor(cols, pageW);
+  const headerH = headerImg ? Math.round(headerImg.height * (pageW / headerImg.width)) : 0;
+  // 2줄 카드가 전혀 없다고 봤을 때의 이론상 최대 행 수에서 시작해 하나씩 낮춘다.
+  const roomH = pageH - headerH - padTop;
+  let rows = Math.max(1, Math.floor((roomH + L.rowGap) / (L.cardBlock + L.rowGap)));
+  for (; rows >= 1; rows--) {
+    const perPage = cols * rows;
+    let fits = true;
+    for (let i = 0; i < allItems.length; i += perPage) {
+      const group = allItems.slice(i, i + perPage);
+      if (pageOverflowPx(group, headerImg, { ...options, cols, rows }) > 0) { fits = false; break; }
+    }
+    if (fits) return rows;
+  }
+  return 1;
+}
+
+/**
+ * 상품 전체를 몇 장으로, 어떤 격자로 낼지 정한다.
+ * 반환: { cols, rows, perPage, pages, photoPx, squeezed, atLimit }
+ *  - squeezed: 목표 장수를 맞추려고 5열보다 촘촘하게 간 경우 true (사용자에게 안내)
+ *  - atLimit : 가장 촘촘한 배치로도 목표 장수를 못 맞춘 경우 true
+ */
+function planPages(allItems, headerImg, options = {}) {
+  const { maxPages = 4, pageW = 1080 } = options;
+  const n = allItems.length;
+  const plans = COLS_STEPS.map((cols) => {
+    const rows = fitRows(allItems, headerImg, cols, options);
+    const perPage = cols * rows;
+    return {
+      cols, rows, perPage,
+      pages: Math.max(1, Math.ceil(n / perPage)),
+      photoPx: layoutFor(cols, pageW).photo,
+    };
+  });
+  const picked = plans.find((p) => p.pages <= maxPages) || plans[plans.length - 1];
+  return {
+    ...picked,
+    squeezed: picked.cols > COLS_STEPS[0],
+    atLimit: picked.pages > maxPages,
+    base: plans[0], // 5열로 냈다면 몇 장이었는지 (안내 문구용)
+  };
+}
+
 if (typeof window !== 'undefined') {
   window.RenderPage = {
     renderPage,
@@ -455,6 +579,9 @@ if (typeof window !== 'undefined') {
     rowExtraHeight,
     pageOverflowPx,
     itemsPerPage,
+    planPages,
+    fitRows,
+    layoutFor,
     PAGE_SIZE_FULL,
     PAGE_SIZE_REDUCED,
     LAYOUT,
