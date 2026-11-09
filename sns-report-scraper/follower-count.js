@@ -44,13 +44,34 @@ function findTwitterFollowers(json, account) {
   });
 }
 
-/** 인스타 응답에서 이 계정의 팔로워 수. */
+const IG_COUNT_OF = node => {
+  const c = node.follower_count ?? node.edge_followed_by?.count ?? node.followers_count;
+  return typeof c === 'number' && c > 0 ? c : null;
+};
+
+/**
+ * 인스타 응답에서 이 계정의 팔로워 수.
+ *
+ * 1차: 계정 이름과 숫자가 같은 덩어리 안에 함께 있을 때(가장 확실).
+ * 2차: 인스타가 구조를 바꿔 둘이 떨어져 있으면 1차가 통째로 비어버린다. 실제로 그래서
+ *      네 가지 길이 전부 막힌 적이 있다(2026-11-09, 트위터는 정상인데 인스타만 전부 실패).
+ *      그때는 응답 어딘가에 계정 이름이 있고 팔로워 수 후보가 '하나뿐'일 때만 쓴다 —
+ *      추천 계정 같은 남의 숫자를 우리 기록에 넣느니 근사치로 남기는 편이 낫다.
+ */
 function findInstagramFollowers(json, account) {
-  return deepFind(json, node => {
-    if (!sameAccount(node.username, account)) return null;
-    const c = node.follower_count ?? node.edge_followed_by?.count ?? node.followers_count;
-    return typeof c === 'number' ? c : null;
+  const strict = deepFind(json, node => (sameAccount(node.username, account) ? IG_COUNT_OF(node) : null));
+  if (typeof strict === 'number') return strict;
+
+  let hasAccount = false;
+  const found = new Set();
+  deepFind(json, node => {
+    if (sameAccount(node.username, account)) hasAccount = true;
+    const c = IG_COUNT_OF(node);
+    if (c !== null) found.add(c);
+    return null;          // 끝까지 훑으려고 일부러 아무것도 돌려주지 않는다
   });
+  if (!hasAccount || found.size !== 1) return null;
+  return [...found][0];
 }
 
 /**

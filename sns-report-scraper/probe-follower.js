@@ -13,7 +13,10 @@
  *   node probe-follower.js megahouse_jp          — 인스타 계정 하나만
  *   node probe-follower.js twitter:MegahouseStore — 플랫폼을 지정해서 하나만
  *   node probe-follower.js show                  — 브라우저 창을 띄운 채로(눈으로 확인할 때)
+ *   node probe-follower.js debug                 — 오간 응답을 파일로 남김(원인을 못 짚을 때)
  */
+const fs = require('fs');
+const path = require('path');
 const { chromium } = require('playwright');
 const { watchFollowers } = require('./follower-count');
 const { prepareBrand, parseBrandArg } = require('./brand-config');
@@ -31,7 +34,7 @@ function accountsOf(brand) {
     .map(a => ({ platform: a.platform, account: a.account, sessionFile: a.sessionFile, side: a.side }));
 }
 
-async function probeOne({ platform, account, sessionFile }, headless) {
+async function probeOne({ platform, account, sessionFile }, headless, debugDir = null) {
   const browser = await chromium.launch({ headless });
   try {
     const ctx = await browser.newContext({
@@ -43,9 +46,33 @@ async function probeOne({ platform, account, sessionFile }, headless) {
     const page = await ctx.newPage();
     // 가로채기는 반드시 페이지를 열기 '전에' 걸어야 한다 — 뒤에 걸면 이미 지나간 응답을 놓친다.
     const watch = watchFollowers(page, { platform, account });
+
+    // 길이 전부 막혔을 때 추측으로 고치지 않으려면, 실제로 무엇이 오는지를 봐야 한다.
+    // '팔로워'라는 말이 들어간 응답만 골라 주소와 본문 일부를 남긴다(본문 전체는 너무 크다).
+    const seen = [];
+    if (debugDir) {
+      page.on('response', async res => {
+        try {
+          const ct = res.headers()['content-type'] || '';
+          if (!ct.includes('json')) return;
+          const body = await res.text();
+          if (!/follow/i.test(body)) return;
+          seen.push({ url: res.url().slice(0, 300), status: res.status(), size: body.length, body: body.slice(0, 200000) });
+        } catch { /* 본문이 이미 사라진 응답은 넘어간다 */ }
+      });
+    }
+
     await page.goto(PROFILE_URL[platform](account), { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(3500);
-    return await watch.read();
+    const result = await watch.read();
+
+    if (debugDir && seen.length) {
+      fs.mkdirSync(debugDir, { recursive: true });
+      const out = path.join(debugDir, `_debug-follower-${platform}-${account}.json`);
+      fs.writeFileSync(out, JSON.stringify({ account, platform, result: { ...result }, responses: seen }, null, 2));
+      console.log(`\n        💾 오간 응답 ${seen.length}건을 남겼습니다: ${out}`);
+    }
+    return result;
   } finally {
     await browser.close();
   }
@@ -64,7 +91,8 @@ async function main() {
   const { brandKey, rest } = parseBrandArg(process.argv.slice(2));
   const brand = prepareBrand(brandKey);
   const headless = !rest.includes('show');
-  const picked = rest.filter(a => a !== 'show');
+  const debugDir = rest.includes('debug') ? brand.paths.htmlDir : null;
+  const picked = rest.filter(a => a !== 'show' && a !== 'debug');
 
   let targets = accountsOf(brand);
   if (picked.length > 0) {
@@ -92,7 +120,7 @@ async function main() {
     process.stdout.write(`   ${t.platform}:${t.account} … `);
     let r;
     try {
-      r = await probeOne(t, headless);
+      r = await probeOne(t, headless, debugDir);
     } catch (e) {
       console.log(`❌ ${e.message}`);
       rows.push({ ...t, count: null, from: 'error', approx: false, error: e.message });
@@ -114,6 +142,9 @@ async function main() {
   console.log(`⚠️ ${bad.length}개 계정이 정확한 값을 못 얻었습니다: ${bad.map(b => `${b.platform}:${b.account}`).join(', ')}`);
   console.log('   근사치는 화면에 줄여 적힌 숫자(2.3만)를 되돌린 값이라, 실제로 늘어도 한동안 같은 수로 찍힙니다.');
   console.log('   위 ⓘ 줄이 어느 길이 왜 막혔는지입니다 — 그대로 복사해서 보내주시면 그 지점을 고칠 수 있습니다.');
+  if (!debugDir) {
+    console.log('   그래도 안 고쳐지면 오간 응답을 파일로 남겨주세요: node probe-follower.js debug');
+  }
 }
 
 if (require.main === module) {
