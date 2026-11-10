@@ -546,9 +546,12 @@ function fitRows(allItems, headerImg, cols, options = {}) {
  *  - atLimit : 가장 촘촘한 배치로도 목표 장수를 못 맞춘 경우 true
  */
 function planPages(allItems, headerImg, options = {}) {
-  const { maxPages = 4, pageW = 1080 } = options;
+  // maxCols: 여기까지만 조인다. 8열은 긴 상품명이 가로로 눌려 거의 안 읽히는 수준이라
+  // 기본값은 7열이다 — 장수를 맞추는 것보다 읽히는 게 먼저다.
+  const { maxPages = 4, pageW = 1080, maxCols = 7 } = options;
   const n = allItems.length;
-  const plans = COLS_STEPS.map((cols) => {
+  const steps = COLS_STEPS.filter((c) => c <= maxCols);
+  const plans = (steps.length ? steps : [COLS_STEPS[0]]).map((cols) => {
     const rows = fitRows(allItems, headerImg, cols, options);
     const perPage = cols * rows;
     return {

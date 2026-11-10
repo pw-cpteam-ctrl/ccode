@@ -30,7 +30,64 @@ const state = {
   textLocked: false, // true면 IP명/가격/태그 등 글자 수정을 막고 카드 순서 변경만 허용
   showShipping: true, // false면 배송비(아이콘+글자)를 안 보여줌 — 항목별이 아니라 전체 스위치
   copyrightText: '', // 내보내기 하단 고정 카피라이트 문구 — 페이지마다 실린 IP와 무관하게 이 배치(batch) 전체에 동일하게 들어감
+  pageFitMode: 'auto', // 'auto' = 4장 안에 들어오게 열을 자동으로 늘림 / 'wide' = 항상 5열(사진 크게)
 };
+
+// ── 한 장에 몇 개를 넣을지(열·행) 한 군데서만 정한다 ─────────────
+// 툴바 안내("총 N개 → 20+3"), 3단계 미리보기 박스, 실제 출력 — 이 셋이 같은 값을
+// 써야 한 화면이 서로 다른 말을 하지 않는다. 예전에 미리보기만 20 고정이라
+// 실제로는 15개씩 나뉘는데도 박스는 20개씩 묶여 보이던 불일치가 있었다.
+const PAGE_FIT_MAX_PAGES = 4; // X가 글 하나에 사진 4장까지만 받는다
+const PAGE_FIT_MAX_COLS = 7;  // 8열은 긴 상품명이 눌려서 안 읽힌다 — 읽히는 게 먼저
+let pagePlanCache = { sig: null, plan: null };
+
+// 헤더 고르는 칸은 3단계 하단 바에 있는데, 화면을 그리는 순서상 미리보기가 먼저
+// 그려질 때가 있어서 그 시점엔 칸이 아직 비어 있다. 비었다고 "헤더 없음"으로 계산하면
+// 배너 높이(200px 안팎)만큼 공간이 남는 줄 알고 한 줄을 더 넣어버려서, 미리보기 박스가
+// 실제 출력보다 많은 개수로 묶인다(실제로 42개 대 35개로 어긋났다). 그래서 칸이 비어
+// 있으면 첫 번째 헤더를 쓴다 — 실제 내보내기도 그 값이 기본으로 선택된다.
+function effectiveHeaderId() {
+  const sel = document.getElementById('headerSelect');
+  const picked = sel ? sel.value : '';
+  if (picked && state.headers.some((h) => h.id === picked)) return picked;
+  return state.headers.length ? state.headers[0].id : '';
+}
+
+function currentHeaderCanvas() {
+  const header = state.headers.find((h) => h.id === effectiveHeaderId());
+  return header ? header.canvas : null;
+}
+
+// 항목/헤더/모드가 그대로면 다시 계산하지 않는다 — 카드를 드래그할 때마다 전 항목의
+// 글자 폭을 재면 조작이 눅눅해진다.
+function pagePlan() {
+  const sig = [
+    state.pageFitMode,
+    effectiveHeaderId(),
+    state.items.length,
+    state.items.map((it) => it.ip || '').join('\u0001'),
+  ].join('|');
+  if (pagePlanCache.sig === sig && pagePlanCache.plan) return pagePlanCache.plan;
+
+  const header = currentHeaderCanvas();
+  let plan;
+  if (state.pageFitMode === 'wide') {
+    // 사진을 크게 쓰겠다고 사람이 고른 경우 — 열은 5로 고정하고 행만 맞춘다.
+    const rows = RenderPage.fitRows(state.items, header, 5, {});
+    const perPage = 5 * rows;
+    plan = {
+      cols: 5, rows, perPage, photoPx: RenderPage.layoutFor(5).photo,
+      pages: Math.max(1, Math.ceil(state.items.length / perPage)),
+      squeezed: false, atLimit: false, base: null, mode: 'wide',
+    };
+  } else {
+    plan = { ...RenderPage.planPages(state.items, header, { maxPages: PAGE_FIT_MAX_PAGES, maxCols: PAGE_FIT_MAX_COLS }), mode: 'auto' };
+  }
+  pagePlanCache = { sig, plan };
+  return plan;
+}
+
+function invalidatePagePlan() { pagePlanCache = { sig: null, plan: null }; }
 
 // 2단계(표 정리)의 빈 배경 드래그 다중 선택은 3/4단계(카드 그리드)의 group-selected
 // 선택과 목적이 다르다(태그/클러스터 일괄편집 대 카드 이동) — 같은 변수를 쓰면 단계를
@@ -44,7 +101,7 @@ function chunk(arr, size) {
   return out;
 }
 function splitSummaryText(items) {
-  const groups = chunk(items, 20).map((g) => g.length);
+  const groups = chunk(items, pagePlan().perPage).map((g) => g.length);
   return `총 ${items.length}개 → ${groups.join('+') || 0} (${groups.length}페이지)`;
 }
 
@@ -200,7 +257,9 @@ function goToStep(n) {
   document.getElementById(`step-${n}`).classList.add('active');
   renderStepIndicator();
   if (n === 2) { renderDataTable(); updateTextLockBanner(); }
-  if (n === 3) { renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true }); updateTextLockBanner(); renderExportBar(); }
+  // renderExportBar()가 먼저다 — 미리보기 박스를 몇 개씩 묶을지가 헤더 배너 높이에
+  // 달려 있어서, 헤더 칸이 비어 있는 상태로 먼저 그리면 실제 출력과 어긋난 채 남는다.
+  if (n === 3) { renderExportBar(); renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true }); updateTextLockBanner(); }
   if (n === 1) renderCurrentWorkBar(); // 2단계에서 상품을 지우고 돌아왔을 때도 개수가 맞아야 한다
 }
 
@@ -1543,20 +1602,18 @@ let groupSelectedIds = new Set();
 // 다음 드래그 한 번에만 적용되고 쓰이자마자(또는 다시 눌러서 취소하면) null로 돌아간다.
 let singleMoveArmedId = null;
 
-// 미리보기 박스 1개 = 실제 출력 페이지 1장. 그래서 반드시 실제 페이지 용량과 같아야 한다.
-// 실제 출력은 renderPage의 5열 x 4행 = 20개가 한 장이고(generatePages의 chunk(items, 20)),
-// 툴바의 "총 N개 → 20+3 (2페이지)" 안내도 20 기준이다.
+// 미리보기 박스 1개 = 실제 출력 페이지 1장. 그래서 반드시 실제 페이지 용량과 같아야
+// 하고, 그 값은 pagePlan()이 한 군데서 정한다(툴바 안내·실제 출력과 같은 값).
 //
-// 원래 이 값은 25였는데, 그건 페이지 용량이 아니라 "박스를 5열x5줄로 그리자"는 순수
-// 시각적 결정이었다. 그 박스에 나중에 "1p", "2p" 라벨이 붙으면서 실제 페이지처럼
-// 보이게 됐고, 결과적으로 21~25번째 카드가 "1p" 박스 안에 있으면서 실제로는 2페이지로
-// 출력되는 불일치가 생겼다(항목 23개면 3장, 47개면 12장이 어긋남). 같은 화면의 툴바는
-// 20 기준으로 맞게 표시하고 있어서 한 화면이 서로 다른 말을 하는 상태였다.
+// 예전엔 여기에 20이 따로 박혀 있었다. 그건 페이지 용량이 아니라 "박스를 5열x5줄로
+// 그리자"는 순수 시각적 결정이었는데, 박스에 "1p", "2p" 라벨이 붙으면서 실제 페이지처럼
+// 보이게 됐고 결과적으로 박스 경계와 실제 페이지 경계가 어긋났다(항목 23개면 3장,
+// 47개면 12장). 20으로 고친 뒤에도, 넘침 때문에 실제로는 15개씩 나뉘는 경우에는
+// 여전히 어긋났다 — 그래서 아예 고정값을 없앴다.
 //
 // 박스는 항상 2열로 나란히 배치되고, 홀수 개(마지막 박스가 짝이 없을 때)면 빈 박스를
 // 하나 더 붙여 짝을 맞춘다 — 그래야 마지막 박스 하나만 있을 때 카드가 컨테이너 폭
 // 전체로 늘어나 커지는 걸 막을 수 있다.
-const PREVIEW_PAGE_GROUP_SIZE = 20;
 
 // 선택된 항목들(movingIds)을 원래 상대 순서를 유지한 채 targetItemId 위치로 통째로 옮긴다.
 // 인덱스가 아니라 id 기준으로 계산해서, 몇 개를 옮기든(그룹이든 단일이든) 항상 정확하다.
@@ -1644,7 +1701,7 @@ function attachMarqueeSelection(container, cardSelector, onSelectionChange) {
 function renderPreviewGrid(containerId, items, opts) {
   const container = document.getElementById(containerId);
   container.innerHTML = '';
-  const pages = chunk(items, PREVIEW_PAGE_GROUP_SIZE);
+  const pages = chunk(items, pagePlan().perPage);
   if (pages.length === 0) pages.push([], []);
   else if (pages.length % 2 === 1) pages.push([]);
 
@@ -2040,6 +2097,7 @@ function pagesSignature() {
     ship: state.showShipping,
     header: headerSelect ? headerSelect.value : '',
     copyright: state.copyrightText,
+    fit: state.pageFitMode, // 배치 모드가 바뀌면 만들어둔 페이지는 더 이상 맞지 않는다
   });
 }
 
@@ -2104,14 +2162,50 @@ function updateHeaderPreview() {
   img.src = header ? header.canvas.toDataURL('image/png') : '';
 }
 
-// 한 장에 몇 개를 넣었는지 사람에게 알려준다 — 안내가 없으면 "왜 갑자기 장수가
-// 늘었지?"를 알 방법이 없다(기본 20개인데 넘침 때문에 15개로 내려간 경우).
-function showPageSizeNote(perPage) {
+// 어떤 배치로 몇 장이 나왔는지, 왜 그렇게 됐는지 사람에게 알려준다 — 안내가 없으면
+// "왜 갑자기 사진이 작아졌지 / 장수가 늘었지"를 알 방법이 없다. 자동으로 조인 경우엔
+// 5열로 되돌리는 버튼도 같이 띄운다(조이는 건 손해이므로 되돌릴 길이 항상 있어야 한다).
+function showPageSizeNote(plan) {
   const note = document.getElementById('pageSizeNote');
   if (!note) return;
-  if (perPage >= RenderPage.PAGE_SIZE_FULL) { note.style.display = 'none'; return; }
+  note.innerHTML = '';
+
+  const lines = [];
+  if (plan.mode === 'wide') {
+    lines.push(`사진을 크게 쓰는 배치(5열 ${plan.perPage}개)로 ${plan.pages}장을 만들었습니다.`);
+  } else if (plan.squeezed) {
+    const was = plan.base ? `5열로는 ${plan.base.pages}장이었는데, ` : '';
+    lines.push(`${was}${PAGE_FIT_MAX_PAGES}장 안에 넣으려고 한 장에 ${plan.perPage}개씩(${plan.cols}열 ${plan.rows}줄) 담았습니다. 사진은 그만큼 작아집니다.`);
+    if (plan.atLimit) lines.push(`가장 촘촘한 배치로도 ${PAGE_FIT_MAX_PAGES}장을 넘어 ${plan.pages}장이 됐습니다. 더 줄이려면 상품 수를 나눠서 작업해 주세요.`);
+  } else if (plan.perPage < RenderPage.PAGE_SIZE_FULL) {
+    lines.push(`헤더 배너가 크거나 상품명이 두 줄인 카드가 있어서, 20개를 한 장에 넣으면 맨 아랫줄의 상품명·가격이 페이지 밖으로 잘립니다. 그래서 한 장에 ${plan.perPage}개씩 나눴습니다. 20개로 채우고 싶으면 1단계에서 헤더 높이를 줄여보세요.`);
+  }
+
+  // 되돌리기/다시 맞추기 버튼은 둘 중 하나만 의미가 있을 때만 띄운다.
+  const canToggle = plan.mode === 'wide' || plan.squeezed;
+  if (!lines.length && !canToggle) { note.style.display = 'none'; return; }
+
   note.style.display = 'block';
-  note.textContent = `헤더 배너가 크거나 상품명이 두 줄인 카드가 있어서, 20개를 한 장에 넣으면 맨 아랫줄의 상품명·가격이 페이지 밖으로 잘립니다. 그래서 이번에는 한 장에 ${perPage}개씩 나눴습니다. 20개로 채우고 싶으면 1단계에서 헤더 높이를 줄여보세요.`;
+  lines.forEach((t) => {
+    const p = document.createElement('div');
+    p.textContent = t;
+    note.appendChild(p);
+  });
+  if (canToggle) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn';
+    btn.style.cssText = 'margin-top:8px;min-height:30px;padding:4px 10px;';
+    btn.textContent = plan.mode === 'wide'
+      ? `↩ ${PAGE_FIT_MAX_PAGES}장에 맞추기(사진 작아짐)`
+      : '↩ 5열로 되돌리기(사진 크게, 장수 늘어남)';
+    btn.addEventListener('click', () => {
+      state.pageFitMode = plan.mode === 'wide' ? 'auto' : 'wide';
+      invalidatePagePlan();
+      generatePages(); // 바꾼 배치로 즉시 다시 만든다 — 한 번 더 누르게 하지 않는다
+    });
+    note.appendChild(btn);
+  }
 }
 
 async function generatePages() {
@@ -2122,13 +2216,14 @@ async function generatePages() {
     const header = state.headers.find((h) => h.id === headerId);
     const headerCanvas = header ? header.canvas : null;
 
-    // 몇 개씩 나눌지는 "20개로 채웠을 때 페이지를 넘치는가"로 정한다. 헤더 배너가 크거나
-    // IP명이 2줄인 카드가 있으면 4번째 줄이 페이지 밖으로 밀려서 그 줄의 상품명·가격·
-    // 배송비가 통째로 사라지는데, 그럴 땐 한 장에 15개(3줄)로 낮춰서 다 보이게 한다.
+    // 몇 열 몇 줄로 몇 장을 만들지는 pagePlan()이 정한다(툴바 안내·3단계 미리보기 박스와
+    // 같은 값). 기본은 "4장 안에 들어오는 가장 헐거운 배치" — 5열로 4장 안에 들어오면
+    // 열을 늘리지 않고, 못 맞출 때만 6열→7열 순으로 한 단계씩 조인다.
     // 글자 폭을 재서 판단하므로 폰트가 로드된 뒤에 계산해야 정확하다.
     await RenderPage.ensureFontsLoaded();
-    const perPage = RenderPage.itemsPerPage(state.items, headerCanvas);
-    const groups = chunk(state.items, perPage);
+    invalidatePagePlan(); // 폰트가 로드되기 전 계산해둔 값이 남아 있을 수 있다
+    const plan = pagePlan();
+    const groups = chunk(state.items, plan.perPage);
     const cardGroups = groups.map((g) => g.map((item) => ({
       photo: state.photos[item.photoId], ip: item.ip, price: item.price, ship: item.ship, tag: item.tag,
     })));
@@ -2137,12 +2232,12 @@ async function generatePages() {
     const copyrightText = formatCopyright(state.copyrightText);
     const canvases = await Promise.all(cardGroups.map((cards) => RenderPage.renderPage(
       cards, headerCanvas,
-      { cols: 5, rows: 4, pageW: 1080, pageH: 1350, scale: 2, showShipping: state.showShipping, copyrightText },
+      { cols: plan.cols, rows: plan.rows, pageW: 1080, pageH: 1350, scale: 2, showShipping: state.showShipping, copyrightText },
     )));
 
     state.finalPages = canvases.map((canvas, i) => ({ canvas, index: i }));
     state.finalPagesSig = pagesSignature();
-    showPageSizeNote(perPage);
+    showPageSizeNote(plan);
     document.getElementById('pagesArea').style.display = 'block';
     const container = document.getElementById('pagesContainer');
     container.innerHTML = '';
@@ -2593,4 +2688,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupHelpPanels();
   setupNotice();
   goToStep(1);
+
+  // 몇 개씩 나눌지는 글자 폭(상품명이 두 줄인지)을 재서 정하므로 폰트가 로드된 뒤라야
+  // 정확하다. 로드가 끝나면 계산을 버리고, 그 값으로 이미 그려둔 화면이 있으면 다시 그린다 —
+  // 안 그러면 미리보기 박스 경계가 실제 출력 페이지와 어긋난 채로 남는다.
+  RenderPage.ensureFontsLoaded().then(() => {
+    invalidatePagePlan();
+    if (state.step === 3) renderPreviewGrid('previewGrid', state.items, { draggable: true, selectable: true });
+  }).catch(() => { /* 폰트 로드 실패해도 기본 폰트로 동작은 한다 */ });
 });
