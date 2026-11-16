@@ -448,7 +448,7 @@
   .st-sum .is-ok { color: #166534; }
   .st-link { font: inherit; font-size: 12.5px; color: var(--ink-500); background: none; border: 0; text-decoration: underline; cursor: pointer; padding: 0; }
   .st-scroll { overflow-x: auto; }
-  .st-table { border-collapse: separate; border-spacing: 0; font-size: 13px; white-space: nowrap; table-layout: fixed; width: 1712px; }
+  .st-table { border-collapse: separate; border-spacing: 0; font-size: 13px; white-space: nowrap; table-layout: fixed; }
   .st-table th { text-align: left; font-size: 11.5px; font-weight: 700; color: var(--ink-500); padding: 6px 6px; border-bottom: 1px solid var(--line); background: #fafaf9; position: sticky; top: 0; }
   .st-table td { padding: 4px 5px; border-bottom: 1px solid #f0efed; vertical-align: middle; background: #fff; overflow: hidden; }
   .st-table td.st-n { background: #fafaf8; }
@@ -472,11 +472,16 @@
   .st-table .st-in, .st-table .st-sel { width: 100%; font-size: 12.5px; padding: 4px 6px; border-radius: 6px; text-overflow: ellipsis; }
   .st-table .st-in.st-nm { width: 100%; }
   .st-in:placeholder-shown, .st-sel.is-empty { background: #f1f0ee; border-color: transparent; color: var(--ink-400); }
+  /* 표 안의 빈 칸은 박스 대신 점선 밑줄만 — 실적 숫자가 먼저 보이게. 누르면 입력칸 테두리가 나온다 */
+  .st-table .st-in:placeholder-shown, .st-table .st-sel.is-empty { background: transparent; border-color: transparent; border-bottom: 1px dashed #d6d3d1; border-radius: 0; }
+  .st-table .st-in:placeholder-shown:focus { border: 1px solid #93c5fd; border-radius: 6px; background: #fff; }
+  .st-table .st-hide { visibility: hidden; }
+  .st-table tr:hover .st-hide, .st-table tr.is-hid .st-hide { visibility: visible; }
   .st-in:placeholder-shown::placeholder { color: #78716c; }
   .st-in:focus, .st-sel:focus { outline: 2px solid #60a5fa; outline-offset: 0; }
   .st-legend { margin-left: auto; font-size: 11.5px; color: var(--ink-500); display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
   .st-legend i { display: inline-block; width: 14px; height: 10px; border-radius: 3px; margin-left: 6px; vertical-align: -1px; }
-  .st-legend .lg-empty { background: #f1f0ee; border: 1px solid #e7e5e4; }
+  .st-legend .lg-empty { background: transparent; border: 0; border-bottom: 1px dashed #a8a29e; border-radius: 0; }
   .st-legend .lg-full { background: #fff; border: 1px solid #d6d3d1; }
   .st-legend .lg-auto { background: #fefce8; border: 1.5px dashed #eab308; }
   .st-sugg { display: block; margin-top: 3px; font: inherit; font-size: 11px; color: #b45309; background: none; border: 1px dashed #eab308; border-radius: 6px; padding: 2px 6px; cursor: pointer; }
@@ -532,6 +537,12 @@
   .rc-stage-b.s1 { background: #fef3c7; color: #92400e; }
   .rc-stage-b.s2 { background: #dbeafe; color: #1d4ed8; }
   .rc-stage-b.s3 { background: #dcfce7; color: #166534; }
+  .atcell { white-space: nowrap; }
+  .perfcell { white-space: nowrap; font-size: 12.5px; color: var(--ink-500); }
+  .pf-line b { color: var(--ink); font-size: 13px; }
+  .pf-line b.is-hit { color: #1d4ed8; }
+  .pf-none { color: var(--ink-400); }
+  .th-sub { font-weight: 500; color: var(--ink-400); }
   .rc-stage-b.s4 { background: #ede9fe; color: #6d28d9; }
   .rc-jd { white-space: nowrap; }
   .rc-jd .rc-btn { display: block; margin-top: 3px; }
@@ -1099,20 +1110,32 @@
   //   선지급 1차 전 — 10/18 · 1차 5만
   //   선지급 1차 후 — 11/17 · 2차 5만 (750↑)
   //   후지급        — 11/17 · 5만~10만 (정산 결과에 따라 갈려 미리 못 박는다)
+  // 정산 탭에 엑셀을 올려 두었으면 '5만~10만', '(750↑)' 대신 실제 유입으로 정해진 금액을 보여 준다(칸은 그대로, 줄도 그대로).
+  // 진행 탭 '실적' 칸 — 정산 탭에 올린 엑셀의 유입·결제·판매금액·전환율을 한 줄로(줄 높이가 늘지 않게)
+  function perfLine(r) {
+    var pf = perfOf(r);
+    if (!pf) return '<span class="pf-none">—</span>';
+    var man = pf.amt >= 10000 ? (Math.round(pf.amt / 1000) / 10) + '만' : comma(pf.amt);
+    return '<span class="pf-line" title="유입 ' + comma(pf['in']) + ' · 결제 ' + comma(pf.pay) + '건 · 판매금액 ' + comma(pf.amt) + '원">' +
+      '<b class="' + (pf.hit ? 'is-hit' : '') + '">' + comma(pf['in']) + '</b> 유입 · ' + comma(pf.pay) + '건 · ' + man + ' · ' + (pf['in'] ? (pf.pay / pf['in'] * 100).toFixed(1) + '%' : '0%') + '</span>';
+  }
   function payCell(r) {
     var p = payPlan(r);
     if (!p) return '<span class="pay-none">-</span>';
     var open = openDateFor(r.draftDate);
+    var pf = perfOf(r);
+    var inTxt = pf ? (pf.hit ? '750 넘음 ✓' : '750 미만') : '';   // 유입 숫자는 옆 '실적' 칸에 있어 여기선 기준 통과 여부만
 
     if (trackOf(r) !== 'split') {
-      return '<b class="paychip ' + payWhen(open, 40) + '">' + p.second + ' 주간 · 5만~10만</b>';
+      return '<b class="paychip ' + payWhen(open, 40) + '">' + p.second + ' 주간 · ' + (pf ? pf.final + ' <span class="pay-cond">(' + inTxt + ')</span>' : '5만~10만') + '</b>';
     }
     if (payWhen(open, 10) === 'done') {
-      return '<b class="paychip ' + payWhen(open, 40) + '">' + p.second + ' 주간 · 2차 5만 <span class="pay-cond">(750↑)</span></b>';
+      if (pf && !pf.hit) return '<span class="pay-none">2차 없음 <span class="pay-cond">(' + inTxt + ')</span></span>';
+      return '<b class="paychip ' + payWhen(open, 40) + '">' + p.second + ' 주간 · 2차 5만 <span class="pay-cond">(' + (pf ? inTxt : '750↑') + ')</span></b>';
     }
     return '<span class="pay">' +
       '<b class="paychip ' + payWhen(open, 10) + '">' + p.first + ' 주간 · 1차 5만</b>' +
-      '<em>2차 ' + p.second + ' 주간 · 5만 (750↑)</em></span>';
+      '<em>' + (pf && !pf.hit ? '2차 없음 (' + inTxt + ')' : '2차 ' + p.second + ' 주간 · 5만 (' + (pf ? inTxt : '750↑') + ')') + '</em></span>';
   }
 
   // 1차가 이미 나간 건은 그 사실만 지급 확인 칸 밑에 작게 남긴다.
@@ -2184,7 +2207,8 @@
   var settleMsg = '';
   var settleShowHidden = false;
   var settleShowYt = false;
-  var settleShowPast = true;  // 지난 달 협업 줄 — 실적을 같이 보도록 기본은 펼쳐 둔다   // 유튜브 채널 코드(youtube로 시작)는 아래에 접어 둔다
+  var settleShowPast = true;
+  var settleShowMore = (function () { try { return localStorage.getItem('ib-settle-more') === '1'; } catch (e) { return false; } })();   // 아이디·업로드 시각·팔로워 칸 보이기  // 지난 달 협업 줄 — 실적을 같이 보도록 기본은 펼쳐 둔다   // 유튜브 채널 코드(youtube로 시작)는 아래에 접어 둔다
 
   function lsGet(k, d) { try { var v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? d : v; } catch (e) { return d; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { settleMsg = '이 브라우저에 저장하지 못했습니다(저장 공간 부족·사생활 보호 모드). 새로고침하면 입력이 사라질 수 있습니다.'; } }
@@ -2665,6 +2689,35 @@
     return out;
   }
 
+  // 진행 탭 연결 — 정산 탭에 올린 스스 엑셀 실적을 접수자 이름으로 찾아, '최종 보상'과 '남은 지급'을 보여 준다.
+  // 정산 탭에서 붙인 이름(코드 → 이름)과 접수 네이버 아이디로 잇는다. 그 사람의 회차 달 엑셀이 있으면 그것을, 없으면 다른 달 엑셀을 쓴다.
+  function settlePerfIndex() {
+    var idx = {}, names = lsGet(SETTLE_NAME_KEY, {});
+    var keys = [];
+    try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (k && k.indexOf(SETTLE_KEY) === 0) keys.push(k); } } catch (e) { return idx; }
+    keys.forEach(function (k) {
+      var st = lsGet(k, null), mk = k.slice(SETTLE_KEY.length);
+      if (!st || !st.stats || !st.stats.by) return;
+      Object.keys(st.stats.by).forEach(function (src) {
+        var b = st.stats.by[src], row = (st.rows || {})[src] || {};
+        var nm = row.name || names[src];
+        var put = function (key) { if (!key) return; (idx[key] = idx[key] || []).push({ month: row.month || mk, file: mk, s: b, reward: row.reward, period: st.stats.period || '' }); };
+        if (nm) put('n:' + settleKey(nm));
+        put('c:' + src);
+      });
+    });
+    return idx;
+  }
+  var curPerfIdx = {};
+  // 그 접수의 엑셀 실적(그 회차 달 엑셀 우선) — 없으면 null
+  function perfOf(r) {
+    var o = openDateFor(r.draftDate), mk = o ? monthKey(o) : '';
+    var hits = (curPerfIdx['n:' + settleKey(r.nick)] || []).concat(curPerfIdx['c:' + srcKey(r.naver)] || []);
+    if (!hits.length) return null;
+    var h = hits.filter(function (x) { return x.month === mk; })[0] || hits.filter(function (x) { return x.file === mk; })[0] || hits[0];
+    return { 'in': h.s['in'], pay: h.s.pay, amt: h.s.amt, hit: h.s['in'] >= SETTLE_THRESHOLD, final: h.reward || (h.s['in'] >= SETTLE_THRESHOLD ? '10만' : '5만') };
+  }
+
   function settleBox() {
     var months = settleMonths();
     if (!settleMonth || months.indexOf(settleMonth) < 0) settleMonth = settleDefaultMonth(months);
@@ -2706,32 +2759,39 @@
     };
     var rowHtml = function (x) {
       var p = x.p, src = esc(x.src), s = x.s;
-      var how = x.nameHow ? '<i class="st-how' + (x.nameHow === '비슷' ? ' is-fuzzy' : '') + '">' + (x.nameHow === '기억' ? '지난번 이름' : x.nameHow === '메일' ? '메일에서 찾음' : x.nameHow === '접수' ? '접수에서 찾음' : '비슷한 아이디 ' + esc(x.nameKey) + ' — 맞는지 확인') + '</i>' : '';
+      // 이름 밑 글씨는 확인이 필요한 경우(비슷한 아이디로 찾음)만 — '지난번 이름'·'접수에서 찾음'은 확실해서 안 보임
+      var how = x.nameHow === '비슷' ? '<i class="st-how' + (x.nameHow === '비슷' ? ' is-fuzzy' : '') + '">' + (x.nameHow === '기억' ? '지난번 이름' : x.nameHow === '메일' ? '메일에서 찾음' : x.nameHow === '접수' ? '접수에서 찾음' : '비슷한 아이디 ' + esc(x.nameKey) + ' — 맞는지 확인') + '</i>' : '';
       return '<tr class="' + (x.hidden ? 'is-hid' : !x.name ? 'is-need' : '') + '">' +
         '<td class="st-c-name">' + inp(x.src, 'name', x.name, '누구인지 입력', 'st-nm' + (x.nameHow === '비슷' ? ' is-auto' : ''), 'st-name-list') +
           '<span class="st-code">' + esc(x.manual ? '엑셀 없음' : x.src) + how + '</span></td>' +
         '<td><select class="st-sel' + (x.monthHow === '메일' ? ' is-auto' : '') + '" data-src="' + src + '" data-f="month" title="협업한 달 — 노션의 월·제목에 들어감">' + monthOpts(x.month) + '</select></td>' +
-        '<td><select class="st-sel' + (x.platform ? '' : ' is-empty') + '" data-src="' + src + '" data-f="platform">' + opt(SETTLE_PLATFORMS, x.platform, '—') + '</select></td>' +
-        '<td><select class="st-sel' + (p.kind ? '' : x.kindAuto ? ' is-auto' : ' is-empty') + '" data-src="' + src + '" data-f="kind">' + opt(SETTLE_KINDS, p.kind || x.kindAuto, '고르기') + '</select></td>' +
-        '<td>' + inp(x.src, 'ip', p.ip || x.ipAuto, 'IP', 'st-w6' + (x.ipAuto ? ' is-auto' : ''), 'st-ip-list') + '</td>' +
         '<td class="st-n' + (s && s['in'] >= SETTLE_THRESHOLD ? ' is-hit' : '') + '">' + (s ? comma(s['in']) : '—') + '</td>' +
         '<td class="st-n">' + (s ? comma(s.pay) : '—') + '</td>' +
         '<td class="st-n">' + (s ? comma(s.amt) : '—') + '</td>' +
         '<td class="st-n">' + (x.rate || '—') + '</td>' +
         '<td>' + inp(x.src, 'reward', x.reward, '보상', 'st-w4') + '</td>' +
         '<td class="st-c"><span class="st-trw' + (x.transferAuto ? ' is-auto' : '') + '"><input type="checkbox" class="st-trb" data-src="' + src + '"' + (x.transfer ? ' checked' : '') + ' title="양도(이벤트 진행)' + (x.transferAuto ? ' — 메일 제목에 이벤트가 있어 미리 체크함' : '') + '" /></span></td>' +
+        '<td><select class="st-sel' + (x.platform ? '' : ' is-empty') + '" data-src="' + src + '" data-f="platform">' + opt(SETTLE_PLATFORMS, x.platform, '—') + '</select></td>' +
+        '<td><select class="st-sel' + (p.kind ? '' : x.kindAuto ? ' is-auto' : ' is-empty') + '" data-src="' + src + '" data-f="kind">' + opt(SETTLE_KINDS, p.kind || x.kindAuto, '고르기') + '</select></td>' +
+        '<td>' + inp(x.src, 'ip', p.ip || x.ipAuto, 'IP', 'st-w6' + (x.ipAuto ? ' is-auto' : ''), 'st-ip-list') + '</td>' +
         '<td>' + inp(x.src, 'promo', p.promo || x.promoAuto, '판촉대상', 'st-w12' + (x.promoAuto ? ' is-auto' : ''), 'st-promo-list') + '</td>' +
         '<td>' + inp(x.src, 'link', x.link, 'https://…', 'st-w12' + (x.linkAuto ? ' is-auto' : '')) +
           (x.linkSuggest ? '<button class="st-sugg" data-src="' + src + '" data-link="' + esc(x.linkSuggest) + '" title="' + esc(x.linkSuggest) + '">메일 속 링크 넣기 (아이디 다름)</button>' : '') + '</td>' +
+        (settleShowMore ? '' +
         '<td>' + inp(x.src, 'id', x.id, '아이디', 'st-w7') + '</td>' +
         '<td>' + inp(x.src, 'uploadAt', p.uploadAt || x.timeAuto, '링크를 넣으면 자동', 'st-w11' + (/추정/.test(x.timeAuto) ? ' is-auto' : '')) + '</td>' +
         '<td>' + inp(x.src, 'followers', p.followers, '팔로워', 'st-w5') + '</td>' +
+        '' : '') +
         '<td class="st-c"><button class="st-hide" data-src="' + src + '" data-hide="' + (x.hidden ? '0' : '1') + '" title="' + (x.hidden ? '다시 보이기' : '인플이 아닌 코드 — 숨기고 기억') + '">' + (x.hidden ? '되돌리기' : '숨기기') + '</button></td>' +
         '</tr>';
     };
     // 표 셋(이번 달 / 지난 달 / 유튜브)의 칸 너비를 똑같이 고정해 위아래 칸이 어긋나지 않게 한다
-    var colgroup = '<colgroup>' + [150, 76, 82, 118, 112, 66, 56, 88, 68, 66, 44, 180, 180, 112, 156, 84, 74].map(function (w) { return '<col style="width:' + w + 'px">'; }).join('') + '</colgroup>';
-    var headRow = '<th class="st-c-name">이름</th><th>월</th><th>플랫폼</th><th>선택</th><th>IP</th><th class="st-n">유입수</th><th class="st-n">결제수</th><th class="st-n">판매금액</th><th class="st-n">전환율</th><th>보상</th><th class="st-c">양도</th><th>판촉대상</th><th>글 링크</th><th>아이디</th><th>업로드 시각</th><th>팔로워</th><th></th>';
+    // 실적(유입·결제·금액·보상)을 이름 바로 옆에 두고, 자주 안 쓰는 칸(아이디·업로드 시각·팔로워)은 [칸 더 보기]로 접는다
+    var widths = [150, 76, 70, 56, 92, 68, 66, 44, 82, 110, 112, 165, 165].concat(settleShowMore ? [112, 156, 84] : []).concat([74]);
+    var colgroup = '<colgroup>' + widths.map(function (w) { return '<col style="width:' + w + 'px">'; }).join('') + '</colgroup>';
+    var tableW = widths.reduce(function (n, w) { return n + w; }, 0);
+    var headRow = '<th class="st-c-name">이름</th><th>월</th><th class="st-n">유입수</th><th class="st-n">결제수</th><th class="st-n">판매금액</th><th class="st-n">전환율</th><th>보상</th><th class="st-c">양도</th><th>플랫폼</th><th>선택</th><th>IP</th><th>판촉대상</th><th>글 링크</th>' +
+      (settleShowMore ? '<th>아이디</th><th>업로드 시각</th><th>팔로워</th>' : '') + '<th></th>';
     var mainRows = shown.filter(function (x) { return !x.yt && x.month === m; }), ytRows = shown.filter(function (x) { return x.yt; });
     var pastRows = shown.filter(function (x) { return !x.yt && x.month !== m; });
     pastRows.sort(function (a, b) { return (a.name ? 0 : 1) - (b.name ? 0 : 1) || b.month.localeCompare(a.month) || (b.s ? b.s['in'] : -1) - (a.s ? a.s['in'] : -1); });
@@ -2739,7 +2799,7 @@
       var firstNeed = -1;
       list.forEach(function (x, i) { if (firstNeed < 0 && !x.name) firstNeed = i; });
       return list.map(function (x, i) {
-        return (i === firstNeed ? '<tr class="st-grp"><td colspan="17">이름이 필요한 코드 ' + (list.length - firstNeed) + '개 — 이름을 넣으면 위로 올라갑니다</td></tr>' : '') + rowHtml(x);
+        return (i === firstNeed ? '<tr class="st-grp"><td colspan="' + widths.length + '">이름이 필요한 코드 ' + (list.length - firstNeed) + '개 — 이름을 넣으면 위로 올라갑니다</td></tr>' : '') + rowHtml(x);
       }).join('');
     };
     var body = grouped(mainRows) + (settleShowHidden ? all.lines.filter(function (x) { return x.hidden; }).map(rowHtml).join('') : '');
@@ -2756,6 +2816,7 @@
     var summary = '<div class="st-sum">' +
       '<span><b>' + shown.length + '</b>줄</span>' +
       (needName ? '<span class="is-warn">이름 필요 <b>' + needName + '</b></span>' : '<span class="is-ok">이름 모두 채움</span>') +
+      '<button class="st-link" id="st-more">' + (settleShowMore ? '아이디·업로드 시각·팔로워 칸 접기' : '칸 더 보기(아이디·업로드 시각·팔로워)') + '</button>' +
       (hiddenN ? '<button class="st-link" id="st-showhid">' + (settleShowHidden ? '숨긴 코드 감추기' : '숨긴 코드 ' + hiddenN + '개 보기') + '</button>' : '') +
       '<span class="st-legend"><i class="lg-empty"></i>비어 있음(채우기) <i class="lg-full"></i>채워짐 <i class="lg-auto"></i>자동 추정(맞는지 확인 — 고치면 흰색)</span>' +
       '</div>';
@@ -2765,15 +2826,16 @@
 
     return top + lists +
       '<section class="rbox">' + summary +
-      '<div class="scroll st-scroll"><table class="st-table">' + colgroup + '<thead><tr>' +
+      '<div class="scroll st-scroll"><table class="st-table" style="width:' + tableW + 'px">' + colgroup + '<thead><tr>' +
       headRow +
       '</tr></thead><tbody>' + body + '</tbody></table></div>' +
       (pastRows.length ? '<button class="st-fold" id="st-past">' + (settleShowPast ? '▾' : '▸') + ' 지난 달 협업 ' + pastRows.length + '줄 — 이번 엑셀 기간에 들어온 실적(월 칸 = 협업한 달) · ' + (settleShowPast ? '접기' : '펼치기') + '</button>' +
-        (settleShowPast ? '<div class="scroll st-scroll"><table class="st-table">' + colgroup + '<thead><tr>' + headRow + '</tr></thead><tbody>' + grouped(pastRows) + '</tbody></table></div>' : '') : '') +
+        (settleShowPast ? '<div class="scroll st-scroll"><table class="st-table" style="width:' + tableW + 'px">' + colgroup + '<thead><tr>' + headRow + '</tr></thead><tbody>' + grouped(pastRows) + '</tbody></table></div>' : '') : '') +
       (ytRows.length ? '<button class="st-fold" id="st-yt">' + (settleShowYt ? '▾' : '▸') + ' 유튜브 채널 코드 ' + ytRows.length + '개' + (ytNeed ? ' (이름 필요 ' + ytNeed + ')' : '') + ' — ' + (settleShowYt ? '접기' : '눌러서 펼치기') + '</button>' +
-        (settleShowYt ? '<div class="scroll st-scroll"><table class="st-table">' + colgroup + '<thead><tr>' + headRow + '</tr></thead><tbody>' + grouped(ytRows) + '</tbody></table></div>' : '') : '') +
+        (settleShowYt ? '<div class="scroll st-scroll"><table class="st-table" style="width:' + tableW + 'px">' + colgroup + '<thead><tr>' + headRow + '</tr></thead><tbody>' + grouped(ytRows) + '</tbody></table></div>' : '') : '') +
       missingBox +
-      '<p class="foot">유입수 파란 글씨 = ' + SETTLE_THRESHOLD + ' 이상(보상 10만 자동). 회색 칸 = 비어 있어 채워야 함, 흰 칸 = 채워짐, 노랑 점선 칸 = 자동으로 추정한 값이라 맞는지 확인(IP·판촉대상은 메일 제목·엑셀에서, 선택은 인스타 링크로 릴스=정보성(영상)·게시물=정보성(사진), 인스타 업로드 시각, 비슷한 아이디로 찾은 이름). 고치면 흰색이 됩니다. 보상·플랫폼·아이디는 자동값이 들어가 있고 고칠 수 있습니다. 양도 칸 체크 = 이벤트 진행. 표는 옆으로 밀어서 볼 수 있습니다.</p>' +
+      '<p class="foot">파란 유입수 = ' + SETTLE_THRESHOLD + ' 이상(보상 10만 자동) · 점선 밑줄 = 비어 있음(눌러서 입력) · 노랑 점선 칸 = 메일·링크로 추정한 값(맞는지 확인, 고치면 흰색)<br />' +
+      '양도 체크 = 이벤트 진행 · 인플이 아닌 코드는 줄에 마우스를 올리면 나오는 [숨기기]로 치움</p>' +
       '</section>' +
       '<section class="rbox"><div class="cd-act"><button class="mini is-main" id="st-csv"' + (ready ? '' : ' disabled') + '>노션용 파일 받기 — ' + monthLabel(m) + '만 (' + ready + '명)</button>' +
       '<button class="mini" id="st-csv-all"' + (readyAll ? '' : ' disabled') + '>화면 전체 받기 — 지난 달 포함 (' + readyAll + '명)</button>' +
@@ -2856,6 +2918,8 @@
         renderList();
       });
     });
+    var more = document.getElementById('st-more');
+    if (more) more.addEventListener('click', function () { settleShowMore = !settleShowMore; try { localStorage.setItem('ib-settle-more', settleShowMore ? '1' : '0'); } catch (e) { /* 이번 화면만 */ } renderList(); });
     var past = document.getElementById('st-past');
     if (past) past.addEventListener('click', function () { settleShowPast = !settleShowPast; renderList(); });
     var yt = document.getElementById('st-yt');
@@ -3383,6 +3447,7 @@
     var oldCount = {};
     list.forEach(function (r) { if (!r.latest) oldCount[r.roundKey] = (oldCount[r.roundKey] || 0) + 1; });
 
+    curPerfIdx = view === 'list' ? settlePerfIndex() : {};   // 정산 탭에 올린 엑셀 실적 — '예상 지급 시기' 칸의 5만~10만을 실제 값으로
     var lastGroupAt = null;   // 바로 앞 줄의 지급일 — 10일 넘게 벌어지면 새 묶음
     var lastSettled = null;   // 바로 앞 줄의 지급 상태 — 바뀌면 구분 줄을 넣는다
     var groupCount = {};
@@ -3401,7 +3466,7 @@
       if (r.latest && isSettled(r)) {
         var st = payStage(r);
         if (st !== lastSettled) {
-          head = '<tr class="grouprow is-settled"><td colspan="12">' +
+          head = '<tr class="grouprow is-settled"><td colspan="13">' +
             '<span class="group-when">' + (st === 'part' ? '1차만 지급함' : '지급 완료') + '</span>' +
             '<span class="group-n">' + (st === 'part' ? partCount : doneCount) + '건</span></td></tr>';
           lastSettled = st;
@@ -3416,7 +3481,7 @@
             var xt = nextPayTime(x);
             return isFinite(t) ? (isFinite(xt) && Math.abs(xt - t) <= GROUP_GAP_DAYS * 864e5) : !isFinite(xt);
           }).length;
-          head = '<tr class="grouprow"><td colspan="12">' +
+          head = '<tr class="grouprow"><td colspan="13">' +
             '<span class="group-when">' + esc(payGroupLabel(t)) + '</span>' +
             '<span class="group-n">' + same + '건</span></td></tr>';
           lastGroupAt = t;
@@ -3444,9 +3509,10 @@
             (trackChanged(r) ? '<span class="track-note" title="담당자가 바꿈 · 원래 ' + esc(TRACK[r.track] || r.track) + '">원래 ' + esc(TRACK[r.track] || r.track) + '</span>' : '')
           : '<span class="tag ' + esc(trackOf(r)) + '">' + esc(TRACK[trackOf(r)] || trackOf(r)) + '</span>') + '</td>' +
         '<td class="paycell">' + payCell(r) + '</td>' +
+        '<td class="perfcell">' + (r.latest ? perfLine(r) : '') + '</td>' +
         '<td><span class="tag ' + esc(r.reward) + '">' + esc(REWARD[r.reward] || r.reward) + '</span></td>' +
         '<td class="wish" title="' + esc(r.wish || '') + '"><span class="roll"><span>' + esc(r.wish || '-') + '</span></span></td>' +
-        '<td>' + esc(fmtAt(r.at)) + '</td>' +
+        '<td class="atcell">' + esc(fmtAt(r.at)) + '</td>' +
         '<td>' + (r.latest
           ? '<button class="mini' + (isOn ? ' is-done' : '') + '" data-nick="' + esc(r.roundKey) + '" data-legacy="' + esc(confirmed[r.nick] ? r.nick : '') + '" data-on="' + (isOn ? '1' : '0') + '">' +
             (isOn ? '✓ 확인함' : '업로드 확인') + '</button>'
@@ -3489,7 +3555,7 @@
         ? '<div class="scroll"><table class="listtable"><thead><tr>' +
           '<th class="pick"></th><th>활동명</th><th>네이버 ID</th><th class="sortable' + (sortBy === 'draft' ? ' is-on' : '') + '" data-sort="draft">초안 예정일' + (sortBy === 'draft' ? ' <span class="sort-ar">▾</span>' : '') + '</th>' +
           '<th>D-day</th><th>수령 방식</th>' +
-          '<th class="sortable' + (sortBy === 'pay' ? ' is-on' : '') + '" data-sort="pay">예상 지급 시기' + (sortBy === 'pay' ? ' <span class="sort-ar">▾</span>' : '') + '</th><th>보상 형태</th><th class="wishcol">희망 상품</th><th>제출 시각</th><th>업로드</th><th>리워드 지급</th>' +
+          '<th class="sortable' + (sortBy === 'pay' ? ' is-on' : '') + '" data-sort="pay">예상 지급 시기' + (sortBy === 'pay' ? ' <span class="sort-ar">▾</span>' : '') + '</th><th>실적 <span class="th-sub">(엑셀)</span></th><th>보상 형태</th><th class="wishcol">희망 상품</th><th>제출 시각</th><th>업로드</th><th>리워드 지급</th>' +
           '</tr></thead><tbody>' + body + '</tbody></table></div>'
         : '<div class="empty">아직 접수된 내용이 없습니다.</div>') +
       pickBar()) +
