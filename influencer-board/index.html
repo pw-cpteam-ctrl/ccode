@@ -2587,6 +2587,7 @@
     for (var r = 0; r < Math.min(15, table.length); r++) {
       if ((table[r] || []).some(function (h) { return norm(h) === 'nt_source'; })) { hi = r; break; }
     }
+    if (hi < 0) { var v = settleParseVisit(table, norm); if (v) return v; }
     var head = hi >= 0 ? (table[hi] || []).map(norm) : [];
     var ix = function (name) {
       var n = norm(name), i = head.indexOf(n);
@@ -2612,6 +2613,35 @@
       if (md2 && md2 !== '-' && b.media.indexOf(md2) < 0) b.media.push(md2);
     });
     return { by: by };
+  }
+  // 스마트스토어 통계 → '방문' 리포트(파일 이름 visit_….xlsx) 형식. 날짜별로 경로(1단계)·경로(2단계)·경로(3단계)가 나뉘어 있고,
+  // 경로(1단계)가 '사용자 정의'인 줄의 경로(2단계)가 사용자정의채널 리포트의 nt_source(인플 코드), 경로(3단계)가 nt_medium이다.
+  // 방문수 → 유입수, 상품결제건수 → 결제수, 판매금액(총) → 결제금액으로 날짜를 모두 더한다.
+  // '전체' 줄(일별·기간 합계)과 '2026-10-08~2026-11-11' 같은 기간 합계 줄은 빼서 두 번 세지 않는다.
+  function settleParseVisit(table, norm) {
+    var hi = -1;
+    for (var r = 0; r < Math.min(15, table.length); r++) {
+      var h0 = (table[r] || []).map(norm);
+      if (h0.indexOf('경로(2단계)') >= 0 && h0.indexOf('방문수') >= 0) { hi = r; break; }
+    }
+    if (hi < 0) return null;
+    var head = (table[hi] || []).map(norm), ix = function (n) { return head.indexOf(norm(n)); };
+    var iD = ix('날짜'), i1 = ix('경로(1단계)'), i2 = ix('경로(2단계)'), i3 = ix('경로(3단계)'), iV = ix('방문수'), iP = ix('상품결제건수'), iA = ix('판매금액(총)');
+    if (iA < 0) iA = head.findIndex(function (h) { return h.indexOf('판매금액') === 0; });
+    if (i1 < 0 || i2 < 0 || iV < 0 || iP < 0 || iA < 0) return null;
+    var num = function (v) { return typeof v === 'number' ? v : Number(String(v == null ? '' : v).replace(/[,\s원%]/g, '')) || 0; };
+    var by = {};
+    table.slice(hi + 1).forEach(function (row) {
+      if (String(row[i1] || '').replace(/\s+/g, '') !== '사용자정의') return;
+      if (iD >= 0 && String(row[iD] || '').indexOf('~') >= 0) return;
+      var src = srcKey(row[i2]);
+      if (!src || src === '전체' || (i3 >= 0 && String(row[i3] || '').trim() === '전체')) return;
+      var b = by[src] = by[src] || { src: src, 'in': 0, pay: 0, amt: 0, media: [] };
+      b['in'] += num(row[iV]); b.pay += num(row[iP]); b.amt += num(row[iA]);
+      var md2 = i3 >= 0 ? String(row[i3] == null ? '' : row[i3]) : '';
+      if (md2 && md2 !== '-' && b.media.indexOf(md2) < 0) b.media.push(md2);
+    });
+    return { by: by, kind: 'visit' };
   }
   // CSV로 받은 경우도 읽는다(쉼표·따옴표). 한글이 깨지면(예전 엑셀식 인코딩) EUC-KR로 다시 읽는다.
   function csvRows(buf) {
@@ -2840,14 +2870,16 @@
       f.arrayBuffer().then(function (buf) { return /\.(csv|txt)$/i.test(f.name) ? csvRows(buf) : xlsxRows(buf); }).then(function (table) {
         var res = settleParse(table);
         if (res.error) {
-          settleMsg = '이 파일에서 ' + res.error.join('·') + ' 열을 찾지 못했습니다. 스마트스토어 통계 → 마케팅 분석 → ‘사용자정의채널’ 화면에서 받은 파일인지 확인해 주세요.' +
+          settleMsg = '이 파일에서 ' + res.error.join('·') + ' 열을 찾지 못했습니다. 스마트스토어 통계의 ‘사용자정의채널’ 또는 ‘방문(경로별)’ 리포트 파일인지 확인해 주세요.' +
             (res.first.length ? ' (파일 첫 줄: ' + res.first.join(' | ') + ')' : '');
           renderList(); return;
         }
         var by = res.by;
         var pm = f.name.match(/(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})/);
+        var pv = !pm && f.name.match(/(\d{4})(\d{2})(\d{2})-(\d{4})(\d{2})(\d{2})/);   // visit_20261008-20261111 형식
+        if (pv) pm = [0, pv[1] + '-' + pv[2] + '-' + pv[3], pv[4] + '-' + pv[5] + '-' + pv[6]];
         save(function (st) { st.stats = { name: f.name, period: pm ? pm[1] + ' ~ ' + pm[2] : '', by: by, at: new Date().toISOString() }; });
-        settleMsg = '엑셀을 읽었습니다 — 코드 ' + Object.keys(by).length + '개.';
+        settleMsg = '엑셀을 읽었습니다 — 코드 ' + Object.keys(by).length + '개.' + (res.kind === 'visit' ? ' (방문 리포트: 경로가 ‘사용자 정의’인 줄만, 방문수를 유입수로 날짜별 합산)' : '');
         renderList();
       }).catch(function (err) {
         settleMsg = err && err.message === 'browser' ? '이 브라우저는 엑셀 압축을 풀지 못합니다. 크롬·엣지 최신 버전에서 열어 주세요.' : '엑셀을 읽지 못했습니다. 스마트스토어에서 받은 .xlsx 파일인지 확인해 주세요.';
