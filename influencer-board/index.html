@@ -128,7 +128,7 @@
   /* 아이디를 메일 주소로 적는 분이 있어 한 칸이 길어지면 표 전체가 밀려
      오른쪽이 잘렸다. 10자 남짓에서 끊고, 누르면 그 칸만 전부 펼친다.
      (마우스를 올려도 전체가 말풍선으로 뜨고, 복사 표에는 늘 전체가 들어간다) */
-  td.naver { max-width: 11ch; }
+  td.naver { max-width: 16ch; }
   /* 긴 아이디는 칸 안에서 좌우로 천천히 오가게 둔다. 한 칸씩 눌러서 펼치면
      여러 건을 훑어볼 때 매번 눌러야 해서, 가만히 둬도 전체가 읽히게 한다.
      움직이는 거리에 맞춰 시간을 주므로 길수록 느리게 흐른다. */
@@ -157,8 +157,10 @@
   table.listtable thead th:not(.wishcol), table.listtable tbody td:not(.wish) { width: 1px; }
   /* 두 줄로 쪼개지던 칸들 */
   td .tag, th:nth-child(9), td:nth-child(9), td:nth-child(10) { white-space: nowrap; }
-  td.wish .roll { display: block; overflow: hidden; white-space: nowrap; }
-  td.wish .roll > span { display: inline-block; }
+  /* 희망 상품은 흐르게 두었더니 한눈에 안 읽혔다 — 줄이 원래 두 줄 높이라 두 줄까지 접어 다 보이게 한다 */
+  td.wish { min-width: 13em; }
+  td.wish .roll { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; line-height: 1.35; }
+  td.wish .roll > span { display: inline; }
   /* 세 단계로 가라앉힌다 — 이번 달·날짜 지남 → 지난 달 → 담당자가 내린 건.
      어느 것도 지우지 않는다. 기록은 남고 눈에 덜 걸리게만 한다. */
   /* 지급이 남아 있는 건은 또렷한 검정으로 둔다 — 지금 챙길 것 */
@@ -538,8 +540,36 @@
   .rc-stage-b.s2 { background: #dbeafe; color: #1d4ed8; }
   .rc-stage-b.s3 { background: #dcfce7; color: #166534; }
   .atcell { white-space: nowrap; }
+  /* 지급 요약 — 진행 탭 맨 아래 */
+  .paysum { margin-top: 28px; }
+  .paysum-h { font-size: 16px; margin: 0 0 4px; }
+  .paysum-h span { font-size: 13px; font-weight: 500; color: var(--ink-500); }
+  .paysum-desc { margin: 0 0 10px; font-size: 12.5px; color: var(--ink-500); }
+  table.pstable { border-collapse: collapse; width: 100%; max-width: 900px; font-size: 14px; }
+  table.pstable th { text-align: left; font-size: 12px; font-weight: 600; color: var(--ink-500); padding: 8px 12px; border-bottom: 1px solid #e7e5e4; white-space: nowrap; }
+  table.pstable td { padding: 9px 12px; border-bottom: 1px solid #f0efed; vertical-align: middle; }
+  tr.ps-group td { background: #f5f8fc; padding: 7px 12px; font-weight: 800; color: #0b3d91; font-size: 13px; border-bottom: 1px solid #e3eaf3; }
+  .ps-dd { font-weight: 700; font-size: 12px; color: #64748b; margin-left: 6px; }
+  .ps-dd.is-now { color: #1d4ed8; }
+  .ps-dd.is-past { color: #b91c1c; }
+  .ps-sum { float: right; font-weight: 600; font-size: 12.5px; color: #334155; }
+  .ps-nick { font-weight: 700; white-space: nowrap; width: 9em; }
+  .ps-id { white-space: nowrap; color: #44403c; width: 9em; }
+  .ps-turn { white-space: nowrap; color: #44403c; width: 6.5em; }
+  .ps-amt { white-space: nowrap; font-weight: 800; font-size: 15px; width: 5.5em; }
+  .ps-what { width: 250px; min-width: 250px; max-width: 250px; }
+  .ps-what .tag { white-space: nowrap; }
+  /* 상품명은 250px 한 줄 — 넘치면 위 표 아이디처럼 좌우로 천천히 오간다 */
+  .ps-wish { display: block; overflow: hidden; white-space: nowrap; font-size: 12.5px; color: #44403c; margin-top: 3px; }
+  .ps-wish > span { display: inline-block; }
+  .ps-wish.is-long > span { animation: naver-roll var(--roll-sec, 6s) ease-in-out infinite alternate; }
+  @media (prefers-reduced-motion: reduce) { .ps-wish.is-long > span { animation: none; } }
+  .ps-basis { font-size: 12.5px; color: #57534e; }
+  tr.ps-row.is-wait .ps-amt { color: #a8a29e; font-weight: 700; }
+  tr.ps-row.is-none .ps-amt, tr.ps-row.is-none .ps-nick { color: #a8a29e; }
   .perfcell { white-space: nowrap; font-size: 12.5px; color: var(--ink-500); }
   .pf-line b { color: var(--ink); font-size: 13px; }
+  .pf-line small { display: block; font-size: 11.5px; color: var(--ink-500); margin-top: 1px; }
   .pf-line b.is-hit { color: #1d4ed8; }
   .pf-none { color: var(--ink-400); }
   .th-sub { font-weight: 500; color: var(--ink-400); }
@@ -1117,7 +1147,8 @@
     if (!pf) return '<span class="pf-none">—</span>';
     var man = pf.amt >= 10000 ? (Math.round(pf.amt / 1000) / 10) + '만' : comma(pf.amt);
     return '<span class="pf-line" title="유입 ' + comma(pf['in']) + ' · 결제 ' + comma(pf.pay) + '건 · 판매금액 ' + comma(pf.amt) + '원">' +
-      '<b class="' + (pf.hit ? 'is-hit' : '') + '">' + comma(pf['in']) + '</b> 유입 · ' + comma(pf.pay) + '건 · ' + man + ' · ' + (pf['in'] ? (pf.pay / pf['in'] * 100).toFixed(1) + '%' : '0%') + '</span>';
+      '<b class="' + (pf.hit ? 'is-hit' : '') + '">' + comma(pf['in']) + '</b> 유입' +
+      '<small>' + comma(pf.pay) + '건 · ' + man + ' · ' + (pf['in'] ? (pf.pay / pf['in'] * 100).toFixed(1) + '%' : '0%') + '</small></span>';
   }
   function payCell(r) {
     var p = payPlan(r);
@@ -2692,7 +2723,7 @@
   // 진행 탭 연결 — 정산 탭에 올린 스스 엑셀 실적을 접수자 이름으로 찾아, '최종 보상'과 '남은 지급'을 보여 준다.
   // 정산 탭에서 붙인 이름(코드 → 이름)과 접수 네이버 아이디로 잇는다. 그 사람의 회차 달 엑셀이 있으면 그것을, 없으면 다른 달 엑셀을 쓴다.
   function settlePerfIndex() {
-    var idx = {}, names = lsGet(SETTLE_NAME_KEY, {});
+    var idx = {}, names = lsGet(SETTLE_NAME_KEY, {}), pool = settlePool(names);
     var keys = [];
     try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (k && k.indexOf(SETTLE_KEY) === 0) keys.push(k); } } catch (e) { return idx; }
     keys.forEach(function (k) {
@@ -2700,7 +2731,9 @@
       if (!st || !st.stats || !st.stats.by) return;
       Object.keys(st.stats.by).forEach(function (src) {
         var b = st.stats.by[src], row = (st.rows || {})[src] || {};
-        var nm = row.name || names[src];
+        // 정산 표에 보이는 이름 그대로 — 직접 넣은 이름, 기억한 이름, 그리고 접수 아이디·메일 주소로 자동으로 맞춘 이름까지.
+        // 예전엔 앞의 둘만 봐서, 정산 표엔 이름이 떠 있는데 진행 탭 실적은 '—'로 비는 사람이 생겼다.
+        var nm = row.name || settleGuessName(src, names, pool).name;
         var put = function (key) { if (!key) return; (idx[key] = idx[key] || []).push({ month: row.month || mk, file: mk, s: b, reward: row.reward, period: st.stats.period || '' }); };
         if (nm) put('n:' + settleKey(nm));
         put('c:' + src);
@@ -2716,6 +2749,77 @@
     if (!hits.length) return null;
     var h = hits.filter(function (x) { return x.month === mk; })[0] || hits.filter(function (x) { return x.file === mk; })[0] || hits[0];
     return { 'in': h.s['in'], pay: h.s.pay, amt: h.s.amt, hit: h.s['in'] >= SETTLE_THRESHOLD, final: h.reward || (h.s['in'] >= SETTLE_THRESHOLD ? '10만' : '5만') };
+  }
+
+
+  // ─── 지급 요약 (진행 탭 맨 아래) ────────────────────────────
+  // 위 표는 그대로 두고, '그래서 누구에게 언제 무엇을 주면 되는지'만 날짜별로 다시 묶어 보여 준다.
+  // 위 표와 같은 데이터(지급 상태·수령 방식·정산 엑셀 실적)를 그대로 쓰므로, 위에서 지급 버튼을 누르면 여기서도 빠진다.
+  // 아이디·초안일·제출 시각·업로드처럼 '줄 것'을 정하는 데 필요 없는 칸은 뺐다.
+  function payDue(r) {
+    var open = openDateFor(r.draftDate);
+    if (!open) return { t: Infinity, turn: '', amt: '날짜 미정', basis: '초안 예정일이 없어 지급일을 못 정함', tone: 'wait' };
+    var pf = perfOf(r), st = payStage(r), split = trackOf(r) === 'split';
+    var at = function (n) { var d = new Date(open); d.setDate(d.getDate() + n); d.setHours(0, 0, 0, 0); return d.getTime(); };
+    var basis = pf ? '유입 ' + comma(pf['in']) + ' · ' + (pf.hit ? '750 넘음' : '750 미만') : '정산 엑셀 아직 없음';
+    // 위 표와 같은 기준 — 1차는 오픈 후 10일이 지나면 나간 것으로 보고(위 표의 '1차 ○/○ 지급'), 그 뒤로는 2차만 남는다.
+    if (split && st === '' && payWhen(open, 10) !== 'done') return { t: at(10), turn: '선지급 1차', amt: '5만', basis: '오픈 후 10일 — 실적과 상관없이', tone: 'ok' };
+    if (split) {
+      if (pf && !pf.hit) return { t: at(40), turn: '선지급 2차', amt: '없음', basis: basis, tone: 'none' };
+      return { t: at(40), turn: '선지급 2차', amt: pf ? '5만' : '5만?', basis: pf ? basis : '750 넘으면 5만 · ' + basis, tone: pf ? 'ok' : 'wait' };
+    }
+    return { t: at(40), turn: '후지급', amt: pf ? pf.final : '5만~10만', basis: pf ? basis : '750 넘으면 10만, 아니면 5만 · ' + basis, tone: pf ? 'ok' : 'wait' };
+  }
+  function paySumBox(list) {
+    var due = list.filter(function (r) { return r.latest && payStage(r) !== 'full'; })
+      .map(function (r) { return { r: r, d: payDue(r) }; })
+      .sort(function (a, b) { return (a.d.t - b.d.t) || String(a.r.nick).localeCompare(String(b.r.nick)); });
+    if (!due.length) return '';
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var whenTxt = function (t) {
+      if (!isFinite(t)) return '날짜 미정';
+      var d = new Date(t), days = Math.round((t - today) / 864e5);
+      var w = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+      return (d.getMonth() + 1) + '/' + d.getDate() + ' (' + w + ')' +
+        ' <span class="ps-dd' + (days < 0 ? ' is-past' : days <= 7 ? ' is-now' : '') + '">' +
+        (days < 0 ? '지남 · 아직 지급 체크 안 함' : days === 0 ? '오늘' : days <= 7 ? days + '일 뒤' : 'D-' + days) + '</span>';
+    };
+    var groups = [], cur = null;
+    due.forEach(function (x) {
+      if (!cur || cur.t !== x.d.t) { cur = { t: x.d.t, items: [] }; groups.push(cur); }
+      cur.items.push(x);
+    });
+    // 같은 날짜 안에서는 금액 쿠폰끼리 → 상품 쿠폰끼리 모으고, 각 묶음 안은 금액이 작은 순(5만 → 5만 → 10만).
+    // 아직 안 정해진 금액(5만~10만, 5만?)은 그 뒤, '없음'은 맨 뒤 — 쿠폰을 종류별로 몰아서 발급하기 쉽게.
+    var amtRank = function (d) { var m = /^(\d+)만$/.exec(d.amt); return m ? +m[1] : d.tone === 'none' ? 1e9 : 1e6; };
+    groups.forEach(function (g) {
+      g.items.sort(function (a, b) {
+        return ((a.r.reward === 'goods') - (b.r.reward === 'goods')) || (amtRank(a.d) - amtRank(b.d)) ||
+          String(a.r.nick).localeCompare(String(b.r.nick));
+      });
+    });
+    var body = groups.map(function (g) {
+      var fixed = 0, open = 0;
+      g.items.forEach(function (x) { var m = /^(\d+)만$/.exec(x.d.amt); if (m) fixed += +m[1]; else if (x.d.tone === 'wait') open++; });
+      var head = '<tr class="ps-group"><td colspan="6">' + whenTxt(g.t) +
+        '<span class="ps-sum">' + g.items.length + '명' + (fixed ? ' · 확정 ' + fixed + '만' : '') + (open ? ' · 아직 미정 ' + open + '명' : '') + '</span></td></tr>';
+      return head + g.items.map(function (x) {
+        var r = x.r, goods = r.reward === 'goods';
+        return '<tr class="ps-row is-' + x.d.tone + '">' +
+          '<td class="ps-nick">' + esc(r.nick) + '</td>' +
+          '<td class="ps-id" title="' + esc(r.naver || '') + '">' + esc(String(r.naver || '-').replace(/@naver\.com$/i, '')) + '</td>' +
+          '<td class="ps-turn">' + esc(x.d.turn) + '</td>' +
+          '<td class="ps-amt">' + esc(x.d.amt) + '</td>' +
+          '<td class="ps-what"><span class="tag ' + esc(r.reward) + '">' + esc(REWARD[r.reward] || r.reward) + '</span>' +
+            (goods && r.wish ? '<span class="ps-wish roll" title="' + esc(r.wish) + '"><span>' + esc(r.wish) + '</span></span>' : '') + '</td>' +
+          '<td class="ps-basis">' + esc(x.d.basis) + '</td>' +
+          '</tr>';
+      }).join('');
+    }).join('');
+    return '<section class="paysum fitw"><h2 class="paysum-h">지급 요약 <span>— 날짜별로 누구에게 무엇을 주면 되는지</span></h2>' +
+      '<p class="paysum-desc">위 표와 같은 기록입니다. 위에서 [리워드 확인]을 눌러 지급 완료로 바꾸면 여기서 빠지고, 정산 탭에 엑셀을 올리면 ‘5만~10만’이 실제 금액으로 바뀝니다. 흐린 줄은 아직 금액이 안 정해진 건입니다.</p>' +
+      '<div class="scroll"><table class="pstable"><thead><tr><th>활동명</th><th>네이버 ID</th><th>차수</th><th>줄 것</th><th>쿠폰 · 상품</th><th>근거</th></tr></thead>' +
+      '<tbody>' + body + '</tbody></table></div></section>';
   }
 
   function settleBox() {
@@ -3500,7 +3604,7 @@
                 '<span class="old-n">+' + oldCount[r.roundKey] + '</span></button>'
               : '<span class="nick-name">' + esc(r.nick) + '</span>')
           : '<span class="old-child">↳ <span class="nick-name">' + esc(r.nick) + '</span></span>') + '</td>' +
-        '<td class="naver" title="' + esc(r.naver || '') + '"><span class="roll"><span>' + esc(r.naver || '-') + '</span></span></td>' +
+        '<td class="naver" title="' + esc(r.naver || '') + '"><span class="roll"><span>' + esc(String(r.naver || '-').replace(/@naver\.com$/i, '')) + '</span></span></td>' +
         '<td class="draft' + (isOn ? ' is-uploaded' : '') + '">' + esc(fmtDate(r.draftDate)) + '</td>' +
         '<td><span class="dday' + ddayClass(r.draftDate) + '">' + esc(fmtDday(r.draftDate)) + '</span></td>' +
         '<td class="trackcell">' + (r.latest
@@ -3556,7 +3660,7 @@
           '<th class="pick"></th><th>활동명</th><th>네이버 ID</th><th class="sortable' + (sortBy === 'draft' ? ' is-on' : '') + '" data-sort="draft">초안 예정일' + (sortBy === 'draft' ? ' <span class="sort-ar">▾</span>' : '') + '</th>' +
           '<th>D-day</th><th>수령 방식</th>' +
           '<th class="sortable' + (sortBy === 'pay' ? ' is-on' : '') + '" data-sort="pay">예상 지급 시기' + (sortBy === 'pay' ? ' <span class="sort-ar">▾</span>' : '') + '</th><th>실적 <span class="th-sub">(엑셀)</span></th><th>보상 형태</th><th class="wishcol">희망 상품</th><th>제출 시각</th><th>업로드</th><th>리워드 지급</th>' +
-          '</tr></thead><tbody>' + body + '</tbody></table></div>'
+          '</tr></thead><tbody>' + body + '</tbody></table></div>' + paySumBox(list)
         : '<div class="empty">아직 접수된 내용이 없습니다.</div>') +
       pickBar()) +
       blockedBox() +
@@ -3774,7 +3878,7 @@
     });
     // 칸보다 긴 아이디만 골라 흐르게 한다. 넘치는 만큼만 움직이면 되므로
     // 그 거리를 재서 넣어주고, 100px당 2초 정도로 속도를 맞춘다.
-    Array.prototype.forEach.call(root.querySelectorAll('td.naver .roll, td.wish .roll'), function (roll) {
+    Array.prototype.forEach.call(root.querySelectorAll('td.naver .roll, .ps-wish.roll'), function (roll) {
       var over = roll.firstChild.scrollWidth - roll.clientWidth;
       if (over <= 1) return;
       roll.classList.add('is-long');
