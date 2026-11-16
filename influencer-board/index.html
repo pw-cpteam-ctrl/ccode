@@ -448,9 +448,10 @@
   .st-sum .is-ok { color: #166534; }
   .st-link { font: inherit; font-size: 12.5px; color: var(--ink-500); background: none; border: 0; text-decoration: underline; cursor: pointer; padding: 0; }
   .st-scroll { overflow-x: auto; }
-  .st-table { border-collapse: separate; border-spacing: 0; font-size: 13px; white-space: nowrap; }
+  .st-table { border-collapse: separate; border-spacing: 0; font-size: 13px; white-space: nowrap; table-layout: fixed; width: 1712px; }
   .st-table th { text-align: left; font-size: 11.5px; font-weight: 700; color: var(--ink-500); padding: 6px 6px; border-bottom: 1px solid var(--line); background: #fafaf9; position: sticky; top: 0; }
-  .st-table td { padding: 5px 6px; border-bottom: 1px solid #f0efed; vertical-align: middle; background: #fff; }
+  .st-table td { padding: 4px 5px; border-bottom: 1px solid #f0efed; vertical-align: middle; background: #fff; overflow: hidden; }
+  .st-table td.st-n { background: #fafaf8; }
   .st-table .st-c-name { position: sticky; left: 0; z-index: 1; box-shadow: 1px 0 0 var(--line); }
   .st-table th.st-c-name { z-index: 2; background: #fafaf9; }
   .st-table tr.is-need td { background: #fafaf9; }
@@ -467,13 +468,15 @@
   .st-table tr.st-grp td { background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700; padding: 6px 10px; position: sticky; left: 0; }
   /* 칸 색의 뜻 — 회색: 비어 있어 채워야 함 / 흰색: 채워짐(자동으로 확실히 채웠거나 내가 고르고 쓴 값)
      노랑 점선: 자동으로 추정한 값이라 맞는지 한 번 볼 것(IP·판촉대상·인스타 업로드 시각·비슷한 아이디로 찾은 이름). 고치면 흰색 */
-  .st-in, .st-sel { background: #fff; border-color: #d6d3d1; }
-  .st-in:placeholder-shown, .st-sel.is-empty { background: #e7e5e4; border-color: #d6d3d1; color: var(--ink-500); }
+  .st-in, .st-sel { background: #fff; border-color: #e7e5e4; }
+  .st-table .st-in, .st-table .st-sel { width: 100%; font-size: 12.5px; padding: 4px 6px; border-radius: 6px; text-overflow: ellipsis; }
+  .st-table .st-in.st-nm { width: 100%; }
+  .st-in:placeholder-shown, .st-sel.is-empty { background: #f1f0ee; border-color: transparent; color: var(--ink-400); }
   .st-in:placeholder-shown::placeholder { color: #78716c; }
   .st-in:focus, .st-sel:focus { outline: 2px solid #60a5fa; outline-offset: 0; }
   .st-legend { margin-left: auto; font-size: 11.5px; color: var(--ink-500); display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
   .st-legend i { display: inline-block; width: 14px; height: 10px; border-radius: 3px; margin-left: 6px; vertical-align: -1px; }
-  .st-legend .lg-empty { background: #e7e5e4; border: 1px solid #d6d3d1; }
+  .st-legend .lg-empty { background: #f1f0ee; border: 1px solid #e7e5e4; }
   .st-legend .lg-full { background: #fff; border: 1px solid #d6d3d1; }
   .st-legend .lg-auto { background: #fefce8; border: 1.5px dashed #eab308; }
   .st-sugg { display: block; margin-top: 3px; font: inherit; font-size: 11px; color: #b45309; background: none; border: 1px dashed #eab308; border-radius: 6px; padding: 2px 6px; cursor: pointer; }
@@ -2485,7 +2488,8 @@
     var link = p.link || lg.auto;
     var li = linkInfo(link);
     var autoReward = s ? (s['in'] >= SETTLE_THRESHOLD ? '10만' : '5만') : '';
-    var hidden = hide[src] != null ? !!hide[src] : SETTLE_GENERIC.indexOf(src) >= 0;
+    // 숫자·날짜만 있는 코드(예: '2026 11 07')도 사람 코드가 아니라 처음부터 숨긴다
+    var hidden = hide[src] != null ? !!hide[src] : (SETTLE_GENERIC.indexOf(src) >= 0 || /^[\d\s.\-_/]+$/.test(src));
     return {
       src: src, p: p, s: s, manual: src.indexOf('manual:') === 0,
       name: g.name, nameHow: g.how, nameKey: g.key || '', yt: /^youtube./.test(src),
@@ -2725,6 +2729,8 @@
         '<td class="st-c"><button class="st-hide" data-src="' + src + '" data-hide="' + (x.hidden ? '0' : '1') + '" title="' + (x.hidden ? '다시 보이기' : '인플이 아닌 코드 — 숨기고 기억') + '">' + (x.hidden ? '되돌리기' : '숨기기') + '</button></td>' +
         '</tr>';
     };
+    // 표 셋(이번 달 / 지난 달 / 유튜브)의 칸 너비를 똑같이 고정해 위아래 칸이 어긋나지 않게 한다
+    var colgroup = '<colgroup>' + [150, 76, 82, 118, 112, 66, 56, 88, 68, 66, 44, 180, 180, 112, 156, 84, 74].map(function (w) { return '<col style="width:' + w + 'px">'; }).join('') + '</colgroup>';
     var headRow = '<th class="st-c-name">이름</th><th>월</th><th>플랫폼</th><th>선택</th><th>IP</th><th class="st-n">유입수</th><th class="st-n">결제수</th><th class="st-n">판매금액</th><th class="st-n">전환율</th><th>보상</th><th class="st-c">양도</th><th>판촉대상</th><th>글 링크</th><th>아이디</th><th>업로드 시각</th><th>팔로워</th><th></th>';
     var mainRows = shown.filter(function (x) { return !x.yt && x.month === m; }), ytRows = shown.filter(function (x) { return x.yt; });
     var pastRows = shown.filter(function (x) { return !x.yt && x.month !== m; });
@@ -2759,13 +2765,13 @@
 
     return top + lists +
       '<section class="rbox">' + summary +
-      '<div class="scroll st-scroll"><table class="st-table"><thead><tr>' +
+      '<div class="scroll st-scroll"><table class="st-table">' + colgroup + '<thead><tr>' +
       headRow +
       '</tr></thead><tbody>' + body + '</tbody></table></div>' +
       (pastRows.length ? '<button class="st-fold" id="st-past">' + (settleShowPast ? '▾' : '▸') + ' 지난 달 협업 ' + pastRows.length + '줄 — 이번 엑셀 기간에 들어온 실적(월 칸 = 협업한 달) · ' + (settleShowPast ? '접기' : '펼치기') + '</button>' +
-        (settleShowPast ? '<div class="scroll st-scroll"><table class="st-table"><thead><tr>' + headRow + '</tr></thead><tbody>' + grouped(pastRows) + '</tbody></table></div>' : '') : '') +
+        (settleShowPast ? '<div class="scroll st-scroll"><table class="st-table">' + colgroup + '<thead><tr>' + headRow + '</tr></thead><tbody>' + grouped(pastRows) + '</tbody></table></div>' : '') : '') +
       (ytRows.length ? '<button class="st-fold" id="st-yt">' + (settleShowYt ? '▾' : '▸') + ' 유튜브 채널 코드 ' + ytRows.length + '개' + (ytNeed ? ' (이름 필요 ' + ytNeed + ')' : '') + ' — ' + (settleShowYt ? '접기' : '눌러서 펼치기') + '</button>' +
-        (settleShowYt ? '<div class="scroll st-scroll"><table class="st-table"><thead><tr>' + headRow + '</tr></thead><tbody>' + grouped(ytRows) + '</tbody></table></div>' : '') : '') +
+        (settleShowYt ? '<div class="scroll st-scroll"><table class="st-table">' + colgroup + '<thead><tr>' + headRow + '</tr></thead><tbody>' + grouped(ytRows) + '</tbody></table></div>' : '') : '') +
       missingBox +
       '<p class="foot">유입수 파란 글씨 = ' + SETTLE_THRESHOLD + ' 이상(보상 10만 자동). 회색 칸 = 비어 있어 채워야 함, 흰 칸 = 채워짐, 노랑 점선 칸 = 자동으로 추정한 값이라 맞는지 확인(IP·판촉대상은 메일 제목·엑셀에서, 선택은 인스타 링크로 릴스=정보성(영상)·게시물=정보성(사진), 인스타 업로드 시각, 비슷한 아이디로 찾은 이름). 고치면 흰색이 됩니다. 보상·플랫폼·아이디는 자동값이 들어가 있고 고칠 수 있습니다. 양도 칸 체크 = 이벤트 진행. 표는 옆으로 밀어서 볼 수 있습니다.</p>' +
       '</section>' +
