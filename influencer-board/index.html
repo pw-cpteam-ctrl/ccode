@@ -2580,20 +2580,55 @@
 
   // 스마트스토어 '사용자정의채널' 통계 → nt_source별 합계(모바일·PC, 상품 링크를 모두 더함)
   function settleParse(table) {
-    var head = (table[0] || []).map(function (h) { return String(h || '').trim(); });
-    var ix = function (name) { return head.indexOf(name); };
+    // 머리글 줄을 맨 위 15줄 안에서 찾는다(위에 기간·제목 줄이 붙어 나오는 파일도 있어서).
+    // 열 이름은 같은 이름을 먼저 찾고, 없으면 그 이름으로 시작하는 열(예: '결제금액(마지막클릭)')을 쓰되 '+14일 기여도' 열은 쓰지 않는다.
+    var norm = function (h) { return String(h == null ? '' : h).replace(/\s+/g, '').toLowerCase(); };
+    var hi = -1;
+    for (var r = 0; r < Math.min(15, table.length); r++) {
+      if ((table[r] || []).some(function (h) { return norm(h) === 'nt_source'; })) { hi = r; break; }
+    }
+    var head = hi >= 0 ? (table[hi] || []).map(norm) : [];
+    var ix = function (name) {
+      var n = norm(name), i = head.indexOf(n);
+      if (i >= 0) return i;
+      for (var j = 0; j < head.length; j++) if (head[j].indexOf(n) === 0 && head[j].indexOf('14일') < 0 && head[j].indexOf('유입당') < 0) return j;
+      return -1;
+    };
     var iS = ix('nt_source'), iM = ix('nt_medium'), iIn = ix('유입수'), iPay = ix('결제수'), iAmt = ix('결제금액');
-    if (iS < 0 || iIn < 0 || iPay < 0 || iAmt < 0) return null;
+    if (iS < 0 || iIn < 0 || iPay < 0 || iAmt < 0) {
+      // 무엇이 없는지와 파일 첫 줄을 같이 알려 준다(원인 찾기용)
+      var miss = [['nt_source', iS], ['유입수', iIn], ['결제수', iPay], ['결제금액', iAmt]].filter(function (x) { return x[1] < 0; }).map(function (x) { return x[0]; });
+      var first = (table.filter(function (rw) { return (rw || []).some(function (c) { return String(c == null ? '' : c).trim(); }); })[0] || []).map(function (c) { return String(c == null ? '' : c).trim(); }).filter(Boolean).slice(0, 8);
+      return { error: miss, first: first };
+    }
+    var num = function (v) { return typeof v === 'number' ? v : Number(String(v == null ? '' : v).replace(/[,\s원%]/g, '')) || 0; };
     var by = {};
-    table.slice(1).forEach(function (row) {
+    table.slice(hi + 1).forEach(function (row) {
       var src = srcKey(row[iS]);
-      if (!src) return;
+      if (!src || src === '합계' || src === 'total') return;
       var b = by[src] = by[src] || { src: src, 'in': 0, pay: 0, amt: 0, media: [] };
-      b['in'] += Number(row[iIn]) || 0; b.pay += Number(row[iPay]) || 0; b.amt += Number(row[iAmt]) || 0;
-      var md2 = String(row[iM] == null ? '' : row[iM]);
+      b['in'] += num(row[iIn]); b.pay += num(row[iPay]); b.amt += num(row[iAmt]);
+      var md2 = iM >= 0 ? String(row[iM] == null ? '' : row[iM]) : '';
       if (md2 && md2 !== '-' && b.media.indexOf(md2) < 0) b.media.push(md2);
     });
-    return by;
+    return { by: by };
+  }
+  // CSV로 받은 경우도 읽는다(쉼표·따옴표). 한글이 깨지면(예전 엑셀식 인코딩) EUC-KR로 다시 읽는다.
+  function csvRows(buf) {
+    var text = new TextDecoder('utf-8').decode(buf);
+    if (text.indexOf('\ufffd') >= 0) { try { text = new TextDecoder('euc-kr').decode(buf); } catch (e) { /* 그대로 */ } }
+    text = text.replace(/^\ufeff/, '');
+    var out = [], row = [], cell = '', q = false;
+    for (var i = 0; i < text.length; i++) {
+      var ch = text[i];
+      if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+      else if (ch === '"') q = true;
+      else if (ch === ',' || ch === '\t') { row.push(cell); cell = ''; }
+      else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); out.push(row); row = []; cell = ''; }
+      else cell += ch;
+    }
+    if (cell || row.length) { row.push(cell); out.push(row); }
+    return out;
   }
 
   function settleBox() {
@@ -2615,7 +2650,7 @@
       '<div class="st-top">' +
       '<label>회차 <select id="st-month">' + months.map(function (x) { return '<option value="' + x + '"' + (x === m ? ' selected' : '') + '>' + x.replace('-', '년 ') + '월</option>'; }).join('') + '</select></label>' +
       '<label>스토어 오픈 시각 <input id="st-open" type="text" placeholder="예: 오후 4:00" value="' + esc(st.openTime || '') + '" /></label>' +
-      '<label class="mini is-main" for="st-file">' + (st.stats ? '엑셀 다시 올리기' : '스스 통계 엑셀 올리기') + '</label><input type="file" id="st-file" accept=".xlsx" hidden />' +
+      '<label class="mini is-main" for="st-file">' + (st.stats ? '엑셀 다시 올리기' : '스스 통계 엑셀 올리기') + '</label><input type="file" id="st-file" accept=".xlsx,.csv" hidden />' +
       (st.stats ? '<span class="st-file">' + esc(st.stats.period || st.stats.name || '엑셀') + ' <button class="mini" id="st-clear">엑셀 지우기</button></span>' : '') +
       '</div>' +
       (settleMsg ? '<p class="ml-fresh" id="st-msg">' + esc(settleMsg) + '</p>' : '') +
@@ -2802,9 +2837,14 @@
       var f = file.files && file.files[0];
       if (!f) return;
       settleMsg = '엑셀을 읽는 중…'; renderList();
-      f.arrayBuffer().then(xlsxRows).then(function (table) {
-        var by = settleParse(table);
-        if (!by) { settleMsg = '스마트스토어 ‘사용자정의채널’ 통계 엑셀이 아닌 것 같습니다(nt_source·유입수·결제수·결제금액 열을 찾지 못함).'; renderList(); return; }
+      f.arrayBuffer().then(function (buf) { return /\.(csv|txt)$/i.test(f.name) ? csvRows(buf) : xlsxRows(buf); }).then(function (table) {
+        var res = settleParse(table);
+        if (res.error) {
+          settleMsg = '이 파일에서 ' + res.error.join('·') + ' 열을 찾지 못했습니다. 스마트스토어 통계 → 마케팅 분석 → ‘사용자정의채널’ 화면에서 받은 파일인지 확인해 주세요.' +
+            (res.first.length ? ' (파일 첫 줄: ' + res.first.join(' | ') + ')' : '');
+          renderList(); return;
+        }
+        var by = res.by;
         var pm = f.name.match(/(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})/);
         save(function (st) { st.stats = { name: f.name, period: pm ? pm[1] + ' ~ ' + pm[2] : '', by: by, at: new Date().toISOString() }; });
         settleMsg = '엑셀을 읽었습니다 — 코드 ' + Object.keys(by).length + '개.';
