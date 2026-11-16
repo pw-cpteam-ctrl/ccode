@@ -543,7 +543,10 @@
   /* 지급 요약 — 진행 탭 맨 아래 */
   .paysum { margin-top: 28px; }
   .paysum-h { font-size: 16px; margin: 0 0 4px; }
+  .paysum-h { display: flex; align-items: center; gap: 6px; }
   .paysum-h span { font-size: 13px; font-weight: 500; color: var(--ink-500); }
+  .paysum-h .mini { margin-left: 10px; }
+  .ps-mon { font-weight: 600; font-size: 12px; color: #78716c; }
   .paysum-desc { margin: 0 0 10px; font-size: 12.5px; color: var(--ink-500); }
   table.pstable { border-collapse: collapse; width: 100%; max-width: 900px; font-size: 14px; }
   table.pstable th { text-align: left; font-size: 12px; font-weight: 600; color: var(--ink-500); padding: 8px 12px; border-bottom: 1px solid #e7e5e4; white-space: nowrap; }
@@ -2770,6 +2773,19 @@
     }
     return { t: at(40), turn: '후지급', amt: pf ? pf.final : '5만~10만', basis: pf ? basis : '750 넘으면 10만, 아니면 5만 · ' + basis, tone: pf ? 'ok' : 'wait' };
   }
+  // 여러 달 참여하는 분(냐·챱이·또유네 등)은 이름만으로 어느 회차인지 헷갈려서, 활동명 옆에 회차 달을 붙인다.
+  // 회차 달 = 그 접수의 스토어 오픈 달. 한 번만 참여한 분은 붙이지 않는다(표가 덜 시끄럽게).
+  function roundMonthTag(r) {
+    var key = settleKey(r.nick), months = {};
+    withLatestFlag(rows).forEach(function (x) {
+      if (!x.latest || settleKey(x.nick) !== key) return;
+      var o = openDateFor(x.draftDate); if (o) months[monthKey(o)] = true;
+    });
+    if (Object.keys(months).length < 2) return '';
+    var o = openDateFor(r.draftDate);
+    return o ? '(' + (new Date(o).getMonth() + 1) + '월)' : '';
+  }
+  var paySumCopy = '';   // [표로 복사]가 쓸 '|' 표 글 — 화면과 같은 순서
   function paySumBox(list) {
     var due = list.filter(function (r) { return r.latest && payStage(r) !== 'full'; })
       .map(function (r) { return { r: r, d: payDue(r) }; })
@@ -2798,15 +2814,20 @@
           String(a.r.nick).localeCompare(String(b.r.nick));
       });
     });
+    var esc2 = function (v) { return String(v == null ? '' : v).replace(/\|/g, '/').replace(/\s+/g, ' ').trim(); };
+    var copyLines = ['| 지급일 | 활동명 | 네이버 ID | 차수 | 줄 것 | 쿠폰 | 상품 | 근거 |', '|---|---|---|---|---|---|---|---|'];
     var body = groups.map(function (g) {
       var fixed = 0, open = 0;
       g.items.forEach(function (x) { var m = /^(\d+)만$/.exec(x.d.amt); if (m) fixed += +m[1]; else if (x.d.tone === 'wait') open++; });
       var head = '<tr class="ps-group"><td colspan="6">' + whenTxt(g.t) +
         '<span class="ps-sum">' + g.items.length + '명' + (fixed ? ' · 확정 ' + fixed + '만' : '') + (open ? ' · 아직 미정 ' + open + '명' : '') + '</span></td></tr>';
+      var dayTxt = isFinite(g.t) ? (new Date(g.t).getMonth() + 1) + '/' + new Date(g.t).getDate() : '날짜 미정';
       return head + g.items.map(function (x) {
-        var r = x.r, goods = r.reward === 'goods';
+        var r = x.r, goods = r.reward === 'goods', tag = roundMonthTag(r);
+        copyLines.push('| ' + [dayTxt, r.nick + (tag ? ' ' + tag : ''), String(r.naver || '').replace(/@naver\.com$/i, ''), x.d.turn, x.d.amt,
+          REWARD[r.reward] || r.reward, goods ? (r.wish || '') : '', x.d.basis].map(esc2).join(' | ') + ' |');
         return '<tr class="ps-row is-' + x.d.tone + '">' +
-          '<td class="ps-nick">' + esc(r.nick) + '</td>' +
+          '<td class="ps-nick">' + esc(r.nick) + (tag ? ' <span class="ps-mon">' + esc(tag) + '</span>' : '') + '</td>' +
           '<td class="ps-id" title="' + esc(r.naver || '') + '">' + esc(String(r.naver || '-').replace(/@naver\.com$/i, '')) + '</td>' +
           '<td class="ps-turn">' + esc(x.d.turn) + '</td>' +
           '<td class="ps-amt">' + esc(x.d.amt) + '</td>' +
@@ -2816,7 +2837,9 @@
           '</tr>';
       }).join('');
     }).join('');
-    return '<section class="paysum fitw"><h2 class="paysum-h">지급 요약 <span>— 날짜별로 누구에게 무엇을 주면 되는지</span></h2>' +
+    paySumCopy = copyLines.join('\n');
+    return '<section class="paysum fitw"><h2 class="paysum-h">지급 요약 <span>— 날짜별로 누구에게 무엇을 주면 되는지</span>' +
+      '<button class="mini" id="ps-copy" title="| 로 나눈 표 글로 복사 — 노션·메신저에 붙이면 표가 됩니다">표로 복사</button></h2>' +
       '<p class="paysum-desc">위 표와 같은 기록입니다. 위에서 [리워드 확인]을 눌러 지급 완료로 바꾸면 여기서 빠지고, 정산 탭에 엑셀을 올리면 ‘5만~10만’이 실제 금액으로 바뀝니다. 흐린 줄은 아직 금액이 안 정해진 건입니다.</p>' +
       '<div class="scroll"><table class="pstable"><thead><tr><th>활동명</th><th>네이버 ID</th><th>차수</th><th>줄 것</th><th>쿠폰 · 상품</th><th>근거</th></tr></thead>' +
       '<tbody>' + body + '</tbody></table></div></section>';
@@ -3678,6 +3701,12 @@
       var nq = document.getElementById('q');
       nq.focus();
       try { nq.setSelectionRange(pos, pos); } catch (e) { /* 무시 */ }
+    });
+    var psCopy = document.getElementById('ps-copy');
+    if (psCopy) psCopy.addEventListener('click', function () {
+      var done = function () { psCopy.textContent = '✓ 복사됐어요'; psCopy.classList.add('is-done'); setTimeout(function () { psCopy.textContent = '표로 복사'; psCopy.classList.remove('is-done'); }, 2000); };
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(paySumCopy).then(done, function () { fallback(paySumCopy, done); });
+      else fallback(paySumCopy, done);
     });
     var copyBtn = document.getElementById('copy');
     if (copyBtn) copyBtn.addEventListener('click', function () { copyTable(this); });
