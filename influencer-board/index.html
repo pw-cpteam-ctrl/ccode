@@ -546,6 +546,7 @@
   .paysum-h { display: flex; align-items: center; gap: 6px; }
   .paysum-h span { font-size: 13px; font-weight: 500; color: var(--ink-500); }
   .paysum-h .mini { margin-left: 10px; }
+  .paid-note.is-miss { color: #b91c1c; }
   .ps-mon { font-weight: 600; font-size: 12px; color: #78716c; }
   .paysum-desc { margin: 0 0 10px; font-size: 12.5px; color: var(--ink-500); }
   table.pstable { border-collapse: collapse; width: 100%; max-width: 900px; font-size: 14px; }
@@ -1178,7 +1179,9 @@
     var open = openDateFor(r.draftDate);
     if (!open || payWhen(open, 10) !== 'done') return '';
     var p = payPlan(r);
-    return '<span class="paid-note">1차 ' + p.first + ' 지급</span>';
+    // 날짜만 지났다고 '지급'이라 쓰지 않는다 — 버튼으로 1차 지급을 체크했을 때만 지급, 아니면 미체크(아래 지급 요약에도 1차 줄이 남음)
+    if (payStage(r) === 'part') return '<span class="paid-note">1차 ' + p.first + ' 지급</span>';
+    return '<span class="paid-note is-miss">1차 ' + p.first + ' 미체크</span>';
   }
 
   function openBox() {
@@ -2765,8 +2768,6 @@
     var pf = perfOf(r), st = payStage(r), split = trackOf(r) === 'split';
     var at = function (n) { var d = new Date(open); d.setDate(d.getDate() + n); d.setHours(0, 0, 0, 0); return d.getTime(); };
     var basis = pf ? '유입 ' + comma(pf['in']) + ' · ' + (pf.hit ? '750 넘음' : '750 미만') : '정산 엑셀 아직 없음';
-    // 위 표와 같은 기준 — 1차는 오픈 후 10일이 지나면 나간 것으로 보고(위 표의 '1차 ○/○ 지급'), 그 뒤로는 2차만 남는다.
-    if (split && st === '' && payWhen(open, 10) !== 'done') return { t: at(10), turn: '선지급 1차', amt: '5만', basis: '오픈 후 10일 — 실적과 상관없이', tone: 'ok' };
     if (split) {
       if (pf && !pf.hit) return { t: at(40), turn: '선지급 2차', amt: '없음', basis: basis, tone: 'none' };
       return { t: at(40), turn: '선지급 2차', amt: pf ? '5만' : '5만?', basis: pf ? basis : '750 넘으면 5만 · ' + basis, tone: pf ? 'ok' : 'wait' };
@@ -2787,8 +2788,18 @@
   }
   var paySumCopy = '';   // [표로 복사]가 쓸 '|' 표 글 — 화면과 같은 순서
   function paySumBox(list) {
-    var due = list.filter(function (r) { return r.latest && payStage(r) !== 'full'; })
-      .map(function (r) { return { r: r, d: payDue(r) }; })
+    var due = [];
+    list.filter(function (r) { return r.latest && payStage(r) !== 'full'; }).forEach(function (r) {
+      // 선지급 1차는 날짜가 아니라 [리워드 확인] 버튼으로 판단한다 — '1차 지급함'을 누르기 전까지는 날짜가 지나도 줄로 남는다.
+      // 날짜만 보고 지급한 걸로 쳤더니 1차가 요약표에 아예 안 나왔다(이미 지난 회차뿐이라).
+      var o = openDateFor(r.draftDate);
+      if (o && trackOf(r) === 'split' && payStage(r) === '') {
+        var d1 = new Date(o); d1.setDate(d1.getDate() + 10); d1.setHours(0, 0, 0, 0);
+        due.push({ r: r, d: { t: d1.getTime(), turn: '선지급 1차', amt: '5만', basis: '오픈 후 10일 — 실적과 상관없이', tone: 'ok' } });
+      }
+      due.push({ r: r, d: payDue(r) });
+    });
+    due = due
       .sort(function (a, b) { return (a.d.t - b.d.t) || String(a.r.nick).localeCompare(String(b.r.nick)); });
     if (!due.length) return '';
     var today = new Date(); today.setHours(0, 0, 0, 0);
