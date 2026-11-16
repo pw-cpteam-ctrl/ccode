@@ -547,6 +547,7 @@
   .paysum-h span { font-size: 13px; font-weight: 500; color: var(--ink-500); }
   .paysum-h .mini { margin-left: 10px; }
   .paid-note.is-miss { color: #b91c1c; }
+.st-split { margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 6px; }
   .ps-mon { font-weight: 600; font-size: 12px; color: #78716c; }
   .paysum-desc { margin: 0 0 10px; font-size: 12.5px; color: var(--ink-500); }
   table.pstable { border-collapse: collapse; width: 100%; max-width: 900px; font-size: 14px; }
@@ -2683,6 +2684,33 @@
   // 경로(1단계)가 '사용자 정의'인 줄의 경로(2단계)가 사용자정의채널 리포트의 nt_source(인플 코드), 경로(3단계)가 nt_medium이다.
   // 방문수 → 유입수, 상품결제건수 → 결제수, 판매금액(총) → 결제금액으로 날짜를 모두 더한다.
   // '전체' 줄(일별·기간 합계)과 '2026-10-08~2026-11-11' 같은 기간 합계 줄은 빼서 두 번 세지 않는다.
+  // 날짜 칸 → 'YYYY-MM-DD'. 엑셀 날짜 숫자(1899-12-30부터 센 날 수)와 '2026-10-08'·'2026.10.08' 글자 모두.
+  function visitDay(v) {
+    if (typeof v === 'number' && v > 30000 && v < 80000) { var d = new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 864e5); return d.toISOString().slice(0, 10); }
+    var m = String(v == null ? '' : v).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+    return m ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : '';
+  }
+  // 그 날짜가 어느 회차인지 — 그 달 오픈일부터 다음 달 오픈일 전날까지가 그 달 회차(10/8~11/4 → 10월, 11/5~ → 11월)
+  function roundOfDay(day) {
+    var mk = day.slice(0, 7), d = new Date(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10));
+    return d < openOfMonth(mk) ? shiftMonth(mk, -1) : mk;
+  }
+  // 날짜별 숫자를 회차별로 나눈다 → { 'YYYY-MM': { by, from, to } }. 날짜가 없는 파일이면 null.
+  function settleSplitByRound(by) {
+    var out = {}, any = false;
+    Object.keys(by).forEach(function (src) {
+      var b = by[src];
+      Object.keys(b.days || {}).forEach(function (day) {
+        any = true;
+        var mk = roundOfDay(day), o = out[mk] = out[mk] || { by: {}, from: day, to: day };
+        if (day < o.from) o.from = day; if (day > o.to) o.to = day;
+        var t = o.by[src] = o.by[src] || { src: src, 'in': 0, pay: 0, amt: 0, media: b.media };
+        t['in'] += b.days[day][0]; t.pay += b.days[day][1]; t.amt += b.days[day][2];
+      });
+    });
+    return any ? out : null;
+  }
+  var settleSplit = null;   // 방금 올린 파일 중 '지금 회차가 아닌' 부분 — 버튼을 눌러야 그 회차에 넣는다
   function settleParseVisit(table, norm) {
     var hi = -1;
     for (var r = 0; r < Math.min(15, table.length); r++) {
@@ -2703,6 +2731,9 @@
       if (!src || src === '전체' || (i3 >= 0 && String(row[i3] || '').trim() === '전체')) return;
       var b = by[src] = by[src] || { src: src, 'in': 0, pay: 0, amt: 0, media: [] };
       b['in'] += num(row[iV]); b.pay += num(row[iP]); b.amt += num(row[iA]);
+      // 날짜별로도 모아 둔다 — 한 파일에 두 회차(예: 10/8~11/11)가 섞이면 회차별로 나누려고
+      var day = iD >= 0 ? visitDay(row[iD]) : '';
+      if (day) { var dd = (b.days = b.days || {})[day] = (b.days || {})[day] || [0, 0, 0]; dd[0] += num(row[iV]); dd[1] += num(row[iP]); dd[2] += num(row[iA]); }
       var md2 = i3 >= 0 ? String(row[i3] == null ? '' : row[i3]) : '';
       if (md2 && md2 !== '-' && b.media.indexOf(md2) < 0) b.media.push(md2);
     });
@@ -2879,6 +2910,10 @@
       (st.stats ? '<span class="st-file">' + esc(st.stats.period || st.stats.name || '엑셀') + ' <button class="mini" id="st-clear">엑셀 지우기</button></span>' : '') +
       '</div>' +
       (settleMsg ? '<p class="ml-fresh" id="st-msg">' + esc(settleMsg) + '</p>' : '') +
+      (settleSplit ? '<p class="st-split">' + Object.keys(settleSplit.months).filter(function (k) { return k !== m; }).sort().map(function (k) {
+        var o = settleSplit.months[k], has = settleState(k).stats;
+        return '<button class="mini" data-split="' + k + '">' + esc(monthLabel(k)) + ' 회차에 넣기 (' + o.from.slice(5).replace('-', '/') + '~' + o.to.slice(5).replace('-', '/') + ' · 코드 ' + Object.keys(o.by).length + '개' + (has ? ' · 그 회차에 올려 둔 엑셀 숫자는 바뀜' : '') + ')</button>';
+      }).join(' ') + '</p>' : '') +
       '</section>';
 
     if (!st.stats && !all.lines.length) return top + '<div class="empty">스마트스토어 ‘사용자정의채널’ 통계 엑셀(.xlsx)을 올리면 코드별로 줄이 생깁니다.</div>';
@@ -3070,6 +3105,19 @@
     if (csv) csv.addEventListener('click', function () { settleCsv(false); });
     var csvAll = document.getElementById('st-csv-all');
     if (csvAll) csvAll.addEventListener('click', function () { settleCsv(true); });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-split]'), function (b) {
+      b.addEventListener('click', function () {
+        var k = b.getAttribute('data-split'), o = settleSplit && settleSplit.months[k];
+        if (!o) return;
+        var st2 = settleState(k);
+        st2.stats = { name: settleSplit.name, period: o.from + ' ~ ' + o.to, by: o.by, at: new Date().toISOString() };
+        lsSet(SETTLE_KEY + k, st2);
+        delete settleSplit.months[k];
+        if (Object.keys(settleSplit.months).filter(function (x) { return x !== m; }).length === 0) settleSplit = null;
+        settleMsg = monthLabel(k) + ' 회차에 ' + o.from.slice(5).replace('-', '/') + '~' + o.to.slice(5).replace('-', '/') + ' 숫자를 넣었습니다(코드 ' + Object.keys(o.by).length + '개). 회차를 ' + monthLabel(k) + '로 바꾸면 볼 수 있습니다.';
+        renderList();
+      });
+    });
     var file = document.getElementById('st-file');
     if (file) file.addEventListener('change', function () {
       var f = file.files && file.files[0];
@@ -3086,6 +3134,21 @@
         var pm = f.name.match(/(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})/);
         var pv = !pm && f.name.match(/(\d{4})(\d{2})(\d{2})-(\d{4})(\d{2})(\d{2})/);   // visit_20261008-20261111 형식
         if (pv) pm = [0, pv[1] + '-' + pv[2] + '-' + pv[3], pv[4] + '-' + pv[5] + '-' + pv[6]];
+        var split = res.kind === 'visit' ? settleSplitByRound(by) : null;
+        settleSplit = null;
+        if (split) {
+          // 한 파일에 두 회차가 섞여 있어도(예: 10/8~11/11) 지금 고른 회차의 날짜만 넣는다 — 같은 분이라도 회차마다 상품이 달라 숫자를 나눠야 한다.
+          var mine = split[m], others = Object.keys(split).filter(function (k) { return k !== m; }).sort();
+          if (others.length) settleSplit = { name: f.name, months: split, from: m };
+          if (!mine) {
+            settleMsg = '이 파일에는 ' + monthLabel(m) + ' 회차 날짜(오픈일 ' + mdw(openOfMonth(m)) + '부터)가 없습니다. 아래 버튼으로 맞는 회차에 넣어 주세요.';
+            renderList(); return;
+          }
+          save(function (st) { st.stats = { name: f.name, period: mine.from + ' ~ ' + mine.to, by: mine.by, at: new Date().toISOString() }; });
+          settleMsg = '엑셀을 읽었습니다 — ' + monthLabel(m) + ' 회차 날짜(' + mine.from.slice(5).replace('-', '/') + '~' + mine.to.slice(5).replace('-', '/') + ')만 넣었습니다. 코드 ' + Object.keys(mine.by).length + '개.' +
+            (others.length ? ' 이 파일엔 ' + others.map(monthLabel).join('·') + ' 회차 날짜도 있습니다 — 그 회차 숫자는 아래 버튼을 눌러야 들어갑니다.' : '');
+          renderList(); return;
+        }
         save(function (st) { st.stats = { name: f.name, period: pm ? pm[1] + ' ~ ' + pm[2] : '', by: by, at: new Date().toISOString() }; });
         settleMsg = '엑셀을 읽었습니다 — 코드 ' + Object.keys(by).length + '개.' + (res.kind === 'visit' ? ' (방문 리포트: 경로가 ‘사용자 정의’인 줄만, 방문수를 유입수로 날짜별 합산)' : '');
         renderList();
