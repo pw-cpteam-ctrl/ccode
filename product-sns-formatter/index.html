@@ -319,6 +319,10 @@ button.danger{background:var(--ui-warn);color:#fff;}
 .bgstep .bgpop{position:absolute;z-index:40;top:26px;left:0;background:#fff;border:1px solid #ccc;
   border-radius:6px;padding:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);display:flex;
   flex-direction:column;gap:6px;}
+/* hidden 속성은 브라우저가 display:none으로 처리하는데, 위에서 display:flex를 적어두면
+   그게 이겨서 창이 아무리 닫아도 그대로 보인다(닫는 코드는 멀쩡히 도는데 화면만 안 바뀜).
+   같은 함정을 .bulkbar에서도 겪었다. 반드시 [hidden] 쪽을 따로 적어줘야 한다. */
+.bgstep .bgpop[hidden]{display:none;}
 .bgstep .bgsv{width:180px;height:120px;border-radius:4px;cursor:crosshair;display:block;}
 .bgstep .bghue{width:180px;margin:0;}
 .bgstep .bgpresets{display:flex;gap:4px;flex-wrap:wrap;width:180px;}
