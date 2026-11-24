@@ -127,11 +127,14 @@ ins.diffins{background:#e6f6ea;color:#1e7e34;text-decoration:none;}
 .rd-pick{margin-top:6px;padding:4px 9px;font-size:11px;}
 
 /* ── 오늘 상품 목록 (좌) · 상세 (우) ── */
+/* 4칸이다(날짜 · 굿스마일 · 부시로드 · 사진 폴더). 1920에서 한 칸이 약 360px이라
+   버튼과 안내문이 들어가고, 1280 아래로는 설명이 뭉개져서 2줄로 접는다. */
 .dayhead{background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:12px;
-  padding:12px 14px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:stretch;}
+  padding:12px 14px;margin-bottom:16px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:stretch;}
 .dh-col{display:flex;flex-direction:column;justify-content:center;gap:5px;min-width:0;
   background:var(--ui-card);border:1px solid var(--ui-border);border-radius:9px;padding:10px 12px;}
 .dh-col .status{margin-top:0;}
+@media (max-width:1280px){.dayhead{grid-template-columns:1fr 1fr;}}
 @media (max-width:900px){.dayhead{grid-template-columns:1fr;}}
 .dayhead .daylabel{font-weight:800;font-size:14px;}
 .dayhead .brand-toggle{margin-left:auto;}
@@ -376,6 +379,11 @@ button.danger{background:var(--ui-warn);color:#fff;}
       <button id="btnBushiImport" class="secondary" style="width:100%;">📦 부시로드 메일 ZIP 가져오기</button>
       <input type="file" id="bushiImportInput" accept=".zip" multiple style="display:none;"/>
       <div class="status" id="bushiImportStatus">메일 <b>ZIP을 압축 풀지 말고</b> 그대로 올리거나 끌어다 놓으세요 — 발주서 엑셀이 있으면 스펙까지 자동으로 채워져요</div>
+    </div>
+    <div class="dh-col" id="folderImportZone">
+      <button id="btnFolderImport" class="secondary" style="width:100%;">📁 사진 폴더 가져오기</button>
+      <input type="file" id="folderImportInput" webkitdirectory directory multiple style="display:none;"/>
+      <div class="status" id="folderImportStatus"><b>하위 폴더 하나가 상품 하나</b>가 돼요 — 폴더 이름이 상품명으로 들어갑니다. 원고 없이 사진만 있을 때 쓰세요</div>
     </div>
   </div>
 
@@ -3344,6 +3352,89 @@ async function filesFromDataTransferItems(items) {
   for (const entry of entries) await collectFilesFromEntry(entry, out);
   return out;
 }
+
+/* ── 사진 폴더 가져오기 — 하위 폴더 하나가 상품 하나 ──────────────────────────
+   원고 없이 사진만 손에 있을 때(메일로 받았거나 드라이브에서 내려받았거나) 쓰는 입구다.
+   지금까지는 상품을 하나 만들고 그 안에서 사진을 올리는 수밖에 없어서, 상품이 여러 개면
+   그 과정을 상품 수만큼 반복해야 했다.
+
+   폴더 이름을 알아야 상품을 나눌 수 있는데, 위의 collectFilesFromEntry는 파일만 모으고
+   어느 폴더에서 나왔는지는 버린다(B2B는 파일 이름만으로 짝을 맞춰서 경로가 필요 없었다).
+   그래서 경로를 같이 들고 오는 함수를 따로 둔다. */
+async function collectFilesWithPath(entry, out, prefix) {
+  if (entry.isFile) {
+    const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+    file.__relPath = prefix + file.name;   // 끌어다 놓은 경우엔 webkitRelativePath가 비어 있다
+    out.push(file);
+  } else if (entry.isDirectory) {
+    for (const child of await readDirEntries(entry.createReader())) {
+      await collectFilesWithPath(child, out, prefix + entry.name + '/');
+    }
+  }
+}
+async function filesWithPathFromItems(items) {
+  const entries = Array.from(items).map(item => item.webkitGetAsEntry && item.webkitGetAsEntry()).filter(Boolean);
+  const out = [];
+  for (const entry of entries) await collectFilesWithPath(entry, out, '');
+  return out;
+}
+// 폴더선택창으로 고르면 webkitRelativePath에, 끌어다 놓으면 위에서 붙인 값에 경로가 있다.
+function relPathOf(file) { return file.__relPath || file.webkitRelativePath || file.name; }
+
+// 1, 2, 10 순서가 되도록(글자 순서로는 1, 10, 2가 된다) 숫자를 숫자로 비교한다.
+const naturalCompare = (a, b) => a.localeCompare(b, 'ko', { numeric: true, sensitivity: 'base' });
+
+/* 경로를 보고 "어느 상품인가"를 정한다.
+     상위/미쿠/a.jpg      → 미쿠      (하위 폴더 이름 = 상품명)
+     상위/미쿠/원본/a.jpg  → 미쿠      (더 깊어도 첫 하위 폴더로 묶는다)
+     상위/a.jpg           → 상위      (하위 폴더가 없으면 고른 폴더 전체가 상품 하나)
+   더 깊은 단계로 쪼개지 않는 이유: 사진 폴더는 보통 "원본", "수정본"처럼 작업용 하위
+   폴더를 더 두는데, 그걸 상품으로 나누면 같은 상품이 둘로 찢어진다. */
+function productKeyFromPath(relPath) {
+  const parts = String(relPath).split('/').filter(Boolean);
+  if (parts.length >= 3) return parts[1];
+  if (parts.length === 2) return parts[0];
+  return '사진';
+}
+
+async function importPhotoFolder(files) {
+  const statusEl = $('#folderImportStatus');
+  // 종류(type)가 비어 들어오는 경우가 있어서 확장자로도 한 번 더 본다.
+  const imgs = files.filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(f.name));
+  if (!imgs.length) { statusEl.textContent = '폴더 안에서 사진을 찾지 못했어요.'; return; }
+
+  const groups = new Map();
+  for (const f of imgs) {
+    const key = productKeyFromPath(relPathOf(f));
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(f);
+  }
+  const names = [...groups.keys()].sort(naturalCompare);
+
+  let done = 0;
+  const total = imgs.length;
+  let firstNewId = null;
+  for (const name of names) {
+    const list = groups.get(name).sort((a, b) => naturalCompare(a.name, b.name));
+    const p = makeBlankProduct();
+    p.title = name;
+    for (const f of list) {
+      await addPhotoFileToProduct(p, f);
+      done += 1;
+      statusEl.textContent = `불러오는 중... ${done}/${total}장`;
+    }
+    if (!p.images.length) continue;      // 전부 읽기에 실패한 폴더는 빈 상품을 만들지 않는다
+    p.mainIndex = 0;
+    PRODUCTS.push(p);
+    if (!firstNewId) firstNewId = p.id;
+  }
+  if (!firstNewId) { statusEl.textContent = '사진을 하나도 읽지 못했어요.'; return; }
+
+  saveProducts();
+  renderList();
+  selectProduct(firstNewId);
+  statusEl.textContent = `✓ 상품 ${names.length}개 / 사진 ${done}장을 불러왔어요`;
+}
 const b2bImportZone = $('#b2bImportZone');
 b2bImportZone.addEventListener('dragover', e => { e.preventDefault(); b2bImportZone.classList.add('dragover'); });
 b2bImportZone.addEventListener('dragleave', () => b2bImportZone.classList.remove('dragover'));
@@ -3654,6 +3745,35 @@ bushiImportZone.addEventListener('drop', e => {
   e.preventDefault();
   bushiImportZone.classList.remove('dragover');
   importBushiroadZips(Array.from(e.dataTransfer.files || []));
+});
+
+/* 사진 폴더 가져오기 — 폴더선택창과 끌어다 놓기 둘 다 받는다.
+   끌어다 놓는 쪽은 파일 목록(e.dataTransfer.files)에 폴더가 안 잡혀서,
+   항목(items)에서 폴더를 직접 펼쳐 읽어야 한다. */
+const folderImportZone = $('#folderImportZone');
+$('#btnFolderImport').addEventListener('click', () => $('#folderImportInput').click());
+$('#folderImportInput').addEventListener('change', e => {
+  const files = Array.from(e.target.files || []);
+  // 같은 폴더를 연달아 고를 수 있게 비워둔다 — 안 비우면 두 번째부터 change가 안 뜬다.
+  e.target.value = '';
+  importPhotoFolder(files);
+});
+folderImportZone.addEventListener('dragover', e => { e.preventDefault(); folderImportZone.classList.add('dragover'); });
+folderImportZone.addEventListener('dragleave', () => folderImportZone.classList.remove('dragover'));
+folderImportZone.addEventListener('drop', async e => {
+  e.preventDefault();
+  folderImportZone.classList.remove('dragover');
+  const items = e.dataTransfer && e.dataTransfer.items;
+  const statusEl = $('#folderImportStatus');
+  if (!items || !items.length) return;
+  statusEl.textContent = '폴더 읽는 중...';
+  try {
+    const files = await filesWithPathFromItems(items);
+    if (!files.length) { statusEl.textContent = '폴더 안에서 파일을 찾지 못했어요.'; return; }
+    await importPhotoFolder(files);
+  } catch (err) {
+    statusEl.textContent = `폴더를 읽지 못했어요: ${err.message}`;
+  }
 });
 
 (async function init() {
