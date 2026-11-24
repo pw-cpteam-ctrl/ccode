@@ -1216,6 +1216,12 @@ async function cleanupOrphanPhotos() {
    1080x1350(4:5) 해상도로 그리고 화면에는 CSS로 축소해서 보여준다.
    레이어 순서: 사진(cover-fit) → 검정 그라데이션 → 흰 텍스트(중앙정렬, 대표 슬라이드만) → 실제 틀 PNG. */
 const CW = 1080, CH = 1350;
+/* 배율 한계. 1 = 틀을 딱 채우는 크기(cover-fit)다.
+   예전엔 최소를 1로 막아뒀다 — 1보다 작게 하면 사진이 틀보다 작아져 둘레에 여백이
+   생기기 때문이었다. 그런데 "꽉 차게 말고 작게 넣고 싶다"는 쓰임이 실제로 있어서
+   열어둔다. 여백은 사진 뒤에 이미 깔려 있는 어두운 바탕(#1a1a1a)으로 채워진다. */
+const SCALE_MIN = 0.4, SCALE_MAX = 3;
+const clampScale = v => Math.max(SCALE_MIN, Math.min(SCALE_MAX, v));
 // 좌하단 IP 카피라이트 — 작게 넣는 표기라 본문 글자보다 훨씬 작다.
 const COPY_FONT_SIZE = 22, COPY_LINE_H = 30;
 // 브랜드별 틀 PNG. inner는 그 틀의 투명 창(사진이 실제로 보이는 영역)을 실측한 좌표로,
@@ -1529,7 +1535,7 @@ function imageStageHtml(p) {
     <div class="thumbrow" id="thumbRow"></div>
     <div class="bulkbar" id="bulkBar" hidden>
       <b id="bulkCount"></b>
-      <label>확대 <input type="range" id="bulkZoom" min="100" max="300" value="100"/><b class="sval" id="bulkZoomVal">100%</b></label>
+      <label>크기 <input type="range" id="bulkZoom" min="40" max="300" value="100"/><b class="sval" id="bulkZoomVal">100%</b></label>
       <button class="sm secondary" id="bulkClear">선택 해제</button>
     </div>
     ${p.images.length > 1 ? `<div class="mini-actions"><button class="sm secondary" id="btnRemoveFrameNonMain">${nonMainFramesStripped(p) ? '↺ 나머지 사진 틀 다시 켜기' : '★ 대표만 남기고 나머지 사진 틀 제거'}</button></div>` : ''}
@@ -1625,7 +1631,7 @@ function wireImageStage(p) {
     // 손잡이가 가리키는 숫자와 실제 배율이 달라지면 안 되기 때문이다.
     const pct = Number(bz.value);
     for (const t of sel) {
-      t.scale = Math.max(1, Math.min(3, pct / 100));
+      t.scale = clampScale(pct / 100);
       const img = imgCache.get(t.key);
       if (img) clampSlideOffset(t, img.naturalWidth, img.naturalHeight, frameOf(p));
     }
@@ -2033,7 +2039,7 @@ function wireThumbMarquee(p) {
     e.preventDefault();   // 페이지가 같이 스크롤되지 않게
     const delta = e.deltaY < 0 ? 0.06 : -0.06;
     for (const t of targetsForBulk(p, slide)) {
-      t.scale = Math.max(1, Math.min(3, (t.scale || 1) + delta));
+      t.scale = clampScale((t.scale || 1) + delta);
       const img = imgCache.get(t.key);
       if (img) clampSlideOffset(t, img.naturalWidth, img.naturalHeight, frameOf(p));
     }
@@ -2075,7 +2081,7 @@ function updateBulkUi(p) {
   // 슬라이더를 지금 값에 맞춰둔다 — 안 맞추면 슬라이더를 잡는 순간 배율이 튄다.
   const pct = Math.round((sel[0].scale || 1) * 100);
   const z = $('#bulkZoom');
-  z.value = String(Math.max(100, Math.min(300, pct)));
+  z.value = String(Math.max(SCALE_MIN * 100, Math.min(SCALE_MAX * 100, pct)));
   $('#bulkZoomVal').textContent = z.value + '%';
 }
 function drawAllThumbs(p) {
@@ -2117,10 +2123,20 @@ function drawAllThumbs(p) {
       // 프레임 캐러셀로 쓰던 경우(다들 틀 켜짐)는 이 로직이 안 끼어들도록, 지금 누른
       // 사진 자신의 기존 상태로만 판단한다.
       const bulkStripActive = !!slide.noFrame;
-      p.mainIndex = idx;
+      const oldMainSlide = p.images[oldMainIdx];   // 아래에서 순서를 바꾸므로 번호가 아니라 사진 자체로 들고 있는다
       slide.noFrame = false; // 대표는 항상 틀이 있어야 하므로, 예전에 꺼져 있었어도 여기서 강제로 되살림
-      if (bulkStripActive && oldMainIdx !== idx && p.images[oldMainIdx]) p.images[oldMainIdx].noFrame = true;
-      drawAllThumbs(p); drawComposer(p); saveProductsSoon();
+      if (bulkStripActive && oldMainSlide && oldMainSlide !== slide) oldMainSlide.noFrame = true;
+      /* 표지(★)는 캐러셀에서도 첫 장으로 보여야 하므로 맨 앞으로 옮긴다. 예전엔 자리는
+         그대로 두고 표시만 바꿔서, 표지로 지정해놓고도 내보낼 때 순서를 손으로 또
+         옮겨야 했다. 번호(mainIndex/editingIdx)는 옮긴 뒤 다시 찾아서 넣는다 —
+         순서가 바뀌면 예전 번호는 엉뚱한 사진을 가리키기 때문. */
+      const from = p.images.indexOf(slide);
+      if (from > 0) p.images.unshift(p.images.splice(from, 1)[0]);
+      p.mainIndex = p.images.indexOf(slide);
+      editingIdx = p.mainIndex;
+      saveProducts();
+      renderImageStage(p);
+      renderList();
     });
     const del = document.createElement('div');
     del.className = 'th-del';
@@ -2282,9 +2298,9 @@ function wireComposerInteraction(p) {
     // 여러 장 골라뒀으면 같은 만큼 다 같이 키운다. 배율을 "같은 값으로 맞추는" 게 아니라
     // "같은 만큼 더하는" 이유는, 사진마다 이미 다르게 맞춰둔 배율을 뭉개지 않기 위해서다.
     for (const t of targetsForBulk(p, slide)) {
-      // 최소 배율을 1(=틀을 딱 채우는 cover-fit)로 고정 — 그보다 더 축소하면 사진이 틀보다
-      // 작아져서 아무리 이동해도 여백이 생기는 걸 막을 방법이 없어짐.
-      t.scale = Math.max(1, Math.min(3, (t.scale || 1) + delta));
+      // 배율 한계는 SCALE_MIN~SCALE_MAX(0.4~3). 1 미만이면 사진이 틀보다 작아져 둘레에
+      // 여백이 생기는데, 그건 "작게 넣기"를 쓰는 사람이 의도한 결과다.
+      t.scale = clampScale((t.scale || 1) + delta);
       const img = imgCache.get(t.key);
       if (img) clampSlideOffset(t, img.naturalWidth, img.naturalHeight, frameOf(p));
     }
