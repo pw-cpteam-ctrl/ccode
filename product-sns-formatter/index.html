@@ -1248,6 +1248,16 @@ const CW = 1080, CH = 1350;
    열어둔다. 여백은 사진 뒤에 이미 깔려 있는 어두운 바탕(#1a1a1a)으로 채워진다. */
 const SCALE_MIN = 0.4, SCALE_MAX = 3;
 const clampScale = v => Math.max(SCALE_MIN, Math.min(SCALE_MAX, v));
+/* 100%(틀을 딱 채우는 크기) 아래로 줄이는 건 Alt(또는 Shift)를 누른 채 휠을 내릴 때만
+   되게 한다. 그냥 되면 사진을 조금 줄이려다 틀보다 작아져 둘레에 여백이 생기는 걸
+   모르고 지나치기 쉽다 — 실수로 넘어갈 수 있는 선이라 손가락 하나를 더 쓰게 한다.
+   슬라이더와 [전체 보기] 버튼은 작정하고 하는 조작이라 그대로 둔다. */
+const zoomOutUnlocked = e => !!(e && (e.altKey || e.shiftKey));
+function nextScale(cur, delta, e) {
+  const want = (cur || 1) + delta;
+  if (want < 1 && !zoomOutUnlocked(e)) return Math.max(1, cur || 1);
+  return clampScale(want);
+}
 // 좌하단 IP 카피라이트 — 작게 넣는 표기라 본문 글자보다 훨씬 작다.
 const COPY_FONT_SIZE = 22, COPY_LINE_H = 30;
 // 브랜드별 틀 PNG. inner는 그 틀의 투명 창(사진이 실제로 보이는 영역)을 실측한 좌표로,
@@ -1610,6 +1620,7 @@ function imageStageHtml(p) {
             <canvas id="bgSV" class="bgsv" width="180" height="120"></canvas>
             <input type="range" id="bgHue" class="bghue" min="0" max="360" value="0"/>
             <div class="bgpresets" id="bgPresets"></div>
+            <button type="button" id="bgPopClose" class="bgfit">닫기</button>
           </div>
         </div>` : ''}
       </div>
@@ -2104,7 +2115,7 @@ function wireThumbMarquee(p) {
     e.preventDefault();   // 페이지가 같이 스크롤되지 않게
     const delta = e.deltaY < 0 ? 0.06 : -0.06;
     for (const t of targetsForBulk(p, slide)) {
-      t.scale = clampScale((t.scale || 1) + delta);
+      t.scale = nextScale(t.scale, delta, e);
       const img = imgCache.get(t.key);
       if (img) clampSlideOffset(t, img.naturalWidth, img.naturalHeight, frameOf(p));
     }
@@ -2287,13 +2298,12 @@ function drawComposer(p) {
 }
 
 /* ── 배경 고르기 ────────────────────────────────────────────────────────────
-   없음 / 흰배경 / 색상 세 가지. 배경을 고르면 사진은 "꽉 채우기"에서 "전체 보기"로
-   바뀐다(baseFitFor) — 안 그러면 사진이 칸을 다 덮어 배경이 보일 자리가 없다.
+   없음 / 흰배경 / 색상 세 가지. ◀▶는 바탕색만 바꾸고 사진 크기는 건드리지 않는다
+   (크기를 같이 바꾸면 배율이 제멋대로 움직이는 것으로 보인다 — baseFitFor 주석 참고).
+   사진을 줄여 배경을 드러내는 일은 [전체 보기] 버튼과 휠이 맡는다.
 
-   색 고르기 창이 열려 있는 동안에는 화면을 다시 "만들지" 않는 게 중요하다. 창은 그
-   <input> 요소에 붙어 있어서, 색을 다 고르기 전에 그 요소가 새로 만들어지면 창이
-   그대로 닫혀버린다(마우스를 떼지도 않았는데 사라지는 증상). 그래서 색이 바뀔 때는
-   캔버스와 썸네일만 다시 그리고, 조작부 자체는 건드리지 않는다. */
+   색이 바뀔 때는 캔버스와 썸네일만 다시 그리고 조작부 자체는 다시 만들지 않는다 —
+   다시 만들면 고르던 창이 그 순간 사라진다. */
 function bgTargetsOf(p) {
   const sel = selectedSlidesOf(p);
   if (sel.length > 1) return sel;                       // 여러 장 골라뒀으면 고른 것 전부
@@ -2444,6 +2454,7 @@ function wireBgStepper(p) {
       presets.appendChild(b);
     });
 
+  $('#bgPopClose').addEventListener('click', e => { e.stopPropagation(); pop.hidden = true; });
   pick.addEventListener('click', e => {
     e.stopPropagation();
     pop.hidden = !pop.hidden;
@@ -2453,15 +2464,35 @@ function wireBgStepper(p) {
      때문에, 평범하게 document에 붙이면 그 위를 눌렀을 때 여기까지 오지 않아 창이 안
      닫혔다. 전파보다 먼저 도는 단계(capture)에서 받으면 어디를 누르든 반드시 온다.
      상세 화면은 다시 그릴 때마다 이 함수가 또 불리므로, 앞서 붙인 것은 떼고 새로 붙인다. */
-  if (window._bgPopCloser) document.removeEventListener('mousedown', window._bgPopCloser, true);
+  const closePop = () => { const el = $('#bgPop'); if (el) el.hidden = true; };
+  if (window._bgPopCloser) {
+    document.removeEventListener('mousedown', window._bgPopCloser, true);
+    document.removeEventListener('pointerdown', window._bgPopCloser, true);
+    document.removeEventListener('click', window._bgPopCloser, true);
+    window.removeEventListener('blur', closePop);
+  }
   window._bgPopCloser = e => {
     const el = $('#bgPop');
     if (!el || el.hidden || svDragging) return;
     if (!el.contains(e.target) && e.target !== $('#bgColorPick')) el.hidden = true;
   };
-  document.addEventListener('mousedown', window._bgPopCloser, true);
-  // ESC로도 닫는다 — 창이 열린 줄 모르고 다른 걸 누르려다 막히는 일이 없게.
-  pop.addEventListener('keydown', e => { if (e.key === 'Escape') pop.hidden = true; });
+  // 누름(mousedown/pointerdown)과 클릭 셋 다에 걸어둔다 — 어느 하나를 중간에서 막는
+  // 코드가 있어도 나머지가 닫아준다. 전파보다 먼저 도는 단계(capture)에서 받는다.
+  for (const ev of ['mousedown', 'pointerdown', 'click'])
+    document.addEventListener(ev, window._bgPopCloser, true);
+  window.addEventListener('blur', closePop);   // 다른 창으로 넘어가면 닫는다
+
+  // ESC — 창 요소에 붙이면 거기에 초점이 없을 때 안 먹는다(실제로 안 먹었다).
+  // 문서 전체에서, 그것도 다른 ESC 처리보다 먼저 받는다.
+  if (window._bgPopEsc) document.removeEventListener('keydown', window._bgPopEsc, true);
+  window._bgPopEsc = e => {
+    if (e.key !== 'Escape') return;
+    const el = $('#bgPop');
+    if (!el || el.hidden) return;
+    e.stopPropagation(); e.preventDefault();
+    el.hidden = true;
+  };
+  document.addEventListener('keydown', window._bgPopEsc, true);
 
   // 사진 전체가 들어가게 줄인다. 크기가 바뀌는 건 이 버튼을 누른 그 순간뿐이고,
   // 바뀐 값은 안내줄의 "지금 N%"에 그대로 보인다.
@@ -2505,9 +2536,21 @@ function updateComposerHint(p, slide) {
   const el = $('#composerHint');
   if (!el) return;
   if (!p.images.length) { el.textContent = '아직 사진 없음 — 틀·문구 먼저 미리보기 중. 사진 올리면 자동으로 채워져요.'; return; }
-  const base = '휠: 확대/축소 · 드래그: 사진 위치 이동 · 사진 줄 빈 곳을 끌면 여러 장 선택(Ctrl+클릭으로 하나씩 추가)';
+  /* 한 줄에 다 이어 붙이면(· 로 다섯 토막) 지금 상태인 "몇 %"가 조작법 설명에 묻혀서
+     안 읽힌다. 지금 상태를 굵게 첫 줄에, 안 바뀌는 조작법을 흐리게 아랫줄에 둔다. */
+  const base = '휠 확대/축소 · 드래그 위치 이동 · 빈 곳 드래그로 여러 장 선택(Ctrl+클릭은 하나씩)';
+  const paint = (now, tip) => {
+    el.innerHTML = '';
+    const l1 = document.createElement('div');
+    l1.style.cssText = 'font-weight:700;color:#333;';
+    l1.textContent = now;
+    const l2 = document.createElement('div');
+    l2.style.cssText = 'color:#999;font-size:10px;margin-top:2px;';
+    l2.textContent = tip;
+    el.append(l1, l2);
+  };
   const img = slide && imgCache.get(slide.key);
-  if (!img) { el.textContent = base; return; }
+  if (!img) { paint('사진 준비 중', base); return; }
   const fit = fitRectFor(slide, frameOf(p));
   const eff = baseFitFor(slide, img.naturalWidth, img.naturalHeight, fit.w, fit.h) * (slide.scale || 1);
   // 2px 이하는 사실상 못 움직이는 것으로 본다 — 계산 오차 수준이라 잡아끌어도 반응이 없다.
@@ -2515,11 +2558,12 @@ function updateComposerHint(p, slide) {
   const freeY = (img.naturalHeight * eff - fit.h) / 2 > 2;
   const pct = Math.round((slide.scale || 1) * 100);
   let move;
-  if (freeX && freeY) move = `지금 ${pct}% · 상하좌우 모두 이동 가능`;
-  else if (freeX) move = `지금 ${pct}% · 좌우로만 이동 가능 — 위아래로 움직이려면 휠로 확대하세요`;
-  else if (freeY) move = `지금 ${pct}% · 위아래로만 이동 가능 — 좌우로 움직이려면 휠로 확대하세요`;
-  else move = `지금 ${pct}% · 사진이 틀에 딱 맞아 움직일 여유가 없어요 — 휠로 확대하세요`;
-  el.textContent = base + ' · ' + move;
+  if (freeX && freeY) move = '상하좌우로 옮길 수 있어요';
+  else if (freeX) move = '좌우로만 옮길 수 있어요 (위아래는 더 확대해야 여유가 생겨요)';
+  else if (freeY) move = '위아래로만 옮길 수 있어요 (좌우는 더 확대해야 여유가 생겨요)';
+  else move = '틀에 딱 맞아 옮길 여유가 없어요 (휠로 확대하면 생겨요)';
+  const small = pct < 100 ? '' : ' · Alt+휠로 100%보다 작게';
+  paint(`지금 ${pct}% — ${move}`, base + small);
 }
 // 사진이 기준 영역(틀 켜짐: 그 브랜드 틀의 투명 창 / 틀 꺼짐: 캔버스 전체 CW x CH)을 항상
 // 꽉 채우도록 ox/oy(드래그 이동량)를 그 여유분 안으로 붙잡아둔다 — 여유가 없는 축(예: 최소
@@ -2578,7 +2622,7 @@ function wireComposerInteraction(p) {
     for (const t of targetsForBulk(p, slide)) {
       // 배율 한계는 SCALE_MIN~SCALE_MAX(0.4~3). 1 미만이면 사진이 틀보다 작아져 둘레에
       // 여백이 생기는데, 그건 "작게 넣기"를 쓰는 사람이 의도한 결과다.
-      t.scale = clampScale((t.scale || 1) + delta);
+      t.scale = nextScale(t.scale, delta, e);
       const img = imgCache.get(t.key);
       if (img) clampSlideOffset(t, img.naturalWidth, img.naturalHeight, frameOf(p));
     }
