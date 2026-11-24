@@ -310,8 +310,19 @@ button.danger{background:var(--ui-warn);color:#fff;}
   font-size:10px;line-height:1;cursor:pointer;padding:0;color:#444;}
 .bgstep button:hover{background:#f3f3f3;}
 .bgstep .bgv{font-size:11px;min-width:42px;text-align:center;font-weight:700;}
-.bgstep .bgcolor{width:28px;height:22px;padding:0;cursor:pointer;border:1px solid #ddd;
-  border-radius:4px;background:none;}
+.bgstep{position:relative;}
+.bgstep .bgcolor{width:28px;height:22px;padding:0;cursor:pointer;border:1px solid #bbb;
+  border-radius:4px;}
+/* 색 고르기 창을 브라우저 기본 창 대신 직접 만든 이유:
+   ① 기본 창은 RGB 세 칸으로 열려서 6자리 색상코드가 안 보인다(보이게 할 방법이 없다).
+   ② 기본 창은 그 <input> 요소에 붙어 있어서, 화면을 다시 그리면 고르는 도중에 닫힌다. */
+.bgstep .bgpop{position:absolute;z-index:40;top:26px;left:0;background:#fff;border:1px solid #ccc;
+  border-radius:6px;padding:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);display:flex;
+  flex-direction:column;gap:6px;}
+.bgstep .bgsv{width:180px;height:120px;border-radius:4px;cursor:crosshair;display:block;}
+.bgstep .bghue{width:180px;margin:0;}
+.bgstep .bgpresets{display:flex;gap:4px;flex-wrap:wrap;width:180px;}
+.bgstep .bgpresets button{width:20px;height:20px;border-radius:4px;border:1px solid #ccc;padding:0;}
 .bgstep .bghex{width:76px;height:22px;padding:0 5px;font-size:11px;border:1px solid #ddd;
   border-radius:4px;font-family:ui-monospace,Menlo,Consolas,monospace;text-transform:lowercase;}
 .bgstep .bghex.bad{border-color:#d33;color:#d33;}
@@ -1426,8 +1437,14 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText,
     const base = baseFitFor(slide, pw, ph, fit.w, fit.h);
     const eff = base * (slide.scale || 1);
     const dw = pw * eff, dh = ph * eff;
-    const dx = fit.x0 + (fit.w - dw) / 2 + (slide.ox || 0);
-    const dy = fit.y0 + (fit.h - dh) / 2 + (slide.oy || 0);
+    /* 이동량은 저장값을 깎지 않고 그릴 때만 지금 여유 안으로 붙잡는다 — 배경을 켜면
+       (전체보기라) 여유가 0이 되는데, 저장값까지 0으로 만들면 배경을 다시 끌 때
+       맞춰둔 위치가 안 돌아온다. */
+    const maxOx = Math.max(0, (dw - fit.w) / 2), maxOy = Math.max(0, (dh - fit.h) / 2);
+    const ox = Math.max(-maxOx, Math.min(maxOx, slide.ox || 0));
+    const oy = Math.max(-maxOy, Math.min(maxOy, slide.oy || 0));
+    const dx = fit.x0 + (fit.w - dw) / 2 + ox;
+    const dy = fit.y0 + (fit.h - dh) / 2 + oy;
     // 사진 밑에 불투명 배경을 먼저 깔아둔다 — 위 COVER_FIT_SLOP으로 웬만한 뜬 픽셀은 없어지지만,
     //혹시 남더라도 투명(캔버스 기본값)이 아니라 이 색으로 보이게 하는 이중 안전장치.
     // 배경을 골랐으면 그 색이 사진 둘레에 보이는 바탕이 된다(위에서 전체보기로 줄여둔 상태).
@@ -1581,9 +1598,14 @@ function imageStageHtml(p) {
           <button type="button" id="bgPrev" title="이전">◀</button>
           <span class="bgv" id="bgVal">없음</span>
           <button type="button" id="bgNext" title="다음">▶</button>
-          <input type="color" id="bgColorPick" class="bgcolor" title="배경색 고르기"/>
+          <button type="button" id="bgColorPick" class="bgcolor" title="배경색 고르기"></button>
           <input type="text" id="bgHex" class="bghex" maxlength="7" spellcheck="false" autocomplete="off" title="색상 코드(6자리)"/>
           <span class="bgs-note" id="bgNote"></span>
+          <div class="bgpop" id="bgPop" hidden>
+            <canvas id="bgSV" class="bgsv" width="180" height="120"></canvas>
+            <input type="range" id="bgHue" class="bghue" min="0" max="360" value="0"/>
+            <div class="bgpresets" id="bgPresets"></div>
+          </div>
         </div>` : ''}
       </div>
       <div class="composer-ctl">
@@ -2299,7 +2321,8 @@ function syncBgStepper(p, slide) {
   const showColor = mode === 'color';
   pick.style.display = showColor ? '' : 'none';
   hex.style.display = showColor ? '' : 'none';
-  if (document.activeElement !== pick) pick.value = color;
+  if (!showColor) { const pop = $('#bgPop'); if (pop) pop.hidden = true; }
+  pick.style.background = color;
   if (document.activeElement !== hex) { hex.value = color; hex.classList.remove('bad'); }
   $('#bgNote').textContent = mode === 'none'
     ? '(배경을 고르면 사진이 잘리지 않고 전체가 들어가요)'
@@ -2329,10 +2352,11 @@ function wireBgStepper(p) {
     const next = BG_OPTS[(idx + step + BG_OPTS.length) % BG_OPTS.length].key;
     for (const t of targets) {
       t.bgMode = next;
-      if (next === 'color' && !t.bgColor) t.bgColor = $('#bgColorPick').value || '#ffffff';
-      // 꽉 채우기 ↔ 전체 보기로 기준 크기가 바뀌므로 이동량을 범위 안으로 다시 잡아준다.
-      const img = imgCache.get(t.key);
-      if (img) clampSlideOffset(t, img.naturalWidth, img.naturalHeight, frameOf(p));
+      if (next === 'color' && !t.bgColor) t.bgColor = normalizeHex($('#bgHex').value) || '#ffffff';
+      /* 여기서 이동량(ox/oy)을 깎지 않는다. 전체보기에서는 움직일 여유가 0이라 깎으면
+         값이 0으로 지워지고, 배경을 껐을 때 맞춰둔 위치가 영영 안 돌아온다 — 누르면
+         사진이 초기화되는 것처럼 보였던 원인이다. 값은 그대로 두고, 그릴 때만 그때의
+         여유 안으로 붙잡아 쓴다(drawSlide). */
     }
     saveProducts();
     drawComposer(p); drawAllThumbs(p);
@@ -2347,23 +2371,88 @@ function wireBgStepper(p) {
     return hex;
   };
   const pick = $('#bgColorPick'), hexInput = $('#bgHex');
-  pick.addEventListener('click', e => e.stopPropagation());
-  // input = 고르는 중에 계속 들어옴(미리보기), change = 고르기를 끝냈을 때 한 번.
-  // 둘 다 그림만 다시 그리고 조작부는 그대로 둔다.
-  pick.addEventListener('input', () => {
-    const hex = setColor(pick.value);
-    if (hex && document.activeElement !== hexInput) hexInput.value = hex;
+  const pop = $('#bgPop'), sv = $('#bgSV'), hue = $('#bgHue'), presets = $('#bgPresets');
+
+  // 고른 색을 화면 곳곳에 반영한다(칸·색상코드·캔버스·썸네일). 조작부를 다시 만들지는
+  // 않으므로 고르는 중에 창이 닫히지 않는다.
+  const showColor = (hex, { typing } = {}) => {
+    setColor(hex);
+    pick.style.background = hex;
+    if (!typing) { hexInput.value = hex; hexInput.classList.remove('bad'); }
     repaint();
+  };
+
+  let hueVal = 0;
+  const paintSV = () => {
+    const g = sv.getContext('2d'), w = sv.width, h = sv.height;
+    g.fillStyle = `hsl(${hueVal},100%,50%)`; g.fillRect(0, 0, w, h);
+    const toWhite = g.createLinearGradient(0, 0, w, 0);
+    toWhite.addColorStop(0, 'rgba(255,255,255,1)'); toWhite.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = toWhite; g.fillRect(0, 0, w, h);
+    const toBlack = g.createLinearGradient(0, 0, 0, h);
+    toBlack.addColorStop(0, 'rgba(0,0,0,0)'); toBlack.addColorStop(1, 'rgba(0,0,0,1)');
+    g.fillStyle = toBlack; g.fillRect(0, 0, w, h);
+  };
+  // 네모 안의 한 점을 색으로 바꾼다 — 가로는 선명함, 세로는 밝기.
+  const colorAt = (x, y) => {
+    const s = Math.max(0, Math.min(1, x / sv.width));
+    const v = 1 - Math.max(0, Math.min(1, y / sv.height));
+    const f = n => {
+      const k = (n + hueVal / 60) % 6;
+      const c = v - v * s * Math.max(0, Math.min(Math.min(k, 4 - k), 1));
+      return Math.round(c * 255).toString(16).padStart(2, '0');
+    };
+    return '#' + f(5) + f(3) + f(1);
+  };
+  let svDragging = false;
+  const svPick = e => {
+    const r = sv.getBoundingClientRect();
+    showColor(colorAt(e.clientX - r.left, e.clientY - r.top));
+  };
+  // 마우스를 누른 채 네모 밖으로 나가도 계속 따라오게 창(window)에 붙인다 — 요소에만
+  // 붙이면 살짝만 벗어나도 색 고르기가 끊긴다.
+  // 리스너는 누르고 있는 동안에만 붙였다가 뗀다 — 상세 화면은 상품을 바꿀 때마다 통째로
+  // 다시 그려지는데, 창에 붙인 채로 두면 전환할 때마다 하나씩 쌓인다.
+  const onSvMove = e => svPick(e);
+  const onSvUp = () => {
+    svDragging = false;
+    window.removeEventListener('mousemove', onSvMove);
+    window.removeEventListener('mouseup', onSvUp);
+    saveProducts();
+  };
+  sv.addEventListener('mousedown', e => {
+    e.preventDefault(); svDragging = true; svPick(e);
+    window.addEventListener('mousemove', onSvMove);
+    window.addEventListener('mouseup', onSvUp);
   });
-  pick.addEventListener('change', () => { setColor(pick.value); saveProducts(); repaint(); });
+
+  hue.addEventListener('input', () => { hueVal = Number(hue.value); paintSV(); });
+  hue.addEventListener('change', () => saveProducts());
+
+  ['#ffffff', '#f5f0e6', '#e7e2d6', '#d9d9d9', '#1a1a1a', '#ffd9e6', '#cfe8ff', '#dff5d8']
+    .forEach(c => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.style.background = c; b.title = c;
+      b.addEventListener('click', e => { e.stopPropagation(); showColor(c); saveProducts(); });
+      presets.appendChild(b);
+    });
+
+  pick.addEventListener('click', e => {
+    e.stopPropagation();
+    pop.hidden = !pop.hidden;
+    if (!pop.hidden) paintSV();
+  });
+  // 창 밖을 누르면 닫는다. 단 색을 고르는 중(드래그)에는 닫지 않는다.
+  document.addEventListener('mousedown', e => {
+    if (pop.hidden || svDragging) return;
+    if (!pop.contains(e.target) && e.target !== pick) pop.hidden = true;
+  });
 
   hexInput.addEventListener('input', () => {
     const hex = normalizeHex(hexInput.value);
     hexInput.classList.toggle('bad', !hex);
     if (!hex) return;
-    setColor(hex);
-    pick.value = hex;
-    repaint();
+    showColor(hex, { typing: true });
   });
   // 칸을 벗어나면 보기 좋은 6자리 형태(#rrggbb)로 정리해서 되돌려준다.
   hexInput.addEventListener('blur', () => {
@@ -2412,8 +2501,10 @@ function clampSlideOffset(slide, pw, ph, frame) {
   const dw = pw * eff, dh = ph * eff;
   const maxOx = Math.max(0, (dw - fit.w) / 2);
   const maxOy = Math.max(0, (dh - fit.h) / 2);
-  slide.ox = Math.max(-maxOx, Math.min(maxOx, slide.ox || 0));
-  slide.oy = Math.max(-maxOy, Math.min(maxOy, slide.oy || 0));
+  // 여유가 아예 없는 축(배경을 켠 전체보기 등)은 저장값을 건드리지 않는다. 0으로 지우면
+  // 배경을 다시 껐을 때 맞춰둔 위치가 안 돌아온다. 그릴 때는 drawSlide가 알아서 붙잡는다.
+  if (maxOx > 0) slide.ox = Math.max(-maxOx, Math.min(maxOx, slide.ox || 0));
+  if (maxOy > 0) slide.oy = Math.max(-maxOy, Math.min(maxOy, slide.oy || 0));
 }
 // 캔버스 드래그용으로 창(window)에 붙인 리스너를 떼는 함수. 상세 화면은 상품을 바꿀
 // 때마다 통째로 다시 그려지는데, 그때마다 새 리스너를 붙이기만 하고 떼지 않으면 창에
