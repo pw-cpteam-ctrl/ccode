@@ -383,7 +383,7 @@ button.danger{background:var(--ui-warn);color:#fff;}
     <div class="dh-col" id="folderImportZone">
       <button id="btnFolderImport" class="secondary" style="width:100%;">📁 사진 폴더 가져오기</button>
       <input type="file" id="folderImportInput" webkitdirectory directory multiple style="display:none;"/>
-      <div class="status" id="folderImportStatus"><b>하위 폴더 하나가 상품 하나</b>가 돼요 — 폴더 이름이 상품명으로 들어갑니다. 원고 없이 사진만 있을 때 쓰세요</div>
+      <div class="status" id="folderImportStatus"><b>사진이 들어 있는 폴더 하나가 상품 하나</b>가 돼요 — 폴더 이름이 상품명으로 들어갑니다. 몇 겹으로 들어 있어도 알아서 갈라줘요. 원고 없이 사진만 있을 때 쓰세요</div>
     </div>
   </div>
 
@@ -392,7 +392,7 @@ button.danger{background:var(--ui-warn);color:#fff;}
       <div class="action-row">
         <div class="action-col-stack">
           <button id="btnBatchGenerate" class="secondary">✍ 일괄 원고 생성</button>
-          <button id="btnAddProduct">＋ 상품 추가</button>
+          <button id="btnAddProduct">＋ 상품 이름 수동 추가</button>
         </div>
         <button id="btnResetProducts" class="danger">🗑 상품 초기화</button>
       </div>
@@ -3384,17 +3384,37 @@ function relPathOf(file) { return file.__relPath || file.webkitRelativePath || f
 // 1, 2, 10 순서가 되도록(글자 순서로는 1, 10, 2가 된다) 숫자를 숫자로 비교한다.
 const naturalCompare = (a, b) => a.localeCompare(b, 'ko', { numeric: true, sensitivity: 'base' });
 
-/* 경로를 보고 "어느 상품인가"를 정한다.
-     상위/미쿠/a.jpg      → 미쿠      (하위 폴더 이름 = 상품명)
-     상위/미쿠/원본/a.jpg  → 미쿠      (더 깊어도 첫 하위 폴더로 묶는다)
-     상위/a.jpg           → 상위      (하위 폴더가 없으면 고른 폴더 전체가 상품 하나)
-   더 깊은 단계로 쪼개지 않는 이유: 사진 폴더는 보통 "원본", "수정본"처럼 작업용 하위
-   폴더를 더 두는데, 그걸 상품으로 나누면 같은 상품이 둘로 찢어진다. */
+/* 경로를 보고 "어느 상품인가"를 정한다 — 규칙은 하나다:
+   **사진이 실제로 들어 있는 폴더 하나 = 상품 하나.**
+     상위/미쿠/a.jpg        → 미쿠
+     작업/11월/미쿠/a.jpg    → 미쿠      (몇 단계 깊든 상관없다)
+     상위/a.jpg             → 상위      (고른 폴더에 사진이 바로 있으면 그게 상품 하나)
+   처음엔 "첫 하위 폴더(위에서 두 번째 칸)"로 묶었는데, 고른 폴더와 상품 폴더 사이에
+   단계가 하나만 더 있어도(작업/11월/미쿠/…) 상품이 전부 "11월" 하나로 합쳐져 버렸다.
+   깊이를 세는 방식은 사람이 폴더를 어떻게 정리했는지에 따라 결과가 달라져서, 깊이를
+   아예 안 보고 "사진이 든 폴더"로 가르는 쪽이 어떤 구조에서도 똑같이 동작한다. */
 function productKeyFromPath(relPath) {
   const parts = String(relPath).split('/').filter(Boolean);
-  if (parts.length >= 3) return parts[1];
-  if (parts.length === 2) return parts[0];
-  return '사진';
+  parts.pop();                                   // 파일 이름을 떼면 남는 게 그 사진이 든 폴더
+  return parts.length ? parts.join('/') : '사진'; // 경로 전체를 열쇠로 써서, 이름이 같은 폴더가
+}                                                // 다른 자리에 있어도 서로 합쳐지지 않는다
+
+/* 화면에 쓸 상품명은 폴더 이름(맨 끝 칸)만 쓴다. 다만 이름이 같은 폴더가 둘 이상이면
+   그것만으로는 구분이 안 되니, 구분될 때까지 윗 폴더를 한 칸씩 붙인다. */
+function titlesForFolderKeys(keys) {
+  const out = new Map();
+  for (const key of keys) {
+    const parts = key.split('/');
+    let depth = 1;
+    let name = parts.slice(-depth).join('/');
+    while (depth < parts.length &&
+           keys.some(k => k !== key && k.split('/').slice(-depth).join('/') === name)) {
+      depth += 1;
+      name = parts.slice(-depth).join('/');
+    }
+    out.set(key, name);
+  }
+  return out;
 }
 
 async function importPhotoFolder(files) {
@@ -3409,15 +3429,16 @@ async function importPhotoFolder(files) {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(f);
   }
-  const names = [...groups.keys()].sort(naturalCompare);
+  const keys = [...groups.keys()].sort(naturalCompare);
+  const titles = titlesForFolderKeys(keys);
 
   let done = 0;
   const total = imgs.length;
   let firstNewId = null;
-  for (const name of names) {
-    const list = groups.get(name).sort((a, b) => naturalCompare(a.name, b.name));
+  for (const key of keys) {
+    const list = groups.get(key).sort((a, b) => naturalCompare(a.name, b.name));
     const p = makeBlankProduct();
-    p.title = name;
+    p.title = titles.get(key);
     for (const f of list) {
       await addPhotoFileToProduct(p, f);
       done += 1;
@@ -3433,7 +3454,7 @@ async function importPhotoFolder(files) {
   saveProducts();
   renderList();
   selectProduct(firstNewId);
-  statusEl.textContent = `✓ 상품 ${names.length}개 / 사진 ${done}장을 불러왔어요`;
+  statusEl.textContent = `✓ 상품 ${keys.length}개 / 사진 ${done}장을 불러왔어요`;
 }
 const b2bImportZone = $('#b2bImportZone');
 b2bImportZone.addEventListener('dragover', e => { e.preventDefault(); b2bImportZone.classList.add('dragover'); });
