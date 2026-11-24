@@ -323,6 +323,7 @@ button.danger{background:var(--ui-warn);color:#fff;}
 .bgstep .bghue{width:180px;margin:0;}
 .bgstep .bgpresets{display:flex;gap:4px;flex-wrap:wrap;width:180px;}
 .bgstep .bgpresets button{width:20px;height:20px;border-radius:4px;border:1px solid #ccc;padding:0;}
+.bgstep .bgfit{width:auto;padding:0 7px;font-size:10px;}
 .bgstep .bghex{width:76px;height:22px;padding:0 5px;font-size:11px;border:1px solid #ddd;
   border-radius:4px;font-family:ui-monospace,Menlo,Consolas,monospace;text-transform:lowercase;}
 .bgstep .bghex.bad{border-color:#d33;color:#d33;}
@@ -1291,17 +1292,20 @@ const COVER_FIT_SLOP = 1.003;
 function coverFitBase(pw, ph, fitW, fitH) {
   return Math.max(fitW / pw, fitH / ph) * COVER_FIT_SLOP;
 }
-/* 배경을 깔면 "꽉 채우기"가 아니라 "전체 보기"로 바뀐다.
-   배경을 깔아놓고도 사진이 칸을 다 덮으면 배경이 보일 자리가 아예 없기 때문이다.
-   min/max 한 글자 차이지만, 이 둘을 반드시 같은 함수 안에서 갈라야 한다 —
-   흰배경과 색상배경을 따로 처리하면 둘을 오갈 때 사진 크기가 달라져서 배율이
-   초기화된 것처럼 보인다. 여유(SLOP)는 꽉 채울 때만 필요한 보정이라 안 얹는다. */
 function slideHasBg(slide) { return !!slide && (slide.bgMode === 'white' || slide.bgMode === 'color'); }
 function slideBgColor(slide) { return slide.bgMode === 'white' ? '#ffffff' : (slide.bgColor || '#ffffff'); }
+/* 기준 크기는 배경을 켜든 끄든 항상 "꽉 채우기"다.
+   처음엔 배경을 켜면 자동으로 "전체 보기"로 바꿨는데, 그러면 ◀▶를 누를 때마다 사진
+   크기가 저 혼자 달라진다 — 같은 100%인데 보이는 크기가 달라지니 배율이 제멋대로
+   바뀌는 것으로 보인다. 기준을 하나로 고정하면 ◀▶는 바탕색만 바꾸고 크기는 절대
+   건드리지 않는다. 사진을 줄여 배경을 드러내는 일은 [전체 보기] 버튼이나 휠로
+   사용자가 직접 한다(=크기가 바뀌는 건 누른 그 순간뿐이고, 숫자로도 보인다). */
 function baseFitFor(slide, pw, ph, fitW, fitH) {
-  return slideHasBg(slide)
-    ? Math.min(fitW / pw, fitH / ph)
-    : coverFitBase(pw, ph, fitW, fitH);
+  return coverFitBase(pw, ph, fitW, fitH);
+}
+// 사진 전체가 들어가는 배율 — 꽉 채우기 기준으로 환산한 값이라 슬라이더 숫자와 뜻이 맞는다.
+function containScaleFor(slide, pw, ph, fitW, fitH) {
+  return Math.min(fitW / pw, fitH / ph) / coverFitBase(pw, ph, fitW, fitH);
 }
 // 사진을 채울 기준 영역 — 틀이 켜져 있으면 틀의 투명 창(frame.inner)만, 틀을 껐으면
 // 캔버스 전체(0,0~CW,CH)를 기준으로 삼는다. 틀 off일 때도 이 좁은 창 기준으로 계산하면
@@ -1600,6 +1604,7 @@ function imageStageHtml(p) {
           <button type="button" id="bgNext" title="다음">▶</button>
           <button type="button" id="bgColorPick" class="bgcolor" title="배경색 고르기"></button>
           <input type="text" id="bgHex" class="bghex" maxlength="7" spellcheck="false" autocomplete="off" title="색상 코드(6자리)"/>
+          <button type="button" id="bgFitAll" class="bgfit" title="사진 전체가 들어가게 크기를 줄여요">전체 보기</button>
           <span class="bgs-note" id="bgNote"></span>
           <div class="bgpop" id="bgPop" hidden>
             <canvas id="bgSV" class="bgsv" width="180" height="120"></canvas>
@@ -2324,9 +2329,11 @@ function syncBgStepper(p, slide) {
   if (!showColor) { const pop = $('#bgPop'); if (pop) pop.hidden = true; }
   pick.style.background = color;
   if (document.activeElement !== hex) { hex.value = color; hex.classList.remove('bad'); }
+  $('#bgFitAll').style.display = showColor || mode === 'white' ? '' : 'none';
   $('#bgNote').textContent = mode === 'none'
-    ? '(배경을 고르면 사진이 잘리지 않고 전체가 들어가요)'
-    : (targets.length > 1 ? `${targets.length}장에 함께 적용 중` : '');
+    ? '(배경을 깔면 사진을 줄여 그 위에 올릴 수 있어요)'
+    : (targets.length > 1 ? `${targets.length}장에 함께 적용 중`
+      : '[전체 보기]를 누르면 사진이 통째로 들어가요');
 }
 function wireBgStepper(p) {
   const wrap = $('#bgStep');
@@ -2442,10 +2449,34 @@ function wireBgStepper(p) {
     pop.hidden = !pop.hidden;
     if (!pop.hidden) paintSV();
   });
-  // 창 밖을 누르면 닫는다. 단 색을 고르는 중(드래그)에는 닫지 않는다.
-  document.addEventListener('mousedown', e => {
-    if (pop.hidden || svDragging) return;
-    if (!pop.contains(e.target) && e.target !== pick) pop.hidden = true;
+  /* 창 밖을 누르면 닫는다. 캔버스·썸네일 쪽 드래그 처리가 mousedown에서 전파를 끊기
+     때문에, 평범하게 document에 붙이면 그 위를 눌렀을 때 여기까지 오지 않아 창이 안
+     닫혔다. 전파보다 먼저 도는 단계(capture)에서 받으면 어디를 누르든 반드시 온다.
+     상세 화면은 다시 그릴 때마다 이 함수가 또 불리므로, 앞서 붙인 것은 떼고 새로 붙인다. */
+  if (window._bgPopCloser) document.removeEventListener('mousedown', window._bgPopCloser, true);
+  window._bgPopCloser = e => {
+    const el = $('#bgPop');
+    if (!el || el.hidden || svDragging) return;
+    if (!el.contains(e.target) && e.target !== $('#bgColorPick')) el.hidden = true;
+  };
+  document.addEventListener('mousedown', window._bgPopCloser, true);
+  // ESC로도 닫는다 — 창이 열린 줄 모르고 다른 걸 누르려다 막히는 일이 없게.
+  pop.addEventListener('keydown', e => { if (e.key === 'Escape') pop.hidden = true; });
+
+  // 사진 전체가 들어가게 줄인다. 크기가 바뀌는 건 이 버튼을 누른 그 순간뿐이고,
+  // 바뀐 값은 안내줄의 "지금 N%"에 그대로 보인다.
+  $('#bgFitAll').addEventListener('click', e => {
+    e.stopPropagation();
+    const fr = frameOf(p);
+    for (const t of bgTargetsOf(p)) {
+      const img = imgCache.get(t.key);
+      if (!img) continue;
+      const fit = fitRectFor(t, fr);
+      t.scale = clampScale(containScaleFor(t, img.naturalWidth, img.naturalHeight, fit.w, fit.h));
+      t.ox = 0; t.oy = 0;
+    }
+    saveProducts();
+    drawComposer(p); drawAllThumbs(p); updateBulkUi(p);
   });
 
   hexInput.addEventListener('input', () => {
