@@ -302,6 +302,20 @@ button.danger{background:var(--ui-warn);color:#fff;}
 /* 슬라이드 하나에 대한 동작은 그 슬라이드 그림 바로 아래에 둔다 */
 .slide-actions{display:flex;gap:6px;margin-top:8px;}
 .slide-actions button{flex:1;padding:7px 4px;font-size:11px;white-space:nowrap;}
+/* 배경 고르기 — ◀ 지금값 ▶ 가로형. 세로 화살표(▲▼)는 어느 쪽이 "다음"인지 안 읽혀서
+   지금 값이 가운데 글자로 보이는 가로형으로 둔다. */
+.bgstep{display:flex;align-items:center;gap:5px;margin-top:6px;flex-wrap:wrap;}
+.bgstep .bgs-lab{font-size:11px;color:#666;}
+.bgstep button{border:1px solid #ddd;background:#fff;border-radius:4px;width:22px;height:22px;
+  font-size:10px;line-height:1;cursor:pointer;padding:0;color:#444;}
+.bgstep button:hover{background:#f3f3f3;}
+.bgstep .bgv{font-size:11px;min-width:42px;text-align:center;font-weight:700;}
+.bgstep .bgcolor{width:28px;height:22px;padding:0;cursor:pointer;border:1px solid #ddd;
+  border-radius:4px;background:none;}
+.bgstep .bghex{width:76px;height:22px;padding:0 5px;font-size:11px;border:1px solid #ddd;
+  border-radius:4px;font-family:ui-monospace,Menlo,Consolas,monospace;text-transform:lowercase;}
+.bgstep .bghex.bad{border-color:#d33;color:#d33;}
+.bgstep .bgs-note{font-size:10px;color:#888;}
 /* 하단 고정 바 */
 .paste-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:64px;z-index:60;
   background:#2b2620;color:#fff;font-size:12.5px;font-weight:700;padding:9px 16px;border-radius:999px;
@@ -1266,6 +1280,18 @@ const COVER_FIT_SLOP = 1.003;
 function coverFitBase(pw, ph, fitW, fitH) {
   return Math.max(fitW / pw, fitH / ph) * COVER_FIT_SLOP;
 }
+/* 배경을 깔면 "꽉 채우기"가 아니라 "전체 보기"로 바뀐다.
+   배경을 깔아놓고도 사진이 칸을 다 덮으면 배경이 보일 자리가 아예 없기 때문이다.
+   min/max 한 글자 차이지만, 이 둘을 반드시 같은 함수 안에서 갈라야 한다 —
+   흰배경과 색상배경을 따로 처리하면 둘을 오갈 때 사진 크기가 달라져서 배율이
+   초기화된 것처럼 보인다. 여유(SLOP)는 꽉 채울 때만 필요한 보정이라 안 얹는다. */
+function slideHasBg(slide) { return !!slide && (slide.bgMode === 'white' || slide.bgMode === 'color'); }
+function slideBgColor(slide) { return slide.bgMode === 'white' ? '#ffffff' : (slide.bgColor || '#ffffff'); }
+function baseFitFor(slide, pw, ph, fitW, fitH) {
+  return slideHasBg(slide)
+    ? Math.min(fitW / pw, fitH / ph)
+    : coverFitBase(pw, ph, fitW, fitH);
+}
 // 사진을 채울 기준 영역 — 틀이 켜져 있으면 틀의 투명 창(frame.inner)만, 틀을 껐으면
 // 캔버스 전체(0,0~CW,CH)를 기준으로 삼는다. 틀 off일 때도 이 좁은 창 기준으로 계산하면
 // 나머지 테두리(로고띠 자리 등)가 빈 채로 남아 하얗게 보였던 문제 때문에 분리함.
@@ -1397,14 +1423,15 @@ function drawSlide(ctx, slide, withText, textTitle, textSub, gradCfg, badgeText,
     // cover-fit — 틀 off인데도 좁은 창 기준으로 계산하면 나머지 테두리가 빈 채로 남아
     // 하얗게 보였던 문제 때문에 fitRectFor로 기준 영역 자체를 분기한다.
     const fit = fitRectFor(slide, fr);
-    const base = coverFitBase(pw, ph, fit.w, fit.h);
+    const base = baseFitFor(slide, pw, ph, fit.w, fit.h);
     const eff = base * (slide.scale || 1);
     const dw = pw * eff, dh = ph * eff;
     const dx = fit.x0 + (fit.w - dw) / 2 + (slide.ox || 0);
     const dy = fit.y0 + (fit.h - dh) / 2 + (slide.oy || 0);
     // 사진 밑에 불투명 배경을 먼저 깔아둔다 — 위 COVER_FIT_SLOP으로 웬만한 뜬 픽셀은 없어지지만,
     //혹시 남더라도 투명(캔버스 기본값)이 아니라 이 색으로 보이게 하는 이중 안전장치.
-    ctx.fillStyle = '#1a1a1a';
+    // 배경을 골랐으면 그 색이 사진 둘레에 보이는 바탕이 된다(위에서 전체보기로 줄여둔 상태).
+    ctx.fillStyle = slideHasBg(slide) ? slideBgColor(slide) : '#1a1a1a';
     ctx.fillRect(fit.x0, fit.y0, fit.w, fit.h);
     ctx.drawImage(img, dx, dy, dw, dh);
   } else {
@@ -1548,6 +1575,16 @@ function imageStageHtml(p) {
           <button class="sm secondary" id="btnExportProductZip">전체 ZIP</button>
         </div>
         <div class="status" id="composerHint" style="margin-top:6px;">${p.images.length ? '휠: 확대/축소 · 드래그: 사진 위치 이동 · 사진 줄 빈 곳을 끌면 여러 장 선택(Ctrl+클릭으로 하나씩 추가)' : '아직 사진 없음 — 틀·문구 먼저 미리보기 중. 사진 올리면 자동으로 채워져요.'}</div>
+        ${p.images.length ? `
+        <div class="bgstep" id="bgStep">
+          <span class="bgs-lab">배경</span>
+          <button type="button" id="bgPrev" title="이전">◀</button>
+          <span class="bgv" id="bgVal">없음</span>
+          <button type="button" id="bgNext" title="다음">▶</button>
+          <input type="color" id="bgColorPick" class="bgcolor" title="배경색 고르기"/>
+          <input type="text" id="bgHex" class="bghex" maxlength="7" spellcheck="false" autocomplete="off" title="색상 코드(6자리)"/>
+          <span class="bgs-note" id="bgNote"></span>
+        </div>` : ''}
       </div>
       <div class="composer-ctl">
         <div class="ctl-block" id="mainOnlyBlock">
@@ -1649,6 +1686,7 @@ function wireImageStage(p) {
   });
   wireThumbMarquee(p);
   updateBulkUi(p);
+  wireBgStepper(p);
 
   wireGradRange(p, 'gradStart', 'start', '%');
   wireGradRange(p, 'gradWidth', 'width', '%');
@@ -2218,6 +2256,124 @@ function drawComposer(p) {
   const rect = canvas.getBoundingClientRect();
   composerScale = (rect.width || canvas.clientWidth || 315) / CW;
   updateComposerHint(p, slide);
+  syncBgStepper(p, slide);
+}
+
+/* ── 배경 고르기 ────────────────────────────────────────────────────────────
+   없음 / 흰배경 / 색상 세 가지. 배경을 고르면 사진은 "꽉 채우기"에서 "전체 보기"로
+   바뀐다(baseFitFor) — 안 그러면 사진이 칸을 다 덮어 배경이 보일 자리가 없다.
+
+   색 고르기 창이 열려 있는 동안에는 화면을 다시 "만들지" 않는 게 중요하다. 창은 그
+   <input> 요소에 붙어 있어서, 색을 다 고르기 전에 그 요소가 새로 만들어지면 창이
+   그대로 닫혀버린다(마우스를 떼지도 않았는데 사라지는 증상). 그래서 색이 바뀔 때는
+   캔버스와 썸네일만 다시 그리고, 조작부 자체는 건드리지 않는다. */
+function bgTargetsOf(p) {
+  const sel = selectedSlidesOf(p);
+  if (sel.length > 1) return sel;                       // 여러 장 골라뒀으면 고른 것 전부
+  const cur = p.images[editingIdx];
+  return cur ? [cur] : [];
+}
+const BG_OPTS = [
+  { key: 'none', label: '없음' },
+  { key: 'white', label: '흰배경' },
+  { key: 'color', label: '색상' },
+];
+const normalizeHex = v => {
+  let s = String(v || '').trim().toLowerCase();
+  if (s[0] !== '#') s = '#' + s;
+  if (/^#[0-9a-f]{3}$/.test(s)) s = '#' + s.slice(1).split('').map(c => c + c).join(''); // 3자리는 6자리로 펴서 보여준다
+  return /^#[0-9a-f]{6}$/.test(s) ? s : null;
+};
+// 화면의 조작부를 지금 사진 상태에 맞춘다. 입력 중인 칸은 건드리지 않는다 — 글자를
+// 치는 중에 값을 덮어쓰면 커서가 튀고 입력이 끊긴다.
+function syncBgStepper(p, slide) {
+  const wrap = $('#bgStep');
+  if (!wrap) return;
+  const targets = bgTargetsOf(p);
+  const ref = targets[0] || slide;
+  const mode = (ref && ref.bgMode) || 'none';
+  const color = (ref && ref.bgColor) || '#ffffff';
+  $('#bgVal').textContent = (BG_OPTS.find(o => o.key === mode) || BG_OPTS[0]).label;
+  const pick = $('#bgColorPick'), hex = $('#bgHex');
+  // 색 고르기는 '색상'일 때만 보여준다 — 항상 띄워두면 눌러도 아무 일이 없어 고장처럼 보인다.
+  const showColor = mode === 'color';
+  pick.style.display = showColor ? '' : 'none';
+  hex.style.display = showColor ? '' : 'none';
+  if (document.activeElement !== pick) pick.value = color;
+  if (document.activeElement !== hex) { hex.value = color; hex.classList.remove('bad'); }
+  $('#bgNote').textContent = mode === 'none'
+    ? '(배경을 고르면 사진이 잘리지 않고 전체가 들어가요)'
+    : (targets.length > 1 ? `${targets.length}장에 함께 적용 중` : '');
+}
+function wireBgStepper(p) {
+  const wrap = $('#bgStep');
+  if (!wrap) return;
+  // 이 줄 전체가 캔버스 밖이라 상관없지만, 혹시 상위에 드래그·클릭 처리가 붙어도
+  // 같이 돌지 않게 막아둔다.
+  wrap.addEventListener('mousedown', e => e.stopPropagation());
+
+  // 색만 바뀌었을 때: 조작부는 그대로 두고 그림만 다시 그린다(색 고르기 창이 안 닫히게).
+  const repaint = () => {
+    const canvas = $('#composerCanvas');
+    if (canvas) drawSlide(canvas.getContext('2d'), p.images[editingIdx], editingIdx === p.mainIndex,
+      p.textTitle, p.textSub, gradCfgFor(p), getBadgeText(p), GLOBAL_GRAD.badgeLetterSpacing,
+      GLOBAL_GRAD.titleFontSize, GLOBAL_GRAD.subFontSize, frameOf(p), formatCopyright(p.copyrightText));
+    drawAllThumbs(p);
+    saveProductsSoon();
+  };
+  const applyMode = step => {
+    const targets = bgTargetsOf(p);
+    if (!targets.length) return;
+    const cur = targets[0].bgMode || 'none';
+    const idx = Math.max(0, BG_OPTS.findIndex(o => o.key === cur));
+    const next = BG_OPTS[(idx + step + BG_OPTS.length) % BG_OPTS.length].key;
+    for (const t of targets) {
+      t.bgMode = next;
+      if (next === 'color' && !t.bgColor) t.bgColor = $('#bgColorPick').value || '#ffffff';
+      // 꽉 채우기 ↔ 전체 보기로 기준 크기가 바뀌므로 이동량을 범위 안으로 다시 잡아준다.
+      const img = imgCache.get(t.key);
+      if (img) clampSlideOffset(t, img.naturalWidth, img.naturalHeight, frameOf(p));
+    }
+    saveProducts();
+    drawComposer(p); drawAllThumbs(p);
+  };
+  $('#bgPrev').addEventListener('click', e => { e.stopPropagation(); applyMode(-1); });
+  $('#bgNext').addEventListener('click', e => { e.stopPropagation(); applyMode(+1); });
+
+  const setColor = v => {
+    const hex = normalizeHex(v);
+    if (!hex) return false;
+    for (const t of bgTargetsOf(p)) { t.bgMode = 'color'; t.bgColor = hex; }
+    return hex;
+  };
+  const pick = $('#bgColorPick'), hexInput = $('#bgHex');
+  pick.addEventListener('click', e => e.stopPropagation());
+  // input = 고르는 중에 계속 들어옴(미리보기), change = 고르기를 끝냈을 때 한 번.
+  // 둘 다 그림만 다시 그리고 조작부는 그대로 둔다.
+  pick.addEventListener('input', () => {
+    const hex = setColor(pick.value);
+    if (hex && document.activeElement !== hexInput) hexInput.value = hex;
+    repaint();
+  });
+  pick.addEventListener('change', () => { setColor(pick.value); saveProducts(); repaint(); });
+
+  hexInput.addEventListener('input', () => {
+    const hex = normalizeHex(hexInput.value);
+    hexInput.classList.toggle('bad', !hex);
+    if (!hex) return;
+    setColor(hex);
+    pick.value = hex;
+    repaint();
+  });
+  // 칸을 벗어나면 보기 좋은 6자리 형태(#rrggbb)로 정리해서 되돌려준다.
+  hexInput.addEventListener('blur', () => {
+    const hex = normalizeHex(hexInput.value);
+    if (hex) { hexInput.value = hex; hexInput.classList.remove('bad'); saveProducts(); }
+    else syncBgStepper(p, p.images[editingIdx]);
+  });
+  hexInput.addEventListener('keydown', e => { if (e.key === 'Enter') hexInput.blur(); });
+
+  syncBgStepper(p, p.images[editingIdx]);
 }
 
 /* 사진을 어느 쪽으로 움직일 수 있는지 지금 상태를 그대로 알려준다.
@@ -2233,7 +2389,7 @@ function updateComposerHint(p, slide) {
   const img = slide && imgCache.get(slide.key);
   if (!img) { el.textContent = base; return; }
   const fit = fitRectFor(slide, frameOf(p));
-  const eff = coverFitBase(img.naturalWidth, img.naturalHeight, fit.w, fit.h) * (slide.scale || 1);
+  const eff = baseFitFor(slide, img.naturalWidth, img.naturalHeight, fit.w, fit.h) * (slide.scale || 1);
   // 2px 이하는 사실상 못 움직이는 것으로 본다 — 계산 오차 수준이라 잡아끌어도 반응이 없다.
   const freeX = (img.naturalWidth * eff - fit.w) / 2 > 2;
   const freeY = (img.naturalHeight * eff - fit.h) / 2 > 2;
@@ -2251,7 +2407,7 @@ function updateComposerHint(p, slide) {
 // 늘어나되, 사진 끝에 닿으면 거기서 멈춰서 뒤로 흰 여백이 보이는 일이 없게 한다.
 function clampSlideOffset(slide, pw, ph, frame) {
   const fit = fitRectFor(slide, frame || frameOf(null));
-  const base = coverFitBase(pw, ph, fit.w, fit.h);
+  const base = baseFitFor(slide, pw, ph, fit.w, fit.h);
   const eff = base * (slide.scale || 1);
   const dw = pw * eff, dh = ph * eff;
   const maxOx = Math.max(0, (dw - fit.w) / 2);
